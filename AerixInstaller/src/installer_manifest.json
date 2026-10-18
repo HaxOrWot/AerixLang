@@ -1,0 +1,29 @@
+{
+  "name": "Aerix",
+  "version": "1.0.84",
+  "release_channel": "alpha",
+  "publisher": "HaxOrWot",
+  "url": "https://github.com/HaxOrWot/AerixLang",
+  "app_id": "{{8A73E4D1-0F92-4C2E-8B51-34F6A97D1108}",
+  "default_install_dir": "{localappdata}\\Programs\\Aerix",
+  "system_install_dir": "{autopf}\\Aerix",
+  "executable": "bin\\arx.exe",
+  "file_association": {
+    "extension": ".arx",
+    "prog_id": "Aerix.SourceFile",
+    "description": "Aerix Source Code",
+    "icon": "assets\\aerix_file.ico"
+  },
+  "payload": [
+    { "source": "arx.py", "dest": "bin\\arx.py" },
+    { "source": "arx.bat", "dest": "bin\\arx.bat" },
+    { "source": "src\\", "dest": "src\\" },
+    { "source": "stdlib\\aerix_rt.h", "dest": "stdlib\\aerix_rt.h" },
+    { "source": "editors\\vscode-aerix\\aerix-1.0.84.vsix", "dest": "editors\\aerix-1.0.84.vsix" },
+    { "source": "AerixInstaller\\assets\\aerix.ico", "dest": "assets\\aerix.ico" },
+    { "source": "AerixInstaller\\assets\\aerix_file.ico", "dest": "assets\\aerix_file.ico" },
+    { "source": "README.md", "dest": "docs\\README.md" },
+    { "source": "USER.md", "dest": "docs\\USER.md" },
+    { "source": "GUIDE.md", "dest": "docs\\GUIDE.md" }
+  ]
+}
