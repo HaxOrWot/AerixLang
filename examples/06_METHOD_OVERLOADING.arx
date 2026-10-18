@@ -1,0 +1,61 @@
+// Aerix Example 06: Method & Constructor Overloading (Phase 10)
+// Demonstrates compile-time static dispatch based on parameter count and types.
+
+class Profile {
+    pub name: str
+    pub address: str
+    pub age: i64
+
+    // Constructor Overload 1: Default with name only
+    init(name: str) {
+        self.name = name
+        self.address = "Unassigned"
+        self.age = 18
+    }
+
+    // Constructor Overload 2: Full profile initialization
+    init(name: str, address: str, age: i64) {
+        self.name = name
+        self.address = address
+        self.age = age
+    }
+
+    // Method Overload A: Update address only
+    pub fn update_details(address: str) -> void {
+        self.address = address
+        println("[UPDATE - Address]: {self.name} moved to {self.address}")
+    }
+
+    // Method Overload B: Update address and age
+    pub fn update_details(address: str, age: i64) -> void {
+        self.address = address
+        self.age = age
+        println("[UPDATE - Full]: {self.name} is now {self.age} years old at {self.address}")
+    }
+
+    pub fn display() -> void {
+        println("Profile: {self.name} | Age: {self.age} | Address: {self.address}")
+    }
+}
+
+fn main() {
+    println("--- Aerix 2.0 Method & Constructor Overloading ---")
+
+    // Dispatch to Constructor 1:
+    mut user1 = Profile("Robin")
+    user1.display()
+
+    // Dispatch to Method Overload A (1 parameter):
+    user1.update_details("Neo-Tokyo Sector 4")
+
+    // Dispatch to Constructor 2:
+    mut user2 = Profile("NOTPHOENIX", "Earth Citadel 12", 24)
+    user2.display()
+
+    // Dispatch to Method Overload B (2 parameters):
+    user2.update_details("Orbital Station Alpha", 25)
+
+    println("\nFinal verified state:")
+    user1.display()
+    user2.display()
+}

@@ -1,0 +1,25 @@
+// Aerix Example 07: The Pipeline Operator (|>)
+// Demonstrates functional composition where data flows left-to-right through functions.
+
+fn double(x: i64) -> i64 => x * 2
+
+fn add_ten(x: i64) -> i64 => x + 10
+
+fn square(x: i64) -> i64 => x * x
+
+fn main() {
+    println("--- Aerix Pipeline Operator (|>) ---")
+
+    let raw_input = 5
+
+    // In other languages, you write: square(add_ten(double(5)))
+    // In Aerix, you write a clean, readable pipeline:
+    let result = raw_input 
+        |> double()   // 5 * 2 = 10
+        |> add_ten()  // 10 + 10 = 20
+        |> square()   // 20 * 20 = 400
+
+    println("Raw Input:       {raw_input}")
+    println("Pipeline Result: {result}")
+}
+

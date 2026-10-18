@@ -1,0 +1,47 @@
+// ============================================================================
+// Aerix Example 17: Guard Statements (Early Exit Flow Control)
+// ============================================================================
+//
+// In Aerix, 'guard <condition> else { ... }' provides clean, early-exit
+// assertions that un-nest deep 'if' pyramids.
+// If the condition is false, the 'else' block executes (must exit or return).
+// If the condition is true, control falls through with guaranteed invariants.
+// ============================================================================
+
+fn withdraw(balance: i64, amount: i64) -> i64 {
+    guard amount > 0 else {
+        println("[ERROR] Withdrawal amount must be positive! Got: {amount}")
+        return balance
+    }
+
+    guard balance >= amount else {
+        println("[ERROR] Insufficient funds! Balance: {balance}, Requested: {amount}")
+        return balance
+    }
+
+    let remaining = balance - amount
+    println("[SUCCESS] Withdrew ${amount}. Remaining balance: ${remaining}")
+    return remaining
+}
+
+fn authenticate(user: str, token: i64) -> bool {
+    guard token == 777 else {
+        println("Access Denied: Invalid security token for {user}")
+        return false
+    }
+
+    println("Access Granted: Welcome {user} to the secure terminal!")
+    return true
+}
+
+pub fn main() {
+    println("--- Aerix Guard Statements Demo ---")
+    mut my_balance = 500
+
+    my_balance = withdraw(my_balance, -50)
+    my_balance = withdraw(my_balance, 600)
+    my_balance = withdraw(my_balance, 200)
+
+    let authed = authenticate("Commander Shepard", 999)
+    let ok = authenticate("Commander Shepard", 777)
+}

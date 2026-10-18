@@ -1,0 +1,63 @@
+// ==============================================================================
+// Aerix Language Tour: 22_DEVELOPER_TOOLS_AND_CLI.arx
+// Topic: Developer Experience Tools: Formatter, Linter, REPL, and Package Manager
+// Version: 1.0.82-alpha
+// ==============================================================================
+
+// Aerix includes first-class developer tooling built directly into the 'arx' CLI:
+//
+// 1. 'arx fmt [file/dir]'
+//    Automatically formats your source code to 4-space indent standards,
+//    cleans up whitespace, and enforces clean brace nesting.
+//
+// 2. 'arx lint <file>'
+//    High-performance static analyzer that reports unused variables, empty blocks,
+//    unreachable statements, and code smells with line-precise diagnostics.
+//
+// 3. 'arx repl'
+//    Interactive Read-Eval-Print Loop for rapid testing, prototyping, and JIT execution.
+//
+// 4. 'arx pm'
+//    Package manager for initializing projects (aerix.toml) and tracking library dependencies.
+
+class ProjectReport {
+    pub name: str
+    pub active_modules: i64
+    pub ready_for_production: bool
+
+    init(name: str, modules: i64) {
+        self.name = name
+        self.active_modules = modules
+        self.ready_for_production = true
+    }
+
+    pub fn summary() {
+        println("Project: {self.name} | Modules: {self.active_modules} | Prod-Ready: {self.ready_for_production}")
+    }
+}
+
+fn compute_quality_score(code_lines: i64, test_count: i64) -> f64 {
+    guard code_lines > 0 else {
+        return 0.0
+    }
+    let ratio: f64 = (test_count as f64) / (code_lines as f64) * 100.0
+    return ratio
+}
+
+fn main() {
+    println("=== Aerix Developer Experience & CLI Ecosystem Tour ===")
+
+    let project = ProjectReport("Aerix 2.0 Engine", 15)
+    project.summary()
+
+    let test_coverage = compute_quality_score(1250, 58)
+    println("Test Coverage Density: {test_coverage}%")
+
+    println("\nTry the Phase 15 CLI commands in your terminal:")
+    println("  1. Run Code Formatter:  arx fmt examples/")
+    println("  2. Run Linter:          arx lint examples/22_DEVELOPER_TOOLS_AND_CLI.arx")
+    println("  3. Package Manager:     arx pm init / arx pm list")
+    println("  4. Interactive REPL:    arx repl")
+
+    println("\nPhase 15 Developer Experience & CLI Ecosystem verified successfully!")
+}

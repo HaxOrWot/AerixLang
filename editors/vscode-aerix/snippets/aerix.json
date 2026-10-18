@@ -1,0 +1,254 @@
+{
+  "Aerix Main Function": {
+    "prefix": "main",
+    "body": [
+      "fn main() {",
+      "\t${0}",
+      "}"
+    ],
+    "description": "Create the main entry point function"
+  },
+  "Aerix Function": {
+    "prefix": "fn",
+    "body": [
+      "fn ${1:name}(${2:params}) -> ${3:i64} {",
+      "\t${0}",
+      "}"
+    ],
+    "description": "Standard block function"
+  },
+  "Aerix Expression Function": {
+    "prefix": "fn_expr",
+    "body": [
+      "fn ${1:name}(${2:params}) -> ${3:i64} => ${0}"
+    ],
+    "description": "Concise single-expression function (=>)"
+  },
+  "Aerix Variable Let": {
+    "prefix": "let",
+    "body": [
+      "let ${1:name} = ${0}"
+    ],
+    "description": "Declare an immutable variable"
+  },
+  "Aerix Variable Mut": {
+    "prefix": "mut",
+    "body": [
+      "let mut ${1:name} = ${0}"
+    ],
+    "description": "Declare a mutable variable"
+  },
+  "Aerix Class": {
+    "prefix": "class",
+    "body": [
+      "class ${1:Name} {",
+      "\tpub ${2:field}: ${3:str}",
+      "",
+      "\tinit(${2:field}: ${3:str}) {",
+      "\t\tself.${2:field} = ${2:field}",
+      "\t}",
+      "",
+      "\t${0}",
+      "}"
+    ],
+    "description": "Declare an OOP class with fields and constructor"
+  },
+  "Aerix Class Extends": {
+    "prefix": "class_extends",
+    "body": [
+      "class ${1:Derived} extends ${2:Base} {",
+      "\tinit(${3:args}) {",
+      "\t\tsuper.init(${3:args})",
+      "\t\t${0}",
+      "\t}",
+      "}"
+    ],
+    "description": "Declare an inherited subclass"
+  },
+  "Aerix Trait": {
+    "prefix": "trait",
+    "body": [
+      "trait ${1:Name} {",
+      "\tfn ${2:method_name}(${3:params}) -> ${4:void}",
+      "}"
+    ],
+    "description": "Declare an abstract trait contract"
+  },
+  "Aerix If": {
+    "prefix": "if",
+    "body": [
+      "if ${1:condition} {",
+      "\t${0}",
+      "}"
+    ],
+    "description": "Conditional if block"
+  },
+  "Aerix If Else": {
+    "prefix": "ifelse",
+    "body": [
+      "if ${1:condition} {",
+      "\t${2}",
+      "} else {",
+      "\t${0}",
+      "}"
+    ],
+    "description": "If-else conditional block"
+  },
+  "Aerix For Range": {
+    "prefix": "for",
+    "body": [
+      "for ${1:i} in ${2:0}..${3:10} {",
+      "\t${0}",
+      "}"
+    ],
+    "description": "Range-based for loop"
+  },
+  "Aerix While Loop": {
+    "prefix": "while",
+    "body": [
+      "while ${1:condition} {",
+      "\t${0}",
+      "}"
+    ],
+    "description": "While loop"
+  },
+  "Aerix Infinite Loop": {
+    "prefix": "loop",
+    "body": [
+      "loop {",
+      "\t${0}",
+      "}"
+    ],
+    "description": "Infinite loop"
+  },
+  "Aerix Defer Cleanup": {
+    "prefix": "defer",
+    "body": [
+      "defer ${0}"
+    ],
+    "description": "Scoped LIFO deferred statement"
+  },
+  "Aerix Println": {
+    "prefix": "println",
+    "body": [
+      "println(\"${1:{var\\}}\")"
+    ],
+    "description": "Print formatted line to stdout"
+  },
+  "Aerix Input": {
+    "prefix": "input",
+    "body": [
+      "let mut ${1:name} = input(\"${2:Enter: }\")"
+    ],
+    "description": "Read console input as a string"
+  },
+  "Aerix Typed Input": {
+    "prefix": "input_typed",
+    "body": [
+      "let mut ${1:name} : ${2|i32,i64,u8,u16,u32,u64,uint,f64,f32,bool,str|} = input(\"${3:Enter: }\")"
+    ],
+    "description": "Read console input parsed directly into a specific data type"
+  },
+  "Aerix Typeof": {
+    "prefix": "typeof",
+    "body": [
+      "typeof(${1:expr})"
+    ],
+    "description": "Query the data type of any variable or expression"
+  },
+  "Aerix Type Cast": {
+    "prefix": "as",
+    "body": [
+      "${1:expr} as ${2|i32,i64,u8,u16,u32,u64,uint,f64,f32,str,bool|}"
+    ],
+    "description": "Cast expression to another data type"
+  },
+  "Aerix Pipeline": {
+    "prefix": "pipe",
+    "body": [
+      "|> ${1:func}()"
+    ],
+    "description": "Pipe result into function call"
+  },
+  "Aerix Cascade": {
+    "prefix": "cascade",
+    "body": [
+      "~> ${1:method}()"
+    ],
+    "description": "Fluent cascade mutation (~>)"
+  },
+  "Aerix Thread Spawn": {
+    "prefix": "spawn",
+    "body": [
+      "let ${1:t} = spawn ${2:worker}(${3:args})"
+    ],
+    "description": "Spawn a function asynchronously on a native OS thread"
+  },
+  "Aerix Channel": {
+    "prefix": "channel",
+    "body": [
+      "let ${1:ch} = arx_channel_new(${2:8})"
+    ],
+    "description": "Create a thread-safe bounded communication channel"
+  },
+  "Aerix Guard": {
+    "prefix": "guard",
+    "body": [
+      "guard ${1:condition} else {",
+      "\t${2:return}",
+      "}"
+    ],
+    "description": "Early exit guard statement"
+  },
+  "Aerix Match": {
+    "prefix": "match",
+    "body": [
+      "match ${1:expr} {",
+      "\t${2:Variant} => ${3},",
+      "\t_ => ${0}",
+      "}"
+    ],
+    "description": "Exhaustive pattern matching on enums"
+  },
+  "Aerix Enum Tagged Union": {
+    "prefix": "enum",
+    "body": [
+      "enum ${1:Name} {",
+      "\t${2:Variant1},",
+      "\t${3:Variant2}(${4:payload}: ${5:i64})",
+      "}"
+    ],
+    "description": "Declare an enum or tagged union"
+  },
+  "Aerix Property": {
+    "prefix": "prop",
+    "body": [
+      "pub prop ${1:name}: ${2:i64} {",
+      "\tget => ${3:self._field}",
+      "}"
+    ],
+    "description": "Declare a reactive property with getter/setter"
+  },
+  "Aerix Generic Class": {
+    "prefix": "class_generic",
+    "body": [
+      "class ${1:Name}<${2:T}> {",
+      "\tpub ${3:value}: ${2:T}",
+      "",
+      "\tinit(${3:value}: ${2:T}) {",
+      "\t\tself.${3:value} = ${3:value}",
+      "\t}",
+      "}"
+    ],
+    "description": "Declare a monomorphized generic class"
+  },
+  "Aerix Generic Function": {
+    "prefix": "fn_generic",
+    "body": [
+      "fn ${1:name}<${2:T}>(${3:arg}: ${2:T}) -> ${2:T} {",
+      "\treturn ${3:arg}",
+      "}"
+    ],
+    "description": "Declare a monomorphized generic function"
+  }
+}

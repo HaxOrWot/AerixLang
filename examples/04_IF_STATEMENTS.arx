@@ -1,0 +1,28 @@
+// Aerix Example 04: If / Else If / Else Control Flow
+// Demonstrates conditional branching, comparison operators, and logical logic.
+
+fn main() {
+    let score = 85
+    let has_keycard = true
+    let is_admin = false
+
+    println("--- Aerix Decision Logic ---")
+
+    // 1. Multi-way If / Else If / Else
+    if score >= 90 {
+        println("Grade: A - Outstanding achievement!")
+    } else if score >= 80 {
+        println("Grade: B - Very good performance!")
+    } else if score >= 70 {
+        println("Grade: C - Satisfactory work.")
+    } else {
+        println("Grade: F - Needs improvement.")
+    }
+
+    // 2. Logical Operators: && (AND), || (OR), ! (NOT)
+    if (has_keycard || is_admin) && score >= 80 {
+        println("[ACCESS GRANTED]: Welcome to the security vault.")
+    } else {
+        println("[ACCESS DENIED]: Insufficient clearance.")
+    }
+}

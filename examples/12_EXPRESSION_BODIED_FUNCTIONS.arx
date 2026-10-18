@@ -1,0 +1,26 @@
+// Aerix Example 12: Expression-Bodied Functions (Fat Arrow '=>')
+// Demonstrates concise functional declarations for pure formulas and transformations.
+
+fn square(x: i64) -> i64 => x * x
+
+fn cube(x: i64) -> i64 => x * square(x)
+
+fn is_positive(n: i64) -> bool => n > 0
+
+fn double_val(x: i64) -> i64 => x * 2
+
+fn main() {
+    println("--- Expression-Bodied Functions (=>) ---")
+
+    let val = 4
+    let sq = square(val)
+    let cb = cube(val)
+    let dbl = double_val(val)
+    let pos = is_positive(val)
+
+    println("Original value: {val}")
+    println("square({val})     = {sq}")
+    println("cube({val})       = {cb}")
+    println("double_val({val}) = {dbl}")
+    println("is_positive({val}) = {pos}")
+}

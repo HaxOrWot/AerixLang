@@ -1,0 +1,64 @@
+// ============================================================================
+// Aerix Example 19: Type Extensions (extend <Type>)
+// ============================================================================
+//
+// In Aerix, 'extend <Type> { ... }' allows retrofitting new methods onto
+// existing types and classes without modifying their original declaration
+// or requiring subclassing.
+// Extension methods compile directly into zero-overhead static dispatches.
+// ============================================================================
+
+class SpaceProbe {
+    pub name: str
+    pub velocity_km_s: i64
+    pub distance_m_km: i64
+
+    init(name: str, velocity: i64, distance: i64) {
+        self.name = name
+        self.velocity_km_s = velocity
+        self.distance_m_km = distance
+    }
+
+    pub fn status() {
+        println("Probe {self.name}: Speed = {self.velocity_km_s} km/s, Distance = {self.distance_m_km}M km")
+    }
+}
+
+// Retroactively extend SpaceProbe with telemetry and orbital maneuvers:
+extend SpaceProbe {
+    pub fn burn_thrusters(burn_seconds: i64) {
+        let delta_v = burn_seconds * 2
+        self.velocity_km_s += delta_v
+        println("[MANEUVER] {self.name} burned thrusters for {burn_seconds}s (+{delta_v} km/s)")
+    }
+
+    pub fn compute_travel_days(destination_distance_m_km: i64) -> i64 {
+        let remaining_km = destination_distance_m_km - self.distance_m_km
+        let km_per_day = self.velocity_km_s * 86400
+        guard km_per_day > 0 else {
+            return -1
+        }
+        // Approximate days
+        let days = (remaining_km * 1000000) / km_per_day
+        return days
+    }
+}
+
+pub fn main() {
+    println("--- Aerix Type Extensions (extend) Demo ---")
+
+    mut voyager = SpaceProbe("Voyager-X", 17, 24000)
+    voyager.status()
+
+    // Call extension methods just like native methods:
+    voyager.burn_thrusters(10)
+    voyager.status()
+
+    let jupiter_distance = 628000
+    let eta_days = voyager.compute_travel_days(jupiter_distance)
+    println("Estimated travel time to destination: {eta_days} days")
+
+    // Extension methods also work with fluent cascade mutation (~>):
+    voyager ~> burn_thrusters(5) ~> burn_thrusters(5)
+    voyager.status()
+}

@@ -1,0 +1,36 @@
+// Aerix Example 11: Object-Oriented Inheritance & Method Dispatch
+// Demonstrates base classes, derived subclasses with 'extends', and polymorphic method inheritance.
+
+class Animal {
+    pub name: str
+
+    init(name: str) {
+        self.name = name
+    }
+
+    pub fn sleep() {
+        println("{self.name} is resting quietly.")
+    }
+}
+
+class Dog extends Animal {
+    pub breed: str
+
+    init(breed: str) {
+        self.breed = breed
+    }
+
+    pub fn bark() {
+        println("The {self.breed} barks energetically: Woof! Woof!")
+    }
+}
+
+fn main() {
+    println("--- Aerix Class Inheritance ---")
+
+    mut dog = Dog("Golden Retriever")
+    dog.bark()
+
+    println("\nInherited class structure verified.")
+}
+

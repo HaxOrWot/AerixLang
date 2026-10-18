@@ -1,0 +1,23 @@
+class Hero {
+    pub name: str
+    pub hp: i64
+
+    init(name: str, hp: i64) {
+        self.name = name
+        self.hp = hp
+    }
+
+    pub fn take_damage(dmg: i64) {
+        self.hp = self.hp - dmg
+    }
+
+    pub fn get_hp() -> i64 => self.hp
+}
+
+fn main() {
+    let mut hero = Hero("Arthur", 100)
+    hero.take_damage(25)
+    let final_hp = hero.get_hp()
+    println("Hero {hero.name} has {final_hp} HP remaining!")
+}
+

@@ -1,0 +1,31 @@
+// Aerix Example 10: Deterministic Resource Management with 'defer'
+// Demonstrates LIFO (Last-In, First-Out) scoped cleanup.
+// Defers are guaranteed to execute upon function return, even with multiple exit paths.
+
+fn perform_transaction() {
+    println("[TX] 1. Opening database connection...")
+    defer println("[TX] 4. (Defer) Database connection closed.")
+
+    println("[TX] 2. Acquiring table lock...")
+    defer println("[TX] 3. (Defer) Table lock released.")
+
+    println("[TX] Executing financial ledger update...")
+    println("[TX] Ledger update committed successfully!")
+    // Execution exits: defers run in reverse order (3 released, then 4 closed)
+}
+
+fn file_processing_simulation() {
+    println("\n[FILE] Allocating virtual buffer...")
+    defer println("[FILE] (Defer) Buffer memory reclaimed.")
+
+    println("[FILE] Processing data stream...")
+    println("[FILE] Processing complete.")
+}
+
+fn main() {
+    println("--- Aerix Defer Cleanup Mechanism ---")
+    perform_transaction()
+    file_processing_simulation()
+    println("\nAll tasks finalized safely.")
+}
+

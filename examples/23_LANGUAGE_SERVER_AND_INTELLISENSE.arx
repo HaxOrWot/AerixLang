@@ -1,0 +1,67 @@
+// ============================================================================
+// Aerix Educational Example 23: Language Server Protocol (LSP) & IDE Intelligence
+// Topic: Standard JSON-RPC 2.0 language server (`arx lsp`), live diagnostics,
+//        hover signatures, go-to-definition, code completions, and auto-formatting.
+// ============================================================================
+
+enum ServerState {
+    Offline
+    Initializing
+    Active(client_name: str, protocol_version: str)
+    ShuttingDown
+}
+
+class LSPCapabilities {
+    pub hover_supported: bool
+    pub def_supported: bool
+    pub fmt_supported: bool
+
+    init() {
+        self.hover_supported = true
+        self.def_supported = true
+        self.fmt_supported = true
+    }
+
+    pub fn print_summary() {
+        println("  [LSP Feature Support]:")
+        println("    - Hover Tooltips:       {self.hover_supported}")
+        println("    - Go-To Definition:     {self.def_supported}")
+        println("    - Format On Save:       {self.fmt_supported}")
+    }
+}
+
+fn handle_connection(state: ServerState) {
+    match state {
+        Offline => {
+            println("[LSP DAEMON]: Server offline.")
+        },
+        Initializing => {
+            println("[LSP DAEMON]: Handshake in progress...")
+        },
+        Active(client, ver) => {
+            println("[LSP DAEMON]: Connected to {client} via LSP v{ver}!")
+        },
+        ShuttingDown => {
+            println("[LSP DAEMON]: Gracefully terminating.")
+        }
+    }
+}
+
+fn main() {
+    println("================================================================")
+    println("   AERIX PHASE 16: NATIVE LANGUAGE SERVER PROTOCOL (arx lsp)    ")
+    println("================================================================")
+
+    defer println("\n[LSP SESSION]: Connection finalized clean.")
+
+    // 1. Initialize server state
+    let state = ServerState.Active("VS Code / Antigravity IDE", "3.17")
+    handle_connection(state)
+
+    // 2. Query capabilities
+    let caps = LSPCapabilities()
+    caps.print_summary()
+
+    println("\n[DEMO COMPLETE]: The LSP daemon provides real-time diagnostics,")
+    println("type hovers, and jump-to-definition directly inside your editor!")
+}

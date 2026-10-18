@@ -1,0 +1,126 @@
+// ==============================================================================
+// Aerix Language Tour: 21_ARENA_ALLOCATOR_AND_SIMD.arx
+// Topic: High-Throughput Arena Memory Allocator, Struct Alignment & SIMD Vectors
+// Version: 1.0.82-alpha
+// ==============================================================================
+
+// 1. High-Performance Bump Memory Arena
+// Provides zero-fragmentation, instantaneous scratchpad allocations for games,
+// high-frequency trading, and real-time simulation loops.
+
+class LinearArena {
+    pub capacity: i64
+    pub offset: i64
+
+    init(capacity_bytes: i64) {
+        self.capacity = capacity_bytes
+        self.offset = 0
+    }
+
+    // O(1) Bump Allocation with 8-byte CPU cache alignment
+    pub fn alloc(size_bytes: i64) -> i64 {
+        let aligned = (self.offset + 7) / 8 * 8
+        guard aligned + size_bytes <= self.capacity else {
+            println("[ARENA CRITICAL] Allocation failed: requested {size_bytes}B exceeds capacity!")
+            return -1
+        }
+        let allocated_ptr = aligned
+        self.offset = aligned + size_bytes
+        return allocated_ptr
+    }
+
+    // O(1) Instantaneous bulk reset in a single CPU cycle!
+    pub fn reset() {
+        self.offset = 0
+    }
+
+    pub fn used() -> i64 => self.offset
+    pub fn available() -> i64 => self.capacity - self.offset
+}
+
+// 2. Cache-Line Struct Packing Demonstration
+// Aerix automatically packs fields in descending alignment order (8B -> 4B -> 2B -> 1B),
+// completely eliminating internal holes and maximizing L1/L2 CPU cache density.
+class TelemetryPacket {
+    pub active: bool         // 1 Byte
+    pub timestamp_ns: i64    // 8 Bytes (Emitted at Offset 0)
+    pub flag: char           // 1 Byte
+    pub energy_joules: f64   // 8 Bytes (Emitted at Offset 8)
+
+    init(active: bool, ts: i64, flag: char, energy: f64) {
+        self.active = active
+        self.timestamp_ns = ts
+        self.flag = flag
+        self.energy_joules = energy
+    }
+
+    pub fn report() {
+        println("Telemetry: ts={self.timestamp_ns}ns, energy={self.energy_joules}J, active={self.active}")
+    }
+}
+
+// 3. 4-Lane Vector SIMD Simulation
+class Vec4 {
+    pub x: f64
+    pub y: f64
+    pub z: f64
+    pub w: f64
+
+    init(x: f64, y: f64, z: f64, w: f64) {
+        self.x = x
+        self.y = y
+        self.z = z
+        self.w = w
+    }
+
+    pub fn dot(other: Vec4) -> f64 {
+        return (self.x * other.x) + (self.y * other.y) + (self.z * other.z) + (self.w * other.w)
+    }
+
+    pub fn add(other: Vec4) -> Vec4 {
+        return Vec4(self.x + other.x, self.y + other.y, self.z + other.z, self.w + other.w)
+    }
+}
+
+fn simulate_game_frame(frame_index: i64, arena: LinearArena) {
+    println("--- Simulating Game Frame #{frame_index} ---")
+    
+    // Defer reset guarantees the entire frame's scratch memory is recycled at zero cost!
+    defer arena.reset()
+
+    // Allocate entities for this frame in the scratchpad
+    let entity_mesh = arena.alloc(256)
+    let particle_buffer = arena.alloc(512)
+    println("Allocated frame entities: mesh at byte {entity_mesh}, particles at byte {particle_buffer}")
+    println("Scratchpad memory used: {arena.used()} / {arena.capacity} bytes")
+
+    // Vector operations
+    let pos = Vec4(10.0, 20.0, 30.0, 1.0)
+    let vel = Vec4(1.0, 2.0, -1.0, 0.0)
+    let new_pos = pos.add(vel)
+    println("New Entity Position: ({new_pos.x}, {new_pos.y}, {new_pos.z})")
+}
+
+fn main() {
+    println("=== Aerix Hyper-Optimization & Memory Engineering ===")
+
+    // 1. Telemetry Packet with Cache-Line Packing
+    let packet = TelemetryPacket(true, 1729000000123, 'S', 98500.45)
+    packet.report()
+
+    // 2. High-Speed Memory Arena with Frame Allocations
+    mut frame_arena = LinearArena(4096)
+    println("Arena initialized: capacity={frame_arena.capacity} bytes")
+
+    simulate_game_frame(1, frame_arena)
+    simulate_game_frame(2, frame_arena)
+
+    // 3. SIMD Dot Product
+    let v1 = Vec4(2.0, 4.0, 6.0, 8.0)
+    let v2 = Vec4(1.0, 3.0, 5.0, 7.0)
+    let dot_prod = v1.dot(v2)
+    println("SIMD 4-Lane Dot Product: {dot_prod}")
+
+    println("Phase 14 Hyper-Optimization & Memory Demo Completed Successfully!")
+}
+

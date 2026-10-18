@@ -1,0 +1,25 @@
+// Aerix Example 13: String Interpolation & Formatting
+// Demonstrates zero-cost formatted string construction using '{expr}'.
+
+fn main() {
+    println("--- Aerix String Interpolation ---")
+
+    let user = "Aerix Developer"
+    let current_level = 42
+    let multiplier = 2.5
+    let is_verified = true
+
+    // 1. Variable interpolation
+    println("Hello, {user}! Welcome back.")
+
+    // 2. Arithmetic & Expression interpolation
+    println("Next Level: {current_level + 1}")
+    println("Calculated Score: {current_level * 100}")
+
+    // 3. Multi-type composite formatting
+    println("Status -> User: {user}, Level: {current_level}, Multiplier: {multiplier}, Verified: {is_verified}")
+
+    // 4. Escape Sequences: \t, \n, \\, \"
+    println("Formatted Columns:\n\tCol A\tCol B\n\tVal 1\tVal 2")
+}
+

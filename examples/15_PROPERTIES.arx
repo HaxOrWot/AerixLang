@@ -1,0 +1,47 @@
+// Aerix Example 15: Reactive Properties ('prop')
+// Demonstrates zero-boilerplate getters and setters with validation and computed properties.
+
+class SpaceStation {
+    pub name: str
+    priv raw_docks: i64
+
+    init(name: str) {
+        self.name = name
+        self.raw_docks = 0
+    }
+
+    // 1. Reactive Property with Getter and Setter (with validation)
+    pub prop docks: i64 {
+        get => self.raw_docks
+        set(val) {
+            if val < 0 {
+                println("[ERROR]: Docks count cannot be negative!")
+                return
+            }
+            self.raw_docks = val
+            println("[UPDATE]: {self.name} docks reconfigured to {val}.")
+        }
+    }
+
+    // 2. Computed Read-Only Property
+    pub prop summary: str {
+        get => "Station {self.name} has {self.raw_docks} active docks"
+    }
+}
+
+fn main() {
+    println("--- Aerix Reactive Properties ---")
+
+    mut station = SpaceStation("Citadel-One")
+
+    // Access property like a regular field:
+    station.docks = 8
+    println("Current docks: {station.docks}")
+
+    // Try invalid assignment (validation blocks it):
+    station.docks = -5
+    println("Docks remain: {station.docks}")
+
+    // Computed property:
+    println(station.summary)
+}

@@ -1,0 +1,30 @@
+// Aerix Example 08: Loops, Iteration & Ranges
+// Demonstrates 'for' loops with exclusive/inclusive ranges and 'while' loops.
+
+fn main() {
+    println("--- Aerix Loops and Ranges ---")
+
+    // 1. Exclusive Range: 0..5 (iterates 0, 1, 2, 3, 4)
+    println("Exclusive Range (0..5):")
+    for i in 0..5 {
+        println("  Index: {i}")
+    }
+
+    // 2. Inclusive Range: 1..=5 (iterates 1, 2, 3, 4, 5)
+    println("Inclusive Range (1..=5):")
+    mut sum = 0
+    for n in 1..=5 {
+        sum = sum + n
+        println("  n = {n}, running sum = {sum}")
+    }
+    println("Total Sum: {sum}")
+
+    // 3. While Loop: countdown condition
+    println("While Loop Countdown:")
+    mut timer = 3
+    while timer > 0 {
+        println("  T-minus {timer}...")
+        timer = timer - 1
+    }
+    println("  Blastoff!")
+}

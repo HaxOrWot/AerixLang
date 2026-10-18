@@ -1,0 +1,49 @@
+// Aerix Example 16: User-Defined Operator Overloading ('pub op')
+// Demonstrates overloading arithmetic (+) and comparison (==) operators on custom classes.
+
+class Complex {
+    pub real: i64
+    pub imag: i64
+
+    init(real: i64, imag: i64) {
+        self.real = real
+        self.imag = imag
+    }
+
+    // Overload the addition operator (+)
+    pub op +(other: Complex) -> Complex {
+        return Complex(self.real + other.real, self.imag + other.imag)
+    }
+
+    // Overload the subtraction operator (-)
+    pub op -(other: Complex) -> Complex {
+        return Complex(self.real - other.real, self.imag - other.imag)
+    }
+
+    // Overload the equality comparison operator (==)
+    pub op ==(other: Complex) -> bool {
+        return self.real == other.real && self.imag == other.imag
+    }
+}
+
+fn main() {
+    println("--- Aerix Operator Overloading ---")
+
+    let a = Complex(5, 7)
+    let b = Complex(2, 3)
+
+    // Using overloaded '+':
+    let sum = a + b
+    println("a + b = ({sum.real} + {sum.imag}i)")
+
+    // Using overloaded '-':
+    let diff = a - b
+    println("a - b = ({diff.real} + {diff.imag}i)")
+
+    // Using overloaded '==':
+    let c = Complex(5, 7)
+    let is_eq = a == c
+    let is_diff = a == b
+    println("a == c: {is_eq}")
+    println("a == b: {is_diff}")
+}

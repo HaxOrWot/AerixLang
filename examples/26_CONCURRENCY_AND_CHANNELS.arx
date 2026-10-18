@@ -1,0 +1,96 @@
+// ==============================================================================
+// Aerix Example 26: Lightweight Concurrency & Channels (Phase 19)
+// ==============================================================================
+// Demonstrates native thread spawning (`spawn`), thread-safe bounded channels,
+// multi-producer consumer pipelines, and deterministic thread joining in Aerix.
+// Zero external runtime overhead — compiles directly into native Win32/POSIX C99.
+// ==============================================================================
+
+// Generic typed channel abstraction wrapping native runtime channel primitives
+class Channel<T> {
+    pub handle: i64
+
+    init(capacity: i64) {
+        self.handle = arx_channel_new(capacity);
+    }
+
+    pub fn send(val: T) {
+        arx_channel_send(self.handle, val as i64);
+    }
+
+    pub fn recv() -> T {
+        let raw = arx_channel_recv(self.handle);
+        return raw as T;
+    }
+
+    pub fn close() {
+        arx_channel_close(self.handle);
+    }
+
+    pub fn free() {
+        arx_channel_free(self.handle);
+    }
+}
+
+// Background compute worker that processes task payloads concurrently
+fn compute_worker(worker_id: i64, ch_handle: i64, items: i64) {
+    println("  -> [Worker {worker_id}] Spawned and beginning computation...");
+    arx_sleep_ms(20);
+
+    mut sum: i64 = 0;
+    for i in 1..=items {
+        sum += i * worker_id;
+    }
+
+    println("  -> [Worker {worker_id}] Finished batch. Sending result: {sum}");
+    arx_channel_send(ch_handle, sum);
+}
+
+// Single fire-and-forget background heartbeat task
+fn heartbeat_task() {
+    println("  -> [Heartbeat] Background monitoring daemon alive!");
+    arx_sleep_ms(10);
+}
+
+fn main() {
+    println("=============================================================");
+    println("   Aerix 2.0 Concurrency & Multi-Threaded Channels");
+    println("=============================================================");
+
+    // 1. Fire-and-forget background task
+    println("\n[1] Spawning lightweight background heartbeat worker...");
+    let t_heartbeat = spawn heartbeat_task();
+    arx_thread_join(t_heartbeat);
+
+    // 2. Multi-producer, single-consumer channel pipeline
+    println("\n[2] Initializing Bounded Channel with capacity 8...");
+    mut work_chan = Channel<i64>(8);
+
+    println("[3] Spawning 3 concurrent parallel worker threads...");
+    let t1 = spawn compute_worker(1, work_chan.handle, 100);
+    let t2 = spawn compute_worker(2, work_chan.handle, 100);
+    let t3 = spawn compute_worker(3, work_chan.handle, 100);
+
+    println("\n[4] Collecting results from channel in main thread...");
+    let res1 = work_chan.recv();
+    let res2 = work_chan.recv();
+    let res3 = work_chan.recv();
+
+    println("  <- [Main] Received partial batch result 1: {res1}");
+    println("  <- [Main] Received partial batch result 2: {res2}");
+    println("  <- [Main] Received partial batch result 3: {res3}");
+
+    // Deterministic thread synchronization
+    println("\n[5] Synchronizing and joining worker threads...");
+    arx_thread_join(t1);
+    arx_thread_join(t2);
+    arx_thread_join(t3);
+
+    // RAII / Explicit cleanup
+    work_chan.free();
+
+    let grand_total = res1 + res2 + res3;
+    println("\n=============================================================");
+    println("Concurrency Pipeline Complete! Grand Total: {grand_total}");
+    println("=============================================================");
+}

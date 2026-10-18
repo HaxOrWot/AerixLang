@@ -1,0 +1,45 @@
+# Aerix Language - .gitignore
+
+# Python bytecode and caches
+__pycache__/
+*.py[cod]
+*$py.class
+*.spec
+
+# Build outputs and compilation artifacts
+build/
+dist/
+*.exe
+*.o
+*.obj
+*.gch
+*.pdb
+*.ilk
+*.lib
+*.a
+*.so
+*.dylib
+*.dll
+
+# Aerix runtime caches and scratch files
+.aerix_cache/
+scratch/
+pch_test/
+
+# Test binaries and temporary output
+test_bench.c
+test_bench.exe
+test.c
+test.exe
+
+# IDE and Editor configurations
+.vscode/
+.idea/
+*.suo
+*.user
+*.userosv
+*.sln.docstates
+
+# OS generated files
+.DS_Store
+Thumbs.db

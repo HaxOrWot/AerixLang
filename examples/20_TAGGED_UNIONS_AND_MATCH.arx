@@ -1,0 +1,89 @@
+// ==============================================================================
+// Aerix Language Tour: 20_TAGGED_UNIONS_AND_MATCH.arx
+// Topic: Tagged Unions, Variant Payloads, and Exhaustive Pattern Matching
+// Version: 1.0.82-alpha
+// ==============================================================================
+
+// 1. Simple Enum (No Payload)
+enum Direction {
+    North
+    South
+    East
+    West
+}
+
+fn describe_direction(dir: Direction) {
+    match dir {
+        Direction.North => println("[NAV] Steering toward polar North."),
+        Direction.South => println("[NAV] Heading toward southern equator."),
+        Direction.East => println("[NAV] Orienting toward morning sun (East)."),
+        Direction.West => println("[NAV] Tracking sunset (West).")
+    }
+}
+
+// 2. Tagged Union with Heterogeneous Data Payloads
+enum SensorEvent {
+    Idle
+    TemperatureAlert(celsius: f64, zone_id: i64)
+    PressureSurge(psi: f64)
+    HardwareFailure(error_code: str)
+}
+
+fn dispatch_event(evt: SensorEvent) {
+    match evt {
+        Idle => {
+            println("[STATUS] Sensors calibrated. Zero anomalous telemetry.")
+        },
+        TemperatureAlert(celsius, zone) => {
+            println("[ALERT] High thermal spike in Zone {zone}: {celsius} C!")
+        },
+        PressureSurge(psi) => {
+            println("[WARNING] Pressure barrier critical surge at {psi} PSI!")
+        },
+        HardwareFailure(code) => {
+            println("[PANIC] Subsystem malfunction: code '{code}'. Engaging backup.")
+        }
+    }
+}
+
+// 3. Pattern Matching with Wildcard Catch-All
+enum ProtocolState {
+    Handshake
+    Authorized
+    Disconnected
+    Blocked
+}
+
+fn audit_connection(state: ProtocolState) {
+    match state {
+        ProtocolState.Authorized => println("[ACCESS] Connection verified and authorized."),
+        _ => println("[AUDIT] Connection not yet active or denied.")
+    }
+}
+
+fn main() {
+    println("--- Aerix Tagged Unions & Exhaustive Pattern Matching ---")
+
+    // Simple Enums
+    let d1 = Direction.North
+    let d2 = Direction.East
+    describe_direction(d1)
+    describe_direction(d2)
+
+    // Tagged Unions with Data Payloads & Destructuring
+    let e1 = SensorEvent.Idle
+    let e2 = SensorEvent.TemperatureAlert(104.5, 7)
+    let e3 = SensorEvent.PressureSurge(3450.8)
+    let e4 = SensorEvent.HardwareFailure("ERR_BUS_OVERFLOW")
+
+    dispatch_event(e1)
+    dispatch_event(e2)
+    dispatch_event(e3)
+    dispatch_event(e4)
+
+    // Wildcard matching
+    audit_connection(ProtocolState.Authorized)
+    audit_connection(ProtocolState.Blocked)
+
+    println("All tagged union tests and matches executed successfully!")
+}

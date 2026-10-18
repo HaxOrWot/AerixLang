@@ -1,0 +1,30 @@
+fn compute_mandelbrot(width: i64, height: i64, max_iter: i64) -> i64 {
+    let mut total_iterations: i64 = 0
+    
+    for y in 0..height {
+        let ci = ((y as f64) * 2.0 / (height as f64)) - 1.0
+        for x in 0..width {
+            let cr = ((x as f64) * 3.0 / (width as f64)) - 2.0
+            let mut zr = 0.0
+            let mut zi = 0.0
+            let mut iter = 0
+
+            while (zr * zr + zi * zi <= 4.0) && (iter < max_iter) {
+                let temp = zr * zr - zi * zi + cr
+                zi = 2.0 * zr * zi + ci
+                zr = temp
+                iter = iter + 1
+            }
+            total_iterations = total_iterations + iter
+        }
+    }
+    return total_iterations
+}
+
+fn main() {
+    let start = arx_time_now()
+    let total = compute_mandelbrot(1000, 1000, 1000)
+    let elapsed = arx_time_now() - start
+    println("Aerix Mandelbrot Total: {total} in {elapsed} seconds")
+}
+

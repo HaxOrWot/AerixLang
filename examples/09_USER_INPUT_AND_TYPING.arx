@@ -1,0 +1,40 @@
+// Aerix Example 09: Type System, Type Casting & Introspection
+// Demonstrates explicit type annotations, safe casting with 'as',
+// runtime type introspection with 'typeof', and console input.
+
+fn main() {
+    println("--- Aerix Typing & Introspection ---")
+
+    // 1. Explicit Type Annotations vs Inference
+    let score: i64 = 98
+    let pi: f64 = 3.14159
+    let active: bool = true
+    let greeting: str = "Welcome to Aerix!"
+
+    println("score:    {score} (type: {typeof(score)})")
+    println("pi:       {pi} (type: {typeof(pi)})")
+    println("active:   {active} (type: {typeof(active)})")
+    println("greeting: {greeting} (type: {typeof(greeting)})")
+
+    // 2. Explicit Type Casting with 'as'
+    println("\n--- Type Casting ('as' operator) ---")
+    let raw_input = "450"
+    let parsed_int = raw_input as i64
+    let parsed_float = parsed_int as f64
+    let stringified = parsed_float as str
+    let bool_str = active as str
+
+    println("String -> i64:   {parsed_int} (type: {typeof(parsed_int)})")
+    println("i64 -> f64:      {parsed_float} (type: {typeof(parsed_float)})")
+    println("f64 -> str:      {stringified} (type: {typeof(stringified)})")
+    println("bool -> str:     {bool_str} (type: {typeof(bool_str)})")
+
+    // 3. Target-Typed Console Input Pattern
+    // Aerix supports:
+    //   let name = input("Enter your name: ")       // inferred as str
+    //   let age: i64 = input("Enter your age: ")    // automatically parsed as i64
+    //   let rate: f64 = input("Enter rate: ")       // automatically parsed as f64
+    println("\nConsole input example syntax:")
+    println("  let name = input(\"Name: \")")
+    println("  let age: i64 = input(\"Age: \")")
+}

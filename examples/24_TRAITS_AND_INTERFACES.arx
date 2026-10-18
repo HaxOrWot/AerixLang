@@ -1,0 +1,91 @@
+// ============================================================================
+// Aerix Educational Example 24: Abstract Interface Traits & Conformance
+// Topic: Decoupled behavior contracts using `trait <Name>`, compile-time
+//        conformance validation with `implements`, and zero-overhead native dispatch.
+// ============================================================================
+
+// 1. Define Traits (Behavior Contracts)
+trait Attacking {
+    fn get_attack_power() -> i64
+    fn attack(target: str) -> void
+}
+
+trait Defending {
+    fn get_shield_capacity() -> i64
+    fn defend(damage: i64) -> i64
+}
+
+trait Serializable {
+    fn to_json() -> str
+}
+
+// 2. Class Implementing Multiple Traits
+class BattleDroid implements Attacking, Defending, Serializable {
+    pub unit_id: str
+    pub firepower: i64
+    pub shield_hp: i64
+
+    init(id: str, power: i64, shields: i64) {
+        self.unit_id = id
+        self.firepower = power
+        self.shield_hp = shields
+    }
+
+    // --- Trait 'Attacking' Conformance ---
+    pub fn get_attack_power() -> i64 {
+        return self.firepower
+    }
+
+    pub fn attack(target: str) -> void {
+        println("[COMBAT]: Unit {self.unit_id} fires railgun at {target} dealing {self.firepower} damage!")
+    }
+
+    // --- Trait 'Defending' Conformance ---
+    pub fn get_shield_capacity() -> i64 {
+        return self.shield_hp
+    }
+
+    pub fn defend(damage: i64) -> i64 {
+        if self.shield_hp >= damage {
+            self.shield_hp = self.shield_hp - damage
+            println("[DEFENSE]: Shield absorbed {damage} damage! Remaining shields: {self.shield_hp}")
+            return 0
+        } else {
+            let overflow = damage - self.shield_hp
+            self.shield_hp = 0
+            println("[DEFENSE ALERT]: Shield collapsed! Hull took {overflow} kinetic damage!")
+            return overflow
+        }
+    }
+
+    // --- Trait 'Serializable' Conformance ---
+    pub fn to_json() -> str {
+        return "\{\"unit\": \"{self.unit_id}\", \"power\": {self.firepower}, \"shields\": {self.shield_hp}\}"
+    }
+
+}
+
+fn main() {
+    println("================================================================")
+    println("   AERIX PHASE 17: ABSTRACT INTERFACE TRAITS & CONFORMANCE      ")
+    println("================================================================")
+
+    defer println("\n[LOG]: Droid operational cycle complete.")
+
+    // Instantiate droid
+    mut droid = BattleDroid("XR-9000", 120, 250)
+
+    println("Unit Initialized: {droid.unit_id}")
+    println("Telemetry Data:   {droid.to_json()}")
+
+    println("\n--- Combat Simulation ---")
+    droid.attack("Enemy Dreadnought")
+
+    println("\n--- Defense Simulation (Hit 1: 100 DMG) ---")
+    let breach1 = droid.defend(100)
+
+    println("\n--- Defense Simulation (Hit 2: 200 DMG) ---")
+    let breach2 = droid.defend(200)
+
+    println("\nFinal Telemetry:  {droid.to_json()}")
+}

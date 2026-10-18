@@ -1,0 +1,11 @@
+fn fib(n: i64) -> i64 {
+    if n <= 1 { return n }
+    return fib(n - 1) + fib(n - 2)
+}
+
+fn main() {
+    let start = arx_time_now()
+    let result = fib(38)
+    let elapsed = arx_time_now() - start
+    println("Aerix Fibonacci(38): {result} in {elapsed} seconds")
+}

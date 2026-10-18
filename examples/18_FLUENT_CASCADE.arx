@@ -1,0 +1,63 @@
+// ============================================================================
+// Aerix Example 18: Fluent Cascade Mutation (~>)
+// ============================================================================
+//
+// In Aerix, the cascade operator '~>' performs an in-place mutating method
+// call on a target object and returns the target object itself!
+// This enables clean, fluent builder chains without having to manually
+// return 'self' from every mutating method.
+// ============================================================================
+
+class BattleMech {
+    pub callsign: str
+    pub armor: i64
+    pub energy: i64
+    pub missiles: i64
+
+    init(callsign: str, armor: i64) {
+        self.callsign = callsign
+        self.armor = armor
+        self.energy = 100
+        self.missiles = 10
+    }
+
+    pub fn take_hit(dmg: i64) {
+        self.armor -= dmg
+        println("[HIT] {self.callsign} took {dmg} damage! Armor now: {self.armor}")
+    }
+
+    pub fn repair(pts: i64) {
+        self.armor += pts
+        println("[REPAIR] Nanobots repaired {pts} armor! Armor now: {self.armor}")
+    }
+
+    pub fn fire_missiles(count: i64) {
+        self.missiles -= count
+        self.energy -= count * 5
+        println("[MISSILES] Fired {count} missiles! Remaining: {self.missiles}, Energy: {self.energy}")
+    }
+
+    pub fn recharge(energy_pts: i64) {
+        self.energy += energy_pts
+        println("[RECHARGE] Reactor restored {energy_pts} energy! Energy now: {self.energy}")
+    }
+
+    pub fn report() {
+        println("=== STATUS: {self.callsign} | Armor: {self.armor} | Energy: {self.energy} | Missiles: {self.missiles} ===")
+    }
+}
+
+pub fn main() {
+    println("--- Aerix Fluent Cascade Mutation (~>) Demo ---")
+
+    mut mech = BattleMech("Titan-01", 500)
+    mech.report()
+
+    // Chain multiple mutations in a single fluid pipeline:
+    mech ~> take_hit(120)
+         ~> repair(40)
+         ~> fire_missiles(4)
+         ~> recharge(25)
+
+    mech.report()
+}

@@ -1,0 +1,43 @@
+// Aerix Example 14: Method Overriding & Object-Oriented Polymorphism
+// Directly implements the banking interest rate hierarchy from Interest.java.
+// Demonstrates how derived classes override base class methods with zero runtime overhead.
+
+class Bank {
+    pub fn getRateOfInterest() -> i64 {
+        return 0
+    }
+}
+
+class SBI extends Bank {
+    pub fn getRateOfInterest() -> i64 {
+        return 8
+    }
+}
+
+class ICICI extends Bank {
+    pub fn getRateOfInterest() -> i64 {
+        return 7
+    }
+}
+
+class AXIS extends Bank {
+    pub fn getRateOfInterest() -> i64 {
+        return 9
+    }
+}
+
+fn main() {
+    println("--- Aerix Method Overriding (Interest Rates) ---")
+
+    mut sbi = SBI()
+    mut icici = ICICI()
+    mut axis = AXIS()
+
+    let r_sbi = sbi.getRateOfInterest()
+    let r_icici = icici.getRateOfInterest()
+    let r_axis = axis.getRateOfInterest()
+
+    println("SBI Rate of Interest: {r_sbi}%")
+    println("ICICI Rate of Interest: {r_icici}%")
+    println("AXIS Rate of Interest: {r_axis}%")
+}

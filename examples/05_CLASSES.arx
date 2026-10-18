@@ -1,0 +1,45 @@
+// Aerix Example 05: Object-Oriented Classes & Encapsulation
+// Demonstrates stack-allocated classes, constructors, methods, and access control.
+
+class Player {
+    pub name: str
+    pub hp: i64
+    priv defense: i64
+
+    // Constructor: initializes the player
+    init(name: str, hp: i64, defense: i64) {
+        self.name = name
+        self.hp = hp
+        self.defense = defense
+    }
+
+    // Public method: applies damage adjusted for defense
+    pub fn take_damage(incoming: i64) -> void {
+        let actual = incoming - self.defense
+        let mut damage = 0
+        if actual > 0 {
+            damage = actual
+        }
+        self.hp = self.hp - damage
+        println("{self.name} took {damage} damage! Remaining HP: {self.hp}")
+    }
+
+    // Public method: restores health
+    pub fn heal(amount: i64) -> void {
+        self.hp = self.hp + amount
+        println("{self.name} healed for {amount} HP. Current HP: {self.hp}")
+    }
+}
+
+fn main() {
+    println("--- Aerix Object-Oriented Programming ---")
+
+    // Stack-allocated instance with zero malloc overhead:
+    mut hero = Player("Arthur", 120, 15)
+
+    hero.take_damage(40)
+    hero.heal(25)
+    hero.take_damage(80)
+
+    println("Final status for {hero.name}: {hero.hp} HP remaining.")
+}

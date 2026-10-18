@@ -1,0 +1,8 @@
+fn double(x: i64) -> i64 => x * 2
+fn add_five(x: i64) -> i64 => x + 5
+
+fn main() {
+    let result = 10 |> double() |> add_five()
+    println("Pipeline Result: 10 |> double() |> add_five() = {result}")
+}
+
