@@ -1,11 +1,11 @@
 ; -----------------------------------------------------------------------------
 ; Aerix Language - Official Inno Setup Modern Installer Script
-; Produces: AerixSetup-1.0.84.exe
+; Produces: AerixSetup-1.0.87.exe
 ; Streamlined with Tree Checkboxes, Destination Browse, and Embedded VSIX
 ; -----------------------------------------------------------------------------
 
 #define MyAppName "AerixLang"
-#define MyAppVersion "1.0.84"
+#define MyAppVersion "1.0.87"
 #define MyAppPublisher "HaxOrWot"
 #define MyAppURL "https://github.com/HaxOrWot/AerixLang"
 #define MyAppExeName "arx.bat"
@@ -86,7 +86,7 @@ Source: "..\..\src\*"; DestDir: "{app}\src"; Flags: ignoreversion recursesubdirs
 Source: "..\..\stdlib\aerix_rt.h"; DestDir: "{app}\stdlib"; Flags: ignoreversion
 
 ; Official IDE Extension VSIX Bundle & Pre-extracted Tree for Resilient Deployment
-Source: "..\..\editors\vscode-aerix\aerix-1.0.84.vsix"; DestDir: "{app}\editors"; Flags: ignoreversion
+Source: "..\..\editors\vscode-aerix\aerix-1.0.87.vsix"; DestDir: "{app}\editors"; Flags: ignoreversion
 Source: "..\..\editors\vscode-aerix\*"; DestDir: "{app}\editors\extension"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "*.vsix"
 
 ; High-DPI Multi-Size Icons
@@ -278,9 +278,9 @@ begin
   begin
     S := S + NewLine + 'IDE Extensions to Install (Resilient Hybrid: Direct Filesystem + CLI):' + NewLine;
     if WizardIsTaskSelected('ide\vscode') then
-      S := S + '  - Visual Studio Code (aerix-1.0.84.vsix)' + NewLine;
+      S := S + '  - Visual Studio Code (aerix-1.0.87.vsix)' + NewLine;
     if WizardIsTaskSelected('ide\antigravity') then
-      S := S + '  - Google Antigravity IDE (aerix-1.0.84.vsix)' + NewLine;
+      S := S + '  - Google Antigravity IDE (aerix-1.0.87.vsix)' + NewLine;
   end;
 
   Result := S;
@@ -352,7 +352,7 @@ begin
     // 1. Notify Windows Explorer of association changes so icons render immediately
     SHChangeNotify(SHCNE_ASSOCCHANGED, SHCNF_IDLIST, 0, 0);
 
-    VsixPath := ExpandConstant('{app}\editors\aerix-1.0.84.vsix');
+    VsixPath := ExpandConstant('{app}\editors\aerix-1.0.87.vsix');
 
     // 2. Install extensions using Aerix install.ps1 engine
     if WizardIsTaskSelected('ide\vscode') and WizardIsTaskSelected('ide\antigravity') then

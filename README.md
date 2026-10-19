@@ -12,7 +12,7 @@
 ### **The Expressive Native Systems Programming Language**
 *The velocity and elegance of modern scripting — fused with the raw speed, minimal footprint, and bare-metal power of native C.*
 
-[![Version](https://img.shields.io/badge/version-1.0.84--alpha-00DCFF.svg?style=for-the-badge&logo=visualstudiocode)](#)
+[![Version](https://img.shields.io/badge/version-1.0.87--alpha-00DCFF.svg?style=for-the-badge&logo=visualstudiocode)](#)
 [![Backend](https://img.shields.io/badge/backend-ANSI%20C99%20%2F%20GCC-1E90FF.svg?style=for-the-badge&logo=c)](#)
 [![Performance](https://img.shields.io/badge/performance-100%25%20C%20Native-00E676.svg?style=for-the-badge&logo=speedtest)](#)
 [![Tests](https://img.shields.io/badge/test%20suite-87%2F87%20PASS%20(100%25)-00E5FF.svg?style=for-the-badge)](#)
@@ -347,7 +347,7 @@ Phase 05: AIR Lowering & Custom Optimizer         ✅ COMPLETE (22/22 tests pass
 Phase 06: C99 Machine Codegen & Linker Orchestr. ✅ COMPLETE (25/25 tests passed)
 Phase 07: Unified Developer CLI (`arx`, `arxc`)  ✅ COMPLETE (Turnkey CLI toolchain)
 Phase 08: Benchmarks & Standard Performance       ✅ COMPLETE (Fibonacci 100.2% C-speed)
-Phase 09: Packaging & VS Code Extension           ✅ COMPLETE (v1.0.84 published)
+Phase 09: Packaging & VS Code Extension           ✅ COMPLETE (v1.0.87 published)
 Phase 10: Method & Constructor Overloading        ✅ COMPLETE (Type & arity mangling)
 Phase 11: Reactive Properties & Operator Overload ✅ COMPLETE (prop & op keywords)
 Phase 12: Modern Flow Control & Type Extensions   ✅ COMPLETE (guard, extend, ~>)
@@ -381,12 +381,12 @@ Aerix provides first-class tooling across both **Visual Studio Code** and the **
 
 **Install into Visual Studio Code:**
 ```powershell
-code --install-extension editors/vscode-aerix/aerix-1.0.84.vsix --force
+code --install-extension editors/vscode-aerix/aerix-1.0.87.vsix --force
 ```
 
 **Install into Antigravity IDE:**
 ```powershell
-antigravity --install-extension editors/vscode-aerix/aerix-1.0.84.vsix --force
+antigravity --install-extension editors/vscode-aerix/aerix-1.0.87.vsix --force
 ```
 
 </details>

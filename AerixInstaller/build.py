@@ -4,7 +4,7 @@ AerixInstaller/build.py
 One-click build orchestrator for the Aerix Setup Installer.
 1. Generates high-DPI icons & wizard bitmaps.
 2. Locates or installs Inno Setup (ISCC).
-3. Compiles AerixSetup-1.0.84.exe.
+3. Compiles AerixSetup-1.0.87.exe.
 4. Generates SHA-256 integrity checksums.
 """
 
@@ -93,7 +93,7 @@ def main():
     print(build_res.stdout.strip())
 
     # Step 4: Verify Output
-    expected_exe = os.path.join(dist_dir, "AerixSetup-1.0.84.exe")
+    expected_exe = os.path.join(dist_dir, "AerixSetup-1.0.87.exe")
     if os.path.exists(expected_exe):
         size_mb = os.path.getsize(expected_exe) / (1024 * 1024)
         hasher = hashlib.sha256()

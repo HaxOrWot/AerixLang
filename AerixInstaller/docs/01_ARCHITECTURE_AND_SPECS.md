@@ -52,10 +52,10 @@ The Aerix Installer is engineered to deliver a seamless, modern, and robust Wind
 
 ## 3. Comprehensive Payload Manifest
 
-The self-extracting payload inside `AerixSetup-1.0.84.exe` is structured into isolated, purpose-driven directory trees:
+The self-extracting payload inside `AerixSetup-1.0.87.exe` is structured into isolated, purpose-driven directory trees:
 
 ```text
-AerixSetup-1.0.84.exe (Virtual Payload Root)
+AerixSetup-1.0.87.exe (Virtual Payload Root)
 ├── bin/
 │   ├── arx.bat                         # High-speed Windows CMD/PowerShell driver shim
 │   └── arx.py                          # Unified CLI Entrypoint (run, build, check, repl, lsp)
@@ -68,7 +68,7 @@ AerixSetup-1.0.84.exe (Virtual Payload Root)
 ├── stdlib/
 │   └── aerix_rt.h                      # ANSI C99 High-Performance Systems Runtime Header
 ├── editors/
-│   └── aerix-1.0.84.vsix               # Official VSIX Extension (TextMate Grammar & LSP Client)
+│   └── aerix-1.0.87.vsix               # Official VSIX Extension (TextMate Grammar & LSP Client)
 ├── assets/
 │   ├── aerix.ico                       # Multi-Resolution App Icon (16x16 to 256x256)
 │   ├── aerix_file.ico                  # Document Icon for Windows Explorer (.arx files)
@@ -158,20 +158,20 @@ During the installation wizard, the user is presented with distinct, optional ch
    - `C:\Program Files\Microsoft VS Code\bin\code.cmd`
    If found, executes:
    ```cmd
-   code.cmd --install-extension "{app}\editors\aerix-1.0.84.vsix" --force
+   code.cmd --install-extension "{app}\editors\aerix-1.0.87.vsix" --force
    ```
 2. **Secondary Method (Direct Filesystem Injection):** If `code` CLI is unavailable, unpacks the extension payload directly into:
-   `%USERPROFILE%\.vscode\extensions\aerix-lang.aerix-1.0.84\`
+   `%USERPROFILE%\.vscode\extensions\aerix-lang.aerix-1.0.87\`
 
 #### For Google Antigravity IDE:
 1. **Primary Method (CLI):** Search for `antigravity` on PATH. If found:
    ```cmd
-   antigravity --install-extension "{app}\editors\aerix-1.0.84.vsix" --force
+   antigravity --install-extension "{app}\editors\aerix-1.0.87.vsix" --force
    ```
 2. **Secondary Method (Direct Profile Injection):** Checks for Antigravity's active extensions directory:
    `%USERPROFILE%\.antigravity-ide\extensions\`
    If detected, extracts the VSIX package cleanly into:
-   `%USERPROFILE%\.antigravity-ide\extensions\aerix-lang.aerix-1.0.84\`
+   `%USERPROFILE%\.antigravity-ide\extensions\aerix-lang.aerix-1.0.87\`
    This guarantees that Antigravity IDE gains full syntax highlighting and IntelliSense even if its CLI wrapper is not in PATH!
 
 ---

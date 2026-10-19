@@ -264,5 +264,64 @@
   - [x] Dedicated unit test suite (`src/tests/test_phase20_wasm.py`) passing with 100% assertions (87/87 total compiler tests passing).
   - [x] Educational demonstration example: `examples/27_WASM_BROWSER_RUNTIME.arx`.
 
+---
+
+### Phase 21: Dynamic Collections & Text Engine (STATUS: 🚀 PLANNED)
+* **Goal:** Monomorphized growable arrays (`List<T>`), bracket indexing (`arr[i]`), zero-copy slicing (`[start..end]`), and an owned dynamic `String` manipulation API.
+* **Deliverables:**
+  - [ ] Heap-allocated, amortized $O(1)$ capacity-doubling `List<T>` with automatic memory reclamation.
+  - [ ] Bracket indexing expressions `list[index]` for reading and mutating array elements.
+  - [ ] High-performance slice view syntax `list[start..end]` without buffer copying.
+  - [ ] Owned mutable `String` struct with `.split()`, `.trim()`, `.replace()`, `.to_upper()`, `.to_lower()`, and `.join()`.
+  - [ ] Dedicated unit test suite (`src/tests/test_phase21_collections.py`).
+  - [ ] Educational demonstration example: `examples/28_DYNAMIC_COLLECTIONS_AND_STRINGS.arx`.
+
+---
+
+### Phase 22: Associative Tables, Sets & Collection Iteration (STATUS: 🚀 PLANNED)
+* **Goal:** High-performance Robin Hood hash tables (`Map<K, V>`), unique item collections (`Set<T>`), and generalized `for item in collection` loops.
+* **Deliverables:**
+  - [ ] $O(1)$ average-time key-value dictionary (`Map<K, V>`) with bracket indexing (`map[key] = val`).
+  - [ ] Deduplicated hash set (`Set<T>`) supporting mathematical set algebra (`union`, `intersection`, `difference`).
+  - [ ] Generalized `for .. in` syntax supporting dynamic lists, sets, and map key-value pairs (`for (k, v) in map`).
+  - [ ] `.enumerate()` iterator helper returning `(index, item)`.
+  - [ ] Dedicated unit test suite (`src/tests/test_phase22_maps_and_sets.py`).
+  - [ ] Educational demonstration example: `examples/29_MAPS_SETS_AND_ITERATION.arx`.
+
+---
+
+### Phase 23: Lightweight Records, Tuples & Linear Buffers (STATUS: 🚀 PLANNED)
+* **Goal:** Anonymous zero-cost tuples (`(T1, T2)`), destructuring assignment, and FIFO/LIFO contiguous buffers (`Queue<T>`, `Stack<T>`, `Deque<T>`).
+* **Deliverables:**
+  - [ ] Anonymous fixed-size tuple types `(T1, T2, ...)` mapped directly to contiguous C structs without class boilerplate.
+  - [ ] Tuple destructuring syntax: `let (name, score, is_active) = get_user_record()`.
+  - [ ] Contiguous ring-buffer collections: `Queue<T>` (FIFO), `Stack<T>` (LIFO), and `Deque<T>` (double-ended).
+  - [ ] Dedicated unit test suite (`src/tests/test_phase23_tuples_and_buffers.py`).
+  - [ ] Educational demonstration example: `examples/30_TUPLES_AND_BUFFERS.arx`.
+
+---
+
+### Phase 24: Resilient Systems Error Handling (STATUS: 🚀 PLANNED)
+* **Goal:** Panic-free, zero-overhead error propagation via `Result<T, E>`, `Option<T>`, and the `?` early-exit operator.
+* **Deliverables:**
+  - [ ] Standard library tagged algebraic data types: `enum Result<T, E> { Ok(val: T), Err(err: E) }` and `enum Option<T> { Some(val: T), None }`.
+  - [ ] The `?` error propagation operator to automatically unwrap `Ok` values or early-return `Err` up the call stack.
+  - [ ] Ergonomic helpers: `.unwrap()`, `.unwrap_or(default)`, and `.is_ok()`.
+  - [ ] Dedicated unit test suite (`src/tests/test_phase24_error_handling.py`).
+  - [ ] Educational demonstration example: `examples/31_RESULT_AND_ERROR_PROPAGATION.arx`.
+
+---
+
+### Phase 25: Multi-File Module System & Package Integration (STATUS: 🚀 PLANNED)
+* **Goal:** Native multi-file compilation, modular namespaces, and seamless dependency resolution via `arx pm`.
+* **Deliverables:**
+  - [ ] `import "./path/file.arx"` and selective symbol imports `import { SymbolA, SymbolB } from "module"`.
+  - [ ] Circular dependency detection and topological sorting in compiler driver.
+  - [ ] Seamless integration with `aerix.toml` so `import package_name` resolves dependencies downloaded by `arx pm`.
+  - [ ] Multi-file compilation support across both C99 and WebAssembly backends.
+  - [ ] Dedicated unit test suite (`src/tests/test_phase25_modules.py`).
+  - [ ] Educational demonstration project: `examples/32_MULTI_FILE_PROJECT/`.
+
+
 
 

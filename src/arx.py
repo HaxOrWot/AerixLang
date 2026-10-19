@@ -41,7 +41,7 @@ else:
 from src.driver import AerixCompiler
 from src.frontend.diagnostics import report_fatal_error, enable_windows_ansi
 
-VERSION = "1.0.84-alpha"
+VERSION = "1.0.87-alpha"
 
 # Safe console icons that never crash cp1252/cp437
 ICON_OK = "[OK]"
@@ -366,6 +366,7 @@ def _main_cli():
         prog="arx",
         description="Aerix (arx) — The High-Performance Native Systems Language Toolchain"
     )
+    parser.add_argument("-v", "--version", action="version", version=f"Aerix (arx) Toolchain v{VERSION}")
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
     # run

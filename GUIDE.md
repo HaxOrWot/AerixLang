@@ -12,7 +12,7 @@
 ### **The Expressive Native Systems Programming Language**
 *The developer velocity and elegance of modern scripting — fused with the raw speed, minimal footprint, and bare-metal power of native C.*
 
-[![Version](https://img.shields.io/badge/version-1.0.84--alpha-00DCFF.svg?style=for-the-badge&logo=visualstudiocode)](#)
+[![Version](https://img.shields.io/badge/version-1.0.87--alpha-00DCFF.svg?style=for-the-badge&logo=visualstudiocode)](#)
 [![Backend](https://img.shields.io/badge/backend-ANSI%20C99%20%2F%20GCC-1E90FF.svg?style=for-the-badge&logo=c)](#)
 [![Performance](https://img.shields.io/badge/performance-100%25%20C%20Native-00E676.svg?style=for-the-badge&logo=speedtest)](#)
 [![Test Suite](https://img.shields.io/badge/test%20suite-87%2F87%20PASS%20(100%25)-00E5FF.svg?style=for-the-badge)](#)
@@ -164,7 +164,7 @@ The installer performs the following operations automatically:
 1. Detects local GCC installations (MinGW-w64, TDM-GCC, or MSYS2 ucrt64).
 2. Compiles or extracts the native `arx` binary to `~/.aerix/bin`.
 3. Adds `~/.aerix/bin` to your persistent Windows User `PATH` environment variable.
-4. Automatically packages and installs the official `aerix-1.0.84.vsix` extension into standard **VS Code** and the **Antigravity IDE**.
+4. Automatically packages and installs the official `aerix-1.0.87.vsix` extension into standard **VS Code** and the **Antigravity IDE**.
 
 #### Option B: Linux & macOS Automated Installation (POSIX Shell One-Liner)
 Open terminal (Bash, Zsh, or Dash) and execute the official one-liner:
@@ -187,7 +187,7 @@ Output:
 ```text
 [AERIX DOCTOR] System Diagnostics
 =============================================
-  [OK] Aerix Toolchain:    v1.0.84-alpha
+  [OK] Aerix Toolchain:    v1.0.87-alpha
   [OK] Host Python:        v3.12.10 (CPython)
   [OK] Platform:           Windows 11 (AMD64)
   [OK] C Backend (GCC):    gcc.exe 13.2.0 (Detected on PATH)
@@ -1129,7 +1129,7 @@ fn main() {
 Constants must have explicit type annotations and must be initialized with constant expressions:
 ```aerix
 const MAX_BUFFER_CAPACITY: i64 = 65536
-const PROTOCOL_VERSION: str = "v1.0.84-alpha"
+const PROTOCOL_VERSION: str = "v1.0.87-alpha"
 ```
 
 #### Under the Hood: C99 Lowering & Register Optimization
@@ -1480,7 +1480,7 @@ When building developer consoles, combining `readln()` with explicit string conv
 
 ```aerix
 fn run_command_loop() {
-    println("Aerix Diagnostic Shell v1.0.84")
+    println("Aerix Diagnostic Shell v1.0.87")
     mut running = true
     while running {
         let cmd: str = input("arx-sh> ")

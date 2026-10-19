@@ -34,13 +34,13 @@ flowchart TD
         B1[CLI Shims arx.bat & arx.py] --> B4[Staging Sandbox]
         B2[Compiler Core src/*] --> B4
         B3[Runtime Header stdlib/aerix_rt.h] --> B4
-        B5[Extension editors/aerix-1.0.84.vsix] --> B4
+        B5[Extension editors/aerix-1.0.87.vsix] --> B4
     end
 
     subgraph Stage 3: Inno Setup Compilation
         A2 & A3 & A4 & B4 --> C1[ISCC.exe Engine]
         C2[aerix_setup.iss Script] --> C1
-        C1 -->|LZMA2 Ultra64 Solid Compression| C3[AerixSetup-1.0.84.exe]
+        C1 -->|LZMA2 Ultra64 Solid Compression| C3[AerixSetup-1.0.87.exe]
     end
 
     subgraph Stage 4: Verification & Smoke Test
@@ -50,7 +50,7 @@ flowchart TD
     end
 
     subgraph Stage 5: Release Distribution
-        C3 & D1 --> E1[GitHub CLI Upload to v1.0.84-alpha]
+        C3 & D1 --> E1[GitHub CLI Upload to v1.0.87-alpha]
         E1 --> E2[GitHub Releases Download Page]
 ```
 
@@ -74,7 +74,7 @@ flowchart TD
   - `arx.bat` & `arx.py`: CLI dispatch shims.
   - `src/`: Complete lexer, parser, semantic analyzer, optimizer, and C99 code generator.
   - `stdlib/aerix_rt.h`: The high-performance ANSI C99 runtime engine.
-  - `editors/vscode-aerix/aerix-1.0.84.vsix`: The VS Code & Antigravity IDE extension bundle.
+  - `editors/vscode-aerix/aerix-1.0.87.vsix`: The VS Code & Antigravity IDE extension bundle.
   - `USER.md`, `GUIDE.md`, `README.md`, `LICENSE`: Complete documentation and licensing.
 
 ### Stage 3: Inno Setup Compiler Engine (`ISCC`)
@@ -92,11 +92,11 @@ flowchart TD
 ### Stage 4: Cryptographic Integrity Verification & Sandbox Testing
 * Calculates the SHA-256 cryptographic digest of the output executable:
   ```powershell
-  Get-FileHash AerixInstaller/dist/AerixSetup-1.0.84.exe -Algorithm SHA256
+  Get-FileHash AerixInstaller/dist/AerixSetup-1.0.87.exe -Algorithm SHA256
   ```
 * Performs automated smoke testing on an isolated temporary sandbox directory:
   ```powershell
-  AerixInstaller/dist/AerixSetup-1.0.84.exe /VERYSILENT /DIR="test_sandbox" /TASKS="envPath,fileAssoc"
+  AerixInstaller/dist/AerixSetup-1.0.87.exe /VERYSILENT /DIR="test_sandbox" /TASKS="envPath,fileAssoc"
   ```
 * Verifies that `test_sandbox\bin\arx.bat doctor` executes cleanly and returns exit code 0.
 
@@ -144,16 +144,16 @@ jobs:
 
       - name: Verify Output Artifact
         run: |
-          if (-not (Test-Path "AerixInstaller/dist/AerixSetup-1.0.84.exe")) {
+          if (-not (Test-Path "AerixInstaller/dist/AerixSetup-1.0.87.exe")) {
             throw "Installer binary was not generated!"
           }
-          Get-FileHash AerixInstaller/dist/AerixSetup-1.0.84.exe -Algorithm SHA256
+          Get-FileHash AerixInstaller/dist/AerixSetup-1.0.87.exe -Algorithm SHA256
 
       - name: Upload Installer to GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release upload ${{ github.ref_name }} AerixInstaller/dist/AerixSetup-1.0.84.exe --clobber
+          gh release upload ${{ github.ref_name }} AerixInstaller/dist/AerixSetup-1.0.87.exe --clobber
 ```
 
 ---
@@ -167,14 +167,14 @@ Developers maintaining the release cycle can build and publish the installer man
 python AerixInstaller/build.py
 
 # Step 2: Verify the output executable
-Get-Item AerixInstaller/dist/AerixSetup-1.0.84.exe | Select-Object Name, Length, LastWriteTime
+Get-Item AerixInstaller/dist/AerixSetup-1.0.87.exe | Select-Object Name, Length, LastWriteTime
 
 # Step 3: Compute and record release checksum
-$hash = (Get-FileHash AerixInstaller/dist/AerixSetup-1.0.84.exe -Algorithm SHA256).Hash
+$hash = (Get-FileHash AerixInstaller/dist/AerixSetup-1.0.87.exe -Algorithm SHA256).Hash
 Write-Host "SHA-256 Digest: $hash" -ForegroundColor Green
 
 # Step 4: Publish to GitHub Releases
-gh release upload v1.0.84-alpha "AerixInstaller/dist/AerixSetup-1.0.84.exe" --clobber
+gh release upload v1.0.87-alpha "AerixInstaller/dist/AerixSetup-1.0.87.exe" --clobber
 ```
 
 ---
@@ -185,7 +185,7 @@ To eliminate Windows SmartScreen warnings on newly published binaries, productio
 
 ```powershell
 # Authenticode Code Signing via Windows SDK SignTool
-signtool.exe sign /fd SHA256 /a /tr http://timestamp.digicert.com /td SHA256 "AerixInstaller\dist\AerixSetup-1.0.84.exe"
+signtool.exe sign /fd SHA256 /a /tr http://timestamp.digicert.com /td SHA256 "AerixInstaller\dist\AerixSetup-1.0.87.exe"
 ```
 
 * **Entropy & Antivirus Whitelisting:** The compiled executable contains standard PE header markers, clean uncompressed resources, and zero obfuscation, ensuring clean scans across Microsoft Defender and VirusTotal.
