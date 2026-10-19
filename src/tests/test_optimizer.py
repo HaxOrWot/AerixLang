@@ -69,6 +69,34 @@ class TestAIROptimizer(unittest.TestCase):
         const_vals = [i.value for i in fn.instructions if isinstance(i, AIRConst)]
         self.assertNotIn(100, const_vals)
 
+    def test_algebraic_simplifications(self):
+        # x * 0 should be simplified to constant 0
+        code = """
+        fn identity_test(x: i64) -> i64 {
+            let zero = x * 0
+            return zero
+        }
+        """
+        module = self.lower_code(code)
+        opt_module = AIROptimizer().optimize(module)
+        fn = opt_module.functions["identity_test"]
+        const_vals = [i.value for i in fn.instructions if isinstance(i, AIRConst)]
+        self.assertIn(0, const_vals)
+
+    def test_comparison_folding(self):
+        # 10 > 5 should fold into True (bool)
+        code = """
+        fn cmp_test() -> bool {
+            let b = 10 > 5
+            return b
+        }
+        """
+        module = self.lower_code(code)
+        opt_module = AIROptimizer().optimize(module)
+        fn = opt_module.functions["cmp_test"]
+        const_vals = [i.value for i in fn.instructions if isinstance(i, AIRConst)]
+        self.assertIn(True, const_vals)
+
 
 if __name__ == "__main__":
     unittest.main()

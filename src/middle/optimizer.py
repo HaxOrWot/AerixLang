@@ -10,7 +10,7 @@ from typing import Dict, List, Any
 from src.middle.air import (
     AIRModule, AIRFunction, AIRInstruction, AIRConst, AIRBinOp,
     AIRUnaryOp, AIRAssign, AIRLoad, AIRStore, AIRReturn, AIRJump,
-    AIRLabel, AIRCallVirtual, AIRCallMethod
+    AIRLabel, AIRCallVirtual, AIRCallMethod, AIRBranchIf, AIRBranchIfNot
 )
 
 
@@ -73,12 +73,16 @@ class AIROptimizer:
                 m.instructions = devirtualize_insns(m.instructions)
 
     def optimize_function(self, fn: AIRFunction) -> None:
-        """Applies optimization passes in sequence to a single function."""
-        fn.instructions = self.pass_constant_folding(fn.instructions)
-        fn.instructions = self.pass_dead_code_elimination(fn.instructions)
+        """Applies optimization passes iteratively until fixed point."""
+        for _ in range(2):
+            fn.instructions = self.pass_constant_folding(fn.instructions)
+            fn.instructions = self.pass_dead_code_elimination(fn.instructions)
 
     def pass_constant_folding(self, insns: List[AIRInstruction]) -> List[AIRInstruction]:
-        """Folds binary arithmetic on constant literals at compile-time."""
+        """
+        Folds constant expressions, propagates known constants, simplifies
+        algebraic identities, and resolves constant conditional branches.
+        """
         const_values: Dict[str, Any] = {}
         const_types: Dict[str, str] = {}
         new_insns: List[AIRInstruction] = []
@@ -88,31 +92,137 @@ class AIROptimizer:
                 const_values[insn.dest] = insn.value
                 const_types[insn.dest] = insn.type_name
                 new_insns.append(insn)
+            elif isinstance(insn, AIRAssign):
+                # Copy propagation
+                if insn.src in const_values:
+                    val = const_values[insn.src]
+                    t_name = const_types.get(insn.src, "i64")
+                    const_values[insn.dest] = val
+                    const_types[insn.dest] = t_name
+                    new_insns.append(AIRConst(insn.dest, val, t_name))
+                else:
+                    new_insns.append(insn)
+            elif isinstance(insn, AIRUnaryOp):
+                val = const_values.get(insn.operand)
+                if val is not None:
+                    folded_val = None
+                    if insn.op == "-" and isinstance(val, (int, float)):
+                        folded_val = -val
+                    elif insn.op == "!" and isinstance(val, bool):
+                        folded_val = not val
+                    elif insn.op == "~" and isinstance(val, int):
+                        folded_val = ~val
+
+                    if folded_val is not None:
+                        t_name = "bool" if isinstance(folded_val, bool) else ("f64" if isinstance(folded_val, float) else "i64")
+                        const_values[insn.dest] = folded_val
+                        const_types[insn.dest] = t_name
+                        new_insns.append(AIRConst(insn.dest, folded_val, t_name))
+                        continue
+                new_insns.append(insn)
             elif isinstance(insn, AIRBinOp):
                 left_val = const_values.get(insn.left)
                 right_val = const_values.get(insn.right)
 
-                # If both operands are known compile-time constants, fold!
-                if left_val is not None and right_val is not None and type(left_val) in (int, float) and type(right_val) in (int, float):
+                # 1. Full constant folding (both operands known compile-time constants)
+                if left_val is not None and right_val is not None:
                     folded_val = None
                     try:
-                        if insn.op == "+": folded_val = left_val + right_val
-                        elif insn.op == "-": folded_val = left_val - right_val
-                        elif insn.op == "*": folded_val = left_val * right_val
-                        elif insn.op == "/" and right_val != 0: folded_val = left_val / right_val if isinstance(left_val, float) or isinstance(right_val, float) else left_val // right_val
-                        elif insn.op == "%" and right_val != 0: folded_val = left_val % right_val
-                        elif insn.op == "**": folded_val = left_val ** right_val
+                        # Numeric arithmetic
+                        if type(left_val) in (int, float) and type(right_val) in (int, float):
+                            if insn.op == "+": folded_val = left_val + right_val
+                            elif insn.op == "-": folded_val = left_val - right_val
+                            elif insn.op == "*": folded_val = left_val * right_val
+                            elif insn.op == "/" and right_val != 0:
+                                folded_val = left_val / right_val if isinstance(left_val, float) or isinstance(right_val, float) else left_val // right_val
+                            elif insn.op == "%" and right_val != 0: folded_val = left_val % right_val
+                            elif insn.op == "**": folded_val = left_val ** right_val
+                            elif insn.op == "==": folded_val = (left_val == right_val)
+                            elif insn.op == "!=": folded_val = (left_val != right_val)
+                            elif insn.op == "<": folded_val = (left_val < right_val)
+                            elif insn.op == "<=": folded_val = (left_val <= right_val)
+                            elif insn.op == ">": folded_val = (left_val > right_val)
+                            elif insn.op == ">=": folded_val = (left_val >= right_val)
+                        # String concatenation & comparison
+                        elif isinstance(left_val, str) and isinstance(right_val, str):
+                            if insn.op == "+": folded_val = left_val + right_val
+                            elif insn.op == "==": folded_val = (left_val == right_val)
+                            elif insn.op == "!=": folded_val = (left_val != right_val)
+                        # Boolean logic
+                        elif isinstance(left_val, bool) and isinstance(right_val, bool):
+                            if insn.op in ("&&", "and"): folded_val = left_val and right_val
+                            elif insn.op in ("||", "or"): folded_val = left_val or right_val
+                            elif insn.op == "==": folded_val = (left_val == right_val)
+                            elif insn.op == "!=": folded_val = (left_val != right_val)
                     except Exception:
                         folded_val = None
 
                     if folded_val is not None:
-                        t_name = "f64" if isinstance(folded_val, float) else "i64"
+                        if isinstance(folded_val, bool):
+                            t_name = "bool"
+                        elif isinstance(folded_val, float):
+                            t_name = "f64"
+                        elif isinstance(folded_val, str):
+                            t_name = "str"
+                        else:
+                            t_name = "i64"
                         const_values[insn.dest] = folded_val
                         const_types[insn.dest] = t_name
-                        # Replace binop with folded constant!
                         new_insns.append(AIRConst(insn.dest, folded_val, t_name))
                         continue
 
+                # 2. Algebraic Simplifications (Strength Reduction / Identity Law)
+                # x + 0 -> x, 0 + x -> x
+                if insn.op == "+":
+                    if right_val == 0:
+                        new_insns.append(AIRAssign(insn.dest, insn.left))
+                        continue
+                    elif left_val == 0:
+                        new_insns.append(AIRAssign(insn.dest, insn.right))
+                        continue
+                # x - 0 -> x
+                elif insn.op == "-":
+                    if right_val == 0:
+                        new_insns.append(AIRAssign(insn.dest, insn.left))
+                        continue
+                # x * 1 -> x, 1 * x -> x
+                elif insn.op == "*":
+                    if right_val == 1:
+                        new_insns.append(AIRAssign(insn.dest, insn.left))
+                        continue
+                    elif left_val == 1:
+                        new_insns.append(AIRAssign(insn.dest, insn.right))
+                        continue
+                    elif right_val == 0 or left_val == 0:
+                        const_values[insn.dest] = 0
+                        const_types[insn.dest] = "i64"
+                        new_insns.append(AIRConst(insn.dest, 0, "i64"))
+                        continue
+                # x / 1 -> x
+                elif insn.op == "/":
+                    if right_val == 1:
+                        new_insns.append(AIRAssign(insn.dest, insn.left))
+                        continue
+
+                new_insns.append(insn)
+            elif isinstance(insn, AIRBranchIf):
+                # Branch on constant condition
+                cond_val = const_values.get(insn.condition)
+                if cond_val is not None:
+                    if bool(cond_val):
+                        # Always branches -> unconditional jump
+                        new_insns.append(AIRJump(insn.target_label))
+                    # else branch never taken -> omit completely!
+                    continue
+                new_insns.append(insn)
+            elif isinstance(insn, AIRBranchIfNot):
+                cond_val = const_values.get(insn.condition)
+                if cond_val is not None:
+                    if not bool(cond_val):
+                        # Condition is false -> always jumps
+                        new_insns.append(AIRJump(insn.target_label))
+                    # else branch never taken -> omit completely!
+                    continue
                 new_insns.append(insn)
             else:
                 new_insns.append(insn)
@@ -120,7 +230,10 @@ class AIROptimizer:
         return new_insns
 
     def pass_dead_code_elimination(self, insns: List[AIRInstruction]) -> List[AIRInstruction]:
-        """Eliminates unreachable instructions after an unconditional return or jump."""
+        """
+        Eliminates unreachable instructions after unconditional returns or jumps,
+        and removes redundant jumps directly preceding their target labels.
+        """
         reachable: List[AIRInstruction] = []
         is_dead = False
 
@@ -134,4 +247,14 @@ class AIROptimizer:
                 if isinstance(insn, (AIRReturn, AIRJump)):
                     is_dead = True  # Everything until the next label is dead code!
 
-        return reachable
+        # Pass 2: Redundant Jump Elimination (jump to next immediate instruction label)
+        cleaned: List[AIRInstruction] = []
+        for i in range(len(reachable)):
+            cur = reachable[i]
+            if isinstance(cur, AIRJump) and i + 1 < len(reachable):
+                next_insn = reachable[i + 1]
+                if isinstance(next_insn, AIRLabel) and next_insn.name == cur.target_label:
+                    continue  # Skip jump to next immediate label!
+            cleaned.append(cur)
+
+        return cleaned

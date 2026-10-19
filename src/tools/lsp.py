@@ -22,7 +22,7 @@ from src.middle.semantic import SemanticAnalyzer, SemanticError
 from src.tools.formatter import AerixFormatter
 from src.tools.linter import AerixLinter
 
-LSP_VERSION = "1.0.82-alpha"
+LSP_VERSION = "1.0.84-alpha"
 
 # LSP CompletionItemKind constants
 KIND_TEXT = 1
@@ -277,15 +277,32 @@ class AerixLanguageServer:
                 "message": le.message
             })
         except ParserError as pe:
-            diagnostics.append({
-                "range": {
-                    "start": {"line": max(0, pe.line - 1), "character": max(0, pe.col - 1)},
-                    "end": {"line": max(0, pe.line - 1), "character": max(0, pe.col + max(1, len(str(pe.token.value or ""))))}
-                },
-                "severity": 1,
-                "source": "aerix-parser",
-                "message": pe.message
-            })
+            if hasattr(pe, "errors") and pe.errors:
+                for err in pe.errors:
+                    err_tok = getattr(err, "token", None)
+                    err_val = getattr(err_tok, "value", "") if err_tok else ""
+                    err_len = max(1, len(str(err_val))) if err_val else 1
+                    err_line = getattr(err, "line", 1)
+                    err_col = getattr(err, "col", 1)
+                    diagnostics.append({
+                        "range": {
+                            "start": {"line": max(0, err_line - 1), "character": max(0, err_col - 1)},
+                            "end": {"line": max(0, err_line - 1), "character": max(0, err_col + err_len)}
+                        },
+                        "severity": 1,
+                        "source": "aerix-parser",
+                        "message": getattr(err, "message", str(err))
+                    })
+            else:
+                diagnostics.append({
+                    "range": {
+                        "start": {"line": max(0, pe.line - 1), "character": max(0, pe.col - 1)},
+                        "end": {"line": max(0, pe.line - 1), "character": max(0, pe.col + max(1, len(str(getattr(pe.token, "value", "") or ""))))}
+                    },
+                    "severity": 1,
+                    "source": "aerix-parser",
+                    "message": pe.message
+                })
         except SemanticError as se:
             diagnostics.append({
                 "range": {

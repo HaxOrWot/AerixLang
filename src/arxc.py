@@ -29,9 +29,11 @@ else:
         sys.path.insert(0, project_root)
 
 from src.driver import AerixCompiler
+from src.frontend.diagnostics import report_fatal_error, enable_windows_ansi
 
 
 def main():
+    enable_windows_ansi()
     parser = argparse.ArgumentParser(
         prog="arxc",
         description="The Custom Aerix Compiler (arxc) — Multi-Pass Native Optimizing Compiler"
@@ -44,8 +46,7 @@ def main():
     args = parser.parse_args()
 
     if not os.path.exists(args.input_file):
-        print(f"\033[1;31m[ERROR]\033[0m: Input file '{args.input_file}' does not exist.")
-        sys.exit(1)
+        sys.exit(report_fatal_error(FileNotFoundError(args.input_file)))
 
     compiler = AerixCompiler()
     try:
@@ -63,8 +64,7 @@ def main():
             )
             print(f"\033[1;32m[SUCCESS]\033[0m: Compiled '{args.input_file}' -> '{out_bin}'")
     except Exception as e:
-        print(e)
-        sys.exit(1)
+        sys.exit(report_fatal_error(e))
 
 
 if __name__ == "__main__":

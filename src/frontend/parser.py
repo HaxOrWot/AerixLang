@@ -7,6 +7,7 @@ Supports procedural scripting, OOP classes, traits, pipelines (|>), and defer.
 from enum import IntEnum
 from typing import List, Optional, Callable, Dict, Set, Tuple
 from src.frontend.tokens import Token, TokenType
+from src.frontend.diagnostics import AerixDiagnostic, DiagnosticBag, ParserError, format_source_snippet
 from src.frontend.ast_nodes import (
     ASTNode, ProgramNode, FunctionDefNode, ParamNode, BlockNode,
     VarDeclNode, AssignNode, IfNode, WhileNode, ForNode, LoopNode,
@@ -67,27 +68,13 @@ PRECEDENCES: Dict[TokenType, Precedence] = {
 }
 
 
-class ParserError(Exception):
-    def __init__(self, message: str, token: Token, source_line: str = ""):
-        self.message = message
-        self.token = token
-        self.line = token.line
-        self.col = token.col
-        caret = " " * (token.col - 1) + "^"
-        super().__init__(
-            f"\n\033[1;31m[AERIX PARSER ERROR]\033[0m: {message}\n"
-            f"  --> {token.file}:{token.line}:{token.col}\n"
-            f"   |\n"
-            f"{token.line:4d} | {source_line}\n"
-            f"   | {caret}\n"
-        )
-
-
 class Parser:
-    def __init__(self, tokens: List[Token], source_lines: Optional[List[str]] = None):
+    def __init__(self, tokens: List[Token], source_lines: Optional[List[str]] = None, filename: str = "<stdin>"):
         self.tokens = tokens
         self.pos = 0
         self.source_lines = source_lines or []
+        self.filename = filename
+        self.errors: List[ParserError] = []
         self.generic_uses: Set[Tuple[str, Tuple[str, ...]]] = set()
         
         # Pratt Parsing rule tables
@@ -137,10 +124,37 @@ class Parser:
             TokenType.AS: self.parse_cast,
         }
 
-    def error(self, msg: str, token: Optional[Token] = None) -> None:
+    def error(self, msg: str, token: Optional[Token] = None, hint: Optional[str] = None) -> None:
         err_tok = token or self.current()
         line_str = self.source_lines[err_tok.line - 1] if 0 < err_tok.line <= len(self.source_lines) else ""
-        raise ParserError(msg, err_tok, line_str)
+        raise ParserError(msg, err_tok, line_str, hint=hint)
+
+    def synchronize(self) -> None:
+        """Discards tokens until reaching a synchronization boundary (statement/declaration starter or terminator)."""
+        SYNC_STARTERS = {
+            TokenType.FN, TokenType.LET, TokenType.MUT, TokenType.CONST,
+            TokenType.IF, TokenType.WHILE, TokenType.FOR, TokenType.LOOP,
+            TokenType.RETURN, TokenType.DEFER, TokenType.BREAK, TokenType.CONTINUE,
+            TokenType.GUARD, TokenType.MATCH, TokenType.CLASS, TokenType.ENUM,
+            TokenType.EXTEND, TokenType.TRAIT, TokenType.PUB, TokenType.PRIV,
+            TokenType.CINCLUDE, TokenType.CEXTERN, TokenType.RBRACE
+        }
+
+        # Advance at least once if not at EOF
+        if self.current().type != TokenType.EOF:
+            self.advance()
+
+        while self.current().type != TokenType.EOF:
+            # Did previous token end a statement?
+            prev_tok = self.tokens[self.pos - 1] if self.pos > 0 else None
+            if prev_tok and prev_tok.type in (TokenType.SEMICOLON, TokenType.NEWLINE):
+                return
+
+            # Does current token start a new construct or close a block?
+            if self.current().type in SYNC_STARTERS:
+                return
+
+            self.advance()
 
     def current(self) -> Token:
         if self.pos < len(self.tokens):
@@ -199,12 +213,24 @@ class Parser:
         self.skip_newlines()
         
         while self.current().type != TokenType.EOF:
-            decl = self.parse_top_level_declaration()
-            if decl:
-                decls.append(decl)
+            try:
+                decl = self.parse_top_level_declaration()
+                if decl:
+                    decls.append(decl)
+            except ParserError as pe:
+                self.errors.append(pe)
+                if len(self.errors) >= 25:
+                    break
+                self.synchronize()
+
             while self.match(TokenType.SEMICOLON):
                 pass
             self.skip_newlines()
+
+        if self.errors:
+            if len(self.errors) == 1:
+                raise self.errors[0]
+            raise DiagnosticBag(self.errors, self.filename)
             
         first_tok = self.tokens[0] if self.tokens else Token(TokenType.EOF, None, 1, 1)
         return ProgramNode(line=first_tok.line, col=first_tok.col, declarations=decls, generic_uses=set(self.generic_uses))
@@ -787,13 +813,26 @@ class Parser:
         stmts = []
         
         while self.current().type != TokenType.RBRACE and self.current().type != TokenType.EOF:
-            stmt = self.parse_statement()
-            if stmt:
-                stmts.append(stmt)
+            try:
+                stmt = self.parse_statement()
+                if stmt:
+                    stmts.append(stmt)
+            except ParserError as pe:
+                self.errors.append(pe)
+                if len(self.errors) >= 25:
+                    break
+                self.synchronize()
+
             while self.match(TokenType.SEMICOLON):
                 pass
             self.skip_newlines()
             
+        if self.current().type == TokenType.EOF:
+            self.error(
+                f"Unclosed block: expected '}}' to match '{{' from line {start_tok.line}",
+                token=self.current(),
+                hint=f"add '}}' to close the block opened at line {start_tok.line}"
+            )
         self.consume(TokenType.RBRACE, "Expected '}'")
         return BlockNode(line=start_tok.line, col=start_tok.col, statements=stmts)
 
@@ -819,7 +858,10 @@ class Parser:
         tok = self.current()
         prefix_fn = self.prefix_parselets.get(tok.type)
         if not prefix_fn:
-            self.error(f"Unexpected token in expression: '{tok.value}'", tok)
+            if tok.type in (TokenType.NEWLINE, TokenType.SEMICOLON, TokenType.EOF, TokenType.RBRACE, TokenType.RPAREN):
+                self.error("Expected expression", tok, hint="provide a valid expression or literal value")
+            else:
+                self.error(f"Unexpected token in expression: '{tok.value}'", tok)
 
         left = prefix_fn()
 

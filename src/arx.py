@@ -39,8 +39,9 @@ else:
         sys.path.insert(0, project_root)
 
 from src.driver import AerixCompiler
+from src.frontend.diagnostics import report_fatal_error, enable_windows_ansi
 
-VERSION = "1.0.82-alpha"
+VERSION = "1.0.84-alpha"
 
 # Safe console icons that never crash cp1252/cp437
 ICON_OK = "[OK]"
@@ -151,8 +152,7 @@ fn main() {
 def cmd_check(file_path: str):
     """Performs fast lexical, syntax, and semantic checks without compiling to C."""
     if not os.path.exists(file_path):
-        print(f"\033[1;31m[ERROR]\033[0m: File '{file_path}' does not exist.")
-        sys.exit(1)
+        sys.exit(report_fatal_error(FileNotFoundError(file_path)))
 
     with open(file_path, "r", encoding="utf-8") as f:
         source = f.read()
@@ -165,15 +165,14 @@ def cmd_check(file_path: str):
         from src.middle.semantic import SemanticAnalyzer
         lexer = Lexer(source, file_path)
         tokens = lexer.tokenize()
-        parser = Parser(tokens, lines)
+        parser = Parser(tokens, lines, filename=file_path)
         ast = parser.parse()
         ast = GenericMonomorphizer().monomorphize(ast)
         analyzer = SemanticAnalyzer(file_path, lines)
         analyzer.analyze(ast)
         print(f"\033[1;32m{ICON_OK} [CHECK PASSED]\033[0m: '{file_path}' has zero syntax or type errors!")
     except Exception as e:
-        print(e)
-        sys.exit(1)
+        sys.exit(report_fatal_error(e))
 
 
 def cmd_test():
@@ -316,7 +315,7 @@ def cmd_lsp():
 
 
 
-def main():
+def _main_cli():
     # Instant Fast-Path for 'arx <file.arx>' and 'arx run <file.arx>'
     if len(sys.argv) == 2 and not sys.argv[1].startswith("-"):
         first_arg = sys.argv[1]
@@ -419,37 +418,32 @@ def main():
         cmd_pm(args.subcmd, args.pm_args)
     elif args.command == "lsp":
         cmd_lsp()
-
     elif args.command == "version":
         print(f"Aerix (arx) Toolchain v{VERSION}")
     elif args.command == "run":
         compiler = AerixCompiler()
-        try:
-            code = compiler.run_file(args.file, args.args)
-            sys.exit(code)
-        except Exception as e:
-            print(e)
-            sys.exit(1)
+        code = compiler.run_file(args.file, args.args)
+        sys.exit(code)
     elif args.command == "build":
         compiler = AerixCompiler()
-        try:
-            out_exe = compiler.compile_file(args.file, output_binary_path=args.output, release=args.release)
-            print(f"\033[1;32m[BUILD SUCCESS]\033[0m: Native executable generated {ICON_ARROW} '{out_exe}'")
-        except Exception as e:
-            print(e)
-            sys.exit(1)
+        out_exe = compiler.compile_file(args.file, output_binary_path=args.output, release=args.release)
+        print(f"\033[1;32m[BUILD SUCCESS]\033[0m: Native executable generated {ICON_ARROW} '{out_exe}'")
     elif args.command == "emit-c":
         compiler = AerixCompiler()
-        try:
-            with open(args.file, "r", encoding="utf-8") as f:
-                c_code = compiler.compile_source_to_c(f.read(), args.file)
-            out_file = args.output or f"{os.path.splitext(args.file)[0]}.c"
-            with open(out_file, "w", encoding="utf-8") as f:
-                f.write(c_code)
-            print(f"\033[1;32m[EMIT-C SUCCESS]\033[0m: Emitted C99 code saved to '{out_file}'")
-        except Exception as e:
-            print(e)
-            sys.exit(1)
+        with open(args.file, "r", encoding="utf-8") as f:
+            c_code = compiler.compile_source_to_c(f.read(), args.file)
+        out_file = args.output or f"{os.path.splitext(args.file)[0]}.c"
+        with open(out_file, "w", encoding="utf-8") as f:
+            f.write(c_code)
+        print(f"\033[1;32m[EMIT-C SUCCESS]\033[0m: Emitted C99 code saved to '{out_file}'")
+
+
+def main():
+    enable_windows_ansi()
+    try:
+        _main_cli()
+    except Exception as e:
+        sys.exit(report_fatal_error(e))
 
 
 if __name__ == "__main__":

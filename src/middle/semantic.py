@@ -21,6 +21,7 @@ from src.middle.typesystem import (
     TYPE_I64, TYPE_F64, TYPE_BOOL, TYPE_STR, TYPE_CHAR,
     TYPE_VOID, TYPE_NULL, lookup_type, PRIMITIVES
 )
+from src.frontend.diagnostics import AerixDiagnostic, DiagnosticBag, format_source_snippet
 
 
 
@@ -40,18 +41,23 @@ OPERATOR_METHOD_NAMES = {
 }
 
 
-class SemanticError(Exception):
-    def __init__(self, message: str, node: ASTNode, file: str = "<stdin>", source_line: str = ""):
+class SemanticError(AerixDiagnostic):
+    def __init__(self, message: str, node: ASTNode, file: str = "<stdin>", source_line: str = "", hint: Optional[str] = None):
         self.message = message
         self.line = node.line
         self.col = node.col
-        caret = " " * (node.col - 1) + "^"
+        self.source_line = source_line
+        self.hint = hint
         super().__init__(
-            f"\n\033[1;31m[AERIX SEMANTIC ERROR]\033[0m: {message}\n"
-            f"  --> {file}:{node.line}:{node.col}\n"
-            f"   |\n"
-            f"{node.line:4d} | {source_line}\n"
-            f"   | {caret}\n"
+            format_source_snippet(
+                file=file,
+                line=node.line,
+                col=node.col,
+                source_line=source_line,
+                message=message,
+                error_type="SEMANTIC ERROR",
+                hint=hint
+            )
         )
 
 
@@ -98,10 +104,11 @@ class SemanticAnalyzer:
         self.current_class: Optional[ClassType] = None
         self.node_types: Dict[id, Type] = {}
         self.defined_symbols: List[Symbol] = []
+        self.errors: List[SemanticError] = []
 
-    def error(self, msg: str, node: ASTNode) -> None:
+    def error(self, msg: str, node: ASTNode, hint: Optional[str] = None) -> None:
         line_str = self.source_lines[node.line - 1] if 0 < node.line <= len(self.source_lines) else ""
-        raise SemanticError(msg, node, self.filename, line_str)
+        raise SemanticError(msg, node, self.filename, line_str, hint=hint)
 
     def resolve_type(self, type_name: str) -> Type:
         return lookup_type(type_name, self.classes, self.enums, self.traits)
@@ -133,7 +140,17 @@ class SemanticAnalyzer:
 
         # --- Pass 2: Type checking, immutability enforcement, and scope analysis ---
         for decl in program.declarations:
-            self.analyze_node(decl)
+            try:
+                self.analyze_node(decl)
+            except SemanticError as se:
+                self.errors.append(se)
+                if len(self.errors) >= 20:
+                    break
+
+        if self.errors:
+            if len(self.errors) == 1:
+                raise self.errors[0]
+            raise DiagnosticBag(self.errors, self.filename)
 
     def register_trait(self, node: TraitDefNode) -> None:
         if node.name in self.traits or node.name in self.classes or node.name in self.enums:

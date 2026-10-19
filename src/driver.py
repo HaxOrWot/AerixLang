@@ -31,7 +31,7 @@ class AerixCompiler:
         tokens = lexer.tokenize()
 
         # 2. Parser
-        parser = Parser(tokens, lines)
+        parser = Parser(tokens, lines, filename=filename)
         ast = parser.parse()
 
         # 2b. Generic Monomorphizer (Phase 18)

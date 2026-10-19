@@ -7,13 +7,19 @@ import os
 import shutil
 import subprocess
 from typing import List, Optional, Tuple
+from src.frontend.diagnostics import AerixDiagnostic, format_simple_error
 
 
-class LinkerError(Exception):
-    def __init__(self, message: str, gcc_output: str = ""):
+class LinkerError(AerixDiagnostic):
+    def __init__(self, message: str, gcc_output: str = "", hint: Optional[str] = None):
         self.message = message
         self.gcc_output = gcc_output
-        super().__init__(f"{message}\n\033[1;31m[GCC OUTPUT]\033[0m:\n{gcc_output}")
+        self.hint = hint
+        
+        detail = message
+        if gcc_output:
+            detail = f"{message}\n\n[GCC OUTPUT]:\n{gcc_output.strip()}"
+        super().__init__(format_simple_error("LINKER ERROR", detail, hint=hint))
 
 
 class NativeLinker:

@@ -4,11 +4,13 @@ Tokenizes Aerix source code into a clean, coordinate-tracked token stream.
 Handles comments, string interpolation, range vs float disambiguation, and newline splicing.
 """
 
+import sys
 from typing import List, Optional
 from src.frontend.tokens import Token, TokenType, KEYWORDS
+from src.frontend.diagnostics import AerixDiagnostic, format_source_snippet
 
 
-class LexerError(Exception):
+class LexerError(AerixDiagnostic):
     """Raised when the lexer encounters an invalid character or unterminated literal."""
     def __init__(self, message: str, line: int, col: int, file: str = "<stdin>", source_line: str = ""):
         self.message = message
@@ -16,14 +18,7 @@ class LexerError(Exception):
         self.col = col
         self.file = file
         self.source_line = source_line
-        caret = " " * (col - 1) + "^"
-        super().__init__(
-            f"\n\033[1;31m[AERIX LEXER ERROR]\033[0m: {message}\n"
-            f"  --> {file}:{line}:{col}\n"
-            f"   |\n"
-            f"{line:4d} | {source_line}\n"
-            f"   | {caret}\n"
-        )
+        super().__init__(format_source_snippet(file, line, col, source_line, message, error_type="LEXER ERROR"))
 
 
 class Lexer:
@@ -82,6 +77,12 @@ class Lexer:
 
             # --- Whitespace ---
             if ch in (' ', '\t', '\r'):
+                while self.pos < self.length and self.source[self.pos] in (' ', '\t', '\r'):
+                    if self.source[self.pos] == '\t':
+                        self.col += 4
+                    else:
+                        self.col += 1
+                    self.pos += 1
                 continue
 
             # --- Newlines & Statement Termination ---
@@ -109,7 +110,7 @@ class Lexer:
 
             # --- Identifiers and Keywords ---
             if ch.isalpha() or ch == '_':
-                ident = ch + self.scan_identifier()
+                ident = sys.intern(ch + self.scan_identifier())
                 token_type = KEYWORDS.get(ident, TokenType.IDENTIFIER)
                 value = True if ident == "true" else False if ident == "false" else ident
                 self.tokens.append(Token(token_type, value, start_line, start_col, self.filename, raw=ident))
@@ -242,9 +243,14 @@ class Lexer:
 
     def scan_identifier(self) -> str:
         start_pos = self.pos
-        while self.pos < self.length and (self.source[self.pos].isalnum() or self.source[self.pos] == '_'):
-            self.advance()
-        return self.source[start_pos:self.pos]
+        src = self.source
+        length = self.length
+        pos = start_pos
+        while pos < length and (src[pos].isalnum() or src[pos] == '_'):
+            pos += 1
+        self.col += (pos - start_pos)
+        self.pos = pos
+        return src[start_pos:pos]
 
     def scan_number(self, first_digit: str, line: int, col: int) -> None:
         num_str = first_digit
