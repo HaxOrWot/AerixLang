@@ -381,12 +381,12 @@ Aerix provides first-class tooling across both **Visual Studio Code** and the **
 
 **Install into Visual Studio Code:**
 ```powershell
-code --install-extension editors/vscode-aerix/aerix-1.0.83.vsix --force
+code --install-extension editors/vscode-aerix/aerix-1.0.84.vsix --force
 ```
 
 **Install into Antigravity IDE:**
 ```powershell
-antigravity --extensions-dir C:\Users\<USER>\.antigravity-ide\extensions --install-extension editors/vscode-aerix/aerix-1.0.83.vsix --force
+antigravity --install-extension editors/vscode-aerix/aerix-1.0.84.vsix --force
 ```
 
 </details>

@@ -139,25 +139,25 @@ The extension includes the official **Aerix Supersonic "X"** file icon:
 
 ## 🚀 Installation & Setup
 
-### Option 1: 1-Click Batch Installer
-Simply double-click [`install_extension.bat`](file:///z:/VSCode/AerixLang/editors/vscode-aerix/install_extension.bat) to automatically install the extension into both **Visual Studio Code** and **Google Antigravity IDE**.
+### Option 1: Aerix Setup Wizard (GUI)
+Run `AerixSetup-1.0.84.exe` from the `AerixInstaller/dist` directory. Ensure the **Visual Studio Code** and/or **Google Antigravity IDE** checkboxes are selected under the IDE Extensions category.
 
 ### Option 2: Command-Line Installation
 
 From the repository root (`z:\VSCode\AerixLang`):
 ```powershell
 # For Visual Studio Code
-code --install-extension editors/vscode-aerix/aerix.vsix --force
+code --install-extension editors/vscode-aerix/aerix-1.0.84.vsix --force
 
 # For Google Antigravity IDE
-antigravity --install-extension editors/vscode-aerix/aerix.vsix --force
+antigravity --install-extension editors/vscode-aerix/aerix-1.0.84.vsix --force
 ```
 
 From inside the `editors/vscode-aerix` folder:
 ```powershell
 cd z:\VSCode\AerixLang\editors\vscode-aerix
-code --install-extension aerix.vsix --force
-antigravity --install-extension aerix.vsix --force
+code --install-extension aerix-1.0.84.vsix --force
+antigravity --install-extension aerix-1.0.84.vsix --force
 ```
 
 ### Reloading Your Editor
