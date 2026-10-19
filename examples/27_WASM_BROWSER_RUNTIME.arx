@@ -1,0 +1,72 @@
+// ==============================================================================
+// Aerix Example 27: WebAssembly (WASM) Backend & Browser Runtime (Phase 20)
+// ==============================================================================
+// Demonstrates direct compilation of Aerix source into WebAssembly (.wasm / .wat)
+// and execution inside modern web browsers with hardware-accelerated 2D Canvas
+// rendering and high-speed standard output bridging.
+//
+// Build & Run with:
+//   arx wasm examples/27_WASM_BROWSER_RUNTIME.arx --html --wat
+// ==============================================================================
+
+fn render_canvas_pattern(width: i64, height: i64) {
+    // 1. Draw a dark cosmic backdrop
+    arx_canvas_clear(10, 14, 23);
+
+    // 2. Render a vibrant color palette grid on the HTML5 Canvas
+    let cols = 12;
+    let rows = 8;
+    let cell_w = 36;
+    let cell_h = 36;
+    let start_x = 24;
+    let start_y = 40;
+
+    for r in 0..rows {
+        for c in 0..cols {
+            let x = start_x + (c * (cell_w + 4));
+            let y = start_y + (r * (cell_h + 4));
+
+            // Dynamic RGB procedural wave calculation
+            let red = (c * 21) % 256;
+            let green = (r * 31 + c * 10) % 256;
+            let blue = 220;
+
+            arx_canvas_fill_rect(x, y, cell_w, cell_h, red, green, blue);
+        }
+    }
+}
+
+fn compute_fibonacci(n: i64) -> i64 {
+    if n <= 1 {
+        return n;
+    }
+    mut a: i64 = 0;
+    mut b: i64 = 1;
+    for i in 2..=n {
+        let temp = a + b;
+        a = b;
+        b = temp;
+    }
+    return b;
+}
+
+fn main() -> i64 {
+    println("=============================================================");
+    println("   Aerix 2.0 WebAssembly (WASM) Browser Engine");
+    println("=============================================================");
+    println("-> Compiling directly to native W3C WebAssembly bytecode");
+    println("-> Interoperating with Browser DOM, Console & HTML5 Canvas");
+
+    // Perform high-speed computation inside WebAssembly
+    let fib_res = compute_fibonacci(25);
+    println("-> Fibonacci(25) calculated inside WebAssembly:");
+    println(fib_res);
+
+    // Render interactive procedural graphics to HTML5 canvas
+    render_canvas_pattern(480, 380);
+    println("-> Rendered hardware-accelerated color palette to 2D canvas!");
+
+    println("=============================================================");
+    println("WebAssembly execution finished successfully!");
+    return 0;
+}

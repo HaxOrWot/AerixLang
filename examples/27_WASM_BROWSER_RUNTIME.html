@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Aerix (27_WASM_BROWSER_RUNTIME) — WebAssembly Browser Runtime</title>
+  <style>
+    :root {
+      --bg-primary: #0a0e17;
+      --bg-card: #131c2e;
+      --accent: #00dcff;
+      --accent-glow: rgba(0, 220, 255, 0.3);
+      --text-main: #f0f6fc;
+      --text-dim: #8b949e;
+      --terminal-bg: #050811;
+      --border-color: #212c42;
+      --success: #00e676;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: var(--bg-primary);
+      color: var(--text-main);
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+    }
+    .header {
+      text-align: center;
+      margin-bottom: 24px;
+    }
+    .header h1 {
+      font-size: 2.2rem;
+      font-weight: 800;
+      background: linear-gradient(135deg, #00dcff, #7c4dff);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      letter-spacing: -0.5px;
+    }
+    .badge {
+      display: inline-block;
+      margin-top: 8px;
+      padding: 4px 12px;
+      border-radius: 999px;
+      background: rgba(0, 220, 255, 0.15);
+      border: 1px solid var(--accent);
+      color: var(--accent);
+      font-size: 0.85rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .container {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+      width: 100%;
+      max-width: 1200px;
+    }
+    @media (max-width: 900px) {
+      .container { grid-template-columns: 1fr; }
+    }
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 20px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+      display: flex;
+      flex-direction: column;
+    }
+    .card h2 {
+      font-size: 1.15rem;
+      margin-bottom: 14px;
+      color: var(--accent);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    #canvas-container {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      background: #000;
+      border-radius: 8px;
+      overflow: hidden;
+      border: 1px solid var(--border-color);
+    }
+    canvas {
+      display: block;
+      background-color: #000;
+    }
+    #terminal {
+      background: var(--terminal-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      font-family: "Cascadia Code", "Fira Code", Consolas, monospace;
+      font-size: 0.9rem;
+      color: #7ee787;
+      padding: 16px;
+      height: 380px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      line-height: 1.5;
+    }
+    .status-bar {
+      margin-top: 14px;
+      display: flex;
+      justify-content: space-between;
+      color: var(--text-dim);
+      font-size: 0.85rem;
+    }
+    .btn {
+      margin-top: 14px;
+      padding: 10px 20px;
+      background: linear-gradient(135deg, #00dcff, #00a0dc);
+      border: none;
+      border-radius: 6px;
+      color: #000;
+      font-weight: 700;
+      font-size: 0.95rem;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .btn:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 16px var(--accent-glow);
+    }
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    <h1>Aerix WebAssembly Browser Runtime</h1>
+    <span class="badge">WASM Target • Phase 20 • 60 FPS Native Web Speed</span>
+  </div>
+
+  <div class="container">
+    <!-- Left Panel: Interactive Canvas -->
+    <div class="card">
+      <h2>🎨 Hardware-Accelerated 2D Canvas</h2>
+      <div id="canvas-container">
+        <canvas id="aerix-canvas" width="480" height="380"></canvas>
+      </div>
+      <div class="status-bar">
+        <span>Target: <b>27_WASM_BROWSER_RUNTIME.wasm</b></span>
+        <span id="canvas-status">Resolution: 480x380</span>
+      </div>
+      <button class="btn" onclick="runAerix()">⚡ Re-Run WebAssembly Module</button>
+    </div>
+
+    <!-- Right Panel: Standard Output Terminal -->
+    <div class="card">
+      <h2>💻 Console Output (stdout)</h2>
+      <div id="terminal">Initializing Aerix WebAssembly engine...
+</div>
+      <div class="status-bar">
+        <span id="exec-time">Execution: 0.00 ms</span>
+        <span style="color: var(--success);" id="engine-status">● Engine Standby</span>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const term = document.getElementById("terminal");
+    const canvas = document.getElementById("aerix-canvas");
+    const ctx = canvas.getContext("2d");
+    let wasmInstance = null;
+
+    function log(msg) {
+      term.textContent += msg + "\n";
+      term.scrollTop = term.scrollHeight;
+    }
+
+    function createImportObject() {
+      return {
+        env: {
+          print_i64: (val) => log(val.toString()),
+          print_f64: (val) => log(val.toFixed(6)),
+          print_str: (offset, length) => {
+            if (!wasmInstance) return;
+            const bytes = new Uint8Array(wasmInstance.exports.memory.buffer, offset, length);
+            const str = new TextDecoder("utf-8").decode(bytes);
+            log(str);
+          },
+          arx_canvas_set_pixel: (x, y, r, g, b) => {
+            ctx.fillStyle = `rgb(${r},${g},${b})`;
+            ctx.fillRect(x, y, 1, 1);
+          },
+          arx_canvas_fill_rect: (x, y, w, h, r, g, b) => {
+            ctx.fillStyle = `rgb(${r},${g},${b})`;
+            ctx.fillRect(x, y, w, h);
+          },
+          arx_canvas_clear: (r, g, b) => {
+            ctx.fillStyle = `rgb(${r},${g},${b})`;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+          },
+          arx_now_ms: () => performance.now()
+        }
+      };
+    }
+
+    async function runAerix() {
+      term.textContent = "";
+      log("[AERIX RUNNER] Loading WebAssembly binary '27_WASM_BROWSER_RUNTIME.wasm'...");
+      const t0 = performance.now();
+      try {
+        const response = await fetch("27_WASM_BROWSER_RUNTIME.wasm");
+        if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        const bytes = await response.arrayBuffer();
+        
+        let importObj = createImportObject();
+        const results = await WebAssembly.instantiate(bytes, importObj);
+        wasmInstance = results.instance;
+
+        log("[AERIX RUNNER] Module instantiated successfully!");
+        log("--------------------------------------------------");
+
+        if (wasmInstance.exports.main) {
+          const ret = wasmInstance.exports.main();
+          log("--------------------------------------------------");
+          log(`[EXIT CODE]: ${ret}`);
+        }
+
+        const t1 = performance.now();
+        document.getElementById("exec-time").textContent = `Execution: ${(t1 - t0).toFixed(2)} ms`;
+        document.getElementById("engine-status").textContent = "● Completed OK";
+        document.getElementById("engine-status").style.color = "var(--success)";
+      } catch (err) {
+        log(`\n[FATAL ERROR]: ${err.message}`);
+        document.getElementById("engine-status").textContent = "● Failed";
+        document.getElementById("engine-status").style.color = "#ff5252";
+      }
+    }
+
+    window.addEventListener("DOMContentLoaded", runAerix);
+  </script>
+</body>
+</html>

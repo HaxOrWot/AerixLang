@@ -15,11 +15,11 @@
 [![Version](https://img.shields.io/badge/version-1.0.84--alpha-00DCFF.svg?style=for-the-badge&logo=visualstudiocode)](#)
 [![Backend](https://img.shields.io/badge/backend-ANSI%20C99%20%2F%20GCC-1E90FF.svg?style=for-the-badge&logo=c)](#)
 [![Performance](https://img.shields.io/badge/performance-100%25%20C%20Native-00E676.svg?style=for-the-badge&logo=speedtest)](#)
-[![Test Suite](https://img.shields.io/badge/test%20suite-80%2F80%20PASS%20(100%25)-00E5FF.svg?style=for-the-badge)](#)
-[![Examples](https://img.shields.io/badge/examples-26%20runnable-FF9100.svg?style=for-the-badge)](#)
+[![Test Suite](https://img.shields.io/badge/test%20suite-87%2F87%20PASS%20(100%25)-00E5FF.svg?style=for-the-badge)](#)
+[![Examples](https://img.shields.io/badge/examples-27%20runnable-FF9100.svg?style=for-the-badge)](#)
 [![IDE Support](https://img.shields.io/badge/IDE-Antigravity%20%26%20VS%20Code-7C4DFF.svg?style=for-the-badge)](#)
 
-[Quickstart](#chapter-2-installation-diagnostics--toolchain-setup) • [Keyword Encyclopedia](#chapter-4-the-complete-aerix-keyword-encyclopedia-a-to-z) • [Type System](#chapter-7-the-complete-16-primitive-types--hardware-memory-layout) • [Pipelines](#chapter-12-the-functional-pipeline-operator-) • [Guards](#chapter-15-anti-pyramid-fail-fast-guards-guard--else) • [OOP](#chapter-19-object-oriented-programming-classes-fields--init) • [Generics](#chapter-28-compile-time-generics--static-monomorphization) • [Concurrency](#chapter-30-native-multi-core-concurrency--typed-channels) • [FAQ](#chapter-33-the-massive-aerix-faq-65-in-depth-questions) • [Cheat Sheet](#chapter-34-the-comprehensive-1-page-aerix-syntax-cheat-sheet)
+[Quickstart](#chapter-2-installation-diagnostics--toolchain-setup) • [Keyword Encyclopedia](#chapter-4-the-complete-aerix-keyword-encyclopedia-a-to-z) • [Type System](#chapter-7-the-complete-16-primitive-types--hardware-memory-layout) • [Pipelines](#chapter-12-the-functional-pipeline-operator-) • [Guards](#chapter-15-anti-pyramid-fail-fast-guards-guard--else) • [OOP](#chapter-19-object-oriented-programming-classes-fields--init) • [Generics](#chapter-28-compile-time-generics--static-monomorphization) • [Concurrency](#chapter-30-native-multi-core-concurrency--typed-channels) • [WebAssembly](#chapter-32-the-complete-developer-toolchain-reference-arx-cli) • [FAQ](#chapter-33-the-massive-aerix-faq-65-in-depth-questions) • [Cheat Sheet](#chapter-34-the-comprehensive-1-page-aerix-syntax-cheat-sheet)
 
 </div>
 
@@ -3304,8 +3304,8 @@ During compilation, `aerix_rt.h` is precompiled into `aerix_rt.h.gch`. This redu
 #### Q67: How does Aerix ensure cache-friendly data layouts?
 Aerix structs order fields naturally to minimize padding bytes and align 64-bit words, ensuring maximum L1/L2 CPU cache hit rates.
 
-#### Q68: Can Aerix be used for web assembly (Wasm)?
-Yes. Using Emscripten (`emcc`), transpiled C99 output compiles directly into `.wasm` modules with zero runtime overhead.
+#### Q68: Can Aerix compile directly to WebAssembly (Wasm) for browsers?
+Yes! With Phase 20, Aerix includes a native, self-contained WebAssembly emitter with zero external tool dependencies. Run `arx wasm <file.arx> --html --wat` to compile directly into standard W3C `.wasm` binary bytecode, `.wat` text format, and an interactive HTML5 hardware-accelerated 2D canvas and console runner page.
 
 #### Q69: How are panic and fatal errors handled?
 Aerix uses fail-fast fatal traps that print clean diagnostic traces to `stderr` and terminate cleanly with a non-zero exit code.
@@ -3410,6 +3410,11 @@ let val = chan.recv()
 // 12. C INTEROPERABILITY
 cinclude <math.h>
 cextern fn sqrt(x: f64) -> f64
+
+// 13. WEBASSEMBLY & BROWSER CANVAS (Phase 20)
+arx_canvas_clear(10, 14, 23)
+arx_canvas_fill_rect(20, 20, 100, 50, 0, 220, 255)
+// Compile to browser: arx wasm main.arx --html --serve
 ```
 
 ---

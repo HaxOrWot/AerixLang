@@ -22,8 +22,8 @@ class AerixCompiler:
         self.stdlib_path = stdlib_path
         self.linker = NativeLinker(stdlib_path)
 
-    def compile_source_to_c(self, source: str, filename: str = "<stdin>") -> str:
-        """Runs frontend and middle-end passes and emits optimized C99 source."""
+    def _compile_source_to_air(self, source: str, filename: str = "<stdin>") -> AIRModule:
+        """Runs frontend, monomorphization, semantics, and AIR optimization passes."""
         lines = source.splitlines()
 
         # 1. Lexer
@@ -49,11 +49,69 @@ class AerixCompiler:
 
         # 5. Optimization (arxc-opt)
         optimizer = AIROptimizer()
-        opt_air = optimizer.optimize(air_module)
+        return optimizer.optimize(air_module)
 
-        # 6. C99 Code Generation
+    def compile_source_to_c(self, source: str, filename: str = "<stdin>") -> str:
+        """Runs frontend and middle-end passes and emits optimized C99 source."""
+        opt_air = self._compile_source_to_air(source, filename)
         codegen = C99CodeGenerator()
         return codegen.generate(opt_air)
+
+    def compile_source_to_wat(self, source: str, filename: str = "<stdin>") -> str:
+        """Compiles Aerix source to WebAssembly Text format (.wat)."""
+        from src.backend.wasm import WasmTextEmitter
+        opt_air = self._compile_source_to_air(source, filename)
+        emitter = WasmTextEmitter(opt_air)
+        return emitter.emit()
+
+    def compile_source_to_wasm(self, source: str, filename: str = "<stdin>") -> bytes:
+        """Compiles Aerix source directly to WebAssembly binary bytes (.wasm)."""
+        from src.backend.wasm import WasmBinaryEncoder
+        opt_air = self._compile_source_to_air(source, filename)
+        encoder = WasmBinaryEncoder(opt_air)
+        return encoder.encode()
+
+    def compile_file_to_wasm(
+        self,
+        input_path: str,
+        output_wasm_path: Optional[str] = None,
+        emit_html: bool = False,
+        emit_wat: bool = False
+    ) -> str:
+        """
+        Compiles an Aerix source file (.arx) to a standalone WebAssembly binary (.wasm).
+        Optionally generates .wat text and an interactive HTML5 canvas runner page.
+        """
+        with open(input_path, "r", encoding="utf-8") as f:
+            source = f.read()
+
+        base_name = os.path.splitext(os.path.basename(input_path))[0]
+        out_dir = os.path.dirname(output_wasm_path) if output_wasm_path else os.path.dirname(input_path) or "."
+        if not output_wasm_path:
+            output_wasm_path = os.path.join(out_dir, f"{base_name}.wasm")
+
+        # Emit binary WASM
+        wasm_bytes = self.compile_source_to_wasm(source, input_path)
+        with open(output_wasm_path, "wb") as f:
+            f.write(wasm_bytes)
+
+        # Emit WAT text if requested
+        if emit_wat:
+            wat_text = self.compile_source_to_wat(source, input_path)
+            wat_path = os.path.join(out_dir, f"{base_name}.wat")
+            with open(wat_path, "w", encoding="utf-8") as f:
+                f.write(wat_text)
+
+        # Emit HTML runner if requested
+        if emit_html:
+            from src.backend.wasm import generate_browser_runner_html
+            wasm_file_only = os.path.basename(output_wasm_path)
+            html_content = generate_browser_runner_html(base_name, wasm_file_only)
+            html_path = os.path.join(out_dir, f"{base_name}.html")
+            with open(html_path, "w", encoding="utf-8") as f:
+                f.write(html_content)
+
+        return output_wasm_path
 
     def compile_file(
         self,

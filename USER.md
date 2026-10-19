@@ -15,7 +15,7 @@
 [![Version](https://img.shields.io/badge/version-1.0.84--alpha-00DCFF.svg?style=for-the-badge)](#)
 [![Standard](https://img.shields.io/badge/standard-ANSI%20C99%20%2F%20C11-1E90FF.svg?style=for-the-badge)](#)
 [![Architecture](https://img.shields.io/badge/architecture-x86__64%20%2F%20ARM64-00E676.svg?style=for-the-badge)](#)
-[![Test Suite](https://img.shields.io/badge/tests-80%2F80%20PASS%20(100%25)-00E5FF.svg?style=for-the-badge)](#)
+[![Test Suite](https://img.shields.io/badge/tests-87%2F87%20PASS%20(100%25)-00E5FF.svg?style=for-the-badge)](#)
 
 [Architecture](#1-architectural-specification--compilation-pipeline) • [CLI Reference](#2-cli-toolchain-reference-manual-arx) • [Type System](#3-the-complete-type-system) • [Memory Layout](#4-memory-model--physical-layout) • [Precedence](#6-expressions-operators--precedence) • [OOP System](#9-object-oriented-programming-oop) • [Concurrency](#11-concurrency-native-threads--typed-channels) • [Runtime API](#12-standard-library--runtime-api-aerix_rth) • [EBNF Grammar](#16-formal-language-grammar-ebnf)
 
@@ -157,9 +157,10 @@ arx [COMMAND] [OPTIONS] [FILE]
 | `lint <file>` | Analyzes code for unused variables, dead code, and style issues. | `--strict` |
 | `pm <action>` | Aerix Package Manager (install, remove, publish dependencies). | `install`, `update`, `list` |
 | `lsp` | Starts the Language Server Protocol (LSP) JSON-RPC daemon. | `--stdio`, `--socket=<port>` |
+| `wasm <file>` | Compiles program to WebAssembly (`.wasm`) with optional HTML5 runner. | `-o <out.wasm>`, `--wat`, `--html`, `--serve` |
 | `doctor` | Diagnostics tool checking GCC compiler and toolchain health. | `--fix` |
 | `setup-tools` | Automated setup wizard installing MinGW-w64 or Clang. | `--backend=gcc` |
-| `test` | Runs the full automated regression test suite (80 tests). | `-v`, `--fast` |
+| `test` | Runs the full automated regression test suite (87 tests). | `-v`, `--fast` |
 | `new <name>` | Scaffolds a new Aerix systems project with standard structure. | `--template=cli` |
 
 ---
@@ -758,11 +759,27 @@ arx lint program.arx  # Checks for dead code, unused variables, and style warnin
 arx repl              # Starts interactive evaluation shell
 ```
 
+### WebAssembly (WASM) & Browser Runtime Target (Phase 20)
+Aerix compiles directly to WebAssembly bytecode (`.wasm`) and WebAssembly Text format (`.wat`) with zero external compiler dependencies. Generate standalone WASM binaries and an interactive HTML5 hardware-accelerated 2D canvas runner with a single command:
+```bash
+# Compile to WebAssembly and generate an interactive HTML5 runner page:
+arx wasm examples/27_WASM_BROWSER_RUNTIME.arx --html --wat
+
+# Compile and launch immediate local web server:
+arx wasm main.arx --serve
+```
+
+**Browser Interoperability Primitives (`env`):**
+* `arx_canvas_set_pixel(x, y, r, g, b)` — Renders a single RGB pixel to the HTML5 2D canvas.
+* `arx_canvas_fill_rect(x, y, w, h, r, g, b)` — Renders an RGB rectangle with hardware acceleration.
+* `arx_canvas_clear(r, g, b)` — Clears canvas background color.
+* `arx_now_ms() -> f64` — High-resolution performance timer (`performance.now()`).
+
 ---
 
-## 15. Production Examples Catalog (26 Programs)
+## 15. Production Examples Catalog (27 Programs)
 
-The repository provides 26 runnable programs in [`examples/`](file:///z:/VSCode/AerixLang/examples/):
+The repository provides 27 runnable programs in [`examples/`](file:///z:/VSCode/AerixLang/examples/):
 
 | File | Topic & Concept |
 | :--- | :--- |
@@ -792,6 +809,7 @@ The repository provides 26 runnable programs in [`examples/`](file:///z:/VSCode/
 | `24_TRAITS_AND_INTERFACES.arx` | Abstract behavior contracts via `trait` and `implements`. |
 | `25_GENERICS_AND_MONOMORPHISM.arx` | Zero-overhead static generic monomorphization (`<T>`). |
 | `26_CONCURRENCY_AND_CHANNELS.arx` | Multi-core `spawn`, `Channel<T>`, joins, argpacks. |
+| `27_WASM_BROWSER_RUNTIME.arx` | WebAssembly bytecode emission, canvas rendering, DOM interop. |
 
 ---
 

@@ -789,8 +789,10 @@ class SemanticAnalyzer:
                         return e_type
             if node.name in self.enums:
                 return self.enums[node.name]
-            if node.name in ("sleep_ms", "arx_sleep_ms", "arx_channel_new", "arx_channel_send", "arx_channel_recv", "arx_channel_close", "arx_channel_free", "arx_thread_join"):
+            if node.name in ("sleep_ms", "arx_sleep_ms", "arx_channel_new", "arx_channel_send", "arx_channel_recv", "arx_channel_close", "arx_channel_free", "arx_thread_join", "arx_canvas_set_pixel", "arx_canvas_fill_rect", "arx_canvas_clear"):
                 return FunctionType([], TYPE_VOID)
+            if node.name == "arx_now_ms":
+                return FunctionType([], TYPE_F64)
             self.error(f"Undefined variable or identifier: '{node.name}'", node)
         sym.is_used = True
         self.node_types[id(node)] = sym.type
@@ -882,10 +884,12 @@ class SemanticAnalyzer:
                 for arg in node.args:
                     self.analyze_node(arg)
                 return TYPE_I64
-            if name in ("arx_channel_send", "arx_channel_close", "arx_channel_free", "arx_thread_join"):
+            if name in ("arx_channel_send", "arx_channel_close", "arx_channel_free", "arx_thread_join", "arx_canvas_set_pixel", "arx_canvas_fill_rect", "arx_canvas_clear"):
                 for arg in node.args:
                     self.analyze_node(arg)
                 return TYPE_VOID
+            if name == "arx_now_ms":
+                return TYPE_F64
             if name in self.classes:
                 # Value / Stack class instantiation (e.g. Hero("Arthur"))
                 cls_type = self.classes[name]

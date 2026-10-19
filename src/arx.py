@@ -314,6 +314,42 @@ def cmd_lsp():
     lsp_main()
 
 
+def cmd_wasm(file_path: str, output: Optional[str], emit_wat: bool, emit_html: bool, serve: bool):
+    """Compiles an Aerix source file to WebAssembly and browser artifacts."""
+    if not os.path.exists(file_path):
+        print(f"\033[1;31m[ERROR]\033[0m: File '{file_path}' does not exist.")
+        sys.exit(1)
+    compiler = AerixCompiler()
+    out_wasm = compiler.compile_file_to_wasm(
+        file_path,
+        output_wasm_path=output,
+        emit_html=emit_html or serve,
+        emit_wat=emit_wat
+    )
+    print(f"\033[1;32m{ICON_OK} [WASM SUCCESS]\033[0m: WebAssembly binary generated {ICON_ARROW} '{out_wasm}'")
+    base_dir = os.path.dirname(out_wasm) or "."
+    base_name = os.path.splitext(os.path.basename(out_wasm))[0]
+    if emit_wat:
+        print(f"      {ICON_ARROW} WebAssembly Text: '{os.path.join(base_dir, f'{base_name}.wat')}'")
+    if emit_html or serve:
+        html_path = os.path.join(base_dir, f"{base_name}.html")
+        print(f"      {ICON_ARROW} HTML5 Browser Runner: '{html_path}'")
+    if serve:
+        import http.server
+        import socketserver
+        import webbrowser
+        port = 8080
+        class Handler(http.server.SimpleHTTPRequestHandler):
+            def __init__(self, *a, **kw):
+                super().__init__(*a, directory=base_dir, **kw)
+        print(f"\n\033[1;36m[WASM SERVER]\033[0m Serving at http://localhost:{port}/{base_name}.html (Press Ctrl+C to stop)")
+        webbrowser.open(f"http://localhost:{port}/{base_name}.html")
+        with socketserver.TCPServer(("", port), Handler) as httpd:
+            try:
+                httpd.serve_forever()
+            except KeyboardInterrupt:
+                print("\nServer stopped.")
+
 
 def _main_cli():
     # Instant Fast-Path for 'arx <file.arx>' and 'arx run <file.arx>'
@@ -347,6 +383,14 @@ def _main_cli():
     emitc_parser = subparsers.add_parser("emit-c", help="Emit intermediate C99 source code")
     emitc_parser.add_argument("file", help="Path to .arx file")
     emitc_parser.add_argument("-o", "--output", help="Output .c path")
+
+    # wasm
+    wasm_parser = subparsers.add_parser("wasm", help="Compile an Aerix program to WebAssembly (.wasm) for browser deployment")
+    wasm_parser.add_argument("file", help="Path to .arx file")
+    wasm_parser.add_argument("-o", "--output", help="Output .wasm path")
+    wasm_parser.add_argument("--wat", action="store_true", help="Also emit WebAssembly text format (.wat)")
+    wasm_parser.add_argument("--html", action="store_true", help="Generate an interactive HTML5 canvas runner page")
+    wasm_parser.add_argument("--serve", action="store_true", help="Start a local web server to test in browser")
 
     # check
     check_parser = subparsers.add_parser("check", help="Fast syntax and type checking")
@@ -388,7 +432,7 @@ def _main_cli():
     # automatically default to `run`:
     if len(sys.argv) > 1 and not sys.argv[1].startswith("-"):
         first_arg = sys.argv[1]
-        valid_commands = {"doctor", "setup-tools", "test", "new", "check", "version", "run", "build", "emit-c", "repl", "fmt", "lint", "pm", "lsp", "-h", "--help"}
+        valid_commands = {"doctor", "setup-tools", "test", "new", "check", "version", "run", "build", "emit-c", "wasm", "repl", "fmt", "lint", "pm", "lsp", "-h", "--help"}
         if first_arg not in valid_commands and (first_arg.endswith(".arx") or os.path.exists(first_arg)):
             sys.argv.insert(1, "run")
 
@@ -418,6 +462,8 @@ def _main_cli():
         cmd_pm(args.subcmd, args.pm_args)
     elif args.command == "lsp":
         cmd_lsp()
+    elif args.command == "wasm":
+        cmd_wasm(args.file, args.output, args.wat, args.html, args.serve)
     elif args.command == "version":
         print(f"Aerix (arx) Toolchain v{VERSION}")
     elif args.command == "run":
