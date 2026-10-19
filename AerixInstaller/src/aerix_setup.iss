@@ -252,48 +252,37 @@ begin
   IDEPage.Values[1] := AntigravityDetected or WizardIsTaskSelected('antigravityExt');
 end;
 
-// Install VS Code Extension with CLI execution and direct filesystem fallback
+// Install VS Code Extension via official CLI
 procedure InstallVSCodeExt(VsixPath: String);
 var
   ResultCode: Integer;
   CodeCmd: String;
 begin
   CodeCmd := GetVSCodeCmd();
-  // 1. Try CLI
-  if not Exec('cmd.exe', '/C "' + CodeCmd + '" --install-extension "' + VsixPath + '" --force', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) or (ResultCode <> 0) then
-  begin
-    // 2. Direct unpack fallback via PowerShell Expand-Archive
-    Exec('powershell.exe', '-NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ' +
-      '"$dest = Join-Path $env:USERPROFILE ''.vscode\extensions\aerix-lang.aerix-1.0.84''; ' +
-      'if (Test-Path $dest) { Remove-Item -Recurse -Force $dest }; ' +
-      '$tmp = Join-Path $env:TEMP ''aerix_vsix_tmp''; ' +
-      'if (Test-Path $tmp) { Remove-Item -Recurse -Force $tmp }; ' +
-      'Expand-Archive -Path ''' + VsixPath + ''' -DestinationPath $tmp -Force; ' +
-      'Move-Item -Path (Join-Path $tmp ''extension'') -Destination $dest -Force; ' +
-      'Remove-Item -Recurse -Force $tmp"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
-  end;
+  Exec('cmd.exe', '/C "' + CodeCmd + '" --install-extension "' + VsixPath + '" --force', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
 end;
 
-// Install Antigravity Extension with CLI execution and direct filesystem fallback
+// Install Antigravity Extension via official CLI
 procedure InstallAntigravityExt(VsixPath: String);
 var
   ResultCode: Integer;
   AntigravityCmd: String;
 begin
   AntigravityCmd := GetAntigravityCmd();
-  // 1. Try CLI
-  if not Exec('cmd.exe', '/C "' + AntigravityCmd + '" --install-extension "' + VsixPath + '" --force', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) or (ResultCode <> 0) then
-  begin
-    // 2. Direct unpack fallback via PowerShell Expand-Archive
-    Exec('powershell.exe', '-NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ' +
-      '"$dest = Join-Path $env:USERPROFILE ''.antigravity-ide\extensions\aerix-lang.aerix-1.0.84''; ' +
-      'if (Test-Path $dest) { Remove-Item -Recurse -Force $dest }; ' +
-      '$tmp = Join-Path $env:TEMP ''aerix_anti_tmp''; ' +
-      'if (Test-Path $tmp) { Remove-Item -Recurse -Force $tmp }; ' +
-      'Expand-Archive -Path ''' + VsixPath + ''' -DestinationPath $tmp -Force; ' +
-      'Move-Item -Path (Join-Path $tmp ''extension'') -Destination $dest -Force; ' +
-      'Remove-Item -Recurse -Force $tmp"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
-  end;
+  Exec('cmd.exe', '/C "' + AntigravityCmd + '" --install-extension "' + VsixPath + '" --force', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+end;
+
+// Uninstall extensions on setup removal
+procedure UninstallIDEExtensions();
+var
+  ResultCode: Integer;
+  CodeCmd, AntigravityCmd: String;
+begin
+  CodeCmd := GetVSCodeCmd();
+  Exec('cmd.exe', '/C "' + CodeCmd + '" --uninstall-extension aerix-lang.aerix', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+
+  AntigravityCmd := GetAntigravityCmd();
+  Exec('cmd.exe', '/C "' + AntigravityCmd + '" --uninstall-extension aerix-lang.aerix', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
 end;
 
 // Post-installation step execution
@@ -342,6 +331,8 @@ begin
   if CurUninstallStep = usPostUninstall then
   begin
     RemovePath(ExpandConstant('{app}\bin'));
+    UninstallIDEExtensions();
     SHChangeNotify(SHCNE_ASSOCCHANGED, SHCNF_IDLIST, 0, 0);
   end;
 end;
+
