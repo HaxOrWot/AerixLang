@@ -359,6 +359,11 @@ Phase 17: Abstract Interface Traits & Conformance ✅ COMPLETE (trait & implemen
 Phase 18: First-Class Systems Generics            ✅ COMPLETE (Static monomorphization)
 Phase 19: Lightweight Concurrency & Channels     ✅ COMPLETE (spawn, Channel<T>, joins)
 Phase 20: WebAssembly Target & Browser Runtime   ✅ COMPLETE (WASM bytecode, Canvas & HTML5)
+Phase 21: Dynamic Collections & Text Engine      🚀 IN PROGRESS (List<T>, String, Slices)
+Phase 22: Associative Tables, Sets & Iteration   📅 PLANNED (Map<K, V>, Set<T>, for..in)
+Phase 23: Lightweight Records, Tuples & Buffers  📅 PLANNED ((T1, T2), Queue, Stack, Deque)
+Phase 24: Resilient Systems Error Handling       📅 PLANNED (Result<T, E>, ? Operator)
+Phase 25: Multi-File Modules & Package Manager   📅 PLANNED (import, aerix.toml, arx pm)
 ```
 
 </details>

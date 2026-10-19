@@ -3415,6 +3415,14 @@ cextern fn sqrt(x: f64) -> f64
 arx_canvas_clear(10, 14, 23)
 arx_canvas_fill_rect(20, 20, 100, 50, 0, 220, 255)
 // Compile to browser: arx wasm main.arx --html --serve
+
+// 14. STANDARD COLLECTIONS & TEXT ENGINE (Phase 21+)
+let mut list = List<i64>()
+list.push(42)
+let val = list[0]
+let mut s = String("  aerix  ").trim().to_upper()
+let mut dict = Map<str, i64>()
+dict["alpha"] = 100
 ```
 
 ---

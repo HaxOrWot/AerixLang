@@ -17,7 +17,7 @@
 [![Architecture](https://img.shields.io/badge/architecture-x86__64%20%2F%20ARM64-00E676.svg?style=for-the-badge)](#)
 [![Test Suite](https://img.shields.io/badge/tests-87%2F87%20PASS%20(100%25)-00E5FF.svg?style=for-the-badge)](#)
 
-[Architecture](#1-architectural-specification--compilation-pipeline) • [CLI Reference](#2-cli-toolchain-reference-manual-arx) • [Type System](#3-the-complete-type-system) • [Memory Layout](#4-memory-model--physical-layout) • [Precedence](#6-expressions-operators--precedence) • [OOP System](#9-object-oriented-programming-oop) • [Concurrency](#11-concurrency-native-threads--typed-channels) • [Runtime API](#12-standard-library--runtime-api-aerix_rth) • [EBNF Grammar](#16-formal-language-grammar-ebnf)
+[Architecture](#1-architectural-specification--compilation-pipeline) • [CLI Reference](#2-cli-toolchain-reference-manual-arx) • [Type System](#3-the-complete-type-system) • [Memory Layout](#4-memory-model--physical-layout) • [Precedence](#6-expressions-operators--precedence) • [OOP System](#9-object-oriented-programming-oop) • [Concurrency](#11-concurrency-native-threads--typed-channels) • [Runtime API](#12-standard-library--runtime-api-aerix_rth) • [Collections](#17-standard-collections--data-structures-architecture) • [EBNF Grammar](#16-formal-language-grammar-ebnf)
 
 </div>
 
@@ -67,8 +67,9 @@
 12. [Standard Library & Runtime API (`aerix_rt.h`)](#12-standard-library--runtime-api-aerix_rth)
 13. [C Interoperability & Foreign Function Interface (FFI)](#13-c-interoperability--foreign-function-interface-ffi)
 14. [Developer Ecosystem & IDE Tooling](#14-developer-ecosystem--ide-tooling)
-15. [Production Examples Catalog (26 Programs)](#15-production-examples-catalog-26-programs)
+15. [Production Examples Catalog (27 Programs)](#15-production-examples-catalog-26-programs)
 16. [Formal Language Grammar (EBNF)](#16-formal-language-grammar-ebnf)
+17. [Standard Collections & Data Structures Architecture](#17-standard-collections--data-structures-architecture)
 
 ---
 
@@ -841,6 +842,58 @@ Expression      ::= PipelineExpr ;
 PipelineExpr    ::= CascadeExpr ( "|>" CascadeExpr )* ;
 CascadeExpr     ::= LogicalOrExpr ( "~>" CallExpr )* ;
 ```
+
+---
+
+## 17. Standard Collections & Data Structures Architecture
+
+Aerix features a cache-aligned, monomorphized data structures engine engineered for zero-cost execution and deterministic RAII lifecycle:
+
+### 17.1 Dynamic Contiguous Vectors (`List<T>`)
+* **Memory Structure:** 24-byte control header `{ data: *T, len: usize, cap: usize }`.
+* **Growth Strategy:** $1.5\times$ Golden Ratio amortized $\mathcal{O}(1)$ push.
+* **Core API:**
+  ```aerix
+  let mut items = List<i64>();
+  items.push(42);
+  items.push(100);
+  let val = items[0];            // Bracket indexing
+  items[0] = 99;                 // Index mutation
+  let popped = items.pop();      // 100
+  let slice = items[0..1];       // Zero-copy slice view
+  items.sort();
+  ```
+
+### 17.2 Dual-Tier Text Engine (`String` vs `str`)
+* **`str` (String Slice):** Immutable borrowed UTF-8 pointer + length (`const char*`).
+* **`String` (Owned Dynamic Text):** Mutable growable text buffer with 24-byte Small String Optimization (SSO) for strings $\le 15$ bytes without heap allocation:
+  ```aerix
+  let mut s = String("  aerix systems  ");
+  let clean = s.trim().to_upper();             // "AERIX SYSTEMS"
+  let words: List<str> = clean.split(" ");     // ["AERIX", "SYSTEMS"]
+  let has_word = clean.contains("AERIX");       // true
+  ```
+
+### 17.3 Associative Mappings & Sets (`Map<K, V>`, `Set<T>`)
+* **Robin Hood Dense Table:** $\mathcal{O}(1)$ average lookups with minimal probe sequence variance:
+  ```aerix
+  let mut scores = Map<str, i64>();
+  scores["phoenix"] = 9900;
+  let score = scores["phoenix"];
+
+  let mut tags = Set<str>();
+  tags.add("graphics");
+  tags.add("simd");
+  ```
+
+### 17.4 Anonymous Records & Tuples `(T1, T2)`
+* Zero-overhead anonymous C structs with destructuring:
+  ```aerix
+  fn get_telemetry() -> (f64, i64, bool) {
+      return (142.5, 42, true);
+  }
+  let (velocity, packet_id, ok) = get_telemetry();
+  ```
 
 ---
 
