@@ -51,7 +51,7 @@ Set-ItemProperty -Path $openWithPath -Name "Aerix.SourceFile" -Value ""
 $progIdPath = "HKCU:\Software\Classes\Aerix.SourceFile"
 New-Item -Path $progIdPath -Force | Out-Null
 Set-ItemProperty -Path $progIdPath -Name "(Default)" -Value "Aerix Source Code"
-Set-ItemProperty -Path $progIdPath -Name "FriendlyTypeName" -Value "Aerix Source Code (.arx)"
+Set-ItemProperty -Path $progIdPath -Name "FriendlyTypeName" -Value "Aerix Source Code"
 
 # 3. Register DefaultIcon (This makes the custom icon show up in Explorer!)
 $iconPath = "HKCU:\Software\Classes\Aerix.SourceFile\DefaultIcon"

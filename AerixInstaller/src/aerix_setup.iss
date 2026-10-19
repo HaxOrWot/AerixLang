@@ -117,7 +117,7 @@ Root: HKA; Subkey: "Software\Classes\.arx\OpenWithProgids"; ValueType: string; V
 ; 2. ProgID & Explorer Custom Icon (Always Executed)
 ; -----------------------------------------------------------------------------
 Root: HKA; Subkey: "Software\Classes\Aerix.SourceFile"; ValueType: string; ValueName: ""; ValueData: "Aerix Source Code"; Flags: uninsdeletekey
-Root: HKA; Subkey: "Software\Classes\Aerix.SourceFile"; ValueType: string; ValueName: "FriendlyTypeName"; ValueData: "Aerix Source Code (.arx)"; Flags: uninsdeletekey
+Root: HKA; Subkey: "Software\Classes\Aerix.SourceFile"; ValueType: string; ValueName: "FriendlyTypeName"; ValueData: "Aerix Source Code"; Flags: uninsdeletekey
 Root: HKA; Subkey: "Software\Classes\Aerix.SourceFile\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\assets\aerix.ico,0"; Flags: uninsdeletekey
 
 ; -----------------------------------------------------------------------------

@@ -97,7 +97,7 @@ Defines the friendly display name, document class properties, and links directly
 ```ini
 [HKEY_CURRENT_USER\Software\Classes\Aerix.SourceFile]
 @="Aerix Source Code"
-"FriendlyTypeName"="Aerix Source Code (.arx)"
+"FriendlyTypeName"="Aerix Source Code"
 
 [HKEY_CURRENT_USER\Software\Classes\Aerix.SourceFile\DefaultIcon]
 @="{app}\assets\aerix_file.ico,0"
