@@ -14,7 +14,8 @@ from src.frontend.ast_nodes import (
     ClassDefNode, ClassFieldNode, ConstructorDefNode, DestructorDefNode,
     TraitDefNode, CIncludeNode, CExternNode, BreakNode, ContinueNode,
     PropertyDefNode, OperatorDefNode, GuardNode, CascadeNode, ExtendDefNode,
-    EnumDefNode, EnumVariantNode, MatchNode, MatchCaseNode, SpawnNode
+    EnumDefNode, EnumVariantNode, MatchNode, MatchCaseNode, SpawnNode,
+    TupleNode, TupleDestructureNode
 )
 from src.middle.typesystem import (
     Type, ClassType, FunctionType, OptionalType, EnumType, EnumVariant, TraitType,
@@ -388,6 +389,10 @@ class SemanticAnalyzer:
             return self.visit_string_interp(node)
         elif isinstance(node, SpawnNode):
             return self.visit_spawn(node)
+        elif isinstance(node, TupleNode):
+            return self.visit_tuple(node)
+        elif isinstance(node, TupleDestructureNode):
+            return self.visit_tuple_destructure(node)
         elif isinstance(node, (CIncludeNode, CExternNode, TraitDefNode, BreakNode, ContinueNode)):
             return TYPE_VOID
         return TYPE_VOID
@@ -753,8 +758,19 @@ class SemanticAnalyzer:
     def visit_for(self, node: ForNode) -> Type:
         range_type = self.analyze_node(node.range_expr)
         for_scope = Scope(parent=self.current_scope, kind="for")
-        # Define loop variable as immutable i64
-        for_scope.define(Symbol(node.var_name, TYPE_I64, False, node))
+        elem_type = TYPE_I64
+        if not isinstance(node.range_expr, RangeNode):
+            if range_type.name.startswith("List_"):
+                elem_name = range_type.name[5:]
+                elem_type = self.resolve_type(elem_name)
+            elif range_type.name.startswith("Set_"):
+                elem_name = range_type.name[4:]
+                elem_type = self.resolve_type(elem_name)
+            elif isinstance(range_type, ClassType) and "get" in range_type.methods:
+                elem_type = range_type.methods["get"].return_type
+            elif range_type == TYPE_STR:
+                elem_type = TYPE_STR
+        for_scope.define(Symbol(node.var_name, elem_type, False, node))
         prev_scope = self.current_scope
         self.current_scope = for_scope
         self.visit_block(node.body)
@@ -914,16 +930,49 @@ class SemanticAnalyzer:
                 return TYPE_VOID
             if name == "arx_now_ms":
                 return TYPE_F64
-            if name.startswith("arx_list_") or name.startswith("arx_str_"):
+            if (name.startswith("arx_list_") or name.startswith("arx_str_") or 
+                name.startswith("arx_map_") or name.startswith("arx_set_") or 
+                name.startswith("arx_stack_") or name.startswith("arx_queue_") or 
+                name.startswith("arx_deque_") or name.startswith("arx_bytebuf_")):
                 for arg in node.args:
                     self.analyze_node(arg)
-                if name in ("arx_str_trim", "arx_str_to_upper", "arx_str_to_lower", "arx_str_replace", "arx_str_copy", "arx_str_slice", "arx_str_join", "arx_list_get_str", "arx_list_pop_str"):
+                if name in (
+                    "arx_str_trim", "arx_str_to_upper", "arx_str_to_lower", "arx_str_replace",
+                    "arx_str_copy", "arx_str_slice", "arx_str_join", "arx_str_repeat",
+                    "arx_str_concat", "arx_str_char_at", "arx_list_get_str", "arx_list_pop_str",
+                    "arx_list_swap_remove_str", "arx_list_remove_at_str",
+                    "arx_map_get_str_str", "arx_map_get_i64_str", "arx_set_get_str"
+                ):
                     return TYPE_STR
-                elif name in ("arx_str_contains", "arx_str_starts_with", "arx_str_ends_with"):
+                elif name in (
+                    "arx_str_contains", "arx_str_starts_with", "arx_str_ends_with",
+                    "arx_list_contains", "arx_list_contains_str", "arx_map_has", "arx_map_has_str",
+                    "arx_set_add", "arx_set_has", "arx_set_remove",
+                    "arx_set_add_str", "arx_set_has_str", "arx_set_remove_str"
+                ):
                     return TYPE_BOOL
-                elif name in ("arx_list_get_f64", "arx_list_pop_f64"):
+                elif name in (
+                    "arx_list_get_f64", "arx_list_pop_f64",
+                    "arx_list_swap_remove_f64", "arx_list_remove_at_f64",
+                    "arx_bytebuf_read_f32", "arx_bytebuf_read_f64"
+                ):
                     return TYPE_F64
-                elif name in ("arx_list_push", "arx_list_set", "arx_list_clear", "arx_list_free", "arx_list_push_i64", "arx_list_push_str", "arx_list_push_f64", "arx_list_set_i64", "arx_list_set_str", "arx_list_set_f64"):
+                elif name in (
+                    "arx_list_push", "arx_list_set", "arx_list_clear", "arx_list_free",
+                    "arx_list_reverse", "arx_list_sort", "arx_list_insert",
+                    "arx_list_push_i64", "arx_list_push_str", "arx_list_push_f64",
+                    "arx_list_set_i64", "arx_list_set_str", "arx_list_set_f64",
+                    "arx_list_insert_str", "arx_list_insert_f64", "arx_list_insert_i64",
+                    "arx_map_insert", "arx_map_remove", "arx_map_clear", "arx_map_free",
+                    "arx_map_insert_str_str", "arx_map_insert_str_i64", "arx_map_insert_i64_str", "arx_map_remove_str",
+                    "arx_set_clear", "arx_set_free",
+                    "arx_stack_push", "arx_stack_clear", "arx_stack_free",
+                    "arx_queue_enqueue", "arx_queue_clear", "arx_queue_free",
+                    "arx_deque_push_back", "arx_deque_push_front", "arx_deque_clear", "arx_deque_free",
+                    "arx_bytebuf_write_u8", "arx_bytebuf_write_i16_le", "arx_bytebuf_write_i32_le",
+                    "arx_bytebuf_write_i64_le", "arx_bytebuf_write_f32_le", "arx_bytebuf_write_f64_le",
+                    "arx_bytebuf_clear", "arx_bytebuf_free"
+                ):
                     return TYPE_VOID
                 return TYPE_I64
             if name in self.classes:
@@ -1132,6 +1181,9 @@ class SemanticAnalyzer:
             if obj_type.name.startswith("List_"):
                 elem_name = obj_type.name[5:]
                 return self.resolve_type(elem_name)
+            if obj_type.name.startswith("Map_"):
+                val_name = obj_type.name.split("_")[2]
+                return self.resolve_type(val_name)
             if "get" in obj_type.methods:
                 return obj_type.methods["get"].return_type
             if "op_index" in obj_type.methods:
@@ -1170,3 +1222,22 @@ class SemanticAnalyzer:
         if "ThreadHandle" in self.classes:
             return self.classes["ThreadHandle"]
         return TYPE_I64
+
+    def visit_tuple(self, node: TupleNode) -> Type:
+        elem_types = [self.analyze_node(e) for e in node.elements]
+        tuple_name = f"Tuple_{'_'.join(t.name for t in elem_types)}"
+        tuple_type = lookup_type(tuple_name, self.classes, self.enums, self.traits)
+        self.node_types[id(node)] = tuple_type
+        return tuple_type
+
+    def visit_tuple_destructure(self, node: TupleDestructureNode) -> Type:
+        init_type = self.analyze_node(node.initializer)
+        if not init_type.name.startswith("Tuple_"):
+            self.error(f"Cannot destructure non-tuple expression of type '{init_type.name}'", node)
+        parts = init_type.name[6:].split("_")
+        if len(parts) != len(node.names):
+            self.error(f"Destructuring pattern has {len(node.names)} variables but tuple has {len(parts)} elements", node)
+        for i, name in enumerate(node.names):
+            elem_t = self.resolve_type(parts[i])
+            self.current_scope.define(Symbol(name, elem_t, node.is_mut, node))
+        return TYPE_VOID

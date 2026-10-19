@@ -18,7 +18,8 @@ from src.frontend.ast_nodes import (
     ConstructorDefNode, DestructorDefNode, TraitDefNode, TraitMethodNode,
     CIncludeNode, CExternNode, PropertyDefNode, OperatorDefNode,
     CascadeNode, GuardNode, ExtendDefNode,
-    EnumVariantNode, EnumDefNode, MatchCaseNode, MatchNode, SpawnNode
+    EnumVariantNode, EnumDefNode, MatchCaseNode, MatchNode, SpawnNode,
+    TupleNode, TupleDestructureNode
 )
 
 
@@ -339,6 +340,17 @@ class Parser:
 
     def parse_type_annotation(self) -> str:
         tok = self.current()
+        if tok.type == TokenType.LPAREN:
+            self.advance() # consume '('
+            elem_types = []
+            while True:
+                elem_types.append(self.parse_type_annotation())
+                if not self.match(TokenType.COMMA):
+                    break
+            self.consume(TokenType.RPAREN, "Expected ')' after tuple type annotation")
+            tuple_t = f"Tuple_{'_'.join(elem_types)}"
+            self.record_generic_use("Tuple", elem_types)
+            return tuple_t
         if tok.type in (TokenType.IDENTIFIER, TokenType.FN):
             base_type = self.advance().value
             if self.match(TokenType.LT):
@@ -692,12 +704,28 @@ class Parser:
         else:
             return self.parse_expr_statement()
 
-    def parse_var_decl(self) -> VarDeclNode:
+    def parse_var_decl(self) -> ASTNode:
         start_tok = self.advance() # consume let/mut/const
         is_mut = (start_tok.type == TokenType.MUT)
         if start_tok.type == TokenType.LET and self.current().type == TokenType.MUT:
             self.advance() # consume 'mut' in 'let mut'
             is_mut = True
+
+        # Check for tuple destructuring: let (a, b) = ...
+        if self.match(TokenType.LPAREN):
+            names = []
+            while True:
+                n_tok = self.consume(TokenType.IDENTIFIER, "Expected variable name in tuple destructuring")
+                names.append(n_tok.value)
+                if not self.match(TokenType.COMMA):
+                    break
+            self.consume(TokenType.RPAREN, "Expected ')' after tuple destructuring names")
+            self.consume(TokenType.EQUALS, "Expected '=' in tuple destructuring")
+            init_expr = self.parse_expression()
+            while self.match(TokenType.SEMICOLON):
+                pass
+            return TupleDestructureNode(line=start_tok.line, col=start_tok.col, names=names, is_mut=is_mut, initializer=init_expr)
+
         name_tok = self.consume(TokenType.IDENTIFIER, "Expected variable name")
         
         type_annot = None
@@ -749,11 +777,7 @@ class Parser:
         start_tok = self.consume(TokenType.FOR, "Expected 'for'")
         var_tok = self.consume(TokenType.IDENTIFIER, "Expected loop variable name")
         self.consume(TokenType.IN, "Expected 'in' after for variable")
-        
         range_expr = self.parse_expression()
-        if not isinstance(range_expr, RangeNode):
-            self.error("Expected range expression in for loop (e.g. 0..10)", start_tok)
-            
         body = self.parse_block()
         return ForNode(line=start_tok.line, col=start_tok.col, var_name=var_tok.value, range_expr=range_expr, body=body)
 
@@ -990,8 +1014,19 @@ class Parser:
         return UnaryOpNode(line=tok.line, col=tok.col, op=tok.value, operand=operand)
 
     def parse_grouped_expr(self) -> ASTNode:
-        self.advance() # consume '('
+        lparen = self.advance() # consume '('
+        if self.match(TokenType.RPAREN):
+            return TupleNode(line=lparen.line, col=lparen.col, elements=[])
         expr = self.parse_expression()
+        if self.match(TokenType.COMMA):
+            elements = [expr]
+            if self.current().type != TokenType.RPAREN:
+                while True:
+                    elements.append(self.parse_expression())
+                    if not self.match(TokenType.COMMA):
+                        break
+            self.consume(TokenType.RPAREN, "Expected ')' after tuple elements")
+            return TupleNode(line=lparen.line, col=lparen.col, elements=elements)
         self.consume(TokenType.RPAREN, "Expected ')' after grouped expression")
         return expr
 
@@ -1065,6 +1100,10 @@ class Parser:
 
     def parse_member_access(self, left: ASTNode) -> ASTNode:
         self.advance() # consume '.'
+        if self.current().type == TokenType.INT_LITERAL:
+            num_tok = self.advance()
+            member_name = f"f{num_tok.value}"
+            return MemberAccessNode(line=left.line, col=left.col, object_expr=left, member=member_name)
         member_tok = self.consume(TokenType.IDENTIFIER, "Expected member name after '.'")
         return MemberAccessNode(line=left.line, col=left.col, object_expr=left, member=member_tok.value)
 

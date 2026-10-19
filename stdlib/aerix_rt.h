@@ -621,6 +621,122 @@ static inline int64_t arx_list_pop_i64(int64_t h) { return arx_list_pop(h); }
 static inline const char* arx_list_pop_str(int64_t h) { return (const char*)(intptr_t)arx_list_pop(h); }
 static inline double arx_list_pop_f64(int64_t h) { union { double f; int64_t i; } u; u.i = arx_list_pop(h); return u.f; }
 
+static inline bool arx_list_contains(int64_t h, int64_t val) {
+    Arx_List* list = (Arx_List*)(intptr_t)h;
+    if (!list) return false;
+    for (size_t i = 0; i < list->len; i++) {
+        if (list->data[i] == val) return true;
+    }
+    return false;
+}
+
+static inline int64_t arx_list_index_of(int64_t h, int64_t val) {
+    Arx_List* list = (Arx_List*)(intptr_t)h;
+    if (!list) return -1;
+    for (size_t i = 0; i < list->len; i++) {
+        if (list->data[i] == val) return (int64_t)i;
+    }
+    return -1;
+}
+
+static inline void arx_list_reverse(int64_t h) {
+    Arx_List* list = (Arx_List*)(intptr_t)h;
+    if (!list || list->len < 2) return;
+    size_t i = 0, j = list->len - 1;
+    while (i < j) {
+        int64_t tmp = list->data[i];
+        list->data[i] = list->data[j];
+        list->data[j] = tmp;
+        i++; j--;
+    }
+}
+
+static int _arx_cmp_i64(const void* a, const void* b) {
+    int64_t ia = *(const int64_t*)a;
+    int64_t ib = *(const int64_t*)b;
+    if (ia < ib) return -1;
+    if (ia > ib) return 1;
+    return 0;
+}
+
+static inline void arx_list_sort(int64_t h) {
+    Arx_List* list = (Arx_List*)(intptr_t)h;
+    if (!list || list->len < 2) return;
+    qsort(list->data, list->len, sizeof(int64_t), _arx_cmp_i64);
+}
+
+static inline int64_t arx_list_swap_remove(int64_t h, int64_t idx) {
+    Arx_List* list = (Arx_List*)(intptr_t)h;
+    if (!list || list->len == 0) arx_panic("IndexError: swap_remove on empty List", __FILE__, __LINE__);
+    if (idx < 0 || (size_t)idx >= list->len) arx_panic("IndexOutOfBounds: swap_remove index out of bounds", __FILE__, __LINE__);
+    int64_t removed = list->data[idx];
+    list->data[idx] = list->data[list->len - 1];
+    list->len--;
+    return removed;
+}
+
+static inline int64_t arx_list_remove_at(int64_t h, int64_t idx) {
+    Arx_List* list = (Arx_List*)(intptr_t)h;
+    if (!list || list->len == 0) arx_panic("IndexError: remove_at on empty List", __FILE__, __LINE__);
+    if (idx < 0 || (size_t)idx >= list->len) arx_panic("IndexOutOfBounds: remove_at index out of bounds", __FILE__, __LINE__);
+    int64_t removed = list->data[idx];
+    for (size_t i = (size_t)idx; i + 1 < list->len; i++) {
+        list->data[i] = list->data[i + 1];
+    }
+    list->len--;
+    return removed;
+}
+
+static inline void arx_list_insert(int64_t h, int64_t idx, int64_t val) {
+    Arx_List* list = (Arx_List*)(intptr_t)h;
+    if (!list) return;
+    if (idx < 0 || (size_t)idx > list->len) arx_panic("IndexOutOfBounds: insert index out of bounds", __FILE__, __LINE__);
+    if (list->len >= list->cap) {
+        size_t new_cap = list->cap + (list->cap >> 1);
+        if (new_cap < 4) new_cap = 4;
+        list->data = (int64_t*)realloc(list->data, new_cap * sizeof(int64_t));
+        list->cap = new_cap;
+    }
+    for (size_t i = list->len; i > (size_t)idx; i--) {
+        list->data[i] = list->data[i - 1];
+    }
+    list->data[idx] = val;
+    list->len++;
+}
+
+static inline const char* arx_list_swap_remove_str(int64_t h, int64_t idx) { return (const char*)(intptr_t)arx_list_swap_remove(h, idx); }
+static inline double arx_list_swap_remove_f64(int64_t h, int64_t idx) { union { double f; int64_t i; } u; u.i = arx_list_swap_remove(h, idx); return u.f; }
+static inline int64_t arx_list_swap_remove_i64(int64_t h, int64_t idx) { return arx_list_swap_remove(h, idx); }
+
+static inline const char* arx_list_remove_at_str(int64_t h, int64_t idx) { return (const char*)(intptr_t)arx_list_remove_at(h, idx); }
+static inline double arx_list_remove_at_f64(int64_t h, int64_t idx) { union { double f; int64_t i; } u; u.i = arx_list_remove_at(h, idx); return u.f; }
+static inline int64_t arx_list_remove_at_i64(int64_t h, int64_t idx) { return arx_list_remove_at(h, idx); }
+
+static inline void arx_list_insert_str(int64_t h, int64_t idx, const char* s) { arx_list_insert(h, idx, (int64_t)(intptr_t)s); }
+static inline void arx_list_insert_f64(int64_t h, int64_t idx, double v) { union { double f; int64_t i; } u; u.f = v; arx_list_insert(h, idx, u.i); }
+static inline void arx_list_insert_i64(int64_t h, int64_t idx, int64_t v) { arx_list_insert(h, idx, v); }
+
+static inline bool arx_list_contains_str(int64_t h, const char* query) {
+    Arx_List* list = (Arx_List*)(intptr_t)h;
+    if (!list || !query) return false;
+    for (size_t i = 0; i < list->len; i++) {
+        const char* s = (const char*)(intptr_t)list->data[i];
+        if (s && strcmp(s, query) == 0) return true;
+    }
+    return false;
+}
+
+static inline int64_t arx_list_index_of_str(int64_t h, const char* query) {
+    Arx_List* list = (Arx_List*)(intptr_t)h;
+    if (!list || !query) return -1;
+    for (size_t i = 0; i < list->len; i++) {
+        const char* s = (const char*)(intptr_t)list->data[i];
+        if (s && strcmp(s, query) == 0) return (int64_t)i;
+    }
+    return -1;
+}
+
+
 // ==========================================
 // Phase 21: Dual-Tier Text Engine (str & String)
 // ==========================================
@@ -793,5 +909,797 @@ static inline const char* arx_str_join(int64_t list_handle, const char* delim) {
     return res;
 }
 
+static inline const char* arx_str_repeat(const char* s, int64_t count) {
+    if (!s || count <= 0) return "";
+    size_t slen = strlen(s);
+    size_t total = slen * (size_t)count;
+    char* buf = (char*)arx_alloc(total + 1);
+    char* p = buf;
+    for (int64_t i = 0; i < count; i++) {
+        memcpy(p, s, slen);
+        p += slen;
+    }
+    *p = '\0';
+    return buf;
+}
+
+static inline const char* arx_str_concat(const char* a, const char* b) {
+    if (!a) a = "";
+    if (!b) b = "";
+    size_t la = strlen(a);
+    size_t lb = strlen(b);
+    char* buf = (char*)arx_alloc(la + lb + 1);
+    memcpy(buf, a, la);
+    memcpy(buf + la, b, lb);
+    buf[la + lb] = '\0';
+    return buf;
+}
+
+static inline const char* arx_str_char_at(const char* s, int64_t idx) {
+    if (!s) return "";
+    int64_t len = (int64_t)strlen(s);
+    if (idx < 0 || idx >= len) return "";
+    char* buf = (char*)arx_alloc(2);
+    buf[0] = s[idx];
+    buf[1] = '\0';
+    return buf;
+}
+
+
+
+// ==========================================
+// Phase 22: Map<K, V> — Robin Hood Hash Table
+// ==========================================
+
+#define ARX_MAP_EMPTY_SLOT    0
+#define ARX_MAP_DELETED_SLOT  1
+#define ARX_MAP_FULL_SLOT     2
+
+typedef struct {
+    uint8_t   state;    // ARX_MAP_EMPTY/DELETED/FULL
+    uint8_t   psl;      // Probe Sequence Length (Robin Hood distance)
+    int64_t   key;      // Key stored as i64 (str cast via intptr_t)
+    int64_t   value;    // Value stored as i64
+} Arx_MapSlot;
+
+typedef struct {
+    Arx_MapSlot* slots;
+    size_t capacity;   // Always power of 2
+    size_t len;
+    uint8_t key_is_str; // 1 if key type is str
+} Arx_Map;
+
+static inline uint64_t arx_fnv1a(const void* data, size_t len) {
+    uint64_t hash = 14695981039346656037ULL;
+    const uint8_t* ptr = (const uint8_t*)data;
+    for (size_t i = 0; i < len; i++) {
+        hash ^= ptr[i];
+        hash *= 1099511628211ULL;
+    }
+    return hash;
+}
+
+static inline uint64_t arx_map_hash_i64(int64_t key) {
+    uint64_t k = (uint64_t)key;
+    k ^= k >> 33;
+    k *= 0xff51afd7ed558ccdULL;
+    k ^= k >> 33;
+    k *= 0xc4ceb9fe1a85ec53ULL;
+    k ^= k >> 33;
+    return k;
+}
+
+static inline uint64_t arx_map_hash_str(const char* s) {
+    if (!s) return 0;
+    return arx_fnv1a(s, strlen(s));
+}
+
+static inline int64_t arx_map_new(int64_t key_is_str) {
+    Arx_Map* m = (Arx_Map*)arx_alloc(sizeof(Arx_Map));
+    m->capacity = 16;
+    m->len = 0;
+    m->key_is_str = (uint8_t)key_is_str;
+    m->slots = (Arx_MapSlot*)arx_alloc(16 * sizeof(Arx_MapSlot));
+    memset(m->slots, 0, 16 * sizeof(Arx_MapSlot));
+    return (int64_t)(intptr_t)m;
+}
+
+static inline uint64_t arx_map_compute_hash(Arx_Map* m, int64_t key) {
+    return m->key_is_str
+        ? arx_map_hash_str((const char*)(intptr_t)key)
+        : arx_map_hash_i64(key);
+}
+
+static inline int arx_map_keys_equal(Arx_Map* m, int64_t a, int64_t b) {
+    if (m->key_is_str) {
+        const char* sa = (const char*)(intptr_t)a;
+        const char* sb = (const char*)(intptr_t)b;
+        if (!sa || !sb) return sa == sb;
+        return strcmp(sa, sb) == 0;
+    }
+    return a == b;
+}
+
+// Forward declaration for rehash
+static void arx_map_insert_raw(Arx_Map* m, int64_t key, int64_t val);
+
+static void arx_map_grow(Arx_Map* m) {
+    size_t old_cap = m->capacity;
+    Arx_MapSlot* old_slots = m->slots;
+    m->capacity = old_cap * 2;
+    m->len = 0;
+    m->slots = (Arx_MapSlot*)arx_alloc(m->capacity * sizeof(Arx_MapSlot));
+    memset(m->slots, 0, m->capacity * sizeof(Arx_MapSlot));
+    for (size_t i = 0; i < old_cap; i++) {
+        if (old_slots[i].state == ARX_MAP_FULL_SLOT) {
+            arx_map_insert_raw(m, old_slots[i].key, old_slots[i].value);
+        }
+    }
+    arx_free(old_slots);
+}
+
+static void arx_map_insert_raw(Arx_Map* m, int64_t key, int64_t val) {
+    uint64_t hash = arx_map_compute_hash(m, key);
+    size_t idx = (size_t)(hash & (m->capacity - 1));
+    uint8_t psl = 0;
+    int64_t cur_key = key;
+    int64_t cur_val = val;
+
+    for (;;) {
+        Arx_MapSlot* slot = &m->slots[idx];
+        if (slot->state != ARX_MAP_FULL_SLOT) {
+            slot->state = ARX_MAP_FULL_SLOT;
+            slot->psl = psl;
+            slot->key = cur_key;
+            slot->value = cur_val;
+            m->len++;
+            return;
+        }
+        // Robin Hood: steal from rich
+        if (slot->psl < psl) {
+            uint8_t tmp_psl = slot->psl;
+            int64_t tmp_key = slot->key;
+            int64_t tmp_val = slot->value;
+            slot->psl = psl;
+            slot->key = cur_key;
+            slot->value = cur_val;
+            psl = tmp_psl;
+            cur_key = tmp_key;
+            cur_val = tmp_val;
+        }
+        psl++;
+        idx = (idx + 1) & (m->capacity - 1);
+    }
+}
+
+static inline void arx_map_insert(int64_t map_handle, int64_t key, int64_t val) {
+    Arx_Map* m = (Arx_Map*)(intptr_t)map_handle;
+    if (!m) return;
+    // Check if key already exists and update
+    uint64_t hash = arx_map_compute_hash(m, key);
+    size_t idx = (size_t)(hash & (m->capacity - 1));
+    uint8_t psl = 0;
+    while (m->slots[idx].state == ARX_MAP_FULL_SLOT) {
+        if (m->slots[idx].psl < psl) break;
+        if (arx_map_keys_equal(m, m->slots[idx].key, key)) {
+            m->slots[idx].value = val;
+            return;
+        }
+        psl++;
+        idx = (idx + 1) & (m->capacity - 1);
+    }
+    // Load factor 75%: grow before inserting
+    if ((m->len + 1) * 4 > m->capacity * 3) {
+        arx_map_grow(m);
+    }
+    if (m->key_is_str) {
+        key = (int64_t)(intptr_t)arx_str_copy((const char*)(intptr_t)key);
+    }
+    arx_map_insert_raw(m, key, val);
+}
+
+static inline int64_t arx_map_get(int64_t map_handle, int64_t key) {
+    Arx_Map* m = (Arx_Map*)(intptr_t)map_handle;
+    if (!m) return 0;
+    uint64_t hash = arx_map_compute_hash(m, key);
+    size_t idx = (size_t)(hash & (m->capacity - 1));
+    uint8_t psl = 0;
+    while (m->slots[idx].state == ARX_MAP_FULL_SLOT) {
+        if (m->slots[idx].psl < psl) break;
+        if (arx_map_keys_equal(m, m->slots[idx].key, key)) {
+            return m->slots[idx].value;
+        }
+        psl++;
+        idx = (idx + 1) & (m->capacity - 1);
+    }
+    return 0; // Key not found
+}
+
+static inline bool arx_map_has(int64_t map_handle, int64_t key) {
+    Arx_Map* m = (Arx_Map*)(intptr_t)map_handle;
+    if (!m) return false;
+    uint64_t hash = arx_map_compute_hash(m, key);
+    size_t idx = (size_t)(hash & (m->capacity - 1));
+    uint8_t psl = 0;
+    while (m->slots[idx].state == ARX_MAP_FULL_SLOT) {
+        if (m->slots[idx].psl < psl) break;
+        if (arx_map_keys_equal(m, m->slots[idx].key, key)) {
+            return true;
+        }
+        psl++;
+        idx = (idx + 1) & (m->capacity - 1);
+    }
+    return false;
+}
+
+static inline void arx_map_remove(int64_t map_handle, int64_t key) {
+    Arx_Map* m = (Arx_Map*)(intptr_t)map_handle;
+    if (!m) return;
+    uint64_t hash = arx_map_compute_hash(m, key);
+    size_t idx = (size_t)(hash & (m->capacity - 1));
+    uint8_t psl = 0;
+    size_t found = (size_t)-1;
+    while (m->slots[idx].state == ARX_MAP_FULL_SLOT) {
+        if (m->slots[idx].psl < psl) break;
+        if (arx_map_keys_equal(m, m->slots[idx].key, key)) {
+            found = idx;
+            break;
+        }
+        psl++;
+        idx = (idx + 1) & (m->capacity - 1);
+    }
+    if (found == (size_t)-1) return;
+    // Backward shift deletion
+    size_t cur = found;
+    for (;;) {
+        size_t next = (cur + 1) & (m->capacity - 1);
+        if (m->slots[next].state != ARX_MAP_FULL_SLOT || m->slots[next].psl == 0) {
+            m->slots[cur].state = ARX_MAP_EMPTY_SLOT;
+            m->slots[cur].psl = 0;
+            break;
+        }
+        m->slots[cur] = m->slots[next];
+        m->slots[cur].psl--;
+        cur = next;
+    }
+    m->len--;
+}
+
+static inline int64_t arx_map_len(int64_t map_handle) {
+    Arx_Map* m = (Arx_Map*)(intptr_t)map_handle;
+    return m ? (int64_t)m->len : 0;
+}
+
+static inline void arx_map_clear(int64_t map_handle) {
+    Arx_Map* m = (Arx_Map*)(intptr_t)map_handle;
+    if (!m) return;
+    memset(m->slots, 0, m->capacity * sizeof(Arx_MapSlot));
+    m->len = 0;
+}
+
+static inline void arx_map_free(int64_t map_handle) {
+    Arx_Map* m = (Arx_Map*)(intptr_t)map_handle;
+    if (!m) return;
+    if (m->slots) arx_free(m->slots);
+    arx_free(m);
+}
+
+// Returns a List handle containing all keys
+static inline int64_t arx_map_keys(int64_t map_handle) {
+    Arx_Map* m = (Arx_Map*)(intptr_t)map_handle;
+    int64_t list_h = arx_list_new(m ? (int64_t)m->len : 4);
+    if (!m) return list_h;
+    for (size_t i = 0; i < m->capacity; i++) {
+        if (m->slots[i].state == ARX_MAP_FULL_SLOT) {
+            arx_list_push(list_h, m->slots[i].key);
+        }
+    }
+    return list_h;
+}
+
+// Returns a List handle containing all values
+static inline int64_t arx_map_values(int64_t map_handle) {
+    Arx_Map* m = (Arx_Map*)(intptr_t)map_handle;
+    int64_t list_h = arx_list_new(m ? (int64_t)m->len : 4);
+    if (!m) return list_h;
+    for (size_t i = 0; i < m->capacity; i++) {
+        if (m->slots[i].state == ARX_MAP_FULL_SLOT) {
+            arx_list_push(list_h, m->slots[i].value);
+        }
+    }
+    return list_h;
+}
+
+// ==========================================
+// Phase 22: Set<T> — Zero-Value Hash Set
+// ==========================================
+
+// Reuses Arx_Map with value always 1
+static inline int64_t arx_set_new(int64_t key_is_str) {
+    return arx_map_new(key_is_str);
+}
+
+static inline bool arx_set_add(int64_t set_handle, int64_t item) {
+    bool already = arx_map_has(set_handle, item);
+    arx_map_insert(set_handle, item, 1);
+    return !already;
+}
+
+static inline bool arx_set_has(int64_t set_handle, int64_t item) {
+    return arx_map_has(set_handle, item);
+}
+
+static inline bool arx_set_remove(int64_t set_handle, int64_t item) {
+    bool had = arx_map_has(set_handle, item);
+    arx_map_remove(set_handle, item);
+    return had;
+}
+
+static inline int64_t arx_set_len(int64_t set_handle) {
+    return arx_map_len(set_handle);
+}
+
+static inline void arx_set_clear(int64_t set_handle) {
+    arx_map_clear(set_handle);
+}
+
+static inline void arx_set_free(int64_t set_handle) {
+    arx_map_free(set_handle);
+}
+
+static inline int64_t arx_set_to_list(int64_t set_handle) {
+    return arx_map_keys(set_handle);
+}
+
+static inline int64_t arx_set_get(int64_t set_handle, int64_t idx) {
+    Arx_Map* m = (Arx_Map*)(intptr_t)set_handle;
+    if (!m) return 0;
+    size_t count = 0;
+    for (size_t i = 0; i < m->capacity; i++) {
+        if (m->slots[i].state == ARX_MAP_FULL_SLOT) {
+            if ((int64_t)count == idx) return m->slots[i].key;
+            count++;
+        }
+    }
+    return 0;
+}
+
+static inline const char* arx_set_get_str(int64_t set_handle, int64_t idx) {
+    return (const char*)(intptr_t)arx_set_get(set_handle, idx);
+}
+
+// Set algebra helpers
+static inline int64_t arx_set_union(int64_t a, int64_t b) {
+    Arx_Map* ma = (Arx_Map*)(intptr_t)a;
+    int64_t result = arx_set_new(ma ? ma->key_is_str : 0);
+    Arx_Map* mr = (Arx_Map*)(intptr_t)result;
+    Arx_Map* mb = (Arx_Map*)(intptr_t)b;
+    if (ma) for (size_t i = 0; i < ma->capacity; i++)
+        if (ma->slots[i].state == ARX_MAP_FULL_SLOT)
+            arx_map_insert_raw(mr, ma->slots[i].key, 1);
+    if (mb) for (size_t i = 0; i < mb->capacity; i++)
+        if (mb->slots[i].state == ARX_MAP_FULL_SLOT)
+            if (!arx_map_has(result, mb->slots[i].key))
+                arx_map_insert_raw(mr, mb->slots[i].key, 1);
+    return result;
+}
+
+static inline int64_t arx_set_intersection(int64_t a, int64_t b) {
+    Arx_Map* ma = (Arx_Map*)(intptr_t)a;
+    int64_t result = arx_set_new(ma ? ma->key_is_str : 0);
+    Arx_Map* mr = (Arx_Map*)(intptr_t)result;
+    if (!ma) return result;
+    for (size_t i = 0; i < ma->capacity; i++) {
+        if (ma->slots[i].state == ARX_MAP_FULL_SLOT) {
+            if (arx_map_has(b, ma->slots[i].key))
+                arx_map_insert_raw(mr, ma->slots[i].key, 1);
+        }
+    }
+    return result;
+}
+
+static inline int64_t arx_set_difference(int64_t a, int64_t b) {
+    Arx_Map* ma = (Arx_Map*)(intptr_t)a;
+    int64_t result = arx_set_new(ma ? ma->key_is_str : 0);
+    Arx_Map* mr = (Arx_Map*)(intptr_t)result;
+    if (!ma) return result;
+    for (size_t i = 0; i < ma->capacity; i++) {
+        if (ma->slots[i].state == ARX_MAP_FULL_SLOT) {
+            if (!arx_map_has(b, ma->slots[i].key))
+                arx_map_insert_raw(mr, ma->slots[i].key, 1);
+        }
+    }
+    return result;
+}
+
+// Typed Map and Set Helpers
+static inline void arx_map_insert_i64_i64(int64_t h, int64_t k, int64_t v) { arx_map_insert(h, k, v); }
+static inline void arx_map_insert_str_i64(int64_t h, const char* k, int64_t v) { arx_map_insert(h, (int64_t)(intptr_t)k, v); }
+static inline void arx_map_insert_str_str(int64_t h, const char* k, const char* v) { arx_map_insert(h, (int64_t)(intptr_t)k, (int64_t)(intptr_t)v); }
+static inline void arx_map_insert_i64_str(int64_t h, int64_t k, const char* v) { arx_map_insert(h, k, (int64_t)(intptr_t)v); }
+
+static inline int64_t arx_map_get_i64(int64_t h, int64_t k) { return arx_map_get(h, k); }
+static inline int64_t arx_map_get_str_i64(int64_t h, const char* k) { return arx_map_get(h, (int64_t)(intptr_t)k); }
+static inline const char* arx_map_get_str_str(int64_t h, const char* k) { return (const char*)(intptr_t)arx_map_get(h, (int64_t)(intptr_t)k); }
+static inline const char* arx_map_get_i64_str(int64_t h, int64_t k) { return (const char*)(intptr_t)arx_map_get(h, k); }
+
+static inline bool arx_map_has_i64(int64_t h, int64_t k) { return arx_map_has(h, k); }
+static inline bool arx_map_has_str(int64_t h, const char* k) { return arx_map_has(h, (int64_t)(intptr_t)k); }
+
+static inline void arx_map_remove_i64(int64_t h, int64_t k) { arx_map_remove(h, k); }
+static inline void arx_map_remove_str(int64_t h, const char* k) { arx_map_remove(h, (int64_t)(intptr_t)k); }
+
+static inline bool arx_set_add_i64(int64_t h, int64_t v) { return arx_set_add(h, v); }
+static inline bool arx_set_add_str(int64_t h, const char* v) { return arx_set_add(h, (int64_t)(intptr_t)v); }
+static inline bool arx_set_has_i64(int64_t h, int64_t v) { return arx_set_has(h, v); }
+static inline bool arx_set_has_str(int64_t h, const char* v) { return arx_set_has(h, (int64_t)(intptr_t)v); }
+static inline bool arx_set_remove_i64(int64_t h, int64_t v) { return arx_set_remove(h, v); }
+static inline bool arx_set_remove_str(int64_t h, const char* v) { return arx_set_remove(h, (int64_t)(intptr_t)v); }
+
+
+
+// ==========================================
+// Phase 22: Stack<T> — LIFO Contiguous Buffer
+// ==========================================
+
+// Stack reuses Arx_List entirely — push/pop from back
+static inline int64_t arx_stack_new(void) {
+    return arx_list_new(8);
+}
+
+static inline void arx_stack_push(int64_t h, int64_t val) {
+    arx_list_push(h, val);
+}
+
+static inline int64_t arx_stack_pop(int64_t h) {
+    return arx_list_pop(h);
+}
+
+static inline int64_t arx_stack_peek(int64_t h) {
+    Arx_List* s = (Arx_List*)(intptr_t)h;
+    if (!s || s->len == 0) arx_panic("PeekError: Stack is empty", __FILE__, __LINE__);
+    return s->data[s->len - 1];
+}
+
+static inline int64_t arx_stack_len(int64_t h) {
+    return arx_list_len(h);
+}
+
+static inline bool arx_stack_is_empty(int64_t h) {
+    return arx_list_len(h) == 0;
+}
+
+static inline void arx_stack_clear(int64_t h) {
+    arx_list_clear(h);
+}
+
+static inline void arx_stack_free(int64_t h) {
+    arx_list_free(h);
+}
+
+// ==========================================
+// Phase 22: Queue<T> — FIFO Ring Buffer
+// ==========================================
+
+typedef struct {
+    int64_t* data;
+    size_t   head; // Read position
+    size_t   tail; // Write position
+    size_t   len;
+    size_t   cap;  // Always power of 2
+} Arx_Queue;
+
+static inline int64_t arx_queue_new(void) {
+    Arx_Queue* q = (Arx_Queue*)arx_alloc(sizeof(Arx_Queue));
+    q->cap  = 8;
+    q->len  = 0;
+    q->head = 0;
+    q->tail = 0;
+    q->data = (int64_t*)arx_alloc(8 * sizeof(int64_t));
+    return (int64_t)(intptr_t)q;
+}
+
+static inline void arx_queue_enqueue(int64_t qh, int64_t val) {
+    Arx_Queue* q = (Arx_Queue*)(intptr_t)qh;
+    if (!q) return;
+    if (q->len == q->cap) {
+        // Grow: double capacity
+        size_t new_cap = q->cap * 2;
+        int64_t* new_data = (int64_t*)arx_alloc(new_cap * sizeof(int64_t));
+        for (size_t i = 0; i < q->len; i++) {
+            new_data[i] = q->data[(q->head + i) & (q->cap - 1)];
+        }
+        arx_free(q->data);
+        q->data = new_data;
+        q->head = 0;
+        q->tail = q->len;
+        q->cap  = new_cap;
+    }
+    q->data[q->tail & (q->cap - 1)] = val;
+    q->tail = (q->tail + 1) & (q->cap - 1);
+    q->len++;
+}
+
+static inline int64_t arx_queue_dequeue(int64_t qh) {
+    Arx_Queue* q = (Arx_Queue*)(intptr_t)qh;
+    if (!q || q->len == 0) arx_panic("DequeueError: Queue is empty", __FILE__, __LINE__);
+    int64_t val = q->data[q->head & (q->cap - 1)];
+    q->head = (q->head + 1) & (q->cap - 1);
+    q->len--;
+    return val;
+}
+
+static inline int64_t arx_queue_peek_front(int64_t qh) {
+    Arx_Queue* q = (Arx_Queue*)(intptr_t)qh;
+    if (!q || q->len == 0) arx_panic("PeekError: Queue is empty", __FILE__, __LINE__);
+    return q->data[q->head & (q->cap - 1)];
+}
+
+static inline int64_t arx_queue_len(int64_t qh) {
+    Arx_Queue* q = (Arx_Queue*)(intptr_t)qh;
+    return q ? (int64_t)q->len : 0;
+}
+
+static inline bool arx_queue_is_empty(int64_t qh) {
+    Arx_Queue* q = (Arx_Queue*)(intptr_t)qh;
+    return !q || q->len == 0;
+}
+
+static inline void arx_queue_clear(int64_t qh) {
+    Arx_Queue* q = (Arx_Queue*)(intptr_t)qh;
+    if (q) { q->len = 0; q->head = 0; q->tail = 0; }
+}
+
+static inline void arx_queue_free(int64_t qh) {
+    Arx_Queue* q = (Arx_Queue*)(intptr_t)qh;
+    if (!q) return;
+    if (q->data) arx_free(q->data);
+    arx_free(q);
+}
+
+// ==========================================
+// Phase 22: Deque<T> — Double-Ended Ring Buffer
+// ==========================================
+
+// Deque reuses the same Arx_Queue struct; we expose both front+back operations
+static inline int64_t arx_deque_new(void) {
+    return arx_queue_new();
+}
+
+static inline void arx_deque_push_back(int64_t dh, int64_t val) {
+    arx_queue_enqueue(dh, val);
+}
+
+static inline void arx_deque_push_front(int64_t dh, int64_t val) {
+    Arx_Queue* q = (Arx_Queue*)(intptr_t)dh;
+    if (!q) return;
+    if (q->len == q->cap) {
+        size_t new_cap = q->cap * 2;
+        int64_t* new_data = (int64_t*)arx_alloc(new_cap * sizeof(int64_t));
+        for (size_t i = 0; i < q->len; i++) {
+            new_data[i + 1] = q->data[(q->head + i) & (q->cap - 1)];
+        }
+        arx_free(q->data);
+        q->data = new_data;
+        q->head = 0;
+        q->tail = q->len;
+        q->cap  = new_cap;
+    }
+    q->head = (q->head - 1 + q->cap) & (q->cap - 1);
+    q->data[q->head] = val;
+    q->len++;
+}
+
+static inline int64_t arx_deque_pop_back(int64_t dh) {
+    Arx_Queue* q = (Arx_Queue*)(intptr_t)dh;
+    if (!q || q->len == 0) arx_panic("PopError: Deque is empty", __FILE__, __LINE__);
+    q->tail = (q->tail - 1 + q->cap) & (q->cap - 1);
+    int64_t val = q->data[q->tail];
+    q->len--;
+    return val;
+}
+
+static inline int64_t arx_deque_pop_front(int64_t dh) {
+    return arx_queue_dequeue(dh);
+}
+
+static inline int64_t arx_deque_peek_front(int64_t dh) {
+    return arx_queue_peek_front(dh);
+}
+
+static inline int64_t arx_deque_peek_back(int64_t dh) {
+    Arx_Queue* q = (Arx_Queue*)(intptr_t)dh;
+    if (!q || q->len == 0) arx_panic("PeekError: Deque is empty", __FILE__, __LINE__);
+    return q->data[(q->tail - 1 + q->cap) & (q->cap - 1)];
+}
+
+static inline int64_t arx_deque_len(int64_t dh) {
+    return arx_queue_len(dh);
+}
+
+static inline bool arx_deque_is_empty(int64_t dh) {
+    return arx_queue_is_empty(dh);
+}
+
+static inline void arx_deque_clear(int64_t dh) {
+    arx_queue_clear(dh);
+}
+
+static inline void arx_deque_free(int64_t dh) {
+    arx_queue_free(dh);
+}
+
+// ==========================================
+// Phase 22: ByteBuffer — Aligned Binary Stream
+// ==========================================
+
+typedef struct {
+    uint8_t* data;
+    size_t   len;
+    size_t   cap;
+    size_t   pos; // Current read/write cursor
+} Arx_ByteBuf;
+
+static inline int64_t arx_bytebuf_new(int64_t capacity) {
+    if (capacity < 64) capacity = 64;
+    Arx_ByteBuf* buf = (Arx_ByteBuf*)arx_alloc(sizeof(Arx_ByteBuf));
+    buf->data = (uint8_t*)arx_alloc((size_t)capacity);
+    buf->len  = 0;
+    buf->cap  = (size_t)capacity;
+    buf->pos  = 0;
+    return (int64_t)(intptr_t)buf;
+}
+
+static inline void arx_bytebuf_ensure(Arx_ByteBuf* buf, size_t extra) {
+    if (buf->len + extra <= buf->cap) return;
+    size_t new_cap = buf->cap + (buf->cap >> 1);
+    if (new_cap < buf->cap + extra) new_cap = buf->cap + extra + 64;
+    buf->data = (uint8_t*)realloc(buf->data, new_cap);
+    if (!buf->data) arx_panic("OOM: ByteBuffer growth failed", __FILE__, __LINE__);
+    buf->cap = new_cap;
+}
+
+static inline void arx_bytebuf_write_u8(int64_t bh, int64_t val) {
+    Arx_ByteBuf* buf = (Arx_ByteBuf*)(intptr_t)bh;
+    if (!buf) return;
+    arx_bytebuf_ensure(buf, 1);
+    buf->data[buf->len++] = (uint8_t)(val & 0xFF);
+}
+
+static inline void arx_bytebuf_write_i32_le(int64_t bh, int64_t val) {
+    Arx_ByteBuf* buf = (Arx_ByteBuf*)(intptr_t)bh;
+    if (!buf) return;
+    arx_bytebuf_ensure(buf, 4);
+    int32_t v = (int32_t)val;
+    memcpy(buf->data + buf->len, &v, 4);
+    buf->len += 4;
+}
+
+static inline void arx_bytebuf_write_i32_be(int64_t bh, int64_t val) {
+    Arx_ByteBuf* buf = (Arx_ByteBuf*)(intptr_t)bh;
+    if (!buf) return;
+    arx_bytebuf_ensure(buf, 4);
+    int32_t v = (int32_t)val;
+    buf->data[buf->len + 0] = (uint8_t)((v >> 24) & 0xFF);
+    buf->data[buf->len + 1] = (uint8_t)((v >> 16) & 0xFF);
+    buf->data[buf->len + 2] = (uint8_t)((v >>  8) & 0xFF);
+    buf->data[buf->len + 3] = (uint8_t)( v        & 0xFF);
+    buf->len += 4;
+}
+
+static inline void arx_bytebuf_write_f64_le(int64_t bh, int64_t val_bits) {
+    Arx_ByteBuf* buf = (Arx_ByteBuf*)(intptr_t)bh;
+    if (!buf) return;
+    arx_bytebuf_ensure(buf, 8);
+    memcpy(buf->data + buf->len, &val_bits, 8);
+    buf->len += 8;
+}
+
+static inline int64_t arx_bytebuf_read_u8(int64_t bh) {
+    Arx_ByteBuf* buf = (Arx_ByteBuf*)(intptr_t)bh;
+    if (!buf || buf->pos >= buf->len)
+        arx_panic("ReadError: ByteBuffer underrun on read_u8", __FILE__, __LINE__);
+    return (int64_t)buf->data[buf->pos++];
+}
+
+static inline int64_t arx_bytebuf_read_i32_le(int64_t bh) {
+    Arx_ByteBuf* buf = (Arx_ByteBuf*)(intptr_t)bh;
+    if (!buf || buf->pos + 4 > buf->len)
+        arx_panic("ReadError: ByteBuffer underrun on read_i32_le", __FILE__, __LINE__);
+    int32_t v;
+    memcpy(&v, buf->data + buf->pos, 4);
+    buf->pos += 4;
+    return (int64_t)v;
+}
+
+static inline int64_t arx_bytebuf_read_i32_be(int64_t bh) {
+    Arx_ByteBuf* buf = (Arx_ByteBuf*)(intptr_t)bh;
+    if (!buf || buf->pos + 4 > buf->len)
+        arx_panic("ReadError: ByteBuffer underrun on read_i32_be", __FILE__, __LINE__);
+    int32_t v = ((int32_t)buf->data[buf->pos + 0] << 24)
+              | ((int32_t)buf->data[buf->pos + 1] << 16)
+              | ((int32_t)buf->data[buf->pos + 2] <<  8)
+              | ((int32_t)buf->data[buf->pos + 3]);
+    buf->pos += 4;
+    return (int64_t)v;
+}
+
+static inline void arx_bytebuf_seek(int64_t bh, int64_t offset) {
+    Arx_ByteBuf* buf = (Arx_ByteBuf*)(intptr_t)bh;
+    if (!buf) return;
+    if ((size_t)offset > buf->len) offset = (int64_t)buf->len;
+    buf->pos = (size_t)offset;
+}
+
+static inline void arx_bytebuf_reset(int64_t bh) {
+    Arx_ByteBuf* buf = (Arx_ByteBuf*)(intptr_t)bh;
+    if (buf) buf->pos = 0;
+}
+
+static inline int64_t arx_bytebuf_len(int64_t bh) {
+    Arx_ByteBuf* buf = (Arx_ByteBuf*)(intptr_t)bh;
+    return buf ? (int64_t)buf->len : 0;
+}
+
+static inline int64_t arx_bytebuf_pos(int64_t bh) {
+    Arx_ByteBuf* buf = (Arx_ByteBuf*)(intptr_t)bh;
+    return buf ? (int64_t)buf->pos : 0;
+}
+
+static inline void arx_bytebuf_free(int64_t bh) {
+    Arx_ByteBuf* buf = (Arx_ByteBuf*)(intptr_t)bh;
+    if (!buf) return;
+    if (buf->data) arx_free(buf->data);
+    arx_free(buf);
+}
+
+// ==========================================
+// Phase 22: str helper — arx_str_find
+// ==========================================
+
+static inline int64_t arx_str_find(const char* s, const char* needle) {
+    if (!s || !needle) return -1;
+    const char* found = strstr(s, needle);
+    return found ? (int64_t)(found - s) : -1;
+}
+
+static inline int64_t arx_str_compare(const char* a, const char* b) {
+    if (!a && !b) return 0;
+    if (!a) return -1;
+    if (!b) return 1;
+    return (int64_t)strcmp(a, b);
+}
+
+// ==========================================
+// Phase 22: for..in List iterator helper
+// ==========================================
+
+// arx_list_iter_next: stateless helper for for-in codegen
+// iter_state is a mutable int64 holding current index (starts at 0)
+// returns 1 if valid, 0 if exhausted; writes element into *out_elem
+static inline bool arx_list_iter_next(int64_t list_handle, int64_t* iter_idx, int64_t* out_elem) {
+    Arx_List* list = (Arx_List*)(intptr_t)list_handle;
+    if (!list || (size_t)(*iter_idx) >= list->len) return false;
+    *out_elem = list->data[(*iter_idx)++];
+    return true;
+}
+
+// arx_map_iter_next: iterates over key-value pairs
+// iter_state = current slot index in map->slots
+static inline bool arx_map_iter_next(int64_t map_handle, int64_t* iter_idx, int64_t* out_key, int64_t* out_val) {
+    Arx_Map* m = (Arx_Map*)(intptr_t)map_handle;
+    if (!m) return false;
+    while ((size_t)(*iter_idx) < m->capacity) {
+        size_t i = (size_t)(*iter_idx)++;
+        if (m->slots[i].state == ARX_MAP_FULL_SLOT) {
+            *out_key = m->slots[i].key;
+            *out_val = m->slots[i].value;
+            return true;
+        }
+    }
+    return false;
+}
+
 #endif // AERIX_RT_H
+
 

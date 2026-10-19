@@ -13,7 +13,8 @@ from src.frontend.ast_nodes import (
     PipelineNode, RangeNode, NewNode, CastNode, StringInterpNode,
     ClassDefNode, CIncludeNode, CExternNode, PropertyDefNode, OperatorDefNode,
     GuardNode, CascadeNode, ExtendDefNode,
-    EnumDefNode, EnumVariantNode, MatchNode, MatchCaseNode, SpawnNode
+    EnumDefNode, EnumVariantNode, MatchNode, MatchCaseNode, SpawnNode,
+    TupleNode, TupleDestructureNode
 )
 
 
@@ -350,6 +351,7 @@ class AIRLowering:
 
     def lower(self, program: ProgramNode) -> AIRModule:
         module = AIRModule(name="main_module")
+        self.module = module
         self.classes = {decl.name for decl in program.declarations if isinstance(decl, ClassDefNode)}
         self.class_fields = {
             decl.name: {f.name: f.type_name for f in decl.fields}
@@ -708,34 +710,96 @@ class AIRLowering:
                 self.lower_statement(s)
             self.current_insns.append(AIRJump(loop_lbl))
             self.current_insns.append(AIRLabel(end_lbl))
+        elif isinstance(stmt, TupleDestructureNode):
+            tup_temp = self.lower_expression(stmt.initializer)
+            tup_type = self.temp_types.get(tup_temp, "Tuple")
+            elem_types = tup_type[6:].split("_") if tup_type.startswith("Tuple_") else ["i64"] * len(stmt.names)
+            for i, var_name in enumerate(stmt.names):
+                field_temp = self.new_temp()
+                elem_t = elem_types[i] if i < len(elem_types) else "i64"
+                self.temp_types[field_temp] = elem_t
+                self.var_types[var_name] = elem_t
+                self.current_insns.append(AIRGetField(field_temp, tup_temp, f"f{i}"))
+                self.current_insns.append(AIRStore(var_name, field_temp))
         elif isinstance(stmt, ForNode):
-            # For i in start..end
-            start_temp = self.lower_expression(stmt.range_expr.start)
-            end_temp = self.lower_expression(stmt.range_expr.end)
-            self.current_insns.append(AIRStore(stmt.var_name, start_temp))
-            loop_lbl = self.new_label("for_start")
-            end_lbl = self.new_label("for_end")
-            self.current_insns.append(AIRLabel(loop_lbl))
-            
-            # Check condition (i < end or i <= end)
-            cmp_op = "<=" if stmt.range_expr.is_inclusive else "<"
-            cur_i = self.new_temp()
-            self.current_insns.append(AIRLoad(cur_i, stmt.var_name))
-            cond_temp = self.new_temp()
-            self.current_insns.append(AIRBinOp(cond_temp, cmp_op, cur_i, end_temp))
-            self.current_insns.append(AIRBranchIfNot(cond_temp, end_lbl))
-            
-            for s in stmt.body.statements:
-                self.lower_statement(s)
+            if isinstance(stmt.range_expr, RangeNode):
+                # For i in start..end
+                start_temp = self.lower_expression(stmt.range_expr.start)
+                end_temp = self.lower_expression(stmt.range_expr.end)
+                self.current_insns.append(AIRStore(stmt.var_name, start_temp))
+                loop_lbl = self.new_label("for_start")
+                end_lbl = self.new_label("for_end")
+                self.current_insns.append(AIRLabel(loop_lbl))
                 
-            # Increment: i += 1
-            one_temp = self.new_temp()
-            self.current_insns.append(AIRConst(one_temp, 1, "i64"))
-            nxt_i = self.new_temp()
-            self.current_insns.append(AIRBinOp(nxt_i, "+", cur_i, one_temp))
-            self.current_insns.append(AIRStore(stmt.var_name, nxt_i))
-            self.current_insns.append(AIRJump(loop_lbl))
-            self.current_insns.append(AIRLabel(end_lbl))
+                # Check condition (i < end or i <= end)
+                cmp_op = "<=" if stmt.range_expr.is_inclusive else "<"
+                cur_i = self.new_temp()
+                self.current_insns.append(AIRLoad(cur_i, stmt.var_name))
+                cond_temp = self.new_temp()
+                self.current_insns.append(AIRBinOp(cond_temp, cmp_op, cur_i, end_temp))
+                self.current_insns.append(AIRBranchIfNot(cond_temp, end_lbl))
+                
+                for s in stmt.body.statements:
+                    self.lower_statement(s)
+                    
+                # Increment: i += 1
+                one_temp = self.new_temp()
+                self.current_insns.append(AIRConst(one_temp, 1, "i64"))
+                nxt_i = self.new_temp()
+                self.current_insns.append(AIRBinOp(nxt_i, "+", cur_i, one_temp))
+                self.current_insns.append(AIRStore(stmt.var_name, nxt_i))
+                self.current_insns.append(AIRJump(loop_lbl))
+                self.current_insns.append(AIRLabel(end_lbl))
+            else:
+                # Collection iteration: for item in coll
+                coll_temp = self.lower_expression(stmt.range_expr)
+                coll_type = self.temp_types.get(coll_temp, self.var_types.get(stmt.range_expr.name if isinstance(stmt.range_expr, IdentifierNode) else ""))
+                len_temp = self.new_temp()
+                self.temp_types[len_temp] = "i64"
+                self.current_insns.append(AIRCallMethod(len_temp, coll_type or "Class", "len", coll_temp, []))
+
+                idx_var = f"__iter_idx_{self.temp_count}"
+                self.temp_count += 1
+                zero_temp = self.new_temp()
+                self.temp_types[zero_temp] = "i64"
+                self.current_insns.append(AIRConst(zero_temp, 0, "i64"))
+                self.current_insns.append(AIRStore(idx_var, zero_temp))
+
+                loop_lbl = self.new_label("for_start")
+                end_lbl = self.new_label("for_end")
+                self.current_insns.append(AIRLabel(loop_lbl))
+
+                cur_idx = self.new_temp()
+                self.temp_types[cur_idx] = "i64"
+                self.current_insns.append(AIRLoad(cur_idx, idx_var))
+                cond_temp = self.new_temp()
+                self.temp_types[cond_temp] = "bool"
+                self.current_insns.append(AIRBinOp(cond_temp, "<", cur_idx, len_temp))
+                self.current_insns.append(AIRBranchIfNot(cond_temp, end_lbl))
+
+                elem_t = "i64"
+                if coll_type and coll_type.startswith("List_"):
+                    elem_t = coll_type[5:]
+                elif coll_type and coll_type.startswith("Set_"):
+                    elem_t = coll_type[4:]
+                item_temp = self.new_temp()
+                self.temp_types[item_temp] = elem_t
+                self.var_types[stmt.var_name] = elem_t
+                self.current_insns.append(AIRCallMethod(item_temp, coll_type or "Class", "get", coll_temp, [cur_idx]))
+                self.current_insns.append(AIRStore(stmt.var_name, item_temp))
+
+                for s in stmt.body.statements:
+                    self.lower_statement(s)
+
+                one_temp = self.new_temp()
+                self.temp_types[one_temp] = "i64"
+                self.current_insns.append(AIRConst(one_temp, 1, "i64"))
+                nxt_idx = self.new_temp()
+                self.temp_types[nxt_idx] = "i64"
+                self.current_insns.append(AIRBinOp(nxt_idx, "+", cur_idx, one_temp))
+                self.current_insns.append(AIRStore(idx_var, nxt_idx))
+                self.current_insns.append(AIRJump(loop_lbl))
+                self.current_insns.append(AIRLabel(end_lbl))
         elif isinstance(stmt, ExprStmtNode):
             self.lower_expression(stmt.expr, is_statement=True)
         elif isinstance(stmt, MatchNode):
@@ -1091,9 +1155,27 @@ class AIRLowering:
                 elem_t = "i64"
                 if cls_name and cls_name.startswith("List_"):
                     elem_t = cls_name[5:]
+                elif cls_name and cls_name.startswith("Map_"):
+                    parts = cls_name.split("_")
+                    if len(parts) >= 3:
+                        elem_t = parts[2]
                 self.temp_types[dest] = elem_t
                 self.current_insns.append(AIRCallMethod(dest, cls_name or "Class", "get", inst_temp, [idx_temp]))
                 return dest
+        elif isinstance(expr, TupleNode):
+            elem_temps = [self.lower_expression(e) for e in expr.elements]
+            elem_types = [self.temp_types.get(t, "i64") for t in elem_temps]
+            tup_name = f"Tuple_{'_'.join(elem_types)}"
+            if tup_name not in self.module.classes:
+                self.module.classes[tup_name] = AIRClass(
+                    name=tup_name,
+                    base_class=None,
+                    fields={f"f{i}": t for i, t in enumerate(elem_types)}
+                )
+            dest = self.new_temp()
+            self.temp_types[dest] = tup_name
+            self.current_insns.append(AIRCall(dest, f"arx_make_{tup_name}", elem_temps))
+            return dest
         elif isinstance(expr, NewNode):
             arg_temps = [self.lower_expression(a) for a in expr.args]
             dest = self.new_temp()

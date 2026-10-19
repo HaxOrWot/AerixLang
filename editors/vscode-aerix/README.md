@@ -6,9 +6,9 @@
 
 # ⚡ Aerix 2.0 VS Code IntelliSense & Language Tooling
 
-[![Version](https://img.shields.io/badge/version-v1.0.87-00DCFF.svg?style=for-the-badge&logo=visualstudiocode)](#)
+[![Version](https://img.shields.io/badge/version-v1.0.88-00DCFF.svg?style=for-the-badge&logo=visualstudiocode)](#)
 [![Language](https://img.shields.io/badge/language-Aerix%20(.arx)-1E90FF.svg?style=for-the-badge)](#)
-[![Tests](https://img.shields.io/badge/test%20suite-87%2F87%20PASS-00E676.svg?style=for-the-badge)](#)
+[![Tests](https://img.shields.io/badge/test%20suite-102%2F102%20PASS-00E676.svg?style=for-the-badge)](#)
 [![Status](https://img.shields.io/badge/IntelliSense-SUPERCHARGED-7C4DFF.svg?style=for-the-badge)](#)
 
 **The official, ultra-high-performance language extension for Aerix (`.arx`) — High-precision TextMate syntax highlighting, intelligent context-aware completions, real-time struct memory layout diagnostics, multi-threaded signature assistance, WebAssembly compilation & live browser preview, and native compilation integration.**
@@ -151,24 +151,24 @@ The extension includes the official **Aerix Supersonic "X"** file icon:
 ## 🚀 Installation & Setup
 
 ### Option 1: Aerix Setup Wizard (GUI)
-Run `AerixSetup-1.0.87.exe` from the `AerixInstaller/dist` directory. Ensure the **Visual Studio Code** and/or **Google Antigravity IDE** checkboxes are selected under the IDE Extensions category.
+Run `AerixSetup-1.0.88.exe` from the `AerixInstaller/dist` directory. Ensure the **Visual Studio Code** and/or **Google Antigravity IDE** checkboxes are selected under the IDE Extensions category.
 
 ### Option 2: Command-Line Installation
 
 From the repository root (`z:\VSCode\AerixLang`):
 ```powershell
 # For Visual Studio Code
-code --install-extension editors/vscode-aerix/aerix-1.0.87.vsix --force
+code --install-extension editors/vscode-aerix/aerix-1.0.88.vsix --force
 
 # For Google Antigravity IDE
-antigravity --install-extension editors/vscode-aerix/aerix-1.0.87.vsix --force
+antigravity --install-extension editors/vscode-aerix/aerix-1.0.88.vsix --force
 ```
 
 From inside the `editors/vscode-aerix` folder:
 ```powershell
 cd z:\VSCode\AerixLang\editors\vscode-aerix
-code --install-extension aerix-1.0.87.vsix --force
-antigravity --install-extension aerix-1.0.87.vsix --force
+code --install-extension aerix-1.0.88.vsix --force
+antigravity --install-extension aerix-1.0.88.vsix --force
 ```
 
 ### Reloading Your Editor

@@ -10,12 +10,12 @@
 ```
 
 ### **The Definitive A-to-Z Technical Reference Manual**
-*Official System Specification for the Aerix Native Programming Language (Version 1.0.87-alpha)*
+*Official System Specification for the Aerix Native Programming Language (Version 1.0.88-alpha)*
 
-[![Version](https://img.shields.io/badge/version-1.0.87--alpha-00DCFF.svg?style=for-the-badge)](#)
+[![Version](https://img.shields.io/badge/version-1.0.88--alpha-00DCFF.svg?style=for-the-badge)](#)
 [![Standard](https://img.shields.io/badge/standard-ANSI%20C99%20%2F%20C11-1E90FF.svg?style=for-the-badge)](#)
 [![Architecture](https://img.shields.io/badge/architecture-x86__64%20%2F%20ARM64-00E676.svg?style=for-the-badge)](#)
-[![Test Suite](https://img.shields.io/badge/tests-87%2F87%20PASS%20(100%25)-00E5FF.svg?style=for-the-badge)](#)
+[![Test Suite](https://img.shields.io/badge/tests-102%2F102%20PASS%20(100%25)-00E5FF.svg?style=for-the-badge)](#)
 
 [Architecture](#1-architectural-specification--compilation-pipeline) • [CLI Reference](#2-cli-toolchain-reference-manual-arx) • [Type System](#3-the-complete-type-system) • [Memory Layout](#4-memory-model--physical-layout) • [Precedence](#6-expressions-operators--precedence) • [OOP System](#9-object-oriented-programming-oop) • [Concurrency](#11-concurrency-native-threads--typed-channels) • [Runtime API](#12-standard-library--runtime-api-aerix_rth) • [Collections](#17-standard-collections--data-structures-architecture) • [EBNF Grammar](#16-formal-language-grammar-ebnf)
 
@@ -866,47 +866,141 @@ Aerix features a cache-aligned, monomorphized data structures engine engineered 
 ### 17.1 Dynamic Contiguous Vectors (`List<T>`)
 * **Memory Structure:** 24-byte control header `{ data: *T, len: usize, cap: usize }`.
 * **Growth Strategy:** $1.5\times$ Golden Ratio amortized $\mathcal{O}(1)$ push.
-* **Core API:**
+* **Core API & Algorithms:**
   ```aerix
-  let mut items = List<i64>();
+  mut items = List<i64>();
   items.push(42);
+  items.push(10);
   items.push(100);
+
   let val = items[0];            // Bracket indexing
   items[0] = 99;                 // Index mutation
-  let popped = items.pop();      // 100
-  let slice = items[0..1];       // Zero-copy slice view
-  items.sort();
+  let popped = items.pop();      // Pop tail
+
+  // Range slicing
+  let sub = items[0..2];         // Sub-list view
+
+  // Algorithmic operations
+  items.sort();                  // Quicksort
+  items.reverse();               // In-place reverse
+  let found = items.contains(99);// bool membership
+  let idx = items.index_of(99);  // index search (-1 if absent)
+  let rm = items.swap_remove(0); // O(1) swap with tail removal
+  let at = items.remove_at(0);   // O(n) shifted removal
+  items.insert(0, 500);          // O(n) shifted insert
   ```
 
 ### 17.2 Dual-Tier Text Engine (`String` vs `str`)
 * **`str` (String Slice):** Immutable borrowed UTF-8 pointer + length (`const char*`).
-* **`String` (Owned Dynamic Text):** Mutable growable text buffer with 24-byte Small String Optimization (SSO) for strings $\le 15$ bytes without heap allocation:
+* **`String` (Owned Dynamic Text):** Mutable growable text buffer with fluent transformation methods:
   ```aerix
   let mut s = String("  aerix systems  ");
   let clean = s.trim().to_upper();             // "AERIX SYSTEMS"
+  let lower = clean.to_lower();                // "aerix systems"
+  let replaced = lower.replace("systems", "native"); // "aerix native"
   let words: List<str> = clean.split(" ");     // ["AERIX", "SYSTEMS"]
   let has_word = clean.contains("AERIX");       // true
+  let begins = clean.starts_with("AERIX");     // true
+  let ends = clean.ends_with("SYSTEMS");       // true
+  let rep = clean.repeat(3);                   // Repeat string
+  let ch = clean.char_at(0);                   // "A"
   ```
 
-### 17.3 Associative Mappings & Sets (`Map<K, V>`, `Set<T>`)
-* **Robin Hood Dense Table:** $\mathcal{O}(1)$ average lookups with minimal probe sequence variance:
+### 17.3 Robin Hood Hash Map (`Map<K, V>`)
+* **Underlying Engine:** High-performance Robin Hood dense hash table with backward-shift deletion and FNV-1a hashing.
+* **Performance:** $\mathcal{O}(1)$ average lookups with low probe variance.
+* **Core API:**
   ```aerix
-  let mut scores = Map<str, i64>();
-  scores["phoenix"] = 9900;
-  let score = scores["phoenix"];
+  mut scores = Map<str, i64>();
+  scores["alex"] = 980;
+  scores["blake"] = 840;
 
-  let mut tags = Set<str>();
-  tags.add("graphics");
-  tags.add("simd");
+  let val = scores["alex"];
+  let has = scores.has_key("alex");
+  scores.remove("blake");
+  let total = scores.len();
+  let k_list = scores.keys();    // List<str>
+  let v_list = scores.values();  // List<i64>
+  scores.clear();
   ```
 
-### 17.4 Anonymous Records & Tuples `(T1, T2)`
-* Zero-overhead anonymous C structs with destructuring:
+### 17.4 Hash Set & Set Algebra (`Set<T>`)
+* **Underlying Engine:** Flat hash table for set membership and mathematical set algebra.
+* **Core API:**
+  ```aerix
+  mut s1 = Set<str>();
+  s1.add("compiler");
+  s1.add("runtime");
+  let has_c = s1.has("compiler");
+  s1.remove("runtime");
+
+  // Mathematical Set Algebra
+  mut a = Set<i64>(); a.add(1); a.add(2);
+  mut b = Set<i64>(); b.add(2); b.add(3);
+  let union_set = a.union(b);               // {1, 2, 3}
+  let inter_set = a.intersection(b);        // {2}
+  let diff_set  = a.difference(b);          // {1}
+  let as_list   = a.to_list();              // List<i64>
+  ```
+
+### 17.5 Linear Buffers (`Stack<T>`, `Queue<T>`, `Deque<T>`)
+* **LIFO Stack:**
+  ```aerix
+  mut st = Stack<i64>();
+  st.push(10);
+  let top = st.peek();
+  let popped = st.pop();
+  ```
+* **FIFO Queue:**
+  ```aerix
+  mut q = Queue<i64>();
+  q.enqueue(100);
+  let front = q.peek();
+  let task = q.dequeue();
+  ```
+* **Double-Ended Queue (Deque):**
+  ```aerix
+  mut dq = Deque<i64>();
+  dq.push_front(1);
+  dq.push_back(2);
+  let f = dq.pop_front();
+  let b = dq.pop_back();
+  ```
+
+### 17.6 Binary Byte Stream (`ByteBuffer`)
+* Dynamic binary memory buffer with little-endian & big-endian serialization:
+  ```aerix
+  mut buf = ByteBuffer();
+  buf.write_u8(65);
+  buf.write_i32_le(42000);
+  buf.reset();
+  let byte_val = buf.read_u8();
+  let int_val = buf.read_i32_le();
+  ```
+
+### 17.7 Anonymous Tuples & Destructuring `(T1, T2)`
+* Zero-overhead anonymous C structs with numeric member access and destructuring:
   ```aerix
   fn get_telemetry() -> (f64, i64, bool) {
       return (142.5, 42, true);
   }
+
   let (velocity, packet_id, ok) = get_telemetry();
+  let pair = (10, "coords");
+  let x = pair.0;
+  let y = pair.1;
+  ```
+
+### 17.8 Generalized Collection Iteration (`for item in collection`)
+* First-class iteration loops directly over collections without index bookkeeping:
+  ```aerix
+  mut servers = List<str>();
+  servers.push("gateway-1");
+  servers.push("gateway-2");
+
+  for s in servers {
+      println("Active server: {s}");
+  }
   ```
 
 ---

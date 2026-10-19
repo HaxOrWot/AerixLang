@@ -452,6 +452,10 @@
     "types": {
       "patterns": [
         {
+          "name": "support.class.collection.aerix",
+          "match": "\\b(List|Map|Set|Stack|Queue|Deque|ByteBuffer|String)\\b"
+        },
+        {
           "name": "storage.type.primitive.aerix",
           "match": "\\b(i8|i16|i32|i64|int|u8|u16|u32|u64|uint|usize|isize|f32|f64|float|f32x4|f64x2|bool|char|str|void|null)\\b"
         },

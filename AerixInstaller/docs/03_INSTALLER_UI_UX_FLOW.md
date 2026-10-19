@@ -75,14 +75,14 @@ graph TD
 │   ███████╗     │   Welcome to the Aerix Setup Wizard                                        │
 │   ██╔════╝     │                                                                            │
 │   ███████╗     │   This will install the Aerix Native Systems Programming                   │
-│   ╚════██║     │   Language v1.0.87 on your computer.                                       │
+│   ╚════██║     │   Language v1.0.88 on your computer.                                       │
 │   ███████║     │                                                                            │
 │   ╚══════╝     │   Aerix combines the rapid developer velocity of Python and                │
 │                │   TypeScript with the bare-metal performance, manual memory                │
 │    AERIX       │   control, and zero-overhead execution of ANSI C99.                        │
 │   LANGUAGE     │                                                                            │
 │                │   It is recommended that you close all other applications                  │
-│   v1.0.87      │   before continuing.                                                       │
+│   v1.0.88      │   before continuing.                                                       │
 │                │                                                                            │
 │                │   Click Next to continue, or Cancel to exit Setup.                         │
 │                │                                                                            │
@@ -210,8 +210,8 @@ graph TD
 │  │   - Context Menu Verbs (Run with Aerix, Build Executable)                             │  │
 │  │                                                                                       │  │
 │  │ IDE Extensions to Install:                                                            │  │
-│  │   - Visual Studio Code (aerix-1.0.87.vsix)                                            │  │
-│  │   - Google Antigravity IDE (aerix-1.0.87.vsix)                                        │  │
+│  │   - Visual Studio Code (aerix-1.0.88.vsix)                                            │  │
+│  │   - Google Antigravity IDE (aerix-1.0.88.vsix)                                        │  │
 │  └───────────────────────────────────────────────────────────────────────────────────────┘  │
 ├─────────────────────────────────────────────────────────────────────────────────────────────┤
 │                                        [ < Back ]    [ Install  ]  [  Cancel  ]             │
@@ -265,7 +265,7 @@ graph TD
 │    AERIX       │   [X] Launch Command Prompt with 'arx doctor' diagnostics                  │
 │   INSTALLED    │   [ ] Open Aerix Master Learning Guide (GUIDE.md)                          │
 │                │                                                                            │
-│   v1.0.87      │   Click Finish to exit Setup.                                              │
+│   v1.0.88      │   Click Finish to exit Setup.                                              │
 │                │                                                                            │
 │                │                                                                            │
 │                │                                                                            │
@@ -294,13 +294,13 @@ For enterprise sysadmins, automated Docker builders, and CI/CD runners, the inst
 
 ```powershell
 # 1. Full Silent Install with VS Code and Antigravity IDE Integration:
-.\AerixSetup-1.0.87.exe /VERYSILENT /SUPPRESSMSGBOXES /TASKS="envPath,fileAssoc,contextMenu,vscodeExt,antigravityExt" /LOG="install.log"
+.\AerixSetup-1.0.88.exe /VERYSILENT /SUPPRESSMSGBOXES /TASKS="envPath,fileAssoc,contextMenu,vscodeExt,antigravityExt" /LOG="install.log"
 
 # 2. Minimal User Install without IDE Extensions:
-.\AerixSetup-1.0.87.exe /SILENT /TASKS="envPath,fileAssoc"
+.\AerixSetup-1.0.88.exe /SILENT /TASKS="envPath,fileAssoc"
 
 # 3. Custom Drive Destination (e.g. CI runner on D: drive):
-.\AerixSetup-1.0.87.exe /VERYSILENT /DIR="D:\Compilers\Aerix"
+.\AerixSetup-1.0.88.exe /VERYSILENT /DIR="D:\Compilers\Aerix"
 ```
 
 ---
@@ -313,7 +313,7 @@ For enterprise sysadmins, automated Docker builders, and CI/CD runners, the inst
 ├──────────────────────────────────────┼──────────────────────────────────────────────────────┤
 │ VS Code CLI (`code.cmd`) not in PATH │ Searches standard `%LOCALAPPDATA%` & `%PROGRAMFILES%`│
 │                                      │ If missing, extracts VSIX directly into:             │
-│                                      │ `%USERPROFILE%\.vscode\extensions\aerix-1.0.87\`     │
+│                                      │ `%USERPROFILE%\.vscode\extensions\aerix-1.0.88\`     │
 ├──────────────────────────────────────┼──────────────────────────────────────────────────────┤
 │ Antigravity CLI not in PATH          │ Searches `X:\Antigravity` & local AppData paths.      │
 │                                      │ If missing, extracts VSIX directly into:             │

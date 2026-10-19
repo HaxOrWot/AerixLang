@@ -2,7 +2,7 @@
   "name": "aerix",
   "displayName": "Aerix Language & IntelliSense Support",
   "description": "Official language support, IntelliSense completions, hover documentation, syntax highlighting, and X file icon for Aerix (.arx).",
-  "version": "1.0.87",
+  "version": "1.0.88",
   "publisher": "aerix-lang",
   "icon": "./icons/aerix-icon.png",
   "engines": {

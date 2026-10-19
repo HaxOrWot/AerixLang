@@ -266,8 +266,24 @@ class C99CodeGenerator:
         self.emit("};")
         self.emit()
 
+        if cls.name.startswith("Tuple_"):
+            field_keys = sorted(cls.fields.keys(), key=lambda k: int(k[1:]) if k[1:].isdigit() else 0)
+            c_params = [f"{to_c_type(cls.fields[k])} {k}" for k in field_keys]
+            params_str = ", ".join(c_params) if c_params else "void"
+            self.emit(f"static inline Arx_{cls.name} arx_make_{cls.name}({params_str}) {{")
+            self.emit(f"    Arx_{cls.name} t;", indent=1)
+            self.emit(f"    memset(&t, 0, sizeof(Arx_{cls.name}));", indent=1)
+            for k in field_keys:
+                self.emit(f"    t.{k} = {k};", indent=1)
+            self.emit(f"    return t;", indent=1)
+            self.emit(f"}}")
+            self.emit()
+
     def generate_class_impl(self, cls: AIRClass) -> None:
+        if cls.name.startswith("Tuple_"):
+            return
         # Constructors
+
         all_ctors = getattr(cls, "constructors", {})
         if all_ctors:
             for ctor_key, ctor_fn in all_ctors.items():
@@ -367,13 +383,30 @@ class C99CodeGenerator:
                             temps[insn.dest] = "const char*"
                         elif insn.fn_name == "arx_time_now":
                             temps[insn.dest] = "double"
-                        elif insn.fn_name in ("arx_str_trim", "arx_str_to_upper", "arx_str_to_lower", "arx_str_replace", "arx_str_copy", "arx_str_slice", "arx_str_join", "arx_list_get_str", "arx_list_pop_str"):
+                        elif insn.fn_name.startswith("arx_make_Tuple_"):
+                            temps[insn.dest] = f"Arx_{insn.fn_name[9:]}"
+                        elif insn.fn_name in (
+                            "arx_str_trim", "arx_str_to_upper", "arx_str_to_lower", "arx_str_replace",
+                            "arx_str_copy", "arx_str_slice", "arx_str_join", "arx_str_repeat",
+                            "arx_str_concat", "arx_str_char_at", "arx_list_get_str", "arx_list_pop_str",
+                            "arx_list_swap_remove_str", "arx_list_remove_at_str",
+                            "arx_map_get_str_str", "arx_map_get_i64_str", "arx_set_get_str"
+                        ):
                             temps[insn.dest] = "const char*"
-                        elif insn.fn_name in ("arx_str_contains", "arx_str_starts_with", "arx_str_ends_with"):
+                        elif insn.fn_name in (
+                            "arx_str_contains", "arx_str_starts_with", "arx_str_ends_with",
+                            "arx_list_contains", "arx_list_contains_str", "arx_map_has", "arx_map_has_str",
+                            "arx_set_add", "arx_set_has", "arx_set_remove",
+                            "arx_set_add_str", "arx_set_has_str", "arx_set_remove_str"
+                        ):
                             temps[insn.dest] = "bool"
                         elif insn.fn_name in ("arx_str_len", "arx_list_len", "arx_list_get_i64", "arx_list_pop_i64", "arx_str_split"):
                             temps[insn.dest] = "int64_t"
-                        elif insn.fn_name in ("arx_list_get_f64", "arx_list_pop_f64"):
+                        elif insn.fn_name in (
+                            "arx_list_get_f64", "arx_list_pop_f64",
+                            "arx_list_swap_remove_f64", "arx_list_remove_at_f64",
+                            "arx_bytebuf_read_f32", "arx_bytebuf_read_f64"
+                        ):
                             temps[insn.dest] = "double"
                         else:
                             ret_t = "int64_t"

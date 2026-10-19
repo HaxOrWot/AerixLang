@@ -207,9 +207,18 @@ def lookup_type(type_name: str, classes: Dict[str, Any], enums: Optional[Dict[st
         return classes[type_name]
     if enums and type_name in enums:
         return enums[type_name]
-    if traits and type_name in traits:
-        return traits[type_name]
+    if type_name.startswith("Tuple_"):
+        tuple_cls = ClassType(type_name)
+        parts = type_name[6:].split("_")
+        for i, p in enumerate(parts):
+            f_name = f"f{i}"
+            f_type = lookup_type(p, classes, enums, traits)
+            tuple_cls.fields[f_name] = f_type
+            tuple_cls.field_access[f_name] = True
+        classes[type_name] = tuple_cls
+        return tuple_cls
     # Return placeholder type if unresolved
     return Type(type_name)
+
 
 

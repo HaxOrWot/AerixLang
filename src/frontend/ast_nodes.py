@@ -149,15 +149,30 @@ class WhileNode(ASTNode):
 
 
 @dataclass
+class TupleNode(ASTNode):
+    """Represents an anonymous tuple literal: (a, b, c)."""
+    elements: List[ASTNode] = field(default_factory=list)
+
+
+@dataclass
+class TupleDestructureNode(ASTNode):
+    """Represents a tuple destructuring assignment: let (a, b) = tup."""
+    names: List[str] = field(default_factory=list)
+    is_mut: bool = False
+    initializer: Optional[ASTNode] = None
+
+
+@dataclass
 class ForNode(ASTNode):
     var_name: str
-    range_expr: RangeNode
+    range_expr: ASTNode
     body: BlockNode
 
 
 @dataclass
 class LoopNode(ASTNode):
     body: BlockNode
+
 
 
 @dataclass

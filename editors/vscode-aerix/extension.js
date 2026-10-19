@@ -93,7 +93,15 @@ const AERIX_TYPES = [
     { name: 'str', detail: 'Immutable String Slice', doc: 'UTF-8 string pointer (`const char*`) with interpolation `{var}` support.' },
     { name: 'void', detail: 'Unit / Void Type', doc: 'Represents absence of value or empty function return.' },
     { name: 'null', detail: 'Null Reference', doc: 'Null pointer literal for optional types (`T?`).' },
-    { name: 'Channel', detail: 'Generic Thread-Safe Channel<T>', doc: 'Bounded multi-producer multi-consumer thread-safe channel for concurrent data passing.' }
+    { name: 'Channel', detail: 'Generic Thread-Safe Channel<T>', doc: 'Bounded multi-producer multi-consumer thread-safe channel for concurrent data passing.' },
+    { name: 'List', detail: 'Generic Dynamic Array List<T>', doc: 'Contiguous growable dynamic array with indexing, slicing [start..end], sort(), reverse(), contains(), and iterator support.' },
+    { name: 'Map', detail: 'Robin Hood Hash Table Map<K, V>', doc: 'Dense open-addressing hash map with backward-shift deletion, map[k] = v, map[k], has_key(), remove(), keys(), values().' },
+    { name: 'Set', detail: 'Hash Set<T>', doc: 'Zero-payload hash set with add(), has(), remove(), and set algebra: union(), intersection(), difference().' },
+    { name: 'Stack', detail: 'LIFO Stack<T>', doc: 'Last-In First-Out container with push(), pop(), peek(), len(), is_empty().' },
+    { name: 'Queue', detail: 'FIFO Queue<T>', doc: 'First-In First-Out queue container with push(), pop(), peek(), len(), is_empty().' },
+    { name: 'Deque', detail: 'Double-Ended Queue Deque<T>', doc: 'Double-ended ring buffer with push_back(), push_front(), pop_back(), pop_front(), peek_front(), peek_back().' },
+    { name: 'ByteBuffer', detail: 'Binary Byte Stream ByteBuffer', doc: 'Dynamic byte vector with little-endian & big-endian serialization: write_u8(), write_i32_le(), write_i32_be(), write_f64_le(), read_u8(), read_i32_le(), read_i32_be(), seek(), reset().' },
+    { name: 'String', detail: 'Mutable Owned String', doc: 'Dynamic UTF-8 string with fluent API: trim(), to_upper(), to_lower(), replace(), split(), slice(), repeat(), char_at(), contains(), starts_with(), ends_with().' }
 ];
 
 /**

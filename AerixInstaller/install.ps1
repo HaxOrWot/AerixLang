@@ -54,9 +54,9 @@ if ($UninstallExtensions) {
 
     # Remove direct extension directories
     $extDirs = @(
-        (Join-Path $HOME ".vscode\extensions\aerix-lang.aerix-1.0.87"),
-        (Join-Path $HOME ".antigravity\extensions\aerix-lang.aerix-1.0.87"),
-        (Join-Path $HOME ".antigravity-ide\extensions\aerix-lang.aerix-1.0.87")
+        (Join-Path $HOME ".vscode\extensions\aerix-lang.aerix-1.0.88"),
+        (Join-Path $HOME ".antigravity\extensions\aerix-lang.aerix-1.0.88"),
+        (Join-Path $HOME ".antigravity-ide\extensions\aerix-lang.aerix-1.0.88")
     )
     foreach ($dir in $extDirs) {
         if (Test-Path $dir) {
@@ -72,11 +72,11 @@ if ($UninstallExtensions) {
 if ($OnlyExtensions) {
     if (-not $VsixPath -or -not (Test-Path $VsixPath)) {
         $candidates = @(
-            (Join-Path $scriptDir "..\editors\vscode-aerix\aerix-1.0.87.vsix"),
-            (Join-Path $scriptDir "..\editors\aerix-1.0.87.vsix"),
-            (Join-Path $scriptDir "editors\aerix-1.0.87.vsix"),
-            (Join-Path $scriptDir "aerix-1.0.87.vsix"),
-            (Join-Path $aerixEditors "aerix-1.0.87.vsix")
+            (Join-Path $scriptDir "..\editors\vscode-aerix\aerix-1.0.88.vsix"),
+            (Join-Path $scriptDir "..\editors\aerix-1.0.88.vsix"),
+            (Join-Path $scriptDir "editors\aerix-1.0.88.vsix"),
+            (Join-Path $scriptDir "aerix-1.0.88.vsix"),
+            (Join-Path $aerixEditors "aerix-1.0.88.vsix")
         )
         foreach ($c in $candidates) {
             if ($c -and (Test-Path $c)) {
@@ -184,7 +184,7 @@ $localDistArx  = Join-Path $scriptDir "dist\arx.exe"
 $localDistArxc = Join-Path $scriptDir "dist\arxc.exe"
 $localRtHeader = Join-Path $scriptDir "stdlib\aerix_rt.h"
 $localVsixCandidate = Get-ChildItem -Path (Join-Path $scriptDir "editors\vscode-aerix") -Filter "*.vsix" -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-$localVsix = if ($localVsixCandidate) { $localVsixCandidate.FullName } else { Join-Path $scriptDir "editors\vscode-aerix\aerix-1.0.87.vsix" }
+$localVsix = if ($localVsixCandidate) { $localVsixCandidate.FullName } else { Join-Path $scriptDir "editors\vscode-aerix\aerix-1.0.88.vsix" }
 
 # GitHub fallback repository
 $GitHubRepo = if ($env:AERIX_REPO) { $env:AERIX_REPO } else { "HaxOrWot/AerixLang" }
@@ -242,12 +242,12 @@ if (Test-Path $localRtHeader) {
 # ----------------------------------------------------
 # 3. Cache Extension VSIX
 # ----------------------------------------------------
-$targetVsix = Join-Path $aerixEditors "aerix-1.0.87.vsix"
+$targetVsix = Join-Path $aerixEditors "aerix-1.0.88.vsix"
 if ($localVsix -and (Test-Path $localVsix)) {
     Copy-Item -Path $localVsix -Destination $targetVsix -Force
 } elseif (-not (Test-Path $targetVsix)) {
     try {
-        Invoke-WebRequest -Uri "$ReleaseBase/aerix-1.0.87.vsix" -OutFile $targetVsix -UseBasicParsing
+        Invoke-WebRequest -Uri "$ReleaseBase/aerix-1.0.88.vsix" -OutFile $targetVsix -UseBasicParsing
     } catch {
         # Optional extension download
     }

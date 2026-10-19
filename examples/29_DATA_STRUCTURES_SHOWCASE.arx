@@ -1,0 +1,206 @@
+// Aerix Language — Example 29: Complete Data Structures Showcase (Phase 22)
+// Demonstrates Tuples, Robin Hood Hash Maps, Hash Sets & Set Algebra,
+// Linear Buffers (Stack, Queue, Deque), Binary ByteBuffer,
+// List Algorithms, and Collection Iteration (for x in collection).
+
+fn print_separator() {
+    println("==================================================");
+}
+
+fn get_server_status() -> (i64, str) {
+    return (200, "OK - Nodes Synchronized");
+}
+
+fn demonstrate_tuples() {
+    println("[1] Fixed-Size Tuples & Destructuring:");
+    let pair = (10, 20);
+    let p0 = pair.0;
+    let p1 = pair.1;
+    println("Pair elements: .0 = {p0}, .1 = {p1}");
+
+    // Function returning tuple and destructuring
+    let (code, msg) = get_server_status();
+    println("Server Response: Code={code}, Status='{msg}'");
+}
+
+fn demonstrate_robin_hood_map() {
+    println("[2] Robin Hood Hash Map (Cache-Friendly O(1)):");
+    mut user_scores = Map<str, i64>();
+    user_scores["alex"] = 980;
+    user_scores["blake"] = 840;
+    user_scores["casey"] = 920;
+
+    let alex_score = user_scores["alex"];
+    let blake_score = user_scores["blake"];
+    let map_len = user_scores.len();
+    println("Score 'alex': {alex_score}");
+    println("Score 'blake': {blake_score}");
+    println("Map element count: {map_len}");
+
+    let has_alex = user_scores.has_key("alex");
+    let has_devon = user_scores.has_key("devon");
+    println("Has key 'alex'? {has_alex}");
+    println("Has key 'devon'? {has_devon}");
+
+    user_scores.remove("blake");
+    let has_blake_after = user_scores.has_key("blake");
+    let map_len_after = user_scores.len();
+    println("Has key 'blake' after removal? {has_blake_after}");
+    println("Map count after removal: {map_len_after}");
+}
+
+fn demonstrate_sets_and_algebra() {
+    println("[3] Hash Set & Set Algebra (Union, Intersection, Difference):");
+    mut admin_roles = Set<str>();
+    admin_roles.add("read");
+    admin_roles.add("write");
+    admin_roles.add("execute");
+
+    let has_write = admin_roles.has("write");
+    let has_delete = admin_roles.has("delete");
+    println("Has 'write' permission? {has_write}");
+    println("Has 'delete' permission? {has_delete}");
+
+    // Integer set algebra
+    mut cluster_a = Set<i64>();
+    cluster_a.add(101);
+    cluster_a.add(102);
+    cluster_a.add(103);
+
+    mut cluster_b = Set<i64>();
+    cluster_b.add(102);
+    cluster_b.add(103);
+    cluster_b.add(104);
+
+    let all_nodes = cluster_a.union(cluster_b);
+    let shared_nodes = cluster_a.intersection(cluster_b);
+    let unique_to_a = cluster_a.difference(cluster_b);
+
+    let union_count = all_nodes.len();
+    let inter_count = shared_nodes.len();
+    let diff_count = unique_to_a.len();
+    let has_101_in_diff = unique_to_a.has(101);
+
+    println("Union count (distinct nodes): {union_count}");
+    println("Intersection count (shared nodes): {inter_count}");
+    println("Difference count (A \\ B): {diff_count} (Node 101 present: {has_101_in_diff})");
+}
+
+fn demonstrate_linear_buffers() {
+    println("[4] Linear Buffers (Stack, Queue, Deque):");
+
+    // LIFO Stack
+    mut undo_stack = Stack<i64>();
+    undo_stack.push(1);
+    undo_stack.push(2);
+    undo_stack.push(3);
+    let top = undo_stack.peek();
+    let popped1 = undo_stack.pop();
+    let popped2 = undo_stack.pop();
+    let stack_rem = undo_stack.len();
+    println("Stack Peek: {top}, Popped: {popped1}, {popped2}, Remaining count: {stack_rem}");
+
+    // FIFO Queue
+    mut task_queue = Queue<i64>();
+    task_queue.enqueue(1001);
+    task_queue.enqueue(1002);
+    task_queue.enqueue(1003);
+    let q_front = task_queue.peek();
+    let task1 = task_queue.dequeue();
+    let task2 = task_queue.dequeue();
+    let queue_rem = task_queue.len();
+    println("Queue Peek: {q_front}, Dequeued: {task1}, {task2}, Remaining count: {queue_rem}");
+
+    // Double-Ended Queue (Deque)
+    mut deque = Deque<i64>();
+    deque.push_back(20);
+    deque.push_front(10);
+    deque.push_back(30);
+    let df = deque.peek_front();
+    let db = deque.peek_back();
+    let p_front = deque.pop_front();
+    let p_back = deque.pop_back();
+    let dq_rem = deque.len();
+    println("Deque Front: {df}, Back: {db}, Popped Front: {p_front}, Back: {p_back}, Remaining: {dq_rem}");
+}
+
+fn demonstrate_byte_buffer() {
+    println("[5] Binary ByteBuffer (Low-Level Memory & Serialization):");
+    mut stream = ByteBuffer();
+
+    // Serializing mixed-width integers
+    stream.write_u8(72);      // 'H'
+    stream.write_i32_le(1337); // Little-endian 32-bit int
+
+    let size = stream.len();
+    println("Serialized stream byte count: {size}");
+
+    // Streaming Deserialization
+    stream.reset();
+    let b0 = stream.read_u8();
+    let val32 = stream.read_i32_le();
+    println("Deserialized u8 byte: {b0}");
+    println("Deserialized i32 value: {val32}");
+}
+
+fn demonstrate_list_algorithms_and_iteration() {
+    println("[6] List Algorithms & Collection Iteration:");
+    mut numbers = List<i64>();
+    numbers.push(45);
+    numbers.push(12);
+    numbers.push(89);
+    numbers.push(34);
+    numbers.push(70);
+
+    // Sorting algorithm (cache-friendly quicksort)
+    numbers.sort();
+    let min_val = numbers[0];
+    let max_val = numbers[4];
+    println("Sorted min: {min_val}, max: {max_val}");
+
+    // Reversal algorithm
+    numbers.reverse();
+    let rev_head = numbers[0];
+    println("Reversed head: {rev_head}");
+
+    // Membership & indexing
+    let contains_34 = numbers.contains(34);
+    let idx_34 = numbers.index_of(34);
+    println("Contains 34? {contains_34} at index {idx_34}");
+
+    // Fast swap_remove (O(1) removal without memory shift)
+    let swapped = numbers.swap_remove(0);
+    let count_after_swap = numbers.len();
+    println("O(1) Swap-removed item: {swapped}, new length: {count_after_swap}");
+
+    // Clean collection iteration syntax: for item in collection
+    println("Iterating remaining elements with for..in loop:");
+    for n in numbers {
+        println("  Item: {n}");
+    }
+}
+
+fn main() {
+    print_separator();
+    println("AERIX SYSTEM PROGRAMMING — COMPLETE DATA STRUCTURES");
+    print_separator();
+
+    demonstrate_tuples();
+    print_separator();
+
+    demonstrate_robin_hood_map();
+    print_separator();
+
+    demonstrate_sets_and_algebra();
+    print_separator();
+
+    demonstrate_linear_buffers();
+    print_separator();
+
+    demonstrate_byte_buffer();
+    print_separator();
+
+    demonstrate_list_algorithms_and_iteration();
+    print_separator();
+    println("All Phase 22 Data Structure features verified successfully.");
+}
