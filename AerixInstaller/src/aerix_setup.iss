@@ -1,6 +1,7 @@
 ; -----------------------------------------------------------------------------
 ; Aerix Language - Official Inno Setup Modern Installer Script
 ; Produces: AerixSetup-1.0.84.exe
+; Built strictly according to AerixInstaller/docs/03_INSTALLER_UI_UX_FLOW.md
 ; -----------------------------------------------------------------------------
 
 #define MyAppName "Aerix"
@@ -26,13 +27,16 @@ DefaultDirName={localappdata}\Programs\Aerix
 DisableProgramGroupPage=yes
 UsePreviousAppDir=yes
 
-; Visual Branding & Modern Icons
+; Screen 2: License Agreement
+LicenseFile=..\..\LICENSE
+
+; Visual Branding & Modern Icons (Fluent Design)
 SetupIconFile=..\assets\aerix.ico
 WizardImageFile=..\assets\wizard_side.bmp
 WizardSmallImageFile=..\assets\wizard_banner.bmp
 WizardStyle=modern
 
-; Output & Compression
+; Output & Compression (LZMA2 Ultra64 Solid)
 OutputDir=..\dist
 OutputBaseFilename=AerixSetup-{#MyAppVersion}
 Compression=lzma2/ultra64
@@ -47,10 +51,24 @@ UninstallDisplayName={#MyAppName} Native Systems Language ({#MyAppVersion})
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
+[Messages]
+; Screen 1: Welcome Screen Text
+WelcomeLabel1=Welcome to the Aerix Setup Wizard
+WelcomeLabel2=This will install the Aerix Native Systems Programming Language v{#MyAppVersion} on your computer.%n%nAerix combines the rapid developer velocity of Python and TypeScript with the bare-metal performance, manual memory control, and zero-overhead execution of ANSI C99.%n%nIt is recommended that you close all other applications before continuing.%n%nClick Next to continue, or Cancel to exit Setup.
+
+; Screen 8: Finished / Success Screen Text
+FinishedHeadingLabel=Completing the Aerix Setup Wizard
+FinishedLabel=Aerix has been successfully installed on your computer.%n%nThe 'arx' command is now available from any Command Prompt, PowerShell, or Windows Terminal window.%n%nClick Finish to exit Setup.
+
 [Tasks]
+; Screen 4: Core Tasks (Environment & Shell Integration)
 Name: "envPath"; Description: "Add Aerix toolchain directory to User PATH (Recommended)"; GroupDescription: "Environment Configuration:"; Flags: checkedonce
-Name: "fileAssoc"; Description: "Display official supersonic Aerix icon on .arx files in Windows Explorer"; GroupDescription: "Windows Explorer Integration:"; Flags: checkedonce
-Name: "contextMenu"; Description: "Add 'Run with Aerix' and 'Build Executable' to right-click context menu"; GroupDescription: "Windows Explorer Integration:"; Flags: checkedonce
+Name: "fileAssoc"; Description: "Display official supersonic Aerix icon on .arx files in Windows Explorer"; GroupDescription: "Windows File Explorer & Shell Integration:"; Flags: checkedonce
+Name: "regType"; Description: "Register .arx file type association (Aerix.SourceFile)"; GroupDescription: "Windows File Explorer & Shell Integration:"; Flags: checkedonce
+Name: "runMenu"; Description: "Add ""Run with Aerix (arx run)"" to right-click context menu"; GroupDescription: "Windows File Explorer & Shell Integration:"; Flags: checkedonce
+Name: "buildMenu"; Description: "Add ""Build Executable (arx build)"" to right-click context menu"; GroupDescription: "Windows File Explorer & Shell Integration:"; Flags: checkedonce
+
+; IDE Tasks (Also configurable via custom IDE page)
 Name: "vscodeExt"; Description: "Install official Aerix Language extension in Visual Studio Code"; GroupDescription: "IDE & Editor Integration:"; Flags: unchecked
 Name: "antigravityExt"; Description: "Install official Aerix Language extension in Google Antigravity IDE"; GroupDescription: "IDE & Editor Integration:"; Flags: unchecked
 
@@ -89,35 +107,35 @@ Root: HKCU; Subkey: "Environment"; ValueType: expandsz; ValueName: "Path"; Value
 ; -----------------------------------------------------------------------------
 ; 1. File Association: .arx -> Aerix.SourceFile
 ; -----------------------------------------------------------------------------
-Root: HKA; Subkey: "Software\Classes\.arx"; ValueType: string; ValueName: ""; ValueData: "Aerix.SourceFile"; Flags: uninsdeletevalue; Tasks: fileAssoc
-Root: HKA; Subkey: "Software\Classes\.arx"; ValueType: string; ValueName: "Content Type"; ValueData: "text/plain"; Flags: uninsdeletevalue; Tasks: fileAssoc
-Root: HKA; Subkey: "Software\Classes\.arx"; ValueType: string; ValueName: "PerceivedType"; ValueData: "text"; Flags: uninsdeletevalue; Tasks: fileAssoc
-Root: HKA; Subkey: "Software\Classes\.arx\OpenWithProgids"; ValueType: string; ValueName: "Aerix.SourceFile"; ValueData: ""; Flags: uninsdeletevalue; Tasks: fileAssoc
+Root: HKA; Subkey: "Software\Classes\.arx"; ValueType: string; ValueName: ""; ValueData: "Aerix.SourceFile"; Flags: uninsdeletevalue; Tasks: regType
+Root: HKA; Subkey: "Software\Classes\.arx"; ValueType: string; ValueName: "Content Type"; ValueData: "text/plain"; Flags: uninsdeletevalue; Tasks: regType
+Root: HKA; Subkey: "Software\Classes\.arx"; ValueType: string; ValueName: "PerceivedType"; ValueData: "text"; Flags: uninsdeletevalue; Tasks: regType
+Root: HKA; Subkey: "Software\Classes\.arx\OpenWithProgids"; ValueType: string; ValueName: "Aerix.SourceFile"; ValueData: ""; Flags: uninsdeletevalue; Tasks: regType
 
 ; -----------------------------------------------------------------------------
 ; 2. ProgID & Explorer Custom Icon
 ; -----------------------------------------------------------------------------
-Root: HKA; Subkey: "Software\Classes\Aerix.SourceFile"; ValueType: string; ValueName: ""; ValueData: "Aerix Source Code"; Flags: uninsdeletekey; Tasks: fileAssoc
-Root: HKA; Subkey: "Software\Classes\Aerix.SourceFile"; ValueType: string; ValueName: "FriendlyTypeName"; ValueData: "Aerix Source Code (.arx)"; Flags: uninsdeletekey; Tasks: fileAssoc
+Root: HKA; Subkey: "Software\Classes\Aerix.SourceFile"; ValueType: string; ValueName: ""; ValueData: "Aerix Source Code"; Flags: uninsdeletekey; Tasks: regType
+Root: HKA; Subkey: "Software\Classes\Aerix.SourceFile"; ValueType: string; ValueName: "FriendlyTypeName"; ValueData: "Aerix Source Code (.arx)"; Flags: uninsdeletekey; Tasks: regType
 Root: HKA; Subkey: "Software\Classes\Aerix.SourceFile\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\assets\aerix_file.ico,0"; Flags: uninsdeletekey; Tasks: fileAssoc
 
 ; -----------------------------------------------------------------------------
-; 3. Explorer Context Menu Verbs (Open with Editor, Run with Aerix, Build with Aerix)
+; 3. Explorer Context Menu Verbs
 ; -----------------------------------------------------------------------------
-Root: HKA; Subkey: "Software\Classes\Aerix.SourceFile\shell\open"; ValueType: string; ValueName: ""; ValueData: "Open with Code Editor"; Tasks: fileAssoc
-Root: HKA; Subkey: "Software\Classes\Aerix.SourceFile\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """code.cmd"" ""%1"""; Tasks: fileAssoc
+Root: HKA; Subkey: "Software\Classes\Aerix.SourceFile\shell\open"; ValueType: string; ValueName: ""; ValueData: "Open with Code Editor"; Tasks: regType
+Root: HKA; Subkey: "Software\Classes\Aerix.SourceFile\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """code.cmd"" ""%1"""; Tasks: regType
 
-Root: HKA; Subkey: "Software\Classes\Aerix.SourceFile\shell\run"; ValueType: string; ValueName: ""; ValueData: "Run with Aerix (arx run)"; Tasks: contextMenu
-Root: HKA; Subkey: "Software\Classes\Aerix.SourceFile\shell\run"; ValueType: string; ValueName: "Icon"; ValueData: "{app}\assets\aerix.ico"; Tasks: contextMenu
-Root: HKA; Subkey: "Software\Classes\Aerix.SourceFile\shell\run\command"; ValueType: string; ValueName: ""; ValueData: """cmd.exe"" /K """"{app}\bin\arx.bat"""" run """"%1"""""; Tasks: contextMenu
+Root: HKA; Subkey: "Software\Classes\Aerix.SourceFile\shell\run"; ValueType: string; ValueName: ""; ValueData: "Run with Aerix (arx run)"; Tasks: runMenu
+Root: HKA; Subkey: "Software\Classes\Aerix.SourceFile\shell\run"; ValueType: string; ValueName: "Icon"; ValueData: "{app}\assets\aerix.ico"; Tasks: runMenu
+Root: HKA; Subkey: "Software\Classes\Aerix.SourceFile\shell\run\command"; ValueType: string; ValueName: ""; ValueData: """cmd.exe"" /K """"{app}\bin\arx.bat"""" run """"%1"""""; Tasks: runMenu
 
-Root: HKA; Subkey: "Software\Classes\Aerix.SourceFile\shell\build"; ValueType: string; ValueName: ""; ValueData: "Build Executable (arx build)"; Tasks: contextMenu
-Root: HKA; Subkey: "Software\Classes\Aerix.SourceFile\shell\build"; ValueType: string; ValueName: "Icon"; ValueData: "{app}\assets\aerix.ico"; Tasks: contextMenu
-Root: HKA; Subkey: "Software\Classes\Aerix.SourceFile\shell\build\command"; ValueType: string; ValueName: ""; ValueData: """cmd.exe"" /K """"{app}\bin\arx.bat"""" build """"%1"""""; Tasks: contextMenu
+Root: HKA; Subkey: "Software\Classes\Aerix.SourceFile\shell\build"; ValueType: string; ValueName: ""; ValueData: "Build Executable (arx build)"; Tasks: buildMenu
+Root: HKA; Subkey: "Software\Classes\Aerix.SourceFile\shell\build"; ValueType: string; ValueName: "Icon"; ValueData: "{app}\assets\aerix.ico"; Tasks: buildMenu
+Root: HKA; Subkey: "Software\Classes\Aerix.SourceFile\shell\build\command"; ValueType: string; ValueName: ""; ValueData: """cmd.exe"" /K """"{app}\bin\arx.bat"""" build """"%1"""""; Tasks: buildMenu
 
 [Run]
-; Run arx doctor or quickstart after installation
-Filename: "{cmd}"; Parameters: "/K """"{app}\bin\arx.bat"""" doctor"; Description: "Run 'arx doctor' toolchain diagnostics"; Flags: postinstall skipifsilent nowait unchecked
+; Screen 8: Finished Action Checkboxes
+Filename: "{cmd}"; Parameters: "/K """"{app}\bin\arx.bat"""" doctor"; Description: "Launch Command Prompt with 'arx doctor' diagnostics"; Flags: postinstall skipifsilent nowait
 Filename: "{app}\docs\GUIDE.md"; Description: "Open Aerix Master Learning Guide (GUIDE.md)"; Flags: postinstall shellexec skipifsilent unchecked
 
 [Code]
@@ -135,6 +153,8 @@ var
   IDEPage: TInputOptionWizardPage;
   VSCodeDetected: Boolean;
   AntigravityDetected: Boolean;
+  DetectedVSCodePath: String;
+  DetectedAntigravityPath: String;
 
 // Prevent duplicate PATH entries
 function NeedsAddPath(Param: string): Boolean;
@@ -177,38 +197,23 @@ begin
   end;
 end;
 
-// Detect Visual Studio Code installation
-function DetectVSCode(): Boolean;
+// Detect Visual Studio Code installation and resolve full executable path
+function DetectVSCodePath(): String;
 begin
-  Result := FileExists(ExpandConstant('{localappdata}\Programs\Microsoft VS Code\bin\code.cmd')) or
-            FileExists('C:\Program Files\Microsoft VS Code\bin\code.cmd') or
-            FileExists('C:\Program Files (x86)\Microsoft VS Code\bin\code.cmd') or
-            DirExists(ExpandConstant('{userdocs}\..\.vscode'));
-end;
-
-// Detect Google Antigravity IDE installation
-function DetectAntigravity(): Boolean;
-begin
-  Result := FileExists('X:\Antigravity\bin\antigravity.cmd') or
-            FileExists(ExpandConstant('{localappdata}\Programs\Antigravity\bin\antigravity.cmd')) or
-            DirExists(ExpandConstant('{userdocs}\..\.antigravity-ide'));
-end;
-
-// Resolve path to code.cmd
-function GetVSCodeCmd(): String;
-begin
-  if FileExists(ExpandConstant('{localappdata}\Programs\Microsoft VS Code\bin\code.cmd')) then
-    Result := ExpandConstant('{localappdata}\Programs\Microsoft VS Code\bin\code.cmd')
-  else if FileExists('C:\Program Files\Microsoft VS Code\bin\code.cmd') then
+  if FileExists('C:\Program Files\Microsoft VS Code\bin\code.cmd') then
     Result := 'C:\Program Files\Microsoft VS Code\bin\code.cmd'
+  else if FileExists(ExpandConstant('{localappdata}\Programs\Microsoft VS Code\bin\code.cmd')) then
+    Result := ExpandConstant('{localappdata}\Programs\Microsoft VS Code\bin\code.cmd')
   else if FileExists('C:\Program Files (x86)\Microsoft VS Code\bin\code.cmd') then
     Result := 'C:\Program Files (x86)\Microsoft VS Code\bin\code.cmd'
+  else if DirExists(ExpandConstant('{userdocs}\..\.vscode')) then
+    Result := 'code.cmd'
   else
-    Result := 'code.cmd';
+    Result := '';
 end;
 
-// Resolve path to antigravity.cmd
-function GetAntigravityCmd(): String;
+// Detect Google Antigravity IDE installation and resolve full executable path
+function DetectAntigravityPath(): String;
 begin
   if FileExists('X:\Antigravity\bin\antigravity.cmd') then
     Result := 'X:\Antigravity\bin\antigravity.cmd'
@@ -216,32 +221,49 @@ begin
     Result := ExpandConstant('{localappdata}\Programs\Antigravity\bin\antigravity.cmd')
   else if FileExists('C:\Program Files\Antigravity\bin\antigravity.cmd') then
     Result := 'C:\Program Files\Antigravity\bin\antigravity.cmd'
+  else if DirExists(ExpandConstant('{userdocs}\..\.antigravity')) or DirExists(ExpandConstant('{userdocs}\..\.antigravity-ide')) then
+    Result := 'antigravity.cmd'
   else
-    Result := 'antigravity.cmd';
+    Result := '';
 end;
 
-// Custom Wizard Page Initialization
+// Custom Wizard Page Initialization (Screen 5)
 procedure InitializeWizard();
 var
   VSCodeText, AntigravityText: String;
 begin
-  VSCodeDetected := DetectVSCode();
-  AntigravityDetected := DetectAntigravity();
+  DetectedVSCodePath := DetectVSCodePath();
+  DetectedAntigravityPath := DetectAntigravityPath();
 
-  VSCodeText := 'Install official Aerix Language extension in Visual Studio Code';
+  VSCodeDetected := (DetectedVSCodePath <> '');
+  AntigravityDetected := (DetectedAntigravityPath <> '');
+
   if VSCodeDetected then
-    VSCodeText := VSCodeText + ' (Detected on this system)';
+    VSCodeText := 'Visual Studio Code' + #13#10 +
+                  '    Status: [DETECTED: ' + DetectedVSCodePath + ']' + #13#10 +
+                  '    Action: Automatically execute ''code --install-extension aerix-1.0.84.vsix'''
+  else
+    VSCodeText := 'Visual Studio Code' + #13#10 +
+                  '    Status: [Not Detected on system]' + #13#10 +
+                  '    Action: Skips extension setup unless editor is installed';
 
-  AntigravityText := 'Install official Aerix Language extension in Google Antigravity IDE';
   if AntigravityDetected then
-    AntigravityText := AntigravityText + ' (Detected on this system)';
+    AntigravityText := 'Google Antigravity IDE' + #13#10 +
+                       '    Status: [DETECTED: ' + DetectedAntigravityPath + ']' + #13#10 +
+                       '    Action: Automatically execute ''antigravity --install-extension aerix-1.0.84.vsix'''
+  else
+    AntigravityText := 'Google Antigravity IDE' + #13#10 +
+                       '    Status: [Not Detected on system]' + #13#10 +
+                       '    Action: Skips extension setup unless editor is installed';
 
-  // Create dedicated interactive option page directly after Select Tasks page
+  // Create Screen 5: Dedicated IDE Extension Setup Page directly after Select Tasks
   IDEPage := CreateInputOptionPage(wpSelectTasks,
-    'IDE & Editor Integration',
-    'Choose code editors to configure with Aerix language intelligence',
-    'Aerix provides rich syntax highlighting, snippets, and Language Server (LSP) diagnostics.' + #13#10#13#10 +
-    'The installer has detected your installed developer environments. Check the options below if you would like Setup to configure them automatically:',
+    'IDE & Code Editor Extension Setup',
+    'Supercharge your development workflow with full language intelligence',
+    'Aerix provides official extensions containing TextMate syntax coloring, code snippets,' + #13#10 +
+    'and Language Server Protocol (LSP) intelligence.' + #13#10#13#10 +
+    'Setup has inspected your system. Select which editors you would like to configure:' + #13#10 +
+    '(* Note: Extensions will ONLY be installed into the editors you explicitly check below)',
     False, False);
 
   IDEPage.Add(VSCodeText);
@@ -252,13 +274,42 @@ begin
   IDEPage.Values[1] := AntigravityDetected or WizardIsTaskSelected('antigravityExt');
 end;
 
+// Screen 6: Custom Ready to Install Summary Card Formatter
+function UpdateReadyMemo(Space, NewLine, MemoUserInfoInfo, MemoDirInfo, MemoTypeInfo, MemoComponentsInfo, MemoGroupInfo, MemoTasksInfo: String): String;
+var
+  S: String;
+begin
+  S := 'Destination location:' + NewLine +
+       '  ' + ExpandConstant('{app}') + NewLine + NewLine +
+       'Selected Tasks:' + NewLine;
+
+  if WizardIsTaskSelected('envPath') then
+    S := S + '  - Add Aerix toolchain directory to User PATH' + NewLine;
+  if WizardIsTaskSelected('fileAssoc') or WizardIsTaskSelected('regType') then
+    S := S + '  - Windows Explorer .arx Icon Branding & File Association' + NewLine;
+  if WizardIsTaskSelected('runMenu') or WizardIsTaskSelected('buildMenu') then
+    S := S + '  - Context Menu Verbs (Run with Aerix, Build Executable)' + NewLine;
+
+  S := S + NewLine + 'IDE Extensions to Install:' + NewLine;
+  if Assigned(IDEPage) and IDEPage.Values[0] then
+    S := S + '  - Visual Studio Code (aerix-1.0.84.vsix)' + NewLine;
+  if Assigned(IDEPage) and IDEPage.Values[1] then
+    S := S + '  - Google Antigravity IDE (aerix-1.0.84.vsix)' + NewLine;
+  if Assigned(IDEPage) and (not IDEPage.Values[0]) and (not IDEPage.Values[1]) then
+    S := S + '  - (None selected - skipping editor extensions)' + NewLine;
+
+  Result := S;
+end;
+
 // Install VS Code Extension via official CLI
 procedure InstallVSCodeExt(VsixPath: String);
 var
   ResultCode: Integer;
   CodeCmd: String;
 begin
-  CodeCmd := GetVSCodeCmd();
+  CodeCmd := DetectedVSCodePath;
+  if CodeCmd = '' then
+    CodeCmd := 'code.cmd';
   Exec('cmd.exe', '/C "' + CodeCmd + '" --install-extension "' + VsixPath + '" --force', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
 end;
 
@@ -268,24 +319,30 @@ var
   ResultCode: Integer;
   AntigravityCmd: String;
 begin
-  AntigravityCmd := GetAntigravityCmd();
+  AntigravityCmd := DetectedAntigravityPath;
+  if AntigravityCmd = '' then
+    AntigravityCmd := 'antigravity.cmd';
   Exec('cmd.exe', '/C "' + AntigravityCmd + '" --install-extension "' + VsixPath + '" --force', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
 end;
 
-// Uninstall extensions on setup removal
+// Clean extension uninstall on setup removal
 procedure UninstallIDEExtensions();
 var
   ResultCode: Integer;
   CodeCmd, AntigravityCmd: String;
 begin
-  CodeCmd := GetVSCodeCmd();
+  CodeCmd := DetectVSCodePath();
+  if CodeCmd = '' then
+    CodeCmd := 'code.cmd';
   Exec('cmd.exe', '/C "' + CodeCmd + '" --uninstall-extension aerix-lang.aerix', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
 
-  AntigravityCmd := GetAntigravityCmd();
+  AntigravityCmd := DetectAntigravityPath();
+  if AntigravityCmd = '' then
+    AntigravityCmd := 'antigravity.cmd';
   Exec('cmd.exe', '/C "' + AntigravityCmd + '" --uninstall-extension aerix-lang.aerix', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
 end;
 
-// Post-installation step execution
+// Post-installation step execution (Screen 7)
 procedure CurStepChanged(CurStep: TSetupStep);
 var
   VsixPath: String;
@@ -335,4 +392,3 @@ begin
     SHChangeNotify(SHCNE_ASSOCCHANGED, SHCNF_IDLIST, 0, 0);
   end;
 end;
-
