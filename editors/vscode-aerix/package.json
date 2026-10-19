@@ -80,8 +80,56 @@
         "title": "Check Syntax & Types",
         "category": "Aerix",
         "icon": "$(pass)"
+      },
+      {
+        "command": "aerix.buildWasm",
+        "title": "Compile to WebAssembly (WASM)",
+        "category": "Aerix",
+        "icon": "$(globe)"
+      },
+      {
+        "command": "aerix.serveWasm",
+        "title": "Run WebAssembly in Browser (Live)",
+        "category": "Aerix",
+        "icon": "$(browser)"
       }
-    ]
+    ],
+    "menus": {
+      "editor/title/run": [
+        {
+          "command": "aerix.runFile",
+          "when": "resourceExtname == .arx",
+          "group": "navigation@1"
+        },
+        {
+          "command": "aerix.buildWasm",
+          "when": "resourceExtname == .arx",
+          "group": "navigation@2"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "aerix.runFile",
+          "when": "resourceExtname == .arx",
+          "group": "aerix@1"
+        },
+        {
+          "command": "aerix.checkFile",
+          "when": "resourceExtname == .arx",
+          "group": "aerix@2"
+        },
+        {
+          "command": "aerix.buildWasm",
+          "when": "resourceExtname == .arx",
+          "group": "aerix@3"
+        },
+        {
+          "command": "aerix.serveWasm",
+          "when": "resourceExtname == .arx",
+          "group": "aerix@4"
+        }
+      ]
+    }
   }
 }
 

@@ -6,12 +6,12 @@
 
 # ⚡ Aerix 2.0 VS Code IntelliSense & Language Tooling
 
-[![Version](https://img.shields.io/badge/version-v1.0.83-00DCFF.svg?style=for-the-badge&logo=visualstudiocode)](#)
+[![Version](https://img.shields.io/badge/version-v1.0.84-00DCFF.svg?style=for-the-badge&logo=visualstudiocode)](#)
 [![Language](https://img.shields.io/badge/language-Aerix%20(.arx)-1E90FF.svg?style=for-the-badge)](#)
-[![Tests](https://img.shields.io/badge/test%20suite-80%2F80%20PASS-00E676.svg?style=for-the-badge)](#)
+[![Tests](https://img.shields.io/badge/test%20suite-87%2F87%20PASS-00E676.svg?style=for-the-badge)](#)
 [![Status](https://img.shields.io/badge/IntelliSense-SUPERCHARGED-7C4DFF.svg?style=for-the-badge)](#)
 
-**The official, ultra-high-performance language extension for Aerix (`.arx`) — High-precision TextMate syntax highlighting, intelligent context-aware completions, real-time struct memory layout diagnostics, multi-threaded signature assistance, and native compilation integration.**
+**The official, ultra-high-performance language extension for Aerix (`.arx`) — High-precision TextMate syntax highlighting, intelligent context-aware completions, real-time struct memory layout diagnostics, multi-threaded signature assistance, WebAssembly compilation & live browser preview, and native compilation integration.**
 
 </div>
 
@@ -33,9 +33,9 @@ The **Aerix VS Code Extension** transforms Visual Studio Code into a world-class
 │ Contextual fields,  │ Full docstrings, type    │ Live byte offsets, padding, │
 │ cascade ~> chaining │ layout & overload lists  │ & L1 cache line alignment   │
 ├─────────────────────┼──────────────────────────┼─────────────────────────────┤
-│ 🏎️ Native Concurrency│ 🏷️ Real-Time Inlay Hints │ 🛡️ On-The-Fly Diagnostics   │
-│ spawn thread help & │ Parameter labels & auto- │ Sub-millisecond compiler    │
-│ Channel<T> routing  │ inferred variable types  │ checks via `arx check`      │
+│ 🏎️ Native Concurrency│ 🌐 WebAssembly Engine    │ 🛡️ On-The-Fly Diagnostics   │
+│ spawn thread help & │ W3C pure binary emitter, │ Sub-millisecond compiler    │
+│ Channel<T> routing  │ canvas primitives & live │ checks via `arx check`      │
 └─────────────────────┴──────────────────────────┴─────────────────────────────┘
 ```
 
@@ -104,6 +104,14 @@ Breadcrumbs and Outline View neatly categorize:
 - **Enums** $\rightarrow$ Enum variants and data payloads
 - **Functions** $\rightarrow$ Signature and return types
 
+### F. Interactive CodeLens & One-Click Runner
+Interactive action buttons appear directly above `fn main()` in any `.arx` file:
+- **`▶ Run Aerix Program`**: Executes `arx run` inside the integrated Aerix Terminal.
+- **`⚡ Fast Syntax Check`**: Runs sub-millisecond semantic validation via `arx check`.
+- **`🌐 Compile WASM`**: Compiles to pure WebAssembly `.wasm`, `.wat`, and HTML5 harness via `arx wasm <file> --wat --html`.
+- **`🚀 Live WASM Browser`**: Compiles and launches an instant local HTTP server with live browser runtime preview via `arx wasm <file> --serve`.
+
+
 ---
 
 ## ⌨️ Interactive Snippets Catalog
@@ -126,6 +134,9 @@ Breadcrumbs and Outline View neatly categorize:
 | `cascade` | Cascade Operator | `~> method()` |
 | `pipe` | Pipeline Operator | `\|> func()` |
 | `defer` | Scoped Cleanup | `defer cleanup()` |
+| `canvas_rect` | WASM Canvas Fill Rect | `arx_canvas_fill_rect(x, y, w, h, r, g, b, 255);` |
+| `canvas_clear` | WASM Canvas Clear | `arx_canvas_clear(13, 17, 23, 255);` |
+| `wasm_app` | WASM Canvas Starter | `fn main() { ... arx_canvas_clear(...) }` |
 
 ---
 

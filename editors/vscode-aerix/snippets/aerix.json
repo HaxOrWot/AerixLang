@@ -250,5 +250,38 @@
       "}"
     ],
     "description": "Declare a monomorphized generic function"
+  },
+  "Aerix Canvas Fill Rect (WASM)": {
+    "prefix": "canvas_rect",
+    "body": [
+      "arx_canvas_fill_rect(${1:x}, ${2:y}, ${3:width}, ${4:height}, ${5:r}, ${6:g}, ${7:b}, ${8:255});"
+    ],
+    "description": "Fill a rectangular region on HTML5 Canvas in WebAssembly"
+  },
+  "Aerix Canvas Pixel (WASM)": {
+    "prefix": "canvas_pixel",
+    "body": [
+      "arx_canvas_set_pixel(${1:x}, ${2:y}, ${3:r}, ${4:g}, ${5:b}, ${6:255});"
+    ],
+    "description": "Draw a single pixel onto HTML5 Canvas in WebAssembly"
+  },
+  "Aerix Canvas Clear (WASM)": {
+    "prefix": "canvas_clear",
+    "body": [
+      "arx_canvas_clear(${1:13}, ${2:17}, ${3:23}, ${4:255});"
+    ],
+    "description": "Clear HTML5 Canvas in WebAssembly with RGBA background color"
+  },
+  "Aerix WebAssembly Canvas App": {
+    "prefix": "wasm_app",
+    "body": [
+      "fn main() {",
+      "\tprintln(\"Initializing Aerix WebAssembly Engine...\");",
+      "\tarx_canvas_clear(13, 17, 23, 255);",
+      "\tarx_canvas_fill_rect(50, 50, 200, 100, 0, 220, 255, 255);",
+      "\tprintln(\"Rendered successfully.\");",
+      "}"
+    ],
+    "description": "WebAssembly Canvas starter application"
   }
 }

@@ -198,6 +198,35 @@ const AERIX_BUILTINS = [
         name: 'sizeof',
         detail: 'sizeof(type: any) -> i64',
         doc: 'Returns the physical memory byte size of a type or instance.'
+    },
+    {
+        name: 'arx_canvas_set_pixel',
+        detail: 'arx_canvas_set_pixel(x: i64, y: i64, r: i64, g: i64, b: i64, a: i64) -> void',
+        doc: 'Draws a single pixel onto the HTML5 / WebAssembly canvas at `(x, y)` with RGBA color channels (0-255).\n' +
+             '```aerix\n' +
+             'arx_canvas_set_pixel(100, 50, 0, 220, 255, 255);\n' +
+             '```'
+    },
+    {
+        name: 'arx_canvas_fill_rect',
+        detail: 'arx_canvas_fill_rect(x: i64, y: i64, w: i64, h: i64, r: i64, g: i64, b: i64, a: i64) -> void',
+        doc: 'Fills a rectangular region on the HTML5 / WebAssembly canvas with RGBA color channels (0-255).\n' +
+             '```aerix\n' +
+             'arx_canvas_fill_rect(10, 10, 80, 40, 30, 144, 255, 255);\n' +
+             '```'
+    },
+    {
+        name: 'arx_canvas_clear',
+        detail: 'arx_canvas_clear(r: i64, g: i64, b: i64, a: i64) -> void',
+        doc: 'Clears the entire HTML5 / WebAssembly canvas with a solid RGBA color background.\n' +
+             '```aerix\n' +
+             'arx_canvas_clear(13, 17, 23, 255); // Dark GitHub Slate\n' +
+             '```'
+    },
+    {
+        name: 'arx_now_ms',
+        detail: 'arx_now_ms() -> i64',
+        doc: 'Returns monotonic timestamp in milliseconds from `performance.now()` in WebAssembly runtime or system clock.'
     }
 ];
 
@@ -1186,6 +1215,16 @@ function activate(context) {
                     command: 'aerix.checkFile',
                     arguments: [document.uri]
                 }));
+                lenses.push(new vscode.CodeLens(range, {
+                    title: '🌐 Compile WASM',
+                    command: 'aerix.buildWasm',
+                    arguments: [document.uri]
+                }));
+                lenses.push(new vscode.CodeLens(range, {
+                    title: '🚀 Live WASM Browser',
+                    command: 'aerix.serveWasm',
+                    arguments: [document.uri]
+                }));
             }
 
             for (const cls of docData.classes.values()) {
@@ -1274,6 +1313,34 @@ function activate(context) {
         }
     });
     context.subscriptions.push(checkFileCmd);
+
+    const buildWasmCmd = vscode.commands.registerCommand('aerix.buildWasm', (uri) => {
+        const editor = vscode.window.activeTextEditor;
+        const filePath = uri ? uri.fsPath : (editor ? editor.document.fileName : null);
+        if (!filePath) return;
+
+        let terminal = vscode.window.terminals.find(t => t.name === 'Aerix Terminal');
+        if (!terminal) {
+            terminal = vscode.window.createTerminal('Aerix Terminal');
+        }
+        terminal.show();
+        terminal.sendText(`arx wasm "${filePath}" --wat --html`);
+    });
+    context.subscriptions.push(buildWasmCmd);
+
+    const serveWasmCmd = vscode.commands.registerCommand('aerix.serveWasm', (uri) => {
+        const editor = vscode.window.activeTextEditor;
+        const filePath = uri ? uri.fsPath : (editor ? editor.document.fileName : null);
+        if (!filePath) return;
+
+        let terminal = vscode.window.terminals.find(t => t.name === 'Aerix Terminal');
+        if (!terminal) {
+            terminal = vscode.window.createTerminal('Aerix Terminal');
+        }
+        terminal.show();
+        terminal.sendText(`arx wasm "${filePath}" --serve`);
+    });
+    context.subscriptions.push(serveWasmCmd);
 }
 
 function deactivate() {
