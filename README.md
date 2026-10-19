@@ -234,6 +234,32 @@ fn main() {
 
 </details>
 
+<details>
+<summary><b>🗃️ 5. Dynamic Collections, Indexing & Text Engine (Click to expand)</b></summary>
+
+<br>
+
+```aerix
+fn main() {
+    // Monomorphized dynamic vector with 1.5x golden growth
+    mut list = List<i64>();
+    list.push(10);
+    list.push(20);
+    list.push(30);
+
+    // Direct bracket indexing and in-place mutation
+    let first = list[0];       // 10
+    list[1] = 99;              // [10, 99, 30]
+
+    // Rich dual-tier text manipulation (SSO optimized)
+    let raw = "   aerix systems language   ";
+    let formatted = raw.trim().to_upper();
+    println("Formatted text: {formatted}");
+}
+```
+
+</details>
+
 ---
 
 ## 🏎️ Scientific Benchmarks: Native C vs Aerix
@@ -313,6 +339,8 @@ arx emit-c program.arx
 
 | Feature | Syntax Preview | Key Systems Benefit |
 | :--- | :--- | :--- |
+| **Collections & Slices** | `List<T>`, `arr[i]`, `arr[0..2]` | Monomorphized contiguous vectors, bounds-checked indexing & slices. |
+| **Dual-Tier Text Engine** | `String`, `s.split()`, `s.trim()` | SSO stack optimization (<=15 bytes zero alloc), rich string transformations. |
 | **Concurrency & Channels** | `spawn worker(...)`, `Channel<T>` | Win32/POSIX native thread ring buffers with zero GC pauses. |
 | **Static Monomorphization**| `class Box<T>`, `fn id<T>()` | Zero-overhead specialization; zero `void*` pointer boxing. |
 | **Fluent Cascade Mutation** | `obj ~> step1() ~> step2()` | In-place object mutation without boilerplate `return self`. |
@@ -331,10 +359,10 @@ arx emit-c program.arx
 
 ## 🚦 Project Roadmap & Implementation Status
 
-Aerix is backed by a production-grade automated test suite (**87/87 tests passing**, 100% pass rate) across all 20 implementation phases:
+Aerix is backed by a production-grade automated test suite (**87/87 tests passing**, 100% pass rate) across 25 master implementation phases:
 
 <details open>
-<summary><b>📋 Implementation Status Matrix (20/20 Completed Phases)</b></summary>
+<summary><b>📋 Implementation Status Matrix (20/25 Completed Phases)</b></summary>
 
 <br>
 

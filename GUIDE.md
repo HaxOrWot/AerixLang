@@ -3328,6 +3328,9 @@ Yes! The compiled `.exe` or ELF executable is completely standalone and contains
 #### Q75: Where can I find more example projects?
 Check out the `examples/` directory in the repository and the comprehensive flagship test program `main.arx`.
 
+#### Q76: How do dynamic collections (`List<T>`, `String`) manage memory without garbage collection?
+Aerix dynamic collections use deterministic RAII lifecycle management and cache-aligned contiguous buffers. Dynamic vectors (`List<T>`) utilize an amortized 1.5x golden ratio growth strategy and free their heap buffer when the instance exits scope. Strings employ Small String Optimization (SSO) storing up to 15 UTF-8 bytes directly inline on the stack with zero heap allocations.
+
 ---
 
 ## Chapter 34: The Comprehensive 1-Page Aerix Syntax Cheat Sheet
@@ -3419,8 +3422,12 @@ arx_canvas_fill_rect(20, 20, 100, 50, 0, 220, 255)
 // 14. STANDARD COLLECTIONS & TEXT ENGINE (Phase 21+)
 let mut list = List<i64>()
 list.push(42)
-let val = list[0]
+let val = list[0]              // Bracket indexing
+list[0] = 99                   // Index assignment
+let popped = list.pop()        // 99
+let slice = list[0..1]         // Zero-copy slice view
 let mut s = String("  aerix  ").trim().to_upper()
+let parts = s.split(" ")       // List of words
 let mut dict = Map<str, i64>()
 dict["alpha"] = 100
 ```

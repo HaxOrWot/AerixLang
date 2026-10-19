@@ -723,6 +723,20 @@ class Channel<T> {
 | `arx_channel_close`| `arx_channel_close(ch) -> void` | Closes channel and wakes all waiting worker threads. |
 | `arx_channel_free`| `arx_channel_free(ch) -> void` | Destroys synchronization mutexes and frees buffer memory. |
 | `arx_thread_join`| `arx_thread_join(handle: i64) -> void`| Waits synchronously for thread termination and closes handle. |
+| `arx_list_new` | `arx_list_new(cap: i64, elem_sz: i64) -> *void` | Allocates new dynamic vector with 1.5x amortized growth. |
+| `arx_list_push` | `arx_list_push(list: *void, val_ptr: *void) -> void` | Pushes element onto vector with bounds auto-resizing. |
+| `arx_list_pop` | `arx_list_pop(list: *void, out_ptr: *void) -> bool` | Pops last element from vector; returns false if empty. |
+| `arx_list_get` | `arx_list_get(list: *void, idx: i64) -> *void` | Bounds-checked element address lookup in O(1). |
+| `arx_list_set` | `arx_list_set(list: *void, idx: i64, val_ptr: *void) -> void` | Bounds-checked in-place element mutation. |
+| `arx_list_len` | `arx_list_len(list: *void) -> i64` | Returns active vector length in O(1). |
+| `arx_list_free` | `arx_list_free(list: *void) -> void` | Deterministically frees heap allocation via RAII. |
+| `arx_str_trim` | `arx_str_trim(src: str) -> str` | Strips leading and trailing ASCII whitespace. |
+| `arx_str_to_upper`| `arx_str_to_upper(src: str) -> str` | Produces uppercase transformed string copy. |
+| `arx_str_to_lower`| `arx_str_to_lower(src: str) -> str` | Produces lowercase transformed string copy. |
+| `arx_str_replace` | `arx_str_replace(src: str, old_s: str, new_s: str) -> str` | Replaces all occurrences of substring. |
+| `arx_str_contains`| `arx_str_contains(src: str, query: str) -> bool` | Hardware-optimized substring search. |
+| `arx_str_split` | `arx_str_split(src: str, delim: str) -> *void` | Splits string by delimiter returning List of string slices. |
+| `arx_str_join` | `arx_str_join(list: *void, delim: str) -> str` | Concatenates list of strings separated by delimiter. |
 
 ---
 
