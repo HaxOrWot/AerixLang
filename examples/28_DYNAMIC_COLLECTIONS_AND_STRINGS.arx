@@ -1,0 +1,128 @@
+// Aerix Language — Example 28: Dynamic Collections & Dual-Tier Text Engine
+// Demonstrates contiguous dynamic List<T>, bracket indexing, mutation, slicing,
+// and the dual-tier text engine (fluent str primitives & String class).
+
+fn print_separator() {
+    println("==================================================");
+}
+
+fn demonstrate_list_integers() {
+    println("[1] Dynamic List<i64> Operations & Slicing:");
+    mut numbers = List<i64>();
+
+    // Dynamic push with golden-ratio 1.5x amortized growth
+    numbers.push(10);
+    numbers.push(25);
+    numbers.push(42);
+    numbers.push(88);
+    numbers.push(100);
+
+    let count = numbers.len();
+    let val2 = numbers[2];
+    println("Initial count: {count}");
+    println("Element at [2]: {val2}");
+
+    // Direct bracket index mutation
+    numbers[2] = 999;
+    let mutated2 = numbers[2];
+    println("Mutated [2] -> {mutated2}");
+
+    // Zero-copy range slicing: numbers[1..4]
+    let slice_view = numbers[1..4];
+    let slice_len = slice_view.len();
+    let s0 = slice_view[0];
+    let s1 = slice_view[1];
+    let s2 = slice_view[2];
+    println("Slice [1..4] length: {slice_len}");
+    println("Slice element [0]: {s0}");
+    println("Slice element [1]: {s1}");
+    println("Slice element [2]: {s2}");
+
+    let popped = numbers.pop();
+    let rem = numbers.len();
+    println("Popped element: {popped}");
+    println("Remaining count: {rem}");
+}
+
+fn demonstrate_list_strings() {
+    println("[2] Dynamic List<str> Operations:");
+    mut stack = List<str>();
+    stack.push("Aerix");
+    stack.push("Compiler");
+    stack.push("Architecture");
+
+    let h = stack[0];
+    let m = stack[1];
+    let t = stack[2];
+    println("Stack head: {h}");
+    println("Stack middle: {m}");
+    println("Stack tail: {t}");
+
+    stack[1] = "Native Systems";
+    let updated = stack[1];
+    println("Updated stack[1]: {updated}");
+}
+
+fn demonstrate_text_engine() {
+    println("[3] Dual-Tier Text Engine:");
+
+    // Fluent str primitive transformations
+    let raw = "   Aerix Systems Language   ";
+    let cleaned = raw.trim();
+    let shouting = cleaned.to_upper();
+    let whisper = shouting.to_lower();
+    let replaced = whisper.replace("systems", "high-performance");
+    let c_len = cleaned.len();
+
+    println("Raw text: '{raw}'");
+    println("Trimmed: '{cleaned}' (len={c_len})");
+    println("Upper: '{shouting}'");
+    println("Lower: '{whisper}'");
+    println("Replaced: '{replaced}'");
+
+    let has_sys = cleaned.contains("Systems");
+    let starts_arx = cleaned.starts_with("Aerix");
+    let ends_lang = cleaned.ends_with("Language");
+    println("Contains 'Systems'? {has_sys}");
+    println("Starts with 'Aerix'? {starts_arx}");
+    println("Ends with 'Language'? {ends_lang}");
+
+    // Splitting str into List<str>
+    let sentence = "fast concurrent native deterministic";
+    let words = sentence.split(" ");
+    let w_len = words.len();
+    println("Split words count: {w_len}");
+    let w0 = words[0];
+    let w1 = words[1];
+    let w2 = words[2];
+    let w3 = words[3];
+    println("Word [0]: {w0}");
+    println("Word [1]: {w1}");
+    println("Word [2]: {w2}");
+    println("Word [3]: {w3}");
+
+    // Heavyweight String class object
+    mut banner = String("  welcome to aerix v1.0.87  ");
+    let formatted = banner.trim().to_upper();
+    let f_str = formatted.as_str();
+    let f_len = formatted.len;
+    println("Formatted String object: {f_str}");
+    println("String byte length: {f_len}");
+}
+
+fn main() {
+    print_separator();
+    println("       AERIX DYNAMIC COLLECTIONS & TEXT ENGINE     ");
+    print_separator();
+
+    demonstrate_list_integers();
+    print_separator();
+
+    demonstrate_list_strings();
+    print_separator();
+
+    demonstrate_text_engine();
+    print_separator();
+
+    println("All collection and text operations completed safely.");
+}

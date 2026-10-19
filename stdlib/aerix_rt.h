@@ -513,5 +513,285 @@ static inline void arx_channel_free(int64_t ch_handle) {
     arx_free(ch);
 }
 
+// ==========================================
+// Phase 21: Dynamic Collections (List<T>)
+// ==========================================
+
+typedef struct {
+    int64_t* data;
+    size_t len;
+    size_t cap;
+} Arx_List;
+
+static inline int64_t arx_list_new(int64_t initial_cap) {
+    if (initial_cap < 4) initial_cap = 4;
+    Arx_List* list = (Arx_List*)arx_alloc(sizeof(Arx_List));
+    list->data = (int64_t*)arx_alloc((size_t)initial_cap * sizeof(int64_t));
+    list->len = 0;
+    list->cap = (size_t)initial_cap;
+    return (int64_t)(intptr_t)list;
+}
+
+static inline void arx_list_push(int64_t list_handle, int64_t val) {
+    Arx_List* list = (Arx_List*)(intptr_t)list_handle;
+    if (!list) return;
+    if (list->len >= list->cap) {
+        size_t new_cap = list->cap + (list->cap >> 1); // 1.5x golden ratio growth
+        if (new_cap < 4) new_cap = 4;
+        list->data = (int64_t*)realloc(list->data, new_cap * sizeof(int64_t));
+        if (!list->data) arx_panic("Out of memory growing List", __FILE__, __LINE__);
+        list->cap = new_cap;
+    }
+    list->data[list->len++] = val;
+}
+
+static inline int64_t arx_list_pop(int64_t list_handle) {
+    Arx_List* list = (Arx_List*)(intptr_t)list_handle;
+    if (!list || list->len == 0) {
+        arx_panic("IndexError: pop from empty List", __FILE__, __LINE__);
+    }
+    return list->data[--list->len];
+}
+
+static inline int64_t arx_list_get(int64_t list_handle, int64_t idx) {
+    Arx_List* list = (Arx_List*)(intptr_t)list_handle;
+    if (!list) arx_panic("NullPointerError: access on null List", __FILE__, __LINE__);
+    if (idx < 0 || (size_t)idx >= list->len) {
+        arx_panic("IndexOutOfBounds: index out of bounds on List", __FILE__, __LINE__);
+    }
+    return list->data[idx];
+}
+
+static inline void arx_list_set(int64_t list_handle, int64_t idx, int64_t val) {
+    Arx_List* list = (Arx_List*)(intptr_t)list_handle;
+    if (!list) arx_panic("NullPointerError: access on null List", __FILE__, __LINE__);
+    if (idx < 0 || (size_t)idx >= list->len) {
+        arx_panic("IndexOutOfBounds: index out of bounds on List", __FILE__, __LINE__);
+    }
+    list->data[idx] = val;
+}
+
+static inline int64_t arx_list_len(int64_t list_handle) {
+    Arx_List* list = (Arx_List*)(intptr_t)list_handle;
+    return list ? (int64_t)list->len : 0;
+}
+
+static inline void arx_list_clear(int64_t list_handle) {
+    Arx_List* list = (Arx_List*)(intptr_t)list_handle;
+    if (list) list->len = 0;
+}
+
+static inline void arx_list_free(int64_t list_handle) {
+    Arx_List* list = (Arx_List*)(intptr_t)list_handle;
+    if (!list) return;
+    if (list->data) arx_free(list->data);
+    arx_free(list);
+}
+
+static inline int64_t arx_list_slice(int64_t list_handle, int64_t start, int64_t end) {
+    Arx_List* list = (Arx_List*)(intptr_t)list_handle;
+    if (!list) return arx_list_new(4);
+    if (start < 0) start = 0;
+    if ((size_t)end > list->len) end = (int64_t)list->len;
+    if (start > end) start = end;
+    size_t count = (size_t)(end - start);
+    int64_t new_handle = arx_list_new(count > 4 ? count : 4);
+    Arx_List* new_list = (Arx_List*)(intptr_t)new_handle;
+    for (size_t i = 0; i < count; i++) {
+        new_list->data[i] = list->data[start + i];
+    }
+    new_list->len = count;
+    return new_handle;
+}
+
+// Typed List Helpers
+static inline void arx_list_push_i64(int64_t h, int64_t v) { arx_list_push(h, v); }
+static inline void arx_list_push_str(int64_t h, const char* s) { arx_list_push(h, (int64_t)(intptr_t)s); }
+static inline void arx_list_push_f64(int64_t h, double v) { union { double f; int64_t i; } u; u.f = v; arx_list_push(h, u.i); }
+
+static inline int64_t arx_list_get_i64(int64_t h, int64_t idx) { return arx_list_get(h, idx); }
+static inline const char* arx_list_get_str(int64_t h, int64_t idx) { return (const char*)(intptr_t)arx_list_get(h, idx); }
+static inline double arx_list_get_f64(int64_t h, int64_t idx) { union { double f; int64_t i; } u; u.i = arx_list_get(h, idx); return u.f; }
+
+static inline void arx_list_set_i64(int64_t h, int64_t idx, int64_t v) { arx_list_set(h, idx, v); }
+static inline void arx_list_set_str(int64_t h, int64_t idx, const char* s) { arx_list_set(h, idx, (int64_t)(intptr_t)s); }
+static inline void arx_list_set_f64(int64_t h, int64_t idx, double v) { union { double f; int64_t i; } u; u.f = v; arx_list_set(h, idx, u.i); }
+
+static inline int64_t arx_list_pop_i64(int64_t h) { return arx_list_pop(h); }
+static inline const char* arx_list_pop_str(int64_t h) { return (const char*)(intptr_t)arx_list_pop(h); }
+static inline double arx_list_pop_f64(int64_t h) { union { double f; int64_t i; } u; u.i = arx_list_pop(h); return u.f; }
+
+// ==========================================
+// Phase 21: Dual-Tier Text Engine (str & String)
+// ==========================================
+
+static inline int64_t arx_str_len(const char* s) {
+    return s ? (int64_t)strlen(s) : 0;
+}
+
+static inline const char* arx_str_copy(const char* s) {
+    if (!s) return "";
+    size_t len = strlen(s);
+    char* copy = (char*)arx_alloc(len + 1);
+    memcpy(copy, s, len + 1);
+    return copy;
+}
+
+static inline const char* arx_str_trim(const char* s) {
+    if (!s) return "";
+    while (*s && isspace((unsigned char)*s)) s++;
+    if (*s == '\0') return "";
+    const char* end = s + strlen(s) - 1;
+    while (end > s && isspace((unsigned char)*end)) end--;
+    size_t len = (size_t)(end - s + 1);
+    char* trimmed = (char*)arx_alloc(len + 1);
+    memcpy(trimmed, s, len);
+    trimmed[len] = '\0';
+    return trimmed;
+}
+
+static inline const char* arx_str_to_upper(const char* s) {
+    if (!s) return "";
+    size_t len = strlen(s);
+    char* res = (char*)arx_alloc(len + 1);
+    for (size_t i = 0; i < len; i++) {
+        res[i] = (char)toupper((unsigned char)s[i]);
+    }
+    res[len] = '\0';
+    return res;
+}
+
+static inline const char* arx_str_to_lower(const char* s) {
+    if (!s) return "";
+    size_t len = strlen(s);
+    char* res = (char*)arx_alloc(len + 1);
+    for (size_t i = 0; i < len; i++) {
+        res[i] = (char)tolower((unsigned char)s[i]);
+    }
+    res[len] = '\0';
+    return res;
+}
+
+static inline bool arx_str_contains(const char* s, const char* query) {
+    if (!s || !query) return false;
+    return strstr(s, query) != NULL;
+}
+
+static inline bool arx_str_starts_with(const char* s, const char* prefix) {
+    if (!s || !prefix) return false;
+    size_t len_s = strlen(s);
+    size_t len_p = strlen(prefix);
+    if (len_p > len_s) return false;
+    return strncmp(s, prefix, len_p) == 0;
+}
+
+static inline bool arx_str_ends_with(const char* s, const char* suffix) {
+    if (!s || !suffix) return false;
+    size_t len_s = strlen(s);
+    size_t len_suf = strlen(suffix);
+    if (len_suf > len_s) return false;
+    return strcmp(s + (len_s - len_suf), suffix) == 0;
+}
+
+static inline const char* arx_str_replace(const char* s, const char* old_sub, const char* new_sub) {
+    if (!s) return "";
+    if (!old_sub || old_sub[0] == '\0') return s;
+    if (!new_sub) new_sub = "";
+    size_t old_len = strlen(old_sub);
+    size_t new_len = strlen(new_sub);
+
+    size_t count = 0;
+    const char* tmp = s;
+    while ((tmp = strstr(tmp, old_sub)) != NULL) {
+        count++;
+        tmp += old_len;
+    }
+    if (count == 0) return s;
+
+    size_t result_len = strlen(s) + count * (new_len > old_len ? new_len - old_len : 0);
+    char* result = (char*)arx_alloc(result_len + 1);
+    char* dst = result;
+    const char* src = s;
+    while ((tmp = strstr(src, old_sub)) != NULL) {
+        size_t chunk_len = (size_t)(tmp - src);
+        memcpy(dst, src, chunk_len);
+        dst += chunk_len;
+        memcpy(dst, new_sub, new_len);
+        dst += new_len;
+        src = tmp + old_len;
+    }
+    strcpy(dst, src);
+    return result;
+}
+
+static inline const char* arx_str_slice(const char* s, int64_t start, int64_t end) {
+    if (!s) return "";
+    int64_t len = (int64_t)strlen(s);
+    if (start < 0) start = 0;
+    if (end > len) end = len;
+    if (start >= end) return "";
+    size_t slice_len = (size_t)(end - start);
+    char* res = (char*)arx_alloc(slice_len + 1);
+    memcpy(res, s + start, slice_len);
+    res[slice_len] = '\0';
+    return res;
+}
+
+static inline int64_t arx_str_split(const char* s, const char* delim) {
+    int64_t list_handle = arx_list_new(4);
+    if (!s) return list_handle;
+    if (!delim || delim[0] == '\0') delim = " ";
+    size_t dlen = strlen(delim);
+
+    const char* cur = s;
+    const char* next = NULL;
+    while ((next = strstr(cur, delim)) != NULL) {
+        size_t part_len = (size_t)(next - cur);
+        char* part = (char*)arx_alloc(part_len + 1);
+        memcpy(part, cur, part_len);
+        part[part_len] = '\0';
+        arx_list_push(list_handle, (int64_t)(intptr_t)part);
+        cur = next + dlen;
+    }
+    size_t last_len = strlen(cur);
+    char* last_part = (char*)arx_alloc(last_len + 1);
+    memcpy(last_part, cur, last_len + 1);
+    arx_list_push(list_handle, (int64_t)(intptr_t)last_part);
+
+    return list_handle;
+}
+
+static inline const char* arx_str_join(int64_t list_handle, const char* delim) {
+    Arx_List* list = (Arx_List*)(intptr_t)list_handle;
+    if (!list || list->len == 0) return "";
+    if (!delim) delim = "";
+    size_t dlen = strlen(delim);
+
+    size_t total_len = 0;
+    for (size_t i = 0; i < list->len; i++) {
+        const char* piece = (const char*)(intptr_t)list->data[i];
+        if (piece) total_len += strlen(piece);
+        if (i + 1 < list->len) total_len += dlen;
+    }
+
+    char* res = (char*)arx_alloc(total_len + 1);
+    res[0] = '\0';
+    char* dst = res;
+    for (size_t i = 0; i < list->len; i++) {
+        const char* piece = (const char*)(intptr_t)list->data[i];
+        if (piece) {
+            size_t plen = strlen(piece);
+            memcpy(dst, piece, plen);
+            dst += plen;
+        }
+        if (i + 1 < list->len) {
+            memcpy(dst, delim, dlen);
+            dst += dlen;
+        }
+    }
+    *dst = '\0';
+    return res;
+}
+
 #endif // AERIX_RT_H
 

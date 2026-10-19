@@ -37,7 +37,7 @@ def substitute_type_str(t: Optional[str], type_map: Dict[str, str]) -> Optional[
     # Replace whole-word identifier matches (e.g. Pair_K_V with K->str, V->i64 => Pair_str_i64)
     res = t
     for k, v in type_map.items():
-        res = re.sub(r'(?<![a-zA-Z0-9_])' + re.escape(k) + r'(?![a-zA-Z0-9_])', v, res)
+        res = re.sub(r'(?<![a-zA-Z0-9])' + re.escape(k) + r'(?![a-zA-Z0-9])', v, res)
     return res
 
 
@@ -66,6 +66,35 @@ class GenericMonomorphizer:
                 self.generic_functions[decl.name] = decl
             else:
                 regular_decls.append(decl)
+
+        # Check prelude needs (Phase 21: Collections & Strings)
+        from src.middle.prelude import get_prelude_ast
+        prelude_ast = get_prelude_ast()
+
+        has_list_use = any(tpl == "List" for tpl, _ in ast.generic_uses)
+        has_split = self._has_split_call(ast)
+        references_string = self._references_string(ast)
+
+        if has_split:
+            ast.generic_uses.add(("List", ("str",)))
+
+        if "List" not in self.generic_classes and (has_list_use or has_split or references_string):
+            for decl in prelude_ast.declarations:
+                if isinstance(decl, ClassDefNode) and decl.name == "List":
+                    self.generic_classes["List"] = decl
+                    break
+
+        if references_string and not any(isinstance(d, ClassDefNode) and d.name == "String" for d in ast.declarations):
+            for decl in prelude_ast.declarations:
+                if isinstance(decl, ClassDefNode) and decl.name == "String":
+                    regular_decls.insert(0, copy.deepcopy(decl))
+                    ast.generic_uses.add(("List", ("str",)))
+                    if "List" not in self.generic_classes:
+                        for p_decl in prelude_ast.declarations:
+                            if isinstance(p_decl, ClassDefNode) and p_decl.name == "List":
+                                self.generic_classes["List"] = p_decl
+                                break
+                    break
 
         # If there are no generic templates, return AST untouched
         if not self.generic_classes and not self.generic_functions:
@@ -110,6 +139,53 @@ class GenericMonomorphizer:
             declarations=new_declarations,
             generic_uses=ast.generic_uses
         )
+
+    def _references_string(self, ast: ASTNode) -> bool:
+        found = False
+        def walk(n):
+            nonlocal found
+            if found or n is None:
+                return
+            if isinstance(n, IdentifierNode) and n.name == "String":
+                found = True
+                return
+            if isinstance(n, VarDeclNode) and getattr(n, "type_annotation", None) == "String":
+                found = True
+                return
+            if isinstance(n, ParamNode) and getattr(n, "type_name", None) == "String":
+                found = True
+                return
+            if isinstance(n, FunctionDefNode) and getattr(n, "return_type", None) == "String":
+                found = True
+                return
+            for attr in ("statements", "declarations", "body", "args", "params", "expr", "left", "right", "value", "target", "object_expr", "index", "condition", "then_block", "else_block", "initializer", "callee", "call"):
+                v = getattr(n, attr, None)
+                if isinstance(v, list):
+                    for item in v:
+                        walk(item)
+                elif isinstance(v, ASTNode):
+                    walk(v)
+        walk(ast)
+        return found
+
+    def _has_split_call(self, ast: ASTNode) -> bool:
+        found = False
+        def walk(n):
+            nonlocal found
+            if found or n is None:
+                return
+            if isinstance(n, CallNode) and isinstance(n.callee, MemberAccessNode) and n.callee.member == "split":
+                found = True
+                return
+            for attr in ("statements", "declarations", "body", "args", "params", "expr", "left", "right", "value", "target", "object_expr", "index", "condition", "then_block", "else_block", "initializer", "callee", "call"):
+                v = getattr(n, attr, None)
+                if isinstance(v, list):
+                    for item in v:
+                        walk(item)
+                elif isinstance(v, ASTNode):
+                    walk(v)
+        walk(ast)
+        return found
 
     def specialize_class(self, template: ClassDefNode, type_args: Tuple[str, ...]) -> ClassDefNode:
         """Clones and specializes a generic class template for concrete type arguments."""
@@ -158,6 +234,38 @@ class GenericMonomorphizer:
             op.param_type = substitute_type_str(op.param_type, type_map)
             op.return_type = substitute_type_str(op.return_type, type_map)
             self._substitute_in_body(op.body, type_map)
+
+        # Specialized List helpers for primitive types (str, i64, f64)
+        if template.name == "List" and len(type_args) == 1:
+            elem_t = type_args[0]
+            if elem_t in ("str", "i64", "f64"):
+                for m in cls.methods:
+                    if m.name == "push":
+                        for stmt in m.body.statements:
+                            if isinstance(stmt, ExprStmtNode) and isinstance(stmt.expr, CallNode) and isinstance(stmt.expr.callee, IdentifierNode):
+                                if stmt.expr.callee.name == "arx_list_push":
+                                    stmt.expr.callee.name = f"arx_list_push_{elem_t}"
+                                    stmt.expr.args = [stmt.expr.args[0], IdentifierNode(line=stmt.line, col=stmt.col, name="val")]
+                    elif m.name == "pop":
+                        for stmt in m.body.statements:
+                            if isinstance(stmt, VarDeclNode) and isinstance(stmt.initializer, CallNode) and isinstance(stmt.initializer.callee, IdentifierNode):
+                                if stmt.initializer.callee.name == "arx_list_pop":
+                                    stmt.initializer.callee.name = f"arx_list_pop_{elem_t}"
+                            elif isinstance(stmt, ReturnNode) and isinstance(stmt.value, CastNode):
+                                stmt.value = stmt.value.expr
+                    elif m.name == "get":
+                        for stmt in m.body.statements:
+                            if isinstance(stmt, VarDeclNode) and isinstance(stmt.initializer, CallNode) and isinstance(stmt.initializer.callee, IdentifierNode):
+                                if stmt.initializer.callee.name == "arx_list_get":
+                                    stmt.initializer.callee.name = f"arx_list_get_{elem_t}"
+                            elif isinstance(stmt, ReturnNode) and isinstance(stmt.value, CastNode):
+                                stmt.value = stmt.value.expr
+                    elif m.name == "set":
+                        for stmt in m.body.statements:
+                            if isinstance(stmt, ExprStmtNode) and isinstance(stmt.expr, CallNode) and isinstance(stmt.expr.callee, IdentifierNode):
+                                if stmt.expr.callee.name == "arx_list_set":
+                                    stmt.expr.callee.name = f"arx_list_set_{elem_t}"
+                                    stmt.expr.args = [stmt.expr.args[0], stmt.expr.args[1], IdentifierNode(line=stmt.line, col=stmt.col, name="val")]
 
         return cls
 
@@ -283,14 +391,16 @@ class GenericMonomorphizer:
                 # If template has 1 parameter:
                 type_params = self.generic_classes[template_name].type_params
                 if len(type_params) == 1:
-                    self.queue.add((template_name, (suffix,)))
+                    if suffix not in type_params and not any(p in suffix.split('_') for p in type_params):
+                        self.queue.add((template_name, (suffix,)))
         for template_name in self.generic_functions:
             prefix = f"{template_name}_"
             if clean_name.startswith(prefix):
                 suffix = clean_name[len(prefix):]
                 type_params = self.generic_functions[template_name].type_params
                 if len(type_params) == 1:
-                    self.queue.add((template_name, (suffix,)))
+                    if suffix not in type_params and not any(p in suffix.split('_') for p in type_params):
+                        self.queue.add((template_name, (suffix,)))
 
     def _scan_declarations_for_uses(self, declarations: List[ASTNode]) -> None:
         """Discovers any generic uses in non-generic top-level declarations."""

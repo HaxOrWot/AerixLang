@@ -367,6 +367,14 @@ class C99CodeGenerator:
                             temps[insn.dest] = "const char*"
                         elif insn.fn_name == "arx_time_now":
                             temps[insn.dest] = "double"
+                        elif insn.fn_name in ("arx_str_trim", "arx_str_to_upper", "arx_str_to_lower", "arx_str_replace", "arx_str_copy", "arx_str_slice", "arx_str_join", "arx_list_get_str", "arx_list_pop_str"):
+                            temps[insn.dest] = "const char*"
+                        elif insn.fn_name in ("arx_str_contains", "arx_str_starts_with", "arx_str_ends_with"):
+                            temps[insn.dest] = "bool"
+                        elif insn.fn_name in ("arx_str_len", "arx_list_len", "arx_list_get_i64", "arx_list_pop_i64", "arx_str_split"):
+                            temps[insn.dest] = "int64_t"
+                        elif insn.fn_name in ("arx_list_get_f64", "arx_list_pop_f64"):
+                            temps[insn.dest] = "double"
                         else:
                             ret_t = "int64_t"
                             is_enum_ctor = False
@@ -401,13 +409,21 @@ class C99CodeGenerator:
                             if not cls_name or cls_name == "Class":
                                 if fn and hasattr(fn, "var_types") and insn.instance in fn.var_types:
                                     cls_name = fn.var_types[insn.instance]
-                            if hasattr(self, "module") and self.module and cls_name in self.module.classes:
+                            if cls_name.startswith("List_") and insn.method_name == "slice":
+                                ret_t = f"Arx_{cls_name}"
+                            elif cls_name == "List_str" and insn.method_name in ("get", "pop"):
+                                ret_t = "const char*"
+                            elif cls_name == "List_f64" and insn.method_name in ("get", "pop"):
+                                ret_t = "double"
+                            elif insn.method_name == "as_str":
+                                ret_t = "const char*"
+                            elif hasattr(self, "module") and self.module and cls_name in self.module.classes:
                                 cls = self.module.classes[cls_name]
                                 if insn.method_name in cls.methods:
                                     ret_t = to_c_type(cls.methods[insn.method_name].return_type)
                                 else:
                                     for m_name, m_fn in cls.methods.items():
-                                        if m_name == insn.method_name or m_fn.name == insn.method_name:
+                                        if m_name == insn.method_name or m_fn.name == insn.method_name or m_name == f"Arx_{cls_name}_{insn.method_name}":
                                             ret_t = to_c_type(m_fn.return_type)
                                             break
                             temps[insn.dest] = ret_t
@@ -485,8 +501,11 @@ class C99CodeGenerator:
                 fmt_escaped = escape_c_string(insn.fmt)
                 fmt_args = []
                 for a in insn.args:
-                    if temps.get(a) == "bool":
+                    t_a = temps.get(a, "")
+                    if t_a == "bool":
                         fmt_args.append(f'(({a}) ? "true" : "false")')
+                    elif t_a in ("String", "Arx_String"):
+                        fmt_args.append(f"{a}.buf")
                     else:
                         fmt_args.append(a)
                 args_part = f", {', '.join(fmt_args)}" if fmt_args else ""
@@ -592,6 +611,8 @@ class C99CodeGenerator:
                 t_type = t_types.get(arg, "int64_t")
                 if t_type in ("const char*", "char*"):
                     self.emit(f'printf("%s\\n", {arg});', indent=indent)
+                elif t_type in ("String", "Arx_String"):
+                    self.emit(f'printf("%s\\n", {arg}.buf);', indent=indent)
                 elif t_type in ("float", "double"):
                     self.emit(f'printf("%g\\n", (double)({arg}));', indent=indent)
                 elif t_type == "bool":
@@ -606,6 +627,8 @@ class C99CodeGenerator:
                 t_type = t_types.get(arg, "int64_t")
                 if t_type in ("const char*", "char*"):
                     self.emit(f'printf("%s", {arg});', indent=indent)
+                elif t_type in ("String", "Arx_String"):
+                    self.emit(f'printf("%s", {arg}.buf);', indent=indent)
                 elif t_type in ("float", "double"):
                     self.emit(f'printf("%g", (double)({arg}));', indent=indent)
                 elif t_type == "bool":

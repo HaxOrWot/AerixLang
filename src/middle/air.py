@@ -9,7 +9,7 @@ from src.frontend.ast_nodes import (
     ASTNode, ProgramNode, FunctionDefNode, BlockNode, VarDeclNode,
     AssignNode, IfNode, WhileNode, ForNode, LoopNode, BreakNode,
     ContinueNode, ReturnNode, DeferNode, ExprStmtNode, LiteralNode,
-    IdentifierNode, BinaryOpNode, UnaryOpNode, CallNode, MemberAccessNode,
+    IdentifierNode, BinaryOpNode, UnaryOpNode, CallNode, MemberAccessNode, IndexAccessNode,
     PipelineNode, RangeNode, NewNode, CastNode, StringInterpNode,
     ClassDefNode, CIncludeNode, CExternNode, PropertyDefNode, OperatorDefNode,
     GuardNode, CascadeNode, ExtendDefNode,
@@ -499,6 +499,7 @@ class AIRLowering:
             m_key = getattr(m, "mangled_name", None) or m.name
             fn.name = m_key
             cls.methods[m_key] = fn
+            cls.methods[m.name] = fn
 
         # Properties (Phase 11)
         for prop in getattr(node, "properties", []):
@@ -639,6 +640,30 @@ class AIRLowering:
                     self.temp_types[res_val] = field_t
                     self.current_insns.append(AIRBinOp(res_val, op, curr_val, val_temp))
                     self.current_insns.append(AIRSetField(inst_temp, stmt.target.member, res_val))
+            elif isinstance(stmt.target, IndexAccessNode):
+                obj = stmt.target.object_expr
+                if isinstance(obj, IdentifierNode):
+                    inst_temp = obj.name
+                    cls_name = self.current_class if obj.name == "self" else self.var_types.get(obj.name)
+                else:
+                    inst_temp = self.lower_expression(obj)
+                    cls_name = self.temp_types.get(inst_temp)
+
+                idx_temp = self.lower_expression(stmt.target.index)
+                if stmt.op == "=":
+                    self.current_insns.append(AIRCallMethod(None, cls_name or "Class", "set", inst_temp, [idx_temp, val_temp]))
+                else:
+                    op = stmt.op[:-1]
+                    curr_val = self.new_temp()
+                    elem_t = "i64"
+                    if cls_name and cls_name.startswith("List_"):
+                        elem_t = cls_name[5:]
+                    self.temp_types[curr_val] = elem_t
+                    self.current_insns.append(AIRCallMethod(curr_val, cls_name or "Class", "get", inst_temp, [idx_temp]))
+                    res_val = self.new_temp()
+                    self.temp_types[res_val] = elem_t
+                    self.current_insns.append(AIRBinOp(res_val, op, curr_val, val_temp))
+                    self.current_insns.append(AIRCallMethod(None, cls_name or "Class", "set", inst_temp, [idx_temp, res_val]))
         elif isinstance(stmt, ReturnNode):
             ret_val = self.lower_expression(stmt.value) if stmt.value else None
             self.emit_defer_unwinds()
@@ -904,6 +929,14 @@ class AIRLowering:
                             self.temp_types[dest] = "f64"
                         elif fn_name in ("arx_channel_new", "arx_channel_recv"):
                             self.temp_types[dest] = "i64"
+                        elif fn_name in ("arx_str_trim", "arx_str_to_upper", "arx_str_to_lower", "arx_str_replace", "arx_str_copy", "arx_str_slice", "arx_str_join", "arx_list_get_str", "arx_list_pop_str"):
+                            self.temp_types[dest] = "str"
+                        elif fn_name in ("arx_str_contains", "arx_str_starts_with", "arx_str_ends_with"):
+                            self.temp_types[dest] = "bool"
+                        elif fn_name in ("arx_list_get_f64", "arx_list_pop_f64"):
+                            self.temp_types[dest] = "f64"
+                        elif fn_name in ("arx_list_new", "arx_list_len", "arx_str_len", "arx_list_get", "arx_list_pop", "arx_list_get_i64", "arx_list_pop_i64", "arx_list_slice", "arx_str_split"):
+                            self.temp_types[dest] = "i64"
                     self.current_insns.append(AIRCall(dest, fn_name, arg_temps))
             elif isinstance(expr.callee, MemberAccessNode):
                 obj = expr.callee.object_expr
@@ -913,6 +946,42 @@ class AIRLowering:
                 else:
                     inst_temp = self.lower_expression(obj)
                     cls_name = self.temp_types.get(inst_temp, "Class")
+                if cls_name == "str":
+                    fn_c = getattr(expr, "resolved_mangled_name", None) or f"arx_str_{expr.callee.member}"
+                    if expr.callee.member in ("trim", "to_upper", "to_lower"):
+                        dest = self.new_temp()
+                        self.temp_types[dest] = "str"
+                        self.current_insns.append(AIRCall(dest, fn_c, [inst_temp]))
+                        return dest
+                    elif expr.callee.member == "replace":
+                        dest = self.new_temp()
+                        self.temp_types[dest] = "str"
+                        self.current_insns.append(AIRCall(dest, fn_c, [inst_temp] + arg_temps))
+                        return dest
+                    elif expr.callee.member in ("contains", "starts_with", "ends_with"):
+                        dest = self.new_temp()
+                        self.temp_types[dest] = "bool"
+                        self.current_insns.append(AIRCall(dest, fn_c, [inst_temp] + arg_temps))
+                        return dest
+                    elif expr.callee.member in ("len", "length"):
+                        dest = self.new_temp()
+                        self.temp_types[dest] = "i64"
+                        self.current_insns.append(AIRCall(dest, "arx_str_len", [inst_temp]))
+                        return dest
+                    elif expr.callee.member == "split":
+                        dest = self.new_temp()
+                        self.temp_types[dest] = "List_str"
+                        handle_temp = self.new_temp()
+                        self.temp_types[handle_temp] = "i64"
+                        self.current_insns.append(AIRCall(handle_temp, "arx_str_split", [inst_temp] + arg_temps))
+                        self.current_insns.append(AIRCallConstructor(dest, "List_str", [], "Arx_List_str_init"))
+                        self.current_insns.append(AIRSetField(dest, "data_handle", handle_temp))
+                        len_temp = self.new_temp()
+                        self.temp_types[len_temp] = "i64"
+                        self.current_insns.append(AIRCall(len_temp, "arx_list_len", [handle_temp]))
+                        self.current_insns.append(AIRSetField(dest, "length", len_temp))
+                        return dest
+
                 method_target = getattr(expr, "resolved_mangled_name", None) or getattr(expr.callee, "resolved_mangled_name", None) or expr.callee.member
                 if dest and cls_name in self.class_method_returns:
                     m_returns = self.class_method_returns[cls_name]
@@ -964,6 +1033,11 @@ class AIRLowering:
             else:
                 inst_temp = self.lower_expression(obj)
                 cls_name = self.temp_types.get(inst_temp)
+            if cls_name == "str" and expr.member in ("len", "length"):
+                dest = self.new_temp()
+                self.temp_types[dest] = "i64"
+                self.current_insns.append(AIRCall(dest, "arx_str_len", [inst_temp]))
+                return dest
             dest = self.new_temp()
             if getattr(expr, "is_property", False):
                 p_type = getattr(expr, "prop_type", "i64")
@@ -982,6 +1056,44 @@ class AIRLowering:
             self.temp_types[dest] = field_t
             self.current_insns.append(AIRGetField(dest, inst_temp, expr.member))
             return dest
+        elif isinstance(expr, IndexAccessNode):
+            obj = expr.object_expr
+            if isinstance(obj, IdentifierNode):
+                inst_temp = obj.name
+                cls_name = self.current_class if obj.name == "self" else self.var_types.get(obj.name)
+            else:
+                inst_temp = self.lower_expression(obj)
+                cls_name = self.temp_types.get(inst_temp)
+
+            dest = self.new_temp()
+            if isinstance(expr.index, RangeNode):
+                start_temp = self.lower_expression(expr.index.start)
+                end_temp = self.lower_expression(expr.index.end)
+                if cls_name == "str":
+                    self.temp_types[dest] = "str"
+                    self.current_insns.append(AIRCall(dest, "arx_str_slice", [inst_temp, start_temp, end_temp]))
+                else:
+                    self.temp_types[dest] = cls_name or "Class"
+                    self.current_insns.append(AIRCallMethod(dest, cls_name or "Class", "slice", inst_temp, [start_temp, end_temp]))
+                return dest
+            else:
+                idx_temp = self.lower_expression(expr.index)
+                if cls_name == "str":
+                    self.temp_types[dest] = "str"
+                    next_idx = self.new_temp()
+                    self.temp_types[next_idx] = "i64"
+                    one_temp = self.new_temp()
+                    self.temp_types[one_temp] = "i64"
+                    self.current_insns.append(AIRConst(one_temp, 1, "i64"))
+                    self.current_insns.append(AIRBinOp(next_idx, "+", idx_temp, one_temp))
+                    self.current_insns.append(AIRCall(dest, "arx_str_slice", [inst_temp, idx_temp, next_idx]))
+                    return dest
+                elem_t = "i64"
+                if cls_name and cls_name.startswith("List_"):
+                    elem_t = cls_name[5:]
+                self.temp_types[dest] = elem_t
+                self.current_insns.append(AIRCallMethod(dest, cls_name or "Class", "get", inst_temp, [idx_temp]))
+                return dest
         elif isinstance(expr, NewNode):
             arg_temps = [self.lower_expression(a) for a in expr.args]
             dest = self.new_temp()

@@ -125,7 +125,7 @@ arx build hello.arx -o hello.exe
 
 ---
 
-## 🎯 Interactive Code Showcase
+## 🎯 Code Showcase
 
 Click any tab below to inspect how Aerix writes cleaner, faster, and safer code than traditional languages:
 

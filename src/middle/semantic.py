@@ -376,8 +376,8 @@ class SemanticAnalyzer:
             return TYPE_VOID
         elif isinstance(node, MemberAccessNode):
             return self.visit_member_access(node)
-
-
+        elif isinstance(node, IndexAccessNode):
+            return self.visit_index_access(node)
         elif isinstance(node, RangeNode):
             return self.visit_range(node)
         elif isinstance(node, NewNode):
@@ -478,6 +478,28 @@ class SemanticAnalyzer:
                 if not val_type.is_assignable_to(field_type):
                     self.error(f"Type mismatch in field assignment: cannot assign '{val_type}' to '{field_type}'", node)
                 return field_type
+
+        elif isinstance(node.target, IndexAccessNode):
+            obj_type = self.analyze_node(node.target.object_expr)
+            idx_type = self.analyze_node(node.target.index)
+            val_type = self.analyze_node(node.value)
+            if isinstance(obj_type, ClassType):
+                if obj_type.name.startswith("List_"):
+                    elem_name = obj_type.name[5:]
+                    expected_t = self.resolve_type(elem_name)
+                    if not val_type.is_assignable_to(expected_t):
+                        self.error(f"Type mismatch in index assignment: cannot assign '{val_type}' to element type '{expected_t}'", node)
+                    node.is_index_assign = True
+                    return expected_t
+                if "set" in obj_type.methods:
+                    node.is_index_assign = True
+                    return val_type
+                if "op_index_set" in obj_type.methods:
+                    node.is_index_assign = True
+                    return val_type
+                self.error(f"Class '{obj_type.name}' does not support index assignment (no 'set' method)", node.target)
+            self.error(f"Cannot assign to index of type '{obj_type}'", node.target)
+            return val_type
 
         return val_type
 
@@ -793,6 +815,8 @@ class SemanticAnalyzer:
                 return FunctionType([], TYPE_VOID)
             if node.name == "arx_now_ms":
                 return FunctionType([], TYPE_F64)
+            if node.name.startswith("arx_list_") or node.name.startswith("arx_str_"):
+                return FunctionType([], TYPE_I64)
             self.error(f"Undefined variable or identifier: '{node.name}'", node)
         sym.is_used = True
         self.node_types[id(node)] = sym.type
@@ -890,6 +914,18 @@ class SemanticAnalyzer:
                 return TYPE_VOID
             if name == "arx_now_ms":
                 return TYPE_F64
+            if name.startswith("arx_list_") or name.startswith("arx_str_"):
+                for arg in node.args:
+                    self.analyze_node(arg)
+                if name in ("arx_str_trim", "arx_str_to_upper", "arx_str_to_lower", "arx_str_replace", "arx_str_copy", "arx_str_slice", "arx_str_join", "arx_list_get_str", "arx_list_pop_str"):
+                    return TYPE_STR
+                elif name in ("arx_str_contains", "arx_str_starts_with", "arx_str_ends_with"):
+                    return TYPE_BOOL
+                elif name in ("arx_list_get_f64", "arx_list_pop_f64"):
+                    return TYPE_F64
+                elif name in ("arx_list_push", "arx_list_set", "arx_list_clear", "arx_list_free", "arx_list_push_i64", "arx_list_push_str", "arx_list_push_f64", "arx_list_set_i64", "arx_list_set_str", "arx_list_set_f64"):
+                    return TYPE_VOID
+                return TYPE_I64
             if name in self.classes:
                 # Value / Stack class instantiation (e.g. Hero("Arthur"))
                 cls_type = self.classes[name]
@@ -966,6 +1002,27 @@ class SemanticAnalyzer:
                     return fn_type.return_type
                 else:
                     self.error(f"Trait '{obj_type.name}' has no method '{m_name}'", node)
+            elif obj_type == TYPE_STR:
+                member = node.callee.member
+                for arg in node.args:
+                    self.analyze_node(arg)
+                if member in ("trim", "to_upper", "to_lower", "replace"):
+                    node.resolved_mangled_name = f"arx_str_{member}"
+                    return TYPE_STR
+                elif member in ("contains", "starts_with", "ends_with"):
+                    node.resolved_mangled_name = f"arx_str_{member}"
+                    return TYPE_BOOL
+                elif member in ("len", "length"):
+                    node.resolved_mangled_name = "arx_str_len"
+                    return TYPE_I64
+                elif member == "split":
+                    node.resolved_mangled_name = "arx_str_split"
+                    list_str = self.classes.get("List_str")
+                    if not list_str:
+                        list_str = ClassType("List_str")
+                    return list_str
+                else:
+                    self.error(f"Type 'str' has no method '{member}'", node)
 
 
         callee_type = self.analyze_node(node.callee)
@@ -1023,6 +1080,12 @@ class SemanticAnalyzer:
 
         obj_type = self.analyze_node(node.object_expr)
 
+        if obj_type == TYPE_STR:
+            if node.member in ("len", "length"):
+                node.is_str_len = True
+                return TYPE_I64
+            self.error(f"Type 'str' has no property '{node.member}'", node)
+
         if isinstance(obj_type, ClassType):
             # Check properties (Phase 11)
             if node.member in obj_type.properties:
@@ -1049,6 +1112,32 @@ class SemanticAnalyzer:
             if node.member in obj_type.method_overloads:
                 return obj_type.method_overloads[node.member][0][0]
             self.error(f"Class '{obj_type.name}' has no member '{node.member}'", node)
+        return TYPE_VOID
+
+    def visit_index_access(self, node: IndexAccessNode) -> Type:
+        obj_type = self.analyze_node(node.object_expr)
+        if isinstance(node.index, RangeNode):
+            self.analyze_node(node.index.start)
+            self.analyze_node(node.index.end)
+            if obj_type == TYPE_STR:
+                return TYPE_STR
+            if isinstance(obj_type, ClassType):
+                return obj_type
+            return obj_type
+
+        idx_type = self.analyze_node(node.index)
+        if obj_type == TYPE_STR:
+            return TYPE_STR
+        if isinstance(obj_type, ClassType):
+            if obj_type.name.startswith("List_"):
+                elem_name = obj_type.name[5:]
+                return self.resolve_type(elem_name)
+            if "get" in obj_type.methods:
+                return obj_type.methods["get"].return_type
+            if "op_index" in obj_type.methods:
+                return obj_type.methods["op_index"].return_type
+            self.error(f"Class '{obj_type.name}' does not support index access (no 'get' method)", node)
+        self.error(f"Cannot index into expression of type '{obj_type}'", node)
         return TYPE_VOID
 
     def visit_range(self, node: RangeNode) -> Type:
