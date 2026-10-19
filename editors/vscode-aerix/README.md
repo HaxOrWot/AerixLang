@@ -139,20 +139,32 @@ The extension includes the official **Aerix Supersonic "X"** file icon:
 
 ## 🚀 Installation & Setup
 
-### Local Installation (Fastest)
-The extension can be installed or re-packaged into your local VS Code environment with a single terminal command:
+### Option 1: 1-Click Batch Installer
+Simply double-click [`install_extension.bat`](file:///z:/VSCode/AerixLang/editors/vscode-aerix/install_extension.bat) to automatically install the extension into both **Visual Studio Code** and **Google Antigravity IDE**.
 
+### Option 2: Command-Line Installation
+
+From the repository root (`z:\VSCode\AerixLang`):
 ```powershell
-cd z:\VSCode\AerixLang\editors\vscode-aerix
-npx -y @vscode/vsce package
-code --install-extension aerix-1.0.83.vsix --force
+# For Visual Studio Code
+code --install-extension editors/vscode-aerix/aerix.vsix --force
+
+# For Google Antigravity IDE
+antigravity --install-extension editors/vscode-aerix/aerix.vsix --force
 ```
 
-### Reloading VS Code
+From inside the `editors/vscode-aerix` folder:
+```powershell
+cd z:\VSCode\AerixLang\editors\vscode-aerix
+code --install-extension aerix.vsix --force
+antigravity --install-extension aerix.vsix --force
+```
+
+### Reloading Your Editor
 To activate the new grammar and IntelliSense immediately:
 1. Open Command Palette: `Ctrl + Shift + P`
 2. Run: `Developer: Reload Window`
-3. Open any `.arx` file (e.g. `main.arx`) and enjoy the full Aerix systems experience!
+3. Open any `.arx` file (e.g. `test.arx`) and enjoy the full Aerix systems experience!
 
 ---
 

@@ -154,8 +154,8 @@ graph TD
 
 ---
 
-### Screen 4: Select Additional Core Tasks
-* **Purpose:** Allows developers to customize environment variable broadcasting and Windows Explorer context verbs.
+### Screen 4: Select Additional Tasks (Hierarchical Tree Format)
+* **Purpose:** Provides high-impact configuration options organized cleanly in a native Windows Tree structure without overwhelming the developer with low-level micro-checkboxes.
 
 ```text
 ┌─────────────────────────────────────────────────────────────────────────────────────────────┐
@@ -167,54 +167,23 @@ graph TD
 │  Select the additional tasks you would like Setup to perform while installing Aerix, then   │
 │  click Next.                                                                                │
 │                                                                                             │
-│  Environment Configuration:                                                                 │
-│    [X] Add Aerix toolchain directory to User PATH (Recommended)                             │
-│                                                                                             │
-│  Windows File Explorer & Shell Integration:                                                 │
-│    [X] Display official supersonic Aerix icon on .arx files in Windows Explorer             │
-│    [X] Register .arx file type association (Aerix.SourceFile)                               │
-│    [X] Add "Run with Aerix (arx run)" to right-click context menu                           │
-│    [X] Add "Build Executable (arx build)" to right-click context menu                       │
-│                                                                                             │
-├─────────────────────────────────────────────────────────────────────────────────────────────┤
-│                                        [ < Back ]    [  Next >  ]  [  Cancel  ]             │
-└─────────────────────────────────────────────────────────────────────────────────────────────┘
-```
-
----
-
-### Screen 5: Dedicated IDE Extension Setup & Prompt Page *(The Twist)*
-* **Purpose:** Proactively probes the user's workstation for **Visual Studio Code** and **Google Antigravity IDE**. Explicitly prompts the user with individual options to install the official extension, executing the installation **only if the user opts in**.
-
-```text
-┌─────────────────────────────────────────────────────────────────────────────────────────────┐
-│  Setup - Aerix                                                                   [-] [x]    │
-├─────────────────────────────────────────────────────────────────────────────────────────────┤
-│  IDE & Code Editor Extension Setup                                                          │
-│  Supercharge your development workflow with full language intelligence         [ AERIX LOGO]│
-├─────────────────────────────────────────────────────────────────────────────────────────────┤
-│  Aerix provides official extensions containing TextMate syntax coloring, code snippets,     │
-│  and Language Server Protocol (LSP) intelligence.                                           │
-│                                                                                             │
-│  Setup has inspected your system. Select which editors you would like to configure:         │
-│                                                                                             │
 │  ┌───────────────────────────────────────────────────────────────────────────────────────┐  │
-│  │ [X] Visual Studio Code                                                                │  │
-│  │     Status: [DETECTED: C:\Program Files\Microsoft VS Code\bin\code.cmd]               │  │
-│  │     Action: Automatically execute 'code --install-extension aerix-1.0.84.vsix'        │  │
-│  │                                                                                       │  │
-│  │ [X] Google Antigravity IDE                                                            │  │
-│  │     Status: [DETECTED: X:\Antigravity\bin\antigravity.cmd]                            │  │
-│  │     Action: Automatically execute 'antigravity --install-extension aerix-1.0.84.vsix' │  │
+│  │ [X] Add Aerix toolchain to User PATH (Recommended)                                    │  │
+│  │ [X] Windows File Explorer Integration (.arx icon, file associations & context menus)  │  │
+│  │ [X] Install official extension into Code Editors:                                     │  │
+│  │     ├── [X] Visual Studio Code                                                        │  │
+│  │     └── [X] Google Antigravity IDE                                                    │  │
 │  └───────────────────────────────────────────────────────────────────────────────────────┘  │
 │                                                                                             │
-│  * Note: Extensions will ONLY be installed into the editors you explicitly check above.      │
-│    If an editor CLI is unavailable, the installer safely falls back to direct extension     │
-│    directory deployment without interrupting setup.                                         │
 ├─────────────────────────────────────────────────────────────────────────────────────────────┤
 │                                        [ < Back ]    [  Next >  ]  [  Cancel  ]             │
 └─────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
+
+* **Tree Hierarchy Details:**
+  - `[X] Add Aerix toolchain to User PATH`: Automatically registers `{app}\bin` and broadcasts `WM_SETTINGCHANGE`.
+  - `[X] Windows File Explorer Integration`: Bundles `.arx` file mapping, supersonic high-DPI Explorer icon, and right-click context verbs (`Run with Aerix` and `Build Executable`).
+  - `[X] Install official extension into Code Editors`: Parent branch containing individual opt-in child checkboxes for **Visual Studio Code** and **Google Antigravity IDE**, invoking native extension CLI engines with clean uninstallation tracking.
 
 ---
 
