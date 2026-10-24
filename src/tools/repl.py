@@ -15,7 +15,7 @@ BANNER = """\
       / _ \\___ ___(_)_ __ 
      / __ / -_) __/ /\\ \\ /
     /_/ |_\\__/_/ /_//_\\_\\ \033[0m
-\033[1;32mAerix (arx) Interactive REPL v1.0.88-alpha\033[0m
+\033[1;32mAerix (arx) Interactive REPL v1.0.89-alpha\033[0m
 Type expressions or definitions. Type '\033[1;33mexit\033[0m', '\033[1;33mquit\033[0m', or \033[1;33mCtrl+C\033[0m to quit.
 Type '\033[1;33mreset\033[0m' to clear accumulated declarations.
 """

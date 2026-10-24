@@ -10,12 +10,12 @@
 ```
 
 ### **The Definitive A-to-Z Technical Reference Manual**
-*Official System Specification for the Aerix Native Programming Language (Version 1.0.88-alpha)*
+*Official System Specification for the Aerix Native Programming Language (Version 1.0.89-alpha)*
 
-[![Version](https://img.shields.io/badge/version-1.0.88--alpha-00DCFF.svg?style=for-the-badge)](#)
+[![Version](https://img.shields.io/badge/version-1.0.89--alpha-00DCFF.svg?style=for-the-badge)](#)
 [![Standard](https://img.shields.io/badge/standard-ANSI%20C99%20%2F%20C11-1E90FF.svg?style=for-the-badge)](#)
 [![Architecture](https://img.shields.io/badge/architecture-x86__64%20%2F%20ARM64-00E676.svg?style=for-the-badge)](#)
-[![Test Suite](https://img.shields.io/badge/tests-102%2F102%20PASS%20(100%25)-00E5FF.svg?style=for-the-badge)](#)
+[![Test Suite](https://img.shields.io/badge/tests-132%2F132%20PASS%20(100%25)-00E5FF.svg?style=for-the-badge)](#)
 
 [Architecture](#1-architectural-specification--compilation-pipeline) • [CLI Reference](#2-cli-toolchain-reference-manual-arx) • [Type System](#3-the-complete-type-system) • [Memory Layout](#4-memory-model--physical-layout) • [Precedence](#6-expressions-operators--precedence) • [OOP System](#9-object-oriented-programming-oop) • [Concurrency](#11-concurrency-native-threads--typed-channels) • [Runtime API](#12-standard-library--runtime-api-aerix_rth) • [Collections](#17-standard-collections--data-structures-architecture) • [EBNF Grammar](#16-formal-language-grammar-ebnf)
 

@@ -41,7 +41,7 @@ else:
 from src.driver import AerixCompiler
 from src.frontend.diagnostics import report_fatal_error, enable_windows_ansi
 
-VERSION = "1.0.88-alpha"
+VERSION = "1.0.89-alpha"
 
 # Safe console icons that never crash cp1252/cp437
 ICON_OK = "[OK]"
@@ -149,7 +149,7 @@ fn main() {
     print("    arx run src/main.arx\n")
 
 
-def cmd_check(file_path: str):
+def cmd_check(file_path: str, freestanding: bool = False):
     """Performs fast lexical, syntax, and semantic checks without compiling to C."""
     if not os.path.exists(file_path):
         sys.exit(report_fatal_error(FileNotFoundError(file_path)))
@@ -168,9 +168,10 @@ def cmd_check(file_path: str):
         parser = Parser(tokens, lines, filename=file_path)
         ast = parser.parse()
         ast = GenericMonomorphizer().monomorphize(ast)
-        analyzer = SemanticAnalyzer(file_path, lines)
+        analyzer = SemanticAnalyzer(file_path, lines, freestanding=freestanding)
         analyzer.analyze(ast)
-        print(f"\033[1;32m{ICON_OK} [CHECK PASSED]\033[0m: '{file_path}' has zero syntax or type errors!")
+        mode_str = " (freestanding bare-metal mode)" if freestanding else ""
+        print(f"\033[1;32m{ICON_OK} [CHECK PASSED]\033[0m: '{file_path}' has zero syntax or type errors{mode_str}!")
     except Exception as e:
         sys.exit(report_fatal_error(e))
 
@@ -379,11 +380,13 @@ def _main_cli():
     build_parser.add_argument("file", help="Path to .arx file")
     build_parser.add_argument("-o", "--output", help="Output executable path")
     build_parser.add_argument("--release", action="store_true", help="Maximum -O3 and LTO optimizations")
+    build_parser.add_argument("--freestanding", action="store_true", help="Compile for bare-metal / embedded freestanding environment")
 
     # emit-c
     emitc_parser = subparsers.add_parser("emit-c", help="Emit intermediate C99 source code")
     emitc_parser.add_argument("file", help="Path to .arx file")
     emitc_parser.add_argument("-o", "--output", help="Output .c path")
+    emitc_parser.add_argument("--freestanding", action="store_true", help="Emit pure freestanding ANSI C99 without OS or standard libc headers")
 
     # wasm
     wasm_parser = subparsers.add_parser("wasm", help="Compile an Aerix program to WebAssembly (.wasm) for browser deployment")
@@ -396,6 +399,7 @@ def _main_cli():
     # check
     check_parser = subparsers.add_parser("check", help="Fast syntax and type checking")
     check_parser.add_argument("file", help="Path to .arx file")
+    check_parser.add_argument("--freestanding", action="store_true", help="Verify code against bare-metal freestanding constraints (no heap, no libc, no threads)")
 
     # repl
     subparsers.add_parser("repl", help="Start the interactive Aerix REPL")
@@ -452,7 +456,7 @@ def _main_cli():
     elif args.command == "new":
         cmd_new(args.name)
     elif args.command == "check":
-        cmd_check(args.file)
+        cmd_check(args.file, freestanding=getattr(args, "freestanding", False))
     elif args.command == "repl":
         cmd_repl()
     elif args.command == "fmt":
@@ -473,16 +477,20 @@ def _main_cli():
         sys.exit(code)
     elif args.command == "build":
         compiler = AerixCompiler()
-        out_exe = compiler.compile_file(args.file, output_binary_path=args.output, release=args.release)
-        print(f"\033[1;32m[BUILD SUCCESS]\033[0m: Native executable generated {ICON_ARROW} '{out_exe}'")
+        freestanding = getattr(args, "freestanding", False)
+        out_exe = compiler.compile_file(args.file, output_binary_path=args.output, release=args.release, freestanding=freestanding)
+        target_desc = "Freestanding object/binary" if freestanding else "Native executable"
+        print(f"\033[1;32m[BUILD SUCCESS]\033[0m: {target_desc} generated {ICON_ARROW} '{out_exe}'")
     elif args.command == "emit-c":
         compiler = AerixCompiler()
+        freestanding = getattr(args, "freestanding", False)
         with open(args.file, "r", encoding="utf-8") as f:
-            c_code = compiler.compile_source_to_c(f.read(), args.file)
+            c_code = compiler.compile_source_to_c(f.read(), args.file, freestanding=freestanding)
         out_file = args.output or f"{os.path.splitext(args.file)[0]}.c"
         with open(out_file, "w", encoding="utf-8") as f:
             f.write(c_code)
-        print(f"\033[1;32m[EMIT-C SUCCESS]\033[0m: Emitted C99 code saved to '{out_file}'")
+        mode_str = "freestanding " if freestanding else ""
+        print(f"\033[1;32m[EMIT-C SUCCESS]\033[0m: Emitted {mode_str}C99 code saved to '{out_file}'")
 
 
 def main():

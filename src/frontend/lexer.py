@@ -234,6 +234,8 @@ class Lexer:
                 self.tokens.append(Token(TokenType.COLON, ":", start_line, start_col, self.filename))
             elif ch == ';':
                 self.tokens.append(Token(TokenType.SEMICOLON, ";", start_line, start_col, self.filename))
+            elif ch == '#':
+                self.tokens.append(Token(TokenType.HASH, "#", start_line, start_col, self.filename))
             else:
                 self.error(f"Unexpected character '{ch}'", start_line, start_col)
 

@@ -62,9 +62,10 @@ class NativeLinker:
         c_source_path: str,
         output_binary_path: str,
         release: bool = False,
-        extra_flags: Optional[List[str]] = None
+        extra_flags: Optional[List[str]] = None,
+        freestanding: bool = False
     ) -> Tuple[bool, str]:
-        """Compiles a .c file into a standalone native executable using GCC."""
+        """Compiles a .c file into a standalone native executable or freestanding object using GCC."""
         flags = [
             self.compiler_exe,
             "-pipe",
@@ -72,8 +73,14 @@ class NativeLinker:
             "-Wall",
             "-Wno-unused-variable",
             "-Wno-unused-function",
-            "-I", self.stdlib_path,
+            "-Wno-unused-label",
+            "-Wno-unused-but-set-variable",
         ]
+
+        if freestanding:
+            flags.append("-ffreestanding")
+        else:
+            flags.extend(["-I", self.stdlib_path])
 
         if release:
             flags.extend(["-O3", "-flto", "-march=native", "-s", "-DNDEBUG"])
@@ -83,7 +90,11 @@ class NativeLinker:
         if extra_flags:
             flags.extend(extra_flags)
 
-        flags.extend([c_source_path, "-o", output_binary_path, "-lm"])
+        is_obj = output_binary_path.endswith((".o", ".obj")) or freestanding
+        if is_obj:
+            flags.extend(["-c", c_source_path, "-o", output_binary_path])
+        else:
+            flags.extend([c_source_path, "-o", output_binary_path, "-lm"])
 
         try:
             res = subprocess.run(

@@ -1,0 +1,56 @@
+// Aerix (arx) — Showcase 30: Fixed-Size Stack Arrays ([T; N])
+// Demonstrates compile-time stack-allocated arrays for real-time systems, game engines, and embedded hardware.
+// Features: zero heap allocation, cache-line locality, direct C99 array lowering, and repeat syntax.
+
+fn dot_product_3d(a: [f64; 3], b: [f64; 3]) -> f64 {
+    return (a[0] * b[0]) + (a[1] * b[1]) + (a[2] * b[2])
+}
+
+fn main() {
+    println("==================================================")
+    println("  AERIX PHASE 23: FIXED-SIZE STACK ARRAYS [T; N]  ")
+    println("==================================================")
+
+    // 1. Explicit List Literal
+    let sensor_pins: [i32; 4] = [2, 4, 12, 14]
+    println("Sensor GPIO Pins:")
+    println("  Pin 0: {sensor_pins[0]}")
+    println("  Pin 1: {sensor_pins[1]}")
+    println("  Pin 2: {sensor_pins[2]}")
+    println("  Pin 3: {sensor_pins[3]}")
+    println("  Array Length (compile-time constant): {sensor_pins.len}")
+
+    // 2. Uniform Repeat Syntax [value; count]
+    mut motor_pwm: [i64; 4] = [1000; 4]
+    println("\nInitial Motor PWM Throttle:")
+    for val in motor_pwm {
+        println("  PWM Channel: {val} us")
+    }
+
+    // 3. Direct In-Place Mutation and Compound Assignment
+    motor_pwm[0] = 1100
+    motor_pwm[1] += 150
+    motor_pwm[2] -= 50
+    motor_pwm[3] = 1450
+
+    println("\nAdjusted Motor PWM Channels:")
+    mut ch = 0
+    while ch < motor_pwm.len {
+        println("  Channel {ch}: {motor_pwm[ch]} us")
+        ch += 1
+    }
+
+    // 4. Vector Math via Fixed-Array Parameters (C ABI Zero-Cost Pointer)
+    let accel: [f64; 3] = [0.0, 9.81, 0.0]
+    let normal: [f64; 3] = [0.0, 1.0, 0.0]
+    let projection = dot_product_3d(accel, normal)
+    println("\n3D Vector Acceleration Dot Product:")
+    println("  Normal force projection: {projection} m/s^2")
+
+    // 5. Uninitialized Zero-Filled Stack Array
+    let telemetry_buffer: [i64; 3]
+    println("\nZero-Filled Telemetry Buffer:")
+    println("  [0]: {telemetry_buffer[0]}, [1]: {telemetry_buffer[1]}, [2]: {telemetry_buffer[2]}")
+
+    println("\n[Aerix Stack Arrays Verified: 0 Heap Allocations, 100% Deterministic]")
+}

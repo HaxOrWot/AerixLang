@@ -1,6 +1,6 @@
 # Aerix (arx) — Real-Time Systems, Game Engines & Embedded Hardware Roadmap
 
-> **Document Version:** 1.0.88-alpha  
+> **Document Version:** 1.0.89-alpha  
 > **Status:** 📐 SPECIFICATION & MASTER IMPLEMENTATION BLUEPRINT (Phases 23–28)  
 > **Target Domains:** Game Engines, Physics/Simulations, Microcontrollers, Robotics, Edge IoT  
 > **Core Compilation Target:** ANSI C99 / GCC / Clang / Bare-Metal Freestanding
@@ -30,9 +30,9 @@ Game engines and microcontrollers share the **exact same 4 non-negotiable constr
 
 ---
 
-## 📊 Architectural Gap Matrix: Current (v1.0.88) vs. Real-Time Target
+## 📊 Architectural Gap Matrix: Pre-Phase 23 Baseline (v1.0.88) vs. Real-Time Target
 
-| Dimension | Aerix v1.0.88 (Current) | Real-Time Systems Target (Phases 23–28) | Why Needed for Games & Hardware |
+| Dimension | Pre-Phase 23 Baseline (v1.0.88) | Real-Time Systems Target (Phases 23–28) | Why Needed for Games & Hardware |
 | :--- | :--- | :--- | :--- |
 | **Array Allocations** | Dynamic Heap `List<T>` (uses `malloc`) | Fixed Stack Arrays `[T; N]` (zero `malloc`) | Microcontrollers with 8KB RAM cannot allocate heap memory; game loops cannot afford allocator fragmentation. |
 | **Struct Alignment** | Default C struct alignment (compiler padded) | First-Class `#[packed]` and `#[align(N)]` | Microcontrollers need packed byte streams for CAN-bus/SPI; games need 64-byte CPU cache-line alignment. |
@@ -394,26 +394,35 @@ fn flight_loop_step(mut pid: PIDController, gyro_reading: f32, dt: f32) -> u16 {
 ┌────────────────────────────────────────────────────────────────────────┐
 │                        PHASED EXECUTION PIPELINE                       │
 ├────────────────────────────────────────────────────────────────────────┤
-│  PHASE 23: Fixed-Size Stack Arrays ([T; N])                           │
+│  PHASE 23: Fixed-Size Stack Arrays ([T; N]) (STATUS: ✅ COMPLETE)      │
 │    - Grammar, AST nodes, semantic bounds validation                    │
 │    - Stack C99 array lowering, array indexing, repeat [0; N] syntax    │
-│    - Automated Test: test_phase23_fixed_arrays.py                     │
+│    - Automated Test: test_phase23_fixed_arrays.py (8/8 Passed)         │
+│    - Showcase Example: examples/30_FIXED_STACK_ARRAYS.arx              │
 ├────────────────────────────────────────────────────────────────────────┤
-│  PHASE 24: Memory Layout Attributes (#[packed] & #[align(N)])         │
-│    - Attribute parsing on class definitions                            │
-│    - C99 __attribute__((packed)) & __attribute__((aligned(N)))         │
-│    - Volatile MMIO intrinsics (volatile_read_*, volatile_write_*)      │
-│    - Automated Test: test_phase24_layout_and_mmio.py                   │
+│  PHASE 24: Memory Layout Attributes (#[packed] & #[align(N)]) (STATUS: ✅ COMPLETE) │
+│    - Attribute parsing on class definitions, compile-time sizeof(T) queries    │
+│    - C99 __attribute__((packed)) & __attribute__((aligned(N)))                 │
+│    - Volatile MMIO intrinsics (volatile_read_*, volatile_write_*, address_of) │
+│    - Automated Test: test_phase24_layout_and_mmio.py (7/7 Passed)             │
+│    - Showcase Example: examples/31_PACKED_LAYOUT_AND_MMIO.arx                  │
 ├────────────────────────────────────────────────────────────────────────┤
-│  PHASE 25: First-Class SIMD Arithmetic Operators                      │
-│    - Overloaded +, -, *, / for f32x4 and f64x2                         │
-│    - Intrinsics: dot(), cross(), length(), normalize()                │
-│    - Automated Test: test_phase25_simd_vectors.py                      │
+│  PHASE 25: First-Class SIMD Arithmetic Operators (STATUS: ✅ COMPLETE) │
+│    - First-class 128-bit vector types: f32x4 (float) and f64x2 (double)│
+│    - Constructors f32x4(...) and splat syntax f32x4(scalar)            │
+│    - Overloaded +, -, *, / for vector-vector and vector-scalar         │
+│    - Geometric intrinsics: dot(), cross(), length(), normalize(), min/max │
+│    - Component (.x/.y/.z/.w) and index (v[i]) access & mutation        │
+│    - Vector equality == and !=, string interpolation formatting        │
+│    - Automated Test: test_phase25_simd_vectors.py (7/7 Passed)         │
+│    - Showcase Example: examples/32_SIMD_VECTOR_MATH.arx                │
 ├────────────────────────────────────────────────────────────────────────┤
-│  PHASE 26: Freestanding Bare-Metal Compilation Mode                   │
-│    - CLI --freestanding flag integration in src/arx.py                │
+│  PHASE 26: Freestanding Bare-Metal Compilation Mode (STATUS: ✅ COMPLETE)│
+│    - CLI --freestanding flag integration in src/arx.py (build, emit-c, check) │
 │    - Libc exclusion, heap error validation, embedded setup/loop hooks  │
-│    - Automated Test: test_phase26_freestanding.py                      │
+│    - ANSI C99 freestanding header emission (<stdint.h>, <stdbool.h>, <stddef.h>) │
+│    - Automated Test: test_phase26_freestanding.py (8/8 Passed)         │
+│    - Showcase Example: examples/33_FREESTANDING_MICROCONTROLLER_FIRMWARE.arx │
 ├────────────────────────────────────────────────────────────────────────┤
 │  PHASE 27: Struct-of-Arrays (SoA) Engine for Games                    │
 │    - soa class syntax and compiler layout decomposition                │

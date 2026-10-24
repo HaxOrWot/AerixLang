@@ -87,6 +87,7 @@ const AERIX_TYPES = [
     { name: 'f32', detail: '32-bit Floating Point (float)', doc: 'Single-precision IEEE 754 floating point number (4 bytes).' },
     { name: 'f64', detail: '64-bit Floating Point (double)', doc: 'Double-precision IEEE 754 floating point number (8 bytes).' },
     { name: 'f32x4', detail: '4-Lane SIMD Vector', doc: 'Hardware 128-bit 4-lane single precision float vector (SIMD intrinsics).' },
+    { name: 'f64x2', detail: '2-Lane SIMD Vector', doc: 'Hardware 128-bit 2-lane double precision float vector (SIMD intrinsics).' },
     { name: 'float', detail: 'Standard Float', doc: 'Default floating-point type (alias for `f64`).' },
     { name: 'bool', detail: 'Boolean Type', doc: 'Logical truth value (`true` or `false`, 1 byte).' },
     { name: 'char', detail: 'Character Type', doc: '8-bit ASCII character literal (1 byte, e.g. `\'A\'`).' },
@@ -235,6 +236,41 @@ const AERIX_BUILTINS = [
         name: 'arx_now_ms',
         detail: 'arx_now_ms() -> i64',
         doc: 'Returns monotonic timestamp in milliseconds from `performance.now()` in WebAssembly runtime or system clock.'
+    },
+    {
+        name: 'volatile_read_u32',
+        detail: 'volatile_read_u32(addr: u64) -> u32',
+        doc: 'Reads a 32-bit unsigned word directly from a memory-mapped hardware peripheral register without compiler caching.'
+    },
+    {
+        name: 'volatile_write_u32',
+        detail: 'volatile_write_u32(addr: u64, val: u32) -> void',
+        doc: 'Writes a 32-bit unsigned word directly to a memory-mapped hardware peripheral register with volatile semantics.'
+    },
+    {
+        name: 'volatile_load_u32',
+        detail: 'volatile_load_u32(addr: u64) -> u32',
+        doc: 'Reads a 32-bit word from a volatile hardware register (alias for `volatile_read_u32`).'
+    },
+    {
+        name: 'volatile_store_u32',
+        detail: 'volatile_store_u32(addr: u64, val: u32) -> void',
+        doc: 'Writes a 32-bit word to a volatile hardware register (alias for `volatile_write_u32`).'
+    },
+    {
+        name: 'address_of',
+        detail: 'address_of(val: any) -> u64',
+        doc: 'Returns the direct physical memory address (`uintptr_t`) of a variable or struct instance.'
+    },
+    {
+        name: 'f32x4',
+        detail: 'f32x4(x: f32, y: f32, z: f32, w: f32) -> f32x4',
+        doc: 'Constructs a 128-bit 4-lane single precision float SIMD vector. Supports overloaded operators `+`, `-`, `*`, `/` and dot(), cross(), length(), normalize(), min(), max().'
+    },
+    {
+        name: 'f64x2',
+        detail: 'f64x2(x: f64, y: f64) -> f64x2',
+        doc: 'Constructs a 128-bit 2-lane double precision float SIMD vector. Supports overloaded operators `+`, `-`, `*`, `/` and dot(), length(), normalize(), min(), max().'
     }
 ];
 
@@ -1214,33 +1250,9 @@ function activate(context) {
                 const mainFn = docData.functions.get('main')[0];
                 const range = new vscode.Range(mainFn.line, 0, mainFn.line, 0);
                 lenses.push(new vscode.CodeLens(range, {
-                    title: '▶ Run Aerix Program (arx run)',
+                    title: '▶ Run Program',
                     command: 'aerix.runFile',
                     arguments: [document.uri]
-                }));
-                lenses.push(new vscode.CodeLens(range, {
-                    title: '⚡ Fast Syntax Check',
-                    command: 'aerix.checkFile',
-                    arguments: [document.uri]
-                }));
-                lenses.push(new vscode.CodeLens(range, {
-                    title: '🌐 Compile WASM',
-                    command: 'aerix.buildWasm',
-                    arguments: [document.uri]
-                }));
-                lenses.push(new vscode.CodeLens(range, {
-                    title: '🚀 Live WASM Browser',
-                    command: 'aerix.serveWasm',
-                    arguments: [document.uri]
-                }));
-            }
-
-            for (const cls of docData.classes.values()) {
-                const layout = calculateStructLayout(cls);
-                const range = new vscode.Range(cls.line, 0, cls.line, 0);
-                lenses.push(new vscode.CodeLens(range, {
-                    title: `📦 Struct: ${layout.totalSize}B (${layout.cacheLines} L1 cache ${layout.cacheLines === 1 ? 'line' : 'lines'}) | ${cls.fields.size} fields | ${cls.methods.size} methods | ${cls.properties.size} props`,
-                    command: ''
                 }));
             }
 

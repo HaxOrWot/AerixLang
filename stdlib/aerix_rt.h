@@ -40,7 +40,12 @@ typedef uint64_t u64;
 typedef float    f32;
 typedef double   f64;
 
+// --- Phase 25: 128-bit SIMD Vector Types ---
+typedef float  f32x4 __attribute__ ((vector_size (16)));
+typedef double f64x2 __attribute__ ((vector_size (16)));
+
 typedef size_t   usize;
+typedef intptr_t isize;
 typedef const char* str;
 
 // --- Runtime Panic Handler ---
@@ -307,34 +312,23 @@ static inline size_t arx_arena_capacity(const Arx_Arena* arena) {
     return arena ? arena->capacity : 0;
 }
 
-// --- Hardware SIMD Vector Primitives (Phase 14) ---
-typedef struct f32x4 {
-    float x, y, z, w;
-} f32x4;
-
+// --- Hardware SIMD Vector Primitives (Phase 14 / Phase 25) ---
 static inline f32x4 arx_f32x4_create(float x, float y, float z, float w) {
-    f32x4 v = {x, y, z, w};
-    return v;
+    return (f32x4){x, y, z, w};
 }
 
 static inline f32x4 arx_f32x4_add(f32x4 a, f32x4 b) {
-    f32x4 v = {a.x + b.x, a.y + b.y, a.z + b.z, a.w + b.w};
-    return v;
+    return a + b;
 }
 
 static inline f32x4 arx_f32x4_sub(f32x4 a, f32x4 b) {
-    f32x4 v = {a.x - b.x, a.y - b.y, a.z - b.z, a.w - b.w};
-    return v;
+    return a - b;
 }
 
 static inline f32x4 arx_f32x4_mul(f32x4 a, f32x4 b) {
-    f32x4 v = {a.x * b.x, a.y * b.y, a.z * b.z, a.w * b.w};
-    return v;
+    return a * b;
 }
 
-static inline float arx_f32x4_dot(f32x4 a, f32x4 b) {
-    return a.x * b.x + a.y * b.y + a.z * b.z + a.w * b.w;
-}
 
 // --- Native Threading & Channel Primitives (Phase 19) ---
 
@@ -1698,6 +1692,203 @@ static inline bool arx_map_iter_next(int64_t map_handle, int64_t* iter_idx, int6
         }
     }
     return false;
+}
+
+// ==========================================
+// Phase 24: Volatile MMIO Registers & Intrinsics
+// ==========================================
+
+#define arx_address_of(v) ((uintptr_t)&(v))
+#define address_of(v) ((uintptr_t)&(v))
+
+static inline uint8_t arx_volatile_read_u8(uintptr_t addr) {
+    return *(volatile uint8_t*)addr;
+}
+static inline uint16_t arx_volatile_read_u16(uintptr_t addr) {
+    return *(volatile uint16_t*)addr;
+}
+static inline uint32_t arx_volatile_read_u32(uintptr_t addr) {
+    return *(volatile uint32_t*)addr;
+}
+static inline uint64_t arx_volatile_read_u64(uintptr_t addr) {
+    return *(volatile uint64_t*)addr;
+}
+
+static inline int8_t arx_volatile_read_i8(uintptr_t addr) {
+    return *(volatile int8_t*)addr;
+}
+static inline int16_t arx_volatile_read_i16(uintptr_t addr) {
+    return *(volatile int16_t*)addr;
+}
+static inline int32_t arx_volatile_read_i32(uintptr_t addr) {
+    return *(volatile int32_t*)addr;
+}
+static inline int64_t arx_volatile_read_i64(uintptr_t addr) {
+    return *(volatile int64_t*)addr;
+}
+
+static inline void arx_volatile_write_u8(uintptr_t addr, uint8_t val) {
+    *(volatile uint8_t*)addr = val;
+}
+static inline void arx_volatile_write_u16(uintptr_t addr, uint16_t val) {
+    *(volatile uint16_t*)addr = val;
+}
+static inline void arx_volatile_write_u32(uintptr_t addr, uint32_t val) {
+    *(volatile uint32_t*)addr = val;
+}
+static inline void arx_volatile_write_u64(uintptr_t addr, uint64_t val) {
+    *(volatile uint64_t*)addr = val;
+}
+
+static inline void arx_volatile_write_i8(uintptr_t addr, int8_t val) {
+    *(volatile int8_t*)addr = val;
+}
+static inline void arx_volatile_write_i16(uintptr_t addr, int16_t val) {
+    *(volatile int16_t*)addr = val;
+}
+static inline void arx_volatile_write_i32(uintptr_t addr, int32_t val) {
+    *(volatile int32_t*)addr = val;
+}
+static inline void arx_volatile_write_i64(uintptr_t addr, int64_t val) {
+    *(volatile int64_t*)addr = val;
+}
+
+// Global aliases without arx_ prefix
+#define volatile_read_u8 arx_volatile_read_u8
+#define volatile_read_u16 arx_volatile_read_u16
+#define volatile_read_u32 arx_volatile_read_u32
+#define volatile_read_u64 arx_volatile_read_u64
+
+#define volatile_read_i8 arx_volatile_read_i8
+#define volatile_read_i16 arx_volatile_read_i16
+#define volatile_read_i32 arx_volatile_read_i32
+#define volatile_read_i64 arx_volatile_read_i64
+
+#define volatile_write_u8 arx_volatile_write_u8
+#define volatile_write_u16 arx_volatile_write_u16
+#define volatile_write_u32 arx_volatile_write_u32
+#define volatile_write_u64 arx_volatile_write_u64
+
+#define volatile_write_i8 arx_volatile_write_i8
+#define volatile_write_i16 arx_volatile_write_i16
+#define volatile_write_i32 arx_volatile_write_i32
+#define volatile_write_i64 arx_volatile_write_i64
+
+// ==========================================
+// Phase 25: SIMD Vector Constructors & Intrinsics
+// ==========================================
+
+static inline f32x4 arx_f32x4(float x, float y, float z, float w) {
+    return (f32x4){x, y, z, w};
+}
+
+static inline f32x4 arx_f32x4_splat(float val) {
+    return (f32x4){val, val, val, val};
+}
+
+static inline f64x2 arx_f64x2(double x, double y) {
+    return (f64x2){x, y};
+}
+
+static inline f64x2 arx_f64x2_splat(double val) {
+    return (f64x2){val, val};
+}
+
+static inline float arx_f32x4_dot(f32x4 a, f32x4 b) {
+    f32x4 p = a * b;
+    return p[0] + p[1] + p[2] + p[3];
+}
+
+static inline f32x4 arx_f32x4_cross(f32x4 a, f32x4 b) {
+    return (f32x4){
+        a[1]*b[2] - a[2]*b[1],
+        a[2]*b[0] - a[0]*b[2],
+        a[0]*b[1] - a[1]*b[0],
+        0.0f
+    };
+}
+
+static inline float arx_f32x4_length(f32x4 a) {
+    return sqrtf(arx_f32x4_dot(a, a));
+}
+
+static inline f32x4 arx_f32x4_normalize(f32x4 a) {
+    float len = arx_f32x4_length(a);
+    if (len == 0.0f) return (f32x4){0, 0, 0, 0};
+    return a / (f32x4){len, len, len, len};
+}
+
+static inline f32x4 arx_f32x4_min(f32x4 a, f32x4 b) {
+    return (f32x4){
+        a[0] < b[0] ? a[0] : b[0],
+        a[1] < b[1] ? a[1] : b[1],
+        a[2] < b[2] ? a[2] : b[2],
+        a[3] < b[3] ? a[3] : b[3]
+    };
+}
+
+static inline f32x4 arx_f32x4_max(f32x4 a, f32x4 b) {
+    return (f32x4){
+        a[0] > b[0] ? a[0] : b[0],
+        a[1] > b[1] ? a[1] : b[1],
+        a[2] > b[2] ? a[2] : b[2],
+        a[3] > b[3] ? a[3] : b[3]
+    };
+}
+
+static inline double arx_f64x2_dot(f64x2 a, f64x2 b) {
+    f64x2 p = a * b;
+    return p[0] + p[1];
+}
+
+static inline double arx_f64x2_length(f64x2 a) {
+    return sqrt(arx_f64x2_dot(a, a));
+}
+
+static inline f64x2 arx_f64x2_normalize(f64x2 a) {
+    double len = arx_f64x2_length(a);
+    if (len == 0.0) return (f64x2){0, 0};
+    return a / (f64x2){len, len};
+}
+
+static inline f64x2 arx_f64x2_min(f64x2 a, f64x2 b) {
+    return (f64x2){
+        a[0] < b[0] ? a[0] : b[0],
+        a[1] < b[1] ? a[1] : b[1]
+    };
+}
+
+static inline f64x2 arx_f64x2_max(f64x2 a, f64x2 b) {
+    return (f64x2){
+        a[0] > b[0] ? a[0] : b[0],
+        a[1] > b[1] ? a[1] : b[1]
+    };
+}
+
+static inline const char* arx_f32x4_to_str(f32x4 v) {
+    char* b = (char*)arx_alloc(80);
+    snprintf(b, 80, "f32x4(%g, %g, %g, %g)", (double)v[0], (double)v[1], (double)v[2], (double)v[3]);
+    return b;
+}
+
+static inline const char* arx_f64x2_to_str(f64x2 v) {
+    char* b = (char*)arx_alloc(80);
+    snprintf(b, 80, "f64x2(%g, %g)", v[0], v[1]);
+    return b;
+}
+
+static inline bool arx_f32x4_eq(f32x4 a, f32x4 b) {
+    return a[0] == b[0] && a[1] == b[1] && a[2] == b[2] && a[3] == b[3];
+}
+static inline bool arx_f32x4_ne(f32x4 a, f32x4 b) {
+    return !arx_f32x4_eq(a, b);
+}
+
+static inline bool arx_f64x2_eq(f64x2 a, f64x2 b) {
+    return a[0] == b[0] && a[1] == b[1];
+}
+static inline bool arx_f64x2_ne(f64x2 a, f64x2 b) {
+    return !arx_f64x2_eq(a, b);
 }
 
 #endif // AERIX_RT_H

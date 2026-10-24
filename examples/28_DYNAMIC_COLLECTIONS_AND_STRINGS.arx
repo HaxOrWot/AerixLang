@@ -102,7 +102,7 @@ fn demonstrate_text_engine() {
     println("Word [3]: {w3}");
 
     // Heavyweight String class object
-    mut banner = String("  welcome to aerix v1.0.88  ");
+    mut banner = String("  welcome to aerix v1.0.89  ");
     let formatted = banner.trim().to_upper();
     let f_str = formatted.as_str();
     let f_len = formatted.len;

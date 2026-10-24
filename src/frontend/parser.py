@@ -19,7 +19,7 @@ from src.frontend.ast_nodes import (
     CIncludeNode, CExternNode, PropertyDefNode, OperatorDefNode,
     CascadeNode, GuardNode, ExtendDefNode,
     EnumVariantNode, EnumDefNode, MatchCaseNode, MatchNode, SpawnNode,
-    TupleNode, TupleDestructureNode
+    TupleNode, TupleDestructureNode, FixedArrayLiteralNode, SizeofNode
 )
 
 
@@ -97,6 +97,9 @@ class Parser:
             TokenType.LPAREN: self.parse_grouped_expr,
             TokenType.NEW: self.parse_new_expr,
             TokenType.SPAWN: self.parse_spawn_expr,
+            TokenType.LBRACKET: self.parse_fixed_array_literal,  # Phase 23
+            TokenType.SIZEOF: self.parse_sizeof,                 # Phase 24
+            TokenType.LOOP: self.parse_loop_ident,
         }
 
         self.infix_parselets: Dict[TokenType, Callable[[ASTNode], ASTNode]] = {
@@ -237,16 +240,44 @@ class Parser:
         return ProgramNode(line=first_tok.line, col=first_tok.col, declarations=decls, generic_uses=set(self.generic_uses))
 
     def parse_top_level_declaration(self) -> ASTNode:
+        # Phase 24: Parse attributes #[packed], #[align(N)]
+        attributes = []
+        while self.current().type == TokenType.HASH:
+            self.advance()  # consume '#'
+            self.consume(TokenType.LBRACKET, "Expected '[' after '#' for attribute")
+            while True:
+                attr_name_tok = self.consume(TokenType.IDENTIFIER, "Expected attribute name")
+                attr_arg = None
+                if self.match(TokenType.LPAREN):
+                    if self.current().type == TokenType.INT_LITERAL:
+                        attr_arg = int(self.advance().value)
+                    elif self.current().type == TokenType.IDENTIFIER:
+                        attr_arg = self.advance().value
+                    self.consume(TokenType.RPAREN, "Expected ')' after attribute argument")
+                attributes.append((attr_name_tok.value, attr_arg))
+                if not self.match(TokenType.COMMA):
+                    break
+            self.consume(TokenType.RBRACKET, "Expected ']' to close attribute")
+            self.skip_newlines()
+
         tok = self.current()
+        is_packed = any(name == "packed" for name, _ in attributes)
+        alignment = None
+        for name, arg in attributes:
+            if name == "align":
+                alignment = int(arg) if arg is not None else 64
 
         if tok.type == TokenType.CINCLUDE:
             return self.parse_cinclude()
         elif tok.type == TokenType.CEXTERN:
             return self.parse_cextern()
         elif tok.type in (TokenType.PUB, TokenType.FN):
+            if tok.type == TokenType.PUB and self.peek().type == TokenType.CLASS:
+                self.advance() # consume pub
+                return self.parse_class_def(is_packed=is_packed, alignment=alignment)
             return self.parse_function_def()
         elif tok.type == TokenType.CLASS:
-            return self.parse_class_def()
+            return self.parse_class_def(is_packed=is_packed, alignment=alignment)
         elif tok.type == TokenType.ENUM:
             return self.parse_enum_def()
         elif tok.type == TokenType.EXTEND:
@@ -278,7 +309,10 @@ class Parser:
             is_pub = True
             
         self.consume(TokenType.FN, "Expected 'fn' keyword")
-        name_tok = self.consume(TokenType.IDENTIFIER, "Expected function name")
+        if self.current().type == TokenType.LOOP:
+            name_tok = self.advance()
+        else:
+            name_tok = self.consume(TokenType.IDENTIFIER, "Expected function name")
         
         # Generic Type Parameters: fn identity<T>(x: T) -> T
         type_params = []
@@ -340,6 +374,15 @@ class Parser:
 
     def parse_type_annotation(self) -> str:
         tok = self.current()
+        # Phase 23: Fixed-size array type [T; N]
+        if tok.type == TokenType.LBRACKET:
+            self.advance()  # consume '['
+            elem_type = self.parse_type_annotation()
+            self.consume(TokenType.SEMICOLON, "Expected ';' in fixed array type '[T; N]'")
+            size_tok = self.consume(TokenType.INT_LITERAL, "Expected integer size in fixed array type '[T; N]'")
+            size = int(size_tok.value)
+            self.consume(TokenType.RBRACKET, "Expected ']' to close fixed array type")
+            return f"FixedArray_{elem_type}_{size}"
         if tok.type == TokenType.LPAREN:
             self.advance() # consume '('
             elem_types = []
@@ -372,7 +415,7 @@ class Parser:
     # OOP Class & Trait Declarations
     # ==========================================
 
-    def parse_class_def(self) -> ClassDefNode:
+    def parse_class_def(self, is_packed: bool = False, alignment: Optional[int] = None) -> ClassDefNode:
         start_tok = self.consume(TokenType.CLASS, "Expected 'class'")
         name_tok = self.consume(TokenType.IDENTIFIER, "Expected class name")
 
@@ -586,7 +629,8 @@ class Parser:
             fields=fields, methods=methods, constructor=constructor,
             destructor=destructor, constructors=constructors,
             properties=properties, operators=operators,
-            type_params=type_params
+            type_params=type_params,
+            is_packed=is_packed, alignment=alignment
         )
 
     def parse_trait_def(self) -> TraitDefNode:
@@ -684,6 +728,11 @@ class Parser:
         elif tok.type == TokenType.FOR:
             return self.parse_for()
         elif tok.type == TokenType.LOOP:
+            if self.peek().type == TokenType.LPAREN:
+                expr = self.parse_expression()
+                while self.match(TokenType.SEMICOLON):
+                    pass
+                return ExprStmtNode(line=expr.line, col=expr.col, expr=expr)
             return self.parse_loop()
         elif tok.type == TokenType.RETURN:
             return self.parse_return()
@@ -993,6 +1042,10 @@ class Parser:
             idx += 1
         return False
 
+    def parse_loop_ident(self) -> ASTNode:
+        tok = self.advance()
+        return IdentifierNode(line=tok.line, col=tok.col, name=tok.value)
+
     def parse_identifier(self) -> ASTNode:
         tok = self.advance()
         name = tok.value
@@ -1044,6 +1097,14 @@ class Parser:
         if not isinstance(call_expr, CallNode):
             self.error("Expected function call after 'spawn' (e.g. spawn worker())", start_tok)
         return SpawnNode(line=start_tok.line, col=start_tok.col, call=call_expr)
+
+    def parse_sizeof(self) -> ASTNode:
+        """Phase 24 — Parse sizeof(T) compile-time type byte-size expression."""
+        start_tok = self.advance() # consume 'sizeof'
+        self.consume(TokenType.LPAREN, "Expected '(' after 'sizeof'")
+        target_t = self.parse_type_annotation()
+        self.consume(TokenType.RPAREN, "Expected ')' after type in 'sizeof'")
+        return SizeofNode(line=start_tok.line, col=start_tok.col, target_type=target_t)
 
     # --- Infix Parselets ---
 
@@ -1106,6 +1167,44 @@ class Parser:
             return MemberAccessNode(line=left.line, col=left.col, object_expr=left, member=member_name)
         member_tok = self.consume(TokenType.IDENTIFIER, "Expected member name after '.'")
         return MemberAccessNode(line=left.line, col=left.col, object_expr=left, member=member_tok.value)
+
+    def parse_fixed_array_literal(self) -> ASTNode:
+        """
+        Phase 23 — Parse a fixed-size stack array literal.
+        Handles two forms:
+          [a, b, c, d]   -> FixedArrayLiteralNode(elements=[a, b, c, d])
+          [0; 8]         -> FixedArrayLiteralNode(repeat_value=0, repeat_count=8)
+        """
+        start_tok = self.advance()  # consume '['
+
+        # Empty array literal: [] — not valid for fixed arrays, but parse gracefully
+        if self.current().type == TokenType.RBRACKET:
+            self.advance()
+            return FixedArrayLiteralNode(line=start_tok.line, col=start_tok.col, elements=[])
+
+        # Parse the first element (or the repeat value)
+        first_expr = self.parse_expression()
+
+        # Check for [value; N] repeat syntax
+        if self.match(TokenType.SEMICOLON):
+            size_tok = self.consume(TokenType.INT_LITERAL, "Expected integer size N in '[value; N]' repeat array")
+            repeat_count = int(size_tok.value)
+            self.consume(TokenType.RBRACKET, "Expected ']' to close array literal")
+            return FixedArrayLiteralNode(
+                line=start_tok.line, col=start_tok.col,
+                elements=[],
+                repeat_value=first_expr,
+                repeat_count=repeat_count
+            )
+
+        # Otherwise it's an explicit element list: [a, b, c]
+        elements = [first_expr]
+        while self.match(TokenType.COMMA):
+            if self.current().type == TokenType.RBRACKET:
+                break  # Allow trailing comma
+            elements.append(self.parse_expression())
+        self.consume(TokenType.RBRACKET, "Expected ']' to close array literal")
+        return FixedArrayLiteralNode(line=start_tok.line, col=start_tok.col, elements=elements)
 
     def parse_index_access(self, left: ASTNode) -> ASTNode:
         self.advance() # consume '['

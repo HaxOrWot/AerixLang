@@ -15,12 +15,13 @@ from src.frontend.ast_nodes import (
     TraitDefNode, CIncludeNode, CExternNode, BreakNode, ContinueNode,
     PropertyDefNode, OperatorDefNode, GuardNode, CascadeNode, ExtendDefNode,
     EnumDefNode, EnumVariantNode, MatchNode, MatchCaseNode, SpawnNode,
-    TupleNode, TupleDestructureNode
+    TupleNode, TupleDestructureNode, FixedArrayLiteralNode, SizeofNode
 )
 from src.middle.typesystem import (
-    Type, ClassType, FunctionType, OptionalType, EnumType, EnumVariant, TraitType,
-    TYPE_I64, TYPE_F64, TYPE_BOOL, TYPE_STR, TYPE_CHAR,
-    TYPE_VOID, TYPE_NULL, lookup_type, PRIMITIVES
+    Type, PrimitiveType, ClassType, FunctionType, OptionalType, EnumType, EnumVariant, TraitType,
+    FixedArrayType, SimdType,
+    TYPE_I64, TYPE_F64, TYPE_F32, TYPE_BOOL, TYPE_STR, TYPE_CHAR,
+    TYPE_VOID, TYPE_NULL, TYPE_F32X4, TYPE_F64X2, lookup_type, PRIMITIVES
 )
 from src.frontend.diagnostics import AerixDiagnostic, DiagnosticBag, format_source_snippet
 
@@ -92,9 +93,10 @@ class Scope:
 
 
 class SemanticAnalyzer:
-    def __init__(self, filename: str = "<stdin>", source_lines: Optional[List[str]] = None):
+    def __init__(self, filename: str = "<stdin>", source_lines: Optional[List[str]] = None, freestanding: bool = False):
         self.filename = filename
         self.source_lines = source_lines or []
+        self.freestanding = freestanding
         self.classes: Dict[str, ClassType] = {}
         self.enums: Dict[str, EnumType] = {}
         self.traits: Dict[str, TraitType] = {}
@@ -107,11 +109,27 @@ class SemanticAnalyzer:
         self.defined_symbols: List[Symbol] = []
         self.errors: List[SemanticError] = []
 
+    def check_freestanding_type(self, type_name: Optional[str], node: Optional[ASTNode] = None) -> None:
+        if not self.freestanding or not type_name:
+            return
+        clean = type_name.strip()
+        base = clean.split("<")[0].split("_")[0]
+        if base in ("List", "Map", "Set", "Channel") or clean in ("List", "Map", "Set", "Channel", "String", "Arx_String"):
+            msg = f"Dynamic heap collection '{type_name}' is prohibited in freestanding bare-metal mode. Use fixed-size stack arrays '[T; N]' instead."
+            if node:
+                self.error(msg, node)
+            else:
+                line_str = self.source_lines[0] if self.source_lines else ""
+                dummy_node = ASTNode(line=1, col=1)
+                raise SemanticError(msg, dummy_node, self.filename, line_str)
+
     def error(self, msg: str, node: ASTNode, hint: Optional[str] = None) -> None:
         line_str = self.source_lines[node.line - 1] if 0 < node.line <= len(self.source_lines) else ""
         raise SemanticError(msg, node, self.filename, line_str, hint=hint)
 
     def resolve_type(self, type_name: str) -> Type:
+        if self.freestanding:
+            self.check_freestanding_type(type_name)
         return lookup_type(type_name, self.classes, self.enums, self.traits)
 
     def analyze(self, program: ProgramNode) -> None:
@@ -203,10 +221,24 @@ class SemanticAnalyzer:
             enum_type.variants[v.name] = variant
 
     def register_class(self, node: ClassDefNode) -> None:
+        if self.freestanding:
+            self.check_freestanding_type(node.name)
         if node.name in self.classes or node.name in self.enums:
             self.error(f"Duplicate class definition: '{node.name}'", node)
         base = self.classes.get(node.base_class) if node.base_class else None
-        cls_type = ClassType(name=node.name, base_class=base)
+
+        # Phase 24: Validate alignment attribute
+        alignment = getattr(node, "alignment", None)
+        if alignment is not None:
+            if alignment <= 0 or (alignment & (alignment - 1)) != 0:
+                self.error(f"Invalid alignment '{alignment}': alignment must be a positive power of 2 (e.g. 16, 32, 64, 128)", node)
+
+        cls_type = ClassType(
+            name=node.name,
+            base_class=base,
+            is_packed=getattr(node, "is_packed", False),
+            alignment=alignment
+        )
         cls_type.traits = list(node.traits)
         self.classes[node.name] = cls_type
 
@@ -393,9 +425,20 @@ class SemanticAnalyzer:
             return self.visit_tuple(node)
         elif isinstance(node, TupleDestructureNode):
             return self.visit_tuple_destructure(node)
+        elif isinstance(node, FixedArrayLiteralNode):
+            return self.visit_fixed_array_literal(node)
+        elif isinstance(node, SizeofNode):
+            return self.visit_sizeof(node)
         elif isinstance(node, (CIncludeNode, CExternNode, TraitDefNode, BreakNode, ContinueNode)):
             return TYPE_VOID
         return TYPE_VOID
+
+    def visit_sizeof(self, node: SizeofNode) -> Type:
+        resolved = self.resolve_type(node.target_type)
+        if resolved is None or (isinstance(resolved, Type) and resolved.name not in PRIMITIVES and resolved.name not in self.classes and resolved.name not in self.enums and not isinstance(resolved, FixedArrayType)):
+            self.error(f"Cannot resolve type '{node.target_type}' in sizeof()", node)
+        self.node_types[id(node)] = TYPE_I64
+        return TYPE_I64
 
     def visit_var_decl(self, node: VarDeclNode) -> Type:
         # Check for dynamic target-typed input/readln:
@@ -418,6 +461,10 @@ class SemanticAnalyzer:
             # Type Inference or Explicit Type Check
             if node.type_annotation:
                 annot_type = self.resolve_type(node.type_annotation)
+                if isinstance(node.initializer, FixedArrayLiteralNode) and isinstance(annot_type, FixedArrayType):
+                    node.initializer.inferred_elem_type = annot_type.elem_type.name
+                    node.initializer.inferred_size = annot_type.size
+                init_type = self.analyze_node(node.initializer) if node.initializer else TYPE_VOID
                 if node.initializer and not init_type.is_assignable_to(annot_type):
                     self.error(f"Type mismatch: expected '{annot_type}', but found '{init_type}'", node)
                 var_type = annot_type
@@ -455,6 +502,17 @@ class SemanticAnalyzer:
             return sym.type
         elif isinstance(node.target, MemberAccessNode):
             obj_type = self.analyze_node(node.target.object_expr)
+            if isinstance(obj_type, SimdType):
+                valid_components = ("x", "y", "z", "w") if obj_type.lanes == 4 else ("x", "y")
+                if node.target.member not in valid_components:
+                    self.error(f"SIMD vector type '{obj_type.name}' has no component '{node.target.member}'", node.target)
+                node.target.is_simd_component = True
+                node.target.simd_type = obj_type.name
+                node.target.component_index = valid_components.index(node.target.member)
+                val_type = self.analyze_node(node.value)
+                if not val_type.is_assignable_to(obj_type.lane_type):
+                    self.error(f"Type mismatch in SIMD component assignment: cannot assign '{val_type}' to '{obj_type.lane_type}'", node)
+                return obj_type.lane_type
             if isinstance(obj_type, ClassType):
                 if node.target.member in obj_type.properties:
                     prop_t, has_get, has_set, is_pub = obj_type.properties[node.target.member]
@@ -488,6 +546,19 @@ class SemanticAnalyzer:
             obj_type = self.analyze_node(node.target.object_expr)
             idx_type = self.analyze_node(node.target.index)
             val_type = self.analyze_node(node.value)
+            if isinstance(obj_type, SimdType):
+                val_type = self.analyze_node(node.value)
+                if not val_type.is_assignable_to(obj_type.lane_type):
+                    self.error(f"Type mismatch in SIMD vector element assignment: cannot assign '{val_type}' to '{obj_type.lane_type}'", node)
+                node.is_index_assign = True
+                node.target.is_simd_index = True
+                node.target.simd_type = obj_type.name
+                return obj_type.lane_type
+            if isinstance(obj_type, FixedArrayType):
+                if not val_type.is_assignable_to(obj_type.elem_type):
+                    self.error(f"Type mismatch in array assignment: cannot assign '{val_type}' to element type '{obj_type.elem_type}'", node)
+                node.is_index_assign = True
+                return obj_type.elem_type
             if isinstance(obj_type, ClassType):
                 if obj_type.name.startswith("List_"):
                     elem_name = obj_type.name[5:]
@@ -760,7 +831,9 @@ class SemanticAnalyzer:
         for_scope = Scope(parent=self.current_scope, kind="for")
         elem_type = TYPE_I64
         if not isinstance(node.range_expr, RangeNode):
-            if range_type.name.startswith("List_"):
+            if isinstance(range_type, FixedArrayType):
+                elem_type = range_type.elem_type
+            elif range_type.name.startswith("List_"):
                 elem_name = range_type.name[5:]
                 elem_type = self.resolve_type(elem_name)
             elif range_type.name.startswith("Set_"):
@@ -829,10 +902,15 @@ class SemanticAnalyzer:
                 return self.enums[node.name]
             if node.name in ("sleep_ms", "arx_sleep_ms", "arx_channel_new", "arx_channel_send", "arx_channel_recv", "arx_channel_close", "arx_channel_free", "arx_thread_join", "arx_canvas_set_pixel", "arx_canvas_fill_rect", "arx_canvas_clear"):
                 return FunctionType([], TYPE_VOID)
+            if node.name in ("f32x4", "f64x2"):
+                return FunctionType([], PRIMITIVES[node.name])
             if node.name == "arx_now_ms":
                 return FunctionType([], TYPE_F64)
             if node.name.startswith("arx_list_") or node.name.startswith("arx_str_"):
                 return FunctionType([], TYPE_I64)
+            if (node.name.startswith("volatile_") or node.name.startswith("arx_volatile_") or
+                node.name in ("address_of", "arx_address_of")):
+                return FunctionType([], TYPE_VOID)
             self.error(f"Undefined variable or identifier: '{node.name}'", node)
         sym.is_used = True
         self.node_types[id(node)] = sym.type
@@ -842,6 +920,30 @@ class SemanticAnalyzer:
     def visit_binary_op(self, node: BinaryOpNode) -> Type:
         left_type = self.analyze_node(node.left)
         right_type = self.analyze_node(node.right)
+
+        # Phase 25: First-Class SIMD Arithmetic Operators
+        if isinstance(left_type, SimdType) or isinstance(right_type, SimdType):
+            if isinstance(left_type, SimdType) and isinstance(right_type, SimdType):
+                if left_type.name != right_type.name:
+                    self.error(f"Cannot perform operator '{node.op}' between different SIMD types '{left_type.name}' and '{right_type.name}'", node)
+                simd_t = left_type
+            elif isinstance(left_type, SimdType):
+                simd_t = left_type
+            else:
+                simd_t = right_type
+
+            if node.op in ("+", "-", "*", "/"):
+                self.node_types[id(node)] = simd_t
+                node.is_simd_binop = True
+                node.simd_type = simd_t.name
+                return simd_t
+            elif node.op in ("==", "!="):
+                self.node_types[id(node)] = TYPE_BOOL
+                node.is_simd_binop = True
+                node.simd_type = simd_t.name
+                return TYPE_BOOL
+            else:
+                self.error(f"Unsupported binary operator '{node.op}' on SIMD vector type '{simd_t.name}'", node)
 
         # Phase 11: Check operator overloading on class types
         if isinstance(left_type, ClassType):
@@ -857,8 +959,14 @@ class SemanticAnalyzer:
 
         # Arithmetic
         if node.op in ("+", "-", "*", "/", "%", "**"):
+            if self.freestanding and node.op == "+" and (left_type == TYPE_STR or right_type == TYPE_STR):
+                self.error("Dynamic string concatenation is prohibited in freestanding bare-metal mode because it requires heap allocation.", node)
             if left_type == TYPE_F64 or right_type == TYPE_F64:
                 res_type = TYPE_F64
+            elif left_type == TYPE_F32 or right_type == TYPE_F32:
+                res_type = TYPE_F32
+            elif getattr(left_type, "name", "") in ("u64", "u32", "u16", "u8", "i64", "i32", "i16", "i8") and getattr(left_type, "name", "") == getattr(right_type, "name", ""):
+                res_type = left_type
             else:
                 res_type = TYPE_I64
         # Comparisons
@@ -886,6 +994,13 @@ class SemanticAnalyzer:
         # Check callee
         if isinstance(node.callee, IdentifierNode):
             name = node.callee.name
+            if self.freestanding:
+                self.check_freestanding_type(name, node)
+                if name in ("println", "print", "eprintln", "input", "readln", "arx_time_now") and name not in self.functions:
+                    self.error(f"Standard I/O function '{name}' requires OS libc and is unavailable in freestanding mode. Use memory-mapped I/O (MMIO) registers or custom UART drivers.", node)
+                if name in ("sleep_ms", "arx_sleep_ms", "arx_channel_new", "arx_channel_recv", "arx_channel_send", "arx_channel_close", "arx_channel_free", "arx_thread_join") and name not in self.functions:
+                    self.error(f"OS threading/timing function '{name}' is unavailable in freestanding mode.", node)
+
             if name in ("println", "print", "eprintln"):
                 for arg in node.args:
                     self.analyze_node(arg)
@@ -925,6 +1040,47 @@ class SemanticAnalyzer:
                     self.analyze_node(arg)
                 return TYPE_I64
             if name in ("arx_channel_send", "arx_channel_close", "arx_channel_free", "arx_thread_join", "arx_canvas_set_pixel", "arx_canvas_fill_rect", "arx_canvas_clear"):
+                for arg in node.args:
+                    self.analyze_node(arg)
+                return TYPE_VOID
+            if name in ("address_of", "arx_address_of"):
+                if len(node.args) != 1:
+                    self.error(f"'{name}' expects exactly 1 argument, but got {len(node.args)}", node)
+                self.analyze_node(node.args[0])
+                return lookup_type("usize", self.classes, self.enums, self.traits)
+            # Phase 25: SIMD Constructors
+            if name == "f32x4":
+                if len(node.args) not in (1, 4):
+                    self.error(f"'f32x4' constructor expects 1 argument (splat) or 4 arguments (x, y, z, w), but got {len(node.args)}", node)
+                for arg in node.args:
+                    arg_t = self.analyze_node(arg)
+                    if not (isinstance(arg_t, PrimitiveType) and (arg_t.is_numeric() or arg_t.is_integer() or arg_t.is_float())):
+                        self.error(f"Expected numeric argument in f32x4(), but found '{arg_t}'", arg)
+                node.is_simd_ctor = True
+                node.simd_type = "f32x4"
+                self.node_types[id(node)] = TYPE_F32X4
+                return TYPE_F32X4
+            if name == "f64x2":
+                if len(node.args) not in (1, 2):
+                    self.error(f"'f64x2' constructor expects 1 argument (splat) or 2 arguments (x, y), but got {len(node.args)}", node)
+                for arg in node.args:
+                    arg_t = self.analyze_node(arg)
+                    if not (isinstance(arg_t, PrimitiveType) and (arg_t.is_numeric() or arg_t.is_integer() or arg_t.is_float())):
+                        self.error(f"Expected numeric argument in f64x2(), but found '{arg_t}'", arg)
+                node.is_simd_ctor = True
+                node.simd_type = "f64x2"
+                self.node_types[id(node)] = TYPE_F64X2
+                return TYPE_F64X2
+            if name.startswith("volatile_read_") or name.startswith("arx_volatile_read_") or name.startswith("volatile_load_") or name.startswith("arx_volatile_load_"):
+                if len(node.args) != 1:
+                    self.error(f"'{name}' expects 1 argument (address: usize), but got {len(node.args)}", node)
+                for arg in node.args:
+                    self.analyze_node(arg)
+                suffix = name.split("_")[-1]
+                return lookup_type(suffix, self.classes, self.enums, self.traits)
+            if name.startswith("volatile_write_") or name.startswith("arx_volatile_write_") or name.startswith("volatile_store_") or name.startswith("arx_volatile_store_"):
+                if len(node.args) != 2:
+                    self.error(f"'{name}' expects 2 arguments (address: usize, value), but got {len(node.args)}", node)
                 for arg in node.args:
                     self.analyze_node(arg)
                 return TYPE_VOID
@@ -1018,6 +1174,46 @@ class SemanticAnalyzer:
                     self.error(f"Enum '{e_name}' has no variant '{v_name}'", node)
 
             obj_type = self.analyze_node(node.callee.object_expr)
+            # Phase 25: SIMD Methods (dot, cross, length, normalize, min, max)
+            if isinstance(obj_type, SimdType):
+                m = node.callee.member
+                node.is_simd_method = True
+                node.simd_type = obj_type.name
+                node.simd_method = m
+                if m == "dot":
+                    if len(node.args) != 1:
+                        self.error(f"'dot()' expects 1 argument of type '{obj_type.name}', but got {len(node.args)}", node)
+                    arg_t = self.analyze_node(node.args[0])
+                    if arg_t.name != obj_type.name:
+                        self.error(f"Type mismatch: 'dot()' expects '{obj_type.name}', but got '{arg_t.name}'", node.args[0])
+                    return obj_type.lane_type
+                elif m == "cross":
+                    if obj_type.name != "f32x4":
+                        self.error(f"'cross()' is only supported on 'f32x4', not '{obj_type.name}'", node)
+                    if len(node.args) != 1:
+                        self.error(f"'cross()' expects 1 argument of type 'f32x4', but got {len(node.args)}", node)
+                    arg_t = self.analyze_node(node.args[0])
+                    if arg_t.name != "f32x4":
+                        self.error(f"Type mismatch: 'cross()' expects 'f32x4', but got '{arg_t.name}'", node.args[0])
+                    return TYPE_F32X4
+                elif m == "length":
+                    if len(node.args) != 0:
+                        self.error(f"'length()' takes 0 arguments, but got {len(node.args)}", node)
+                    return obj_type.lane_type
+                elif m == "normalize":
+                    if len(node.args) != 0:
+                        self.error(f"'normalize()' takes 0 arguments, but got {len(node.args)}", node)
+                    return obj_type
+                elif m in ("min", "max"):
+                    if len(node.args) != 1:
+                        self.error(f"'{m}()' expects 1 argument of type '{obj_type.name}', but got {len(node.args)}", node)
+                    arg_t = self.analyze_node(node.args[0])
+                    if arg_t.name != obj_type.name:
+                        self.error(f"Type mismatch: '{m}()' expects '{obj_type.name}', but got '{arg_t.name}'", node.args[0])
+                    return obj_type
+                else:
+                    self.error(f"SIMD vector type '{obj_type.name}' has no method '{m}'", node)
+
             if isinstance(obj_type, ClassType):
                 arg_types = [self.analyze_node(arg) for arg in node.args]
                 res = obj_type.resolve_method(node.callee.member, arg_types)
@@ -1135,6 +1331,25 @@ class SemanticAnalyzer:
                 return TYPE_I64
             self.error(f"Type 'str' has no property '{node.member}'", node)
 
+        if isinstance(obj_type, FixedArrayType):
+            if node.member in ("len", "length"):
+                node.is_fixed_array_len = True
+                node.fixed_array_size = obj_type.size
+                return TYPE_I64
+            self.error(f"Fixed array '[{obj_type.elem_type.name}; {obj_type.size}]' has no member '{node.member}'", node)
+
+        # Phase 25: SIMD Components (.x, .y, .z, .w)
+        if isinstance(obj_type, SimdType):
+            member = node.member
+            valid_components = ("x", "y", "z", "w") if obj_type.lanes == 4 else ("x", "y")
+            if member not in valid_components:
+                self.error(f"SIMD vector type '{obj_type.name}' has no component '{member}' (valid: {', '.join(valid_components)})", node)
+            node.is_simd_component = True
+            node.simd_type = obj_type.name
+            node.component_index = valid_components.index(member)
+            self.node_types[id(node)] = obj_type.lane_type
+            return obj_type.lane_type
+
         if isinstance(obj_type, ClassType):
             # Check properties (Phase 11)
             if node.member in obj_type.properties:
@@ -1175,8 +1390,17 @@ class SemanticAnalyzer:
             return obj_type
 
         idx_type = self.analyze_node(node.index)
+        if isinstance(obj_type, SimdType):
+            if not (isinstance(idx_type, PrimitiveType) and idx_type.is_integer()):
+                self.error(f"SIMD vector index must be an integer, but got '{idx_type}'", node.index)
+            node.is_simd_index = True
+            node.simd_type = obj_type.name
+            self.node_types[id(node)] = obj_type.lane_type
+            return obj_type.lane_type
         if obj_type == TYPE_STR:
             return TYPE_STR
+        if isinstance(obj_type, FixedArrayType):
+            return obj_type.elem_type
         if isinstance(obj_type, ClassType):
             if obj_type.name.startswith("List_"):
                 elem_name = obj_type.name[5:]
@@ -1198,6 +1422,8 @@ class SemanticAnalyzer:
         return TYPE_I64
 
     def visit_new(self, node: NewNode) -> Type:
+        if self.freestanding:
+            self.error("Dynamic heap allocation via 'new' is prohibited in freestanding bare-metal mode. Instantiate value objects directly on the stack.", node)
         if node.class_name not in self.classes:
             self.error(f"Unknown class in 'new': '{node.class_name}'", node)
         for arg in node.args:
@@ -1212,12 +1438,16 @@ class SemanticAnalyzer:
         return target
 
     def visit_string_interp(self, node: StringInterpNode) -> Type:
+        if self.freestanding:
+            self.error("Dynamic string interpolation is prohibited in freestanding bare-metal mode because it allocates memory.", node)
         for part in node.parts:
             if isinstance(part, ASTNode):
                 self.analyze_node(part)
         return TYPE_STR
 
     def visit_spawn(self, node: SpawnNode) -> Type:
+        if self.freestanding:
+            self.error("OS multithreading via 'spawn' is prohibited in freestanding bare-metal mode.", node)
         self.visit_call(node.call)
         if "ThreadHandle" in self.classes:
             return self.classes["ThreadHandle"]
@@ -1241,3 +1471,45 @@ class SemanticAnalyzer:
             elem_t = self.resolve_type(parts[i])
             self.current_scope.define(Symbol(name, elem_t, node.is_mut, node))
         return TYPE_VOID
+
+    def visit_fixed_array_literal(self, node: FixedArrayLiteralNode) -> Type:
+        target_elem_t = None
+        if node.inferred_elem_type:
+            target_elem_t = self.resolve_type(node.inferred_elem_type)
+
+        if node.repeat_value is not None and node.repeat_count is not None:
+            if node.repeat_count < 0:
+                self.error("Fixed array size cannot be negative", node)
+            elem_t = self.analyze_node(node.repeat_value)
+            if target_elem_t and elem_t != target_elem_t:
+                if (isinstance(elem_t, PrimitiveType) and isinstance(target_elem_t, PrimitiveType) and
+                    ((elem_t.is_integer() and target_elem_t.is_integer()) or (elem_t.is_float() and target_elem_t.is_float()))):
+                    elem_t = target_elem_t
+            arr_t = FixedArrayType(elem_t, node.repeat_count)
+            node.inferred_elem_type = elem_t.name
+            node.inferred_size = node.repeat_count
+            self.node_types[id(node)] = arr_t
+            return arr_t
+        else:
+            if not node.elements:
+                elem_t = target_elem_t or TYPE_I64
+                sz = node.inferred_size or 0
+                arr_t = FixedArrayType(elem_t, sz)
+                node.inferred_elem_type = elem_t.name
+                node.inferred_size = sz
+                self.node_types[id(node)] = arr_t
+                return arr_t
+            elem_types = [self.analyze_node(e) for e in node.elements]
+            first_t = target_elem_t or elem_types[0]
+            for i, (e, et) in enumerate(zip(node.elements, elem_types)):
+                if target_elem_t:
+                    if isinstance(et, PrimitiveType) and isinstance(target_elem_t, PrimitiveType):
+                        if (et.is_integer() and target_elem_t.is_integer()) or (et.is_float() and target_elem_t.is_float()):
+                            continue
+                if not et.is_assignable_to(first_t) and not first_t.is_assignable_to(et):
+                    self.error(f"Array element {i} has type '{et}', expected '{first_t}'", e)
+            arr_t = FixedArrayType(first_t, len(elem_types))
+            node.inferred_elem_type = first_t.name
+            node.inferred_size = len(elem_types)
+            self.node_types[id(node)] = arr_t
+            return arr_t

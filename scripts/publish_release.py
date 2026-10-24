@@ -18,11 +18,11 @@ def get_project_version(root_dir):
     with open(arx_py, "r", encoding="utf-8") as f:
         for line in f:
             if line.strip().startswith("VERSION ="):
-                # e.g. VERSION = "1.0.88-alpha" -> 1.0.88
+                # e.g. VERSION = "1.0.89-alpha" -> 1.0.89
                 raw_ver = line.split("=")[1].strip().strip('"').strip("'")
                 base_ver = raw_ver.split("-")[0]
                 return base_ver
-    return "1.0.88"
+    return "1.0.89"
 
 def publish(tag=None):
     root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))

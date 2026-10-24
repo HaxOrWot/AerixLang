@@ -1,0 +1,132 @@
+// ============================================================================
+// Aerix Language — Phase 26 Example: Freestanding Bare-Metal Firmware
+// Embedded Flight Controller & Motor Control Unit (MCU)
+//
+// Target: Bare-Metal Microcontroller (ARM Cortex-M / RISC-V / AVR)
+// Compile to C:      arx emit-c examples/33_FREESTANDING_MICROCONTROLLER_FIRMWARE.arx --freestanding
+// Compile to Object: arx build examples/33_FREESTANDING_MICROCONTROLLER_FIRMWARE.arx --freestanding -o examples/33_firmware.o
+//
+// Guarantees:
+// 1. Zero dynamic heap allocations (no new, malloc, free)
+// 2. Zero OS / libc dependencies (no stdio.h, stdlib.h, windows.h, pthreads)
+// 3. Volatile MMIO register manipulation (volatile_load / volatile_store)
+// 4. Fixed-size stack arrays [T; N] with zero heap overhead
+// 5. #[packed] binary telemetry packet layout for radio transmission
+// 6. 128-bit SIMD f32x4 vector math for 3-axis IMU sensor attitude filtering
+// 7. Microcontroller unmangled entry points (setup, loop)
+// ============================================================================
+
+// Memory-Mapped I/O (MMIO) Hardware Peripheral Base Addresses
+fn gpioa_moder() -> u64 => 0x40020000
+fn gpioa_odr() -> u64   => 0x40020014
+fn tim2_ccr1() -> u64   => 0x40000034
+fn tim2_ccr2() -> u64   => 0x40000038
+fn tim2_ccr3() -> u64   => 0x4000003C
+fn tim2_ccr4() -> u64   => 0x40000040
+fn adc1_dr() -> u64     => 0x4001204C
+
+// Binary Radio Telemetry Packet — Packed with 0 padding bytes
+#[packed]
+class TelemetryPacket {
+    pub magic: u16
+    pub sequence: u32
+    pub motor_power: u16
+    pub battery_millivolts: u16
+    pub status_flags: u8
+}
+
+// PID Controller State Structure
+class MotorPID {
+    pub kp: f32
+    pub ki: f32
+    pub kd: f32
+    pub integral: f32
+    pub prev_error: f32
+
+    pub fn compute(target: f32, current: f32) -> f32 {
+        let error: f32 = target - current
+        self.integral = self.integral + error
+        let derivative: f32 = error - self.prev_error
+        self.prev_error = error
+
+        let output: f32 = (self.kp * error) + (self.ki * self.integral) + (self.kd * derivative)
+        if output < 0.0 {
+            return 0.0
+        }
+        if output > 1000.0 {
+            return 1000.0
+        }
+        return output
+    }
+}
+
+// IMU Attitude Fusion using 128-bit SIMD Vector Math
+fn filter_attitude_simd(accel: f32x4, gyro: f32x4, dt: f32) -> f32x4 {
+    // Complementary Filter: attitude = (gyro_integrated * 0.98) + (accel * 0.02)
+    let gyro_step: f32x4 = gyro * dt
+    let gyro_part: f32x4 = gyro_step * 0.98
+    let accel_part: f32x4 = accel * 0.02
+    let attitude: f32x4 = gyro_part + accel_part
+    return attitude
+}
+
+// Hardware Initialization Routine (Called on Power-On Reset)
+fn setup() {
+    // 1. Configure GPIOA Pin 5 as Digital Output for Status LED (Mode = 0x01)
+    volatile_store_u32(gpioa_moder(), 0x00000400)
+
+    // 2. Initialize 4 Motor PWM Channels to Idle (0% Duty Cycle)
+    volatile_store_u32(tim2_ccr1(), 0)
+    volatile_store_u32(tim2_ccr2(), 0)
+    volatile_store_u32(tim2_ccr3(), 0)
+    volatile_store_u32(tim2_ccr4(), 0)
+
+    // 3. Turn ON Status LED
+    volatile_store_u32(gpioa_odr(), 0x00000020)
+}
+
+// Real-Time Control Loop (Called Continuously by Hardware Vector Table)
+fn loop() {
+    // 1. Sample ADC Battery Voltage via MMIO
+    let raw_adc: u32 = volatile_load_u32(adc1_dr())
+    let battery_mv: u16 = (raw_adc * 3300 / 4096) as u16
+
+    // 2. Read IMU Accelerometer and Gyroscope Sensors into SIMD Vectors
+    let accel_data = f32x4(0.02, 0.01, 0.98, 0.0)
+    let gyro_data = f32x4(0.15, -0.05, 0.02, 0.0)
+    let attitude: f32x4 = filter_attitude_simd(accel_data, gyro_data, 0.002)
+
+    // 3. Compute Closed-Loop Motor PWM Output using Stack PID Controller
+    mut pid = MotorPID()
+    pid.kp = 1.25
+    pid.ki = 0.05
+    pid.kd = 0.35
+    pid.integral = 0.0
+    pid.prev_error = 0.0
+
+    let current_pitch: f32 = attitude[0]
+    let motor_cmd: f32 = pid.compute(0.0, current_pitch)
+    let pwm_duty: u32 = motor_cmd as u32
+
+    // 4. Update 4-Channel Motor PWM Timer Registers via MMIO
+    volatile_store_u32(tim2_ccr1(), pwm_duty)
+    volatile_store_u32(tim2_ccr2(), pwm_duty)
+    volatile_store_u32(tim2_ccr3(), pwm_duty)
+    volatile_store_u32(tim2_ccr4(), pwm_duty)
+
+    // 5. Construct Compact Binary Telemetry Packet on Stack
+    mut pkt = TelemetryPacket()
+    pkt.magic = 0xAA55
+    pkt.sequence = 1
+    pkt.motor_power = pwm_duty as u16
+    pkt.battery_millivolts = battery_mv
+    pkt.status_flags = 1
+
+    // 6. Signal completed 1 kHz control loop tick via Status LED
+    let current_led: u32 = volatile_load_u32(gpioa_odr())
+    if current_led == 0 {
+        volatile_store_u32(gpioa_odr(), 0x00000020)
+    } else {
+        volatile_store_u32(gpioa_odr(), 0x00000000)
+    }
+}

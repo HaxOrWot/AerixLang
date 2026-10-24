@@ -14,7 +14,7 @@ from src.frontend.ast_nodes import (
     ClassDefNode, CIncludeNode, CExternNode, PropertyDefNode, OperatorDefNode,
     GuardNode, CascadeNode, ExtendDefNode,
     EnumDefNode, EnumVariantNode, MatchNode, MatchCaseNode, SpawnNode,
-    TupleNode, TupleDestructureNode
+    TupleNode, TupleDestructureNode, FixedArrayLiteralNode, SizeofNode
 )
 
 
@@ -264,9 +264,65 @@ class AIRSpawn(AIRInstruction):
         return f"SPAWN {self.fn_name}({args_str})"
 
 
-# ==========================================
-# Higher-Level AIR Containers
-# ==========================================
+# --- Phase 23: Fixed-Size Stack Array Instructions ---
+
+@dataclass
+class AIRFixedArrayInit(AIRInstruction):
+    """
+    Initializes a fixed-size C99 stack array.
+    dest      : variable name of the array (declared as T dest[size] in C99)
+    elem_type : Aerix element type string, e.g. 'i32', 'f32'
+    size      : compile-time integer size N
+    values    : list of temp-names for element values (may be empty for zero-init)
+    repeat_val: optional single temp for [val; N] repeat form
+    """
+    dest: str
+    elem_type: str
+    size: int
+    values: List[str] = field(default_factory=list)   # For explicit list form
+    repeat_val: Optional[str] = None                   # For [val; N] repeat form
+
+    def __repr__(self) -> str:
+        if self.repeat_val:
+            return f"{self.dest}[{self.size}] = FIXED_ARRAY_REPEAT({self.elem_type}, {self.repeat_val})"
+        return f"{self.dest}[{self.size}] = FIXED_ARRAY_INIT({self.elem_type}, {self.values})"
+
+
+@dataclass
+class AIRFixedArrayGet(AIRInstruction):
+    """
+    Reads one element from a fixed-size stack array.
+    dest      : result temp name
+    array_var : name of the array variable
+    index     : temp name holding the runtime index
+    elem_type : Aerix element type string
+    """
+    dest: str
+    array_var: str
+    index: str
+    elem_type: str
+
+    def __repr__(self) -> str:
+        return f"{self.dest} = {self.array_var}[{self.index}] (FixedArray)"
+
+
+@dataclass
+class AIRFixedArraySet(AIRInstruction):
+    """
+    Writes one element into a fixed-size stack array.
+    array_var : name of the array variable
+    index     : temp name holding the runtime index
+    value     : temp name holding the value to store
+    """
+    array_var: str
+    index: str
+    value: str
+
+    def __repr__(self) -> str:
+        return f"{self.array_var}[{self.index}] = {self.value} (FixedArray)"
+
+
+
 
 @dataclass
 class AIRFunction:
@@ -289,6 +345,28 @@ class AIRClass:
     constructor: Optional[AIRFunction] = None
     destructor: Optional[AIRFunction] = None
     constructors: Dict[str, AIRFunction] = field(default_factory=dict)
+    is_packed: bool = False
+    alignment: Optional[int] = None
+
+
+# --- Phase 24: Memory Layout and MMIO Instructions ---
+
+@dataclass
+class AIRSizeof(AIRInstruction):
+    dest: str
+    target_type: str
+
+    def __repr__(self) -> str:
+        return f"{self.dest} = SIZEOF({self.target_type})"
+
+
+@dataclass
+class AIRAddressOf(AIRInstruction):
+    dest: str
+    target: str
+
+    def __repr__(self) -> str:
+        return f"{self.dest} = ADDRESS_OF({self.target})"
 
 
 @dataclass
@@ -457,7 +535,13 @@ class AIRLowering:
     def lower_class(self, node: ClassDefNode) -> AIRClass:
         self.current_class = node.name
         fields = {f.name: f.type_name for f in node.fields}
-        cls = AIRClass(name=node.name, base_class=node.base_class, fields=fields)
+        cls = AIRClass(
+            name=node.name,
+            base_class=node.base_class,
+            fields=fields,
+            is_packed=getattr(node, "is_packed", False),
+            alignment=getattr(node, "alignment", None)
+        )
 
         # Constructors
         all_ctors = node.constructors if getattr(node, "constructors", None) else ([node.constructor] if node.constructor else [])
@@ -579,13 +663,51 @@ class AIRLowering:
 
     def lower_statement(self, stmt: ASTNode) -> None:
         if isinstance(stmt, VarDeclNode):
-            if stmt.initializer:
+            if isinstance(stmt.initializer, FixedArrayLiteralNode):
+                expr = stmt.initializer
+                if expr.repeat_value is not None and expr.repeat_count is not None:
+                    val_temp = self.lower_expression(expr.repeat_value)
+                    elem_t = self.temp_types.get(val_temp, "i64")
+                    size = expr.repeat_count
+                    if stmt.type_annotation:
+                        arr_type = stmt.type_annotation
+                        parts = arr_type.split("_")
+                        if len(parts) >= 3:
+                            elem_t = "_".join(parts[1:-1])
+                    else:
+                        arr_type = f"FixedArray_{elem_t}_{size}"
+                    self.var_types[stmt.name] = arr_type
+                    self.current_insns.append(AIRFixedArrayInit(stmt.name, elem_t, size, [], val_temp))
+                else:
+                    val_temps = [self.lower_expression(e) for e in expr.elements]
+                    elem_t = self.temp_types.get(val_temps[0], "i64") if val_temps else "i64"
+                    size = len(val_temps)
+                    if expr.inferred_elem_type:
+                        elem_t = expr.inferred_elem_type
+                    if expr.inferred_size:
+                        size = expr.inferred_size
+                    if stmt.type_annotation:
+                        arr_type = stmt.type_annotation
+                        parts = arr_type.split("_")
+                        if len(parts) >= 3:
+                            elem_t = "_".join(parts[1:-1])
+                    else:
+                        arr_type = f"FixedArray_{elem_t}_{size}"
+                    self.var_types[stmt.name] = arr_type
+                    self.current_insns.append(AIRFixedArrayInit(stmt.name, elem_t, size, val_temps))
+            elif stmt.initializer:
                 val_temp = self.lower_expression(stmt.initializer)
                 self.current_insns.append(AIRStore(stmt.name, val_temp))
                 if stmt.type_annotation:
                     self.var_types[stmt.name] = stmt.type_annotation
                 elif val_temp in self.temp_types:
                     self.var_types[stmt.name] = self.temp_types[val_temp]
+            elif stmt.type_annotation and stmt.type_annotation.startswith("FixedArray_"):
+                parts = stmt.type_annotation.split("_")
+                elem_t = "_".join(parts[1:-1]) if len(parts) >= 3 else "i64"
+                size = int(parts[-1]) if len(parts) >= 3 else 0
+                self.var_types[stmt.name] = stmt.type_annotation
+                self.current_insns.append(AIRFixedArrayInit(stmt.name, elem_t, size, []))
         elif isinstance(stmt, AssignNode):
             val_temp = self.lower_expression(stmt.value)
             if getattr(stmt, "is_property_assign", False):
@@ -614,6 +736,22 @@ class AIRLowering:
                     res_temp = self.new_temp()
                     self.current_insns.append(AIRBinOp(res_temp, op, curr_temp, val_temp))
                     self.current_insns.append(AIRStore(stmt.target.name, res_temp))
+            elif isinstance(stmt.target, MemberAccessNode) and getattr(stmt.target, "is_simd_component", False):
+                obj = stmt.target.object_expr
+                inst_temp = obj.name if isinstance(obj, IdentifierNode) else self.lower_expression(obj)
+                lane_idx = str(stmt.target.component_index)
+                elem_t = "f32" if getattr(stmt.target, "simd_type", "") == "f32x4" else "f64"
+                if stmt.op == "=":
+                    self.current_insns.append(AIRFixedArraySet(inst_temp, lane_idx, val_temp))
+                else:
+                    op = stmt.op[:-1]
+                    curr_val = self.new_temp()
+                    self.temp_types[curr_val] = elem_t
+                    self.current_insns.append(AIRFixedArrayGet(curr_val, inst_temp, lane_idx, elem_t))
+                    res_val = self.new_temp()
+                    self.temp_types[res_val] = elem_t
+                    self.current_insns.append(AIRBinOp(res_val, op, curr_val, val_temp))
+                    self.current_insns.append(AIRFixedArraySet(inst_temp, lane_idx, res_val))
             elif isinstance(stmt.target, MemberAccessNode):
                 obj = stmt.target.object_expr
                 if isinstance(obj, IdentifierNode):
@@ -652,7 +790,36 @@ class AIRLowering:
                     cls_name = self.temp_types.get(inst_temp)
 
                 idx_temp = self.lower_expression(stmt.target.index)
-                if stmt.op == "=":
+                # Phase 25: SIMD vector element write
+                if getattr(stmt.target, "is_simd_index", False) or (cls_name and cls_name in ("f32x4", "f64x2")):
+                    elem_t = "f32" if (getattr(stmt.target, "simd_type", "") == "f32x4" or cls_name == "f32x4") else "f64"
+                    if stmt.op == "=":
+                        self.current_insns.append(AIRFixedArraySet(inst_temp, idx_temp, val_temp))
+                    else:
+                        op = stmt.op[:-1]
+                        curr_val = self.new_temp()
+                        self.temp_types[curr_val] = elem_t
+                        self.current_insns.append(AIRFixedArrayGet(curr_val, inst_temp, idx_temp, elem_t))
+                        res_val = self.new_temp()
+                        self.temp_types[res_val] = elem_t
+                        self.current_insns.append(AIRBinOp(res_val, op, curr_val, val_temp))
+                        self.current_insns.append(AIRFixedArraySet(inst_temp, idx_temp, res_val))
+                # Phase 23: Fixed-size stack array element write
+                elif cls_name and cls_name.startswith("FixedArray_"):
+                    if stmt.op == "=":
+                        self.current_insns.append(AIRFixedArraySet(inst_temp, idx_temp, val_temp))
+                    else:
+                        op = stmt.op[:-1]
+                        curr_val = self.new_temp()
+                        parts = cls_name.split("_")
+                        elem_t = "_".join(parts[1:-1]) if len(parts) >= 3 else "i64"
+                        self.temp_types[curr_val] = elem_t
+                        self.current_insns.append(AIRFixedArrayGet(curr_val, inst_temp, idx_temp, elem_t))
+                        res_val = self.new_temp()
+                        self.temp_types[res_val] = elem_t
+                        self.current_insns.append(AIRBinOp(res_val, op, curr_val, val_temp))
+                        self.current_insns.append(AIRFixedArraySet(inst_temp, idx_temp, res_val))
+                elif stmt.op == "=":
                     self.current_insns.append(AIRCallMethod(None, cls_name or "Class", "set", inst_temp, [idx_temp, val_temp]))
                 else:
                     op = stmt.op[:-1]
@@ -756,7 +923,12 @@ class AIRLowering:
                 coll_type = self.temp_types.get(coll_temp, self.var_types.get(stmt.range_expr.name if isinstance(stmt.range_expr, IdentifierNode) else ""))
                 len_temp = self.new_temp()
                 self.temp_types[len_temp] = "i64"
-                self.current_insns.append(AIRCallMethod(len_temp, coll_type or "Class", "len", coll_temp, []))
+                if coll_type and coll_type.startswith("FixedArray_"):
+                    parts = coll_type.split("_")
+                    sz = int(parts[-1]) if len(parts) >= 3 else 0
+                    self.current_insns.append(AIRConst(len_temp, sz, "i64"))
+                else:
+                    self.current_insns.append(AIRCallMethod(len_temp, coll_type or "Class", "len", coll_temp, []))
 
                 idx_var = f"__iter_idx_{self.temp_count}"
                 self.temp_count += 1
@@ -778,15 +950,24 @@ class AIRLowering:
                 self.current_insns.append(AIRBranchIfNot(cond_temp, end_lbl))
 
                 elem_t = "i64"
-                if coll_type and coll_type.startswith("List_"):
-                    elem_t = coll_type[5:]
-                elif coll_type and coll_type.startswith("Set_"):
-                    elem_t = coll_type[4:]
-                item_temp = self.new_temp()
-                self.temp_types[item_temp] = elem_t
-                self.var_types[stmt.var_name] = elem_t
-                self.current_insns.append(AIRCallMethod(item_temp, coll_type or "Class", "get", coll_temp, [cur_idx]))
-                self.current_insns.append(AIRStore(stmt.var_name, item_temp))
+                if coll_type and coll_type.startswith("FixedArray_"):
+                    parts = coll_type.split("_")
+                    elem_t = "_".join(parts[1:-1]) if len(parts) >= 3 else "i64"
+                    item_temp = self.new_temp()
+                    self.temp_types[item_temp] = elem_t
+                    self.var_types[stmt.var_name] = elem_t
+                    self.current_insns.append(AIRFixedArrayGet(item_temp, coll_temp, cur_idx, elem_t))
+                    self.current_insns.append(AIRStore(stmt.var_name, item_temp))
+                else:
+                    if coll_type and coll_type.startswith("List_"):
+                        elem_t = coll_type[5:]
+                    elif coll_type and coll_type.startswith("Set_"):
+                        elem_t = coll_type[4:]
+                    item_temp = self.new_temp()
+                    self.temp_types[item_temp] = elem_t
+                    self.var_types[stmt.var_name] = elem_t
+                    self.current_insns.append(AIRCallMethod(item_temp, coll_type or "Class", "get", coll_temp, [cur_idx]))
+                    self.current_insns.append(AIRStore(stmt.var_name, item_temp))
 
                 for s in stmt.body.statements:
                     self.lower_statement(s)
@@ -904,6 +1085,14 @@ class AIRLowering:
             left_t = self.lower_expression(expr.left)
             right_t = self.lower_expression(expr.right)
             dest = self.new_temp()
+            # Phase 25: SIMD binary ops
+            if getattr(expr, "is_simd_binop", False):
+                if expr.op in ("==", "!="):
+                    self.temp_types[dest] = "bool"
+                else:
+                    self.temp_types[dest] = expr.simd_type
+                self.current_insns.append(AIRBinOp(dest, expr.op, left_t, right_t))
+                return dest
             l_type = self.temp_types.get(left_t, "i64")
             r_type = self.temp_types.get(right_t, "i64")
             if expr.op in ("<", "<=", ">", ">=", "==", "!=", "&&", "||"):
@@ -927,6 +1116,11 @@ class AIRLowering:
                     src_type = "unknown"
             self.temp_types[dest] = expr.target_type
             self.current_insns.append(AIRCast(dest, src_t, expr.target_type, src_type))
+            return dest
+        elif isinstance(expr, SizeofNode):
+            dest = self.new_temp()
+            self.temp_types[dest] = "i64"
+            self.current_insns.append(AIRSizeof(dest, expr.target_type))
             return dest
         elif isinstance(expr, UnaryOpNode):
             op_t = self.lower_expression(expr.operand)
@@ -954,6 +1148,26 @@ class AIRLowering:
                         arg_type_name = "unknown"
                     self.temp_types[dest] = "str"
                     self.current_insns.append(AIRConst(dest, arg_type_name, "str"))
+                    return dest
+                elif fn_name in ("address_of", "arx_address_of"):
+                    dest = self.new_temp()
+                    self.temp_types[dest] = "usize"
+                    if expr.args and isinstance(expr.args[0], IdentifierNode):
+                        target = expr.args[0].name
+                    elif expr.args and isinstance(expr.args[0], MemberAccessNode):
+                        obj_t = self.lower_expression(expr.args[0].object_expr)
+                        target = f"{obj_t}.{expr.args[0].member}"
+                    elif expr.args:
+                        target = self.lower_expression(expr.args[0])
+                    else:
+                        target = "0"
+                    self.current_insns.append(AIRAddressOf(dest, target))
+                    return dest
+                elif fn_name in ("f32x4", "f64x2"):
+                    dest = self.new_temp()
+                    self.temp_types[dest] = fn_name
+                    c_fn = f"arx_{fn_name}_splat" if len(arg_temps) == 1 else f"arx_{fn_name}"
+                    self.current_insns.append(AIRCall(dest, c_fn, arg_temps))
                     return dest
                 elif fn_name in self.classes:
                     dest = self.new_temp()
@@ -991,6 +1205,9 @@ class AIRLowering:
                             self.temp_types[dest] = self.function_return_types[fn_name]
                         elif fn_name == "arx_time_now":
                             self.temp_types[dest] = "f64"
+                        elif fn_name.startswith("volatile_read_") or fn_name.startswith("arx_volatile_read_"):
+                            suffix = fn_name.split("read_")[-1]
+                            self.temp_types[dest] = suffix
                         elif fn_name in ("arx_channel_new", "arx_channel_recv"):
                             self.temp_types[dest] = "i64"
                         elif fn_name in ("arx_str_trim", "arx_str_to_upper", "arx_str_to_lower", "arx_str_replace", "arx_str_copy", "arx_str_slice", "arx_str_join", "arx_list_get_str", "arx_list_pop_str"):
@@ -1010,6 +1227,18 @@ class AIRLowering:
                 else:
                     inst_temp = self.lower_expression(obj)
                     cls_name = self.temp_types.get(inst_temp, "Class")
+                # Phase 25: SIMD Method Calls
+                if getattr(expr, "is_simd_method", False) or cls_name in ("f32x4", "f64x2"):
+                    simd_t = getattr(expr, "simd_type", None) or cls_name
+                    m = getattr(expr, "simd_method", None) or expr.callee.member
+                    dest = self.new_temp()
+                    if m in ("dot", "length"):
+                        self.temp_types[dest] = "f32" if simd_t == "f32x4" else "f64"
+                    else:
+                        self.temp_types[dest] = simd_t
+                    fn_c = f"arx_{simd_t}_{m}"
+                    self.current_insns.append(AIRCall(dest, fn_c, [inst_temp] + arg_temps))
+                    return dest
                 if cls_name == "str":
                     fn_c = getattr(expr, "resolved_mangled_name", None) or f"arx_str_{expr.callee.member}"
                     if expr.callee.member in ("trim", "to_upper", "to_lower"):
@@ -1097,10 +1326,29 @@ class AIRLowering:
             else:
                 inst_temp = self.lower_expression(obj)
                 cls_name = self.temp_types.get(inst_temp)
+            # Phase 25: SIMD Component Access (.x, .y, .z, .w)
+            if getattr(expr, "is_simd_component", False) or (cls_name and cls_name in ("f32x4", "f64x2") and expr.member in ("x", "y", "z", "w")):
+                dest = self.new_temp()
+                simd_t = getattr(expr, "simd_type", None) or cls_name
+                lane_idx = str(getattr(expr, "component_index", ("x", "y", "z", "w").index(expr.member)))
+                elem_t = "f32" if simd_t == "f32x4" else "f64"
+                self.temp_types[dest] = elem_t
+                self.current_insns.append(AIRFixedArrayGet(dest, inst_temp, lane_idx, elem_t))
+                return dest
             if cls_name == "str" and expr.member in ("len", "length"):
                 dest = self.new_temp()
                 self.temp_types[dest] = "i64"
                 self.current_insns.append(AIRCall(dest, "arx_str_len", [inst_temp]))
+                return dest
+            if getattr(expr, "is_fixed_array_len", False) or (cls_name and cls_name.startswith("FixedArray_") and expr.member in ("len", "length")):
+                sz = getattr(expr, "fixed_array_size", None)
+                if sz is None and cls_name and cls_name.startswith("FixedArray_"):
+                    parts = cls_name.split("_")
+                    sz = int(parts[-1]) if len(parts) >= 3 else 0
+                sz = sz or 0
+                dest = self.new_temp()
+                self.temp_types[dest] = "i64"
+                self.current_insns.append(AIRConst(dest, sz, "i64"))
                 return dest
             dest = self.new_temp()
             if getattr(expr, "is_property", False):
@@ -1142,6 +1390,12 @@ class AIRLowering:
                 return dest
             else:
                 idx_temp = self.lower_expression(expr.index)
+                # Phase 25: SIMD Indexing vec[i]
+                if getattr(expr, "is_simd_index", False) or (cls_name and cls_name in ("f32x4", "f64x2")):
+                    elem_t = "f32" if (getattr(expr, "simd_type", "") == "f32x4" or cls_name == "f32x4") else "f64"
+                    self.temp_types[dest] = elem_t
+                    self.current_insns.append(AIRFixedArrayGet(dest, inst_temp, idx_temp, elem_t))
+                    return dest
                 if cls_name == "str":
                     self.temp_types[dest] = "str"
                     next_idx = self.new_temp()
@@ -1153,7 +1407,15 @@ class AIRLowering:
                     self.current_insns.append(AIRCall(dest, "arx_str_slice", [inst_temp, idx_temp, next_idx]))
                     return dest
                 elem_t = "i64"
-                if cls_name and cls_name.startswith("List_"):
+                if cls_name and cls_name.startswith("FixedArray_"):
+                    # Phase 23: Fixed-size stack array element read
+                    parts = cls_name.split("_")
+                    if len(parts) >= 3:
+                        elem_t = "_".join(parts[1:-1])
+                    self.temp_types[dest] = elem_t
+                    self.current_insns.append(AIRFixedArrayGet(dest, inst_temp, idx_temp, elem_t))
+                    return dest
+                elif cls_name and cls_name.startswith("List_"):
                     elem_t = cls_name[5:]
                 elif cls_name and cls_name.startswith("Map_"):
                     parts = cls_name.split("_")
@@ -1162,6 +1424,35 @@ class AIRLowering:
                 self.temp_types[dest] = elem_t
                 self.current_insns.append(AIRCallMethod(dest, cls_name or "Class", "get", inst_temp, [idx_temp]))
                 return dest
+        elif isinstance(expr, FixedArrayLiteralNode):
+            # Phase 23: Lower a fixed-size stack array literal
+            # Determine element type and size
+            if expr.repeat_value is not None and expr.repeat_count is not None:
+                # [val; N] repeat form
+                val_temp = self.lower_expression(expr.repeat_value)
+                elem_t = self.temp_types.get(val_temp, "i64")
+                size = expr.repeat_count
+                # Use a unique temp name as the array variable
+                arr_name = self.new_temp()
+                arr_type = f"FixedArray_{elem_t}_{size}"
+                self.temp_types[arr_name] = arr_type
+                self.current_insns.append(AIRFixedArrayInit(arr_name, elem_t, size, [], val_temp))
+                return arr_name
+            else:
+                # [a, b, c, d] explicit list form
+                val_temps = [self.lower_expression(e) for e in expr.elements]
+                elem_t = self.temp_types.get(val_temps[0], "i64") if val_temps else "i64"
+                size = len(val_temps)
+                # Honour type annotation from VarDeclNode if available
+                if expr.inferred_elem_type:
+                    elem_t = expr.inferred_elem_type
+                if expr.inferred_size:
+                    size = expr.inferred_size
+                arr_name = self.new_temp()
+                arr_type = f"FixedArray_{elem_t}_{size}"
+                self.temp_types[arr_name] = arr_type
+                self.current_insns.append(AIRFixedArrayInit(arr_name, elem_t, size, val_temps))
+                return arr_name
         elif isinstance(expr, TupleNode):
             elem_temps = [self.lower_expression(e) for e in expr.elements]
             elem_types = [self.temp_types.get(t, "i64") for t in elem_temps]
@@ -1201,6 +1492,8 @@ class AIRLowering:
                     elif t_type in ("f32", "f64"):
                         fmt_pieces.append("%g")
                     elif t_type == "bool":
+                        fmt_pieces.append("%s")
+                    elif t_type in ("f32x4", "f64x2"):
                         fmt_pieces.append("%s")
                     else:
                         fmt_pieces.append("%lld")

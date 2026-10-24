@@ -1,0 +1,105 @@
+// Aerix (arx) — Showcase 32: First-Class SIMD Arithmetic Operators (f32x4, f64x2) & Vector Math
+// Demonstrates hardware-accelerated 128-bit vector arithmetic, geometric intrinsics, and game math
+// Features: zero heap allocation, GCC vector extensions, 3D kinematics, Lambertian lighting, and AABB clamping.
+
+fn main() {
+    println("==================================================================")
+    println("  AERIX PHASE 25: FIRST-CLASS SIMD ARITHMETIC & VECTOR MATH (128-BIT) ")
+    println("==================================================================")
+
+    // 1. Vector Construction & Component Access
+    println("1. 128-Bit SIMD Construction & Lane Access:")
+    let pos = f32x4(10.0, 20.0, 30.0, 1.0)
+    println("  Position Vector : {pos}")
+    println("  Component .x    : {pos.x}")
+    println("  Component .y    : {pos.y}")
+    println("  Component .z    : {pos.z}")
+    println("  Component .w    : {pos.w}")
+    println("  Indexed v[0]    : {pos[0]}")
+    println("  Indexed v[2]    : {pos[2]}")
+
+    // 2. Vector Splatting & Double-Precision Vectors (f64x2)
+    println("\n2. Vector Splatting & f64x2 Double-Precision Vectors:")
+    let gravity = f32x4(-9.81)
+    println("  Gravity (Splat) : {gravity}")
+    
+    let orbit = f64x2(384400.0, 1022.0)
+    let orbit_boost = f64x2(150.0)
+    let orbit_accelerated = orbit + orbit_boost
+    println("  Lunar Orbit (f64x2)    : {orbit}")
+    println("  Boosted Orbit (f64x2)  : {orbit_accelerated}")
+
+    // 3. Native SIMD Kinematics (Vector-Vector & Vector-Scalar Arithmetic)
+    println("\n3. High-Performance SIMD Particle Kinematics:")
+    mut p = f32x4(0.0, 50.0, 0.0, 1.0)
+    let vel = f32x4(12.5, -4.0, 8.0, 0.0)
+    let dt = 0.5
+    
+    println("  Initial Position : {p}")
+    println("  Velocity Vector  : {vel}")
+    println("  Delta Time (dt)  : {dt}s")
+
+    // Direct vector-scalar multiplication and vector-vector addition in one line!
+    p = p + vel * dt
+    println("  Position at t=1  : {p}")
+    p = p + vel * dt
+    println("  Position at t=2  : {p}")
+
+    // 4. In-Place Lane Mutation
+    println("\n4. In-Place Component & Index Mutation:")
+    p.y = 100.0
+    p[2] = 42.0
+    println("  Mutated Position : {p}")
+
+    // 5. 3D Game Geometry: Dot Product & Lambertian Diffuse Lighting
+    println("\n5. 3D Graphics Math: Surface Lighting & Dot Product:")
+    let light_dir = f32x4(0.577, 0.577, 0.577, 0.0)
+    let surface_normal = f32x4(0.0, 1.0, 0.0, 0.0)
+    let diffuse = surface_normal.dot(light_dir)
+    println("  Light Direction Vector : {light_dir}")
+    println("  Surface Normal Vector  : {surface_normal}")
+    println("  Lambertian Diffuse N.L : {diffuse}")
+
+    // 6. Cross Product for Surface Normal Computation
+    println("\n6. Vector Cross Product (Surface Normal Calculation):")
+    let edge_u = f32x4(1.0, 0.0, 0.0, 0.0)
+    let edge_v = f32x4(0.0, 1.0, 0.0, 0.0)
+    let normal_n = edge_u.cross(edge_v)
+    println("  Edge U                 : {edge_u}")
+    println("  Edge V                 : {edge_v}")
+    println("  Computed Normal (UxV)  : {normal_n}")
+
+    // 7. Vector Length & Unit Normalization
+    println("\n7. Vector Euclidean Norm & Unit Normalization:")
+    let raw_heading = f32x4(3.0, 4.0, 0.0, 0.0)
+    let mag = raw_heading.length()
+    let unit_heading = raw_heading.normalize()
+    println("  Raw Heading Vector     : {raw_heading}")
+    println("  Magnitude (Length)     : {mag}")
+    println("  Normalized Unit Vector : {unit_heading}")
+    println("  Normalized Magnitude   : {unit_heading.length()}")
+
+    // 8. Element-Wise Min & Max (AABB Bounding Box Clamping)
+    println("\n8. Element-Wise Min / Max (AABB Bounding Box Clamping):")
+    let box_min = f32x4(-10.0, -10.0, -10.0, 0.0)
+    let box_max = f32x4(10.0, 10.0, 10.0, 1.0)
+    let candidate = f32x4(15.5, -12.0, 4.0, 0.5)
+    let clamped = candidate.max(box_min).min(box_max)
+    println("  Bounding Box Min       : {box_min}")
+    println("  Bounding Box Max       : {box_max}")
+    println("  Candidate Position     : {candidate}")
+    println("  Clamped Position       : {clamped}")
+
+    // 9. Vector Equality & Inequality
+    println("\n9. Vector Equality Operators:")
+    let v_a = f32x4(1.0, 2.0, 3.0, 4.0)
+    let v_b = f32x4(1.0, 2.0, 3.0, 4.0)
+    let v_c = f32x4(1.0, 2.0, 3.0, 5.0)
+    println("  v_a == v_b             : {v_a == v_b}")
+    println("  v_a == v_c             : {v_a == v_c}")
+    println("  v_a != v_c             : {v_a != v_c}")
+
+    println("\n==================================================================")
+    println("  SIMD VECTOR MATH DEMONSTRATION COMPLETE: 100% NATIVE ACCELERATION ")
+    println("==================================================================")
+}

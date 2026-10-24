@@ -4,7 +4,7 @@ Represents typed syntax trees for expressions, statements, functions, and OOP cl
 """
 
 from dataclasses import dataclass, field
-from typing import List, Optional, Any, Set, Tuple
+from typing import List, Optional, Any, Set, Tuple, Union
 
 
 @dataclass
@@ -103,6 +103,28 @@ class StringInterpNode(ASTNode):
 class SpawnNode(ASTNode):
     """Represents a concurrent thread/task spawn expression."""
     call: CallNode
+
+
+@dataclass
+class FixedArrayLiteralNode(ASTNode):
+    """
+    Phase 23 — Represents a fixed-size stack array literal expression.
+
+    Two forms:
+      - Explicit list:   [2, 4, 12, 14]         -> elements=[...], repeat_value=None, repeat_count=None
+      - Repeat syntax:   [0; 8]                  -> elements=[], repeat_value=LiteralNode(0), repeat_count=8
+    """
+    elements: List[ASTNode] = field(default_factory=list)
+    repeat_value: Optional[ASTNode] = None   # For [val; N] form
+    repeat_count: Optional[int] = None        # For [val; N] form — N must be compile-time int
+    inferred_elem_type: Optional[str] = None  # Filled in by semantic analysis
+    inferred_size: Optional[int] = None       # Filled in by semantic analysis
+
+
+@dataclass
+class SizeofNode(ASTNode):
+    """Phase 24: Represents compile-time type byte-size query: sizeof(T)"""
+    target_type: str
 
 
 # ==========================================
@@ -294,6 +316,8 @@ class ClassDefNode(ASTNode):
     properties: List[PropertyDefNode] = field(default_factory=list)
     operators: List[OperatorDefNode] = field(default_factory=list)
     type_params: List[str] = field(default_factory=list)
+    is_packed: bool = False
+    alignment: Optional[int] = None
 
 
     def __post_init__(self):

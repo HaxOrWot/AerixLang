@@ -135,6 +135,7 @@ class TokenType(Enum):
     COMMA = auto()             # ,
     COLON = auto()             # :
     SEMICOLON = auto()         # ;
+    HASH = auto()              # # (Attributes, e.g. #[packed])
     NEWLINE = auto()           # Virtual statement terminator
     EOF = auto()               # End of File
 

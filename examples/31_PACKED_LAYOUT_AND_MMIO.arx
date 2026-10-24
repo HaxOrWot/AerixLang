@@ -1,0 +1,88 @@
+// Aerix (arx) — Showcase 31: Memory Layout Attributes (#[packed] & #[align(N)]) & Volatile MMIO Registers
+// Demonstrates hardware protocol frame serialization, cache-line alignment, and volatile MMIO intrinsics
+// Features: zero struct padding, cache-line false sharing prevention, volatile hardware register access.
+
+#[packed]
+class CanBusFrame {
+    pub id: u16
+    pub dlc: u8
+    pub flags: u8
+    pub payload_head: u32
+    pub crc: u16
+}
+
+#[align(64)]
+class CacheAlignedWorkerSlot {
+    pub thread_id: u64
+    pub completed_tasks: u64
+}
+
+fn main() {
+    println("==================================================================")
+    println("  AERIX PHASE 24: MEMORY LAYOUT ATTRIBUTES & VOLATILE MMIO (IO)  ")
+    println("==================================================================")
+
+    // 1. Compile-Time Type Byte Size Queries via sizeof(T)
+    println("1. Compile-Time Type Sizes via sizeof(T):")
+    println("  sizeof(u8)       = {sizeof(u8)} bytes")
+    println("  sizeof(u16)      = {sizeof(u16)} bytes")
+    println("  sizeof(u32)      = {sizeof(u32)} bytes")
+    println("  sizeof(u64)      = {sizeof(u64)} bytes")
+    println("  sizeof(usize)    = {sizeof(usize)} bytes")
+    println("  sizeof([u32; 8]) = {sizeof([u32; 8])} bytes")
+
+    // 2. Packed Serial Protocol Frames (#[packed])
+    // Standard unpacked layout with padding would be >= 12 bytes.
+    // #[packed] guarantees exactly 2 + 1 + 1 + 4 + 2 = 10 bytes!
+    println("\n2. Packed Serial Protocol Frame (#[packed]):")
+    println("  sizeof(CanBusFrame) = {sizeof(CanBusFrame)} bytes (Strict 0 Padding)")
+    
+    mut frame = CanBusFrame()
+    frame.id = 0x7DF
+    frame.dlc = 8
+    frame.flags = 0x01
+    frame.payload_head = 0x11223344
+    frame.crc = 0x55AA
+
+    println("  CAN Arbitration ID: 0x{frame.id}")
+    println("  Data Length Code  : {frame.dlc}")
+    println("  Frame Flags       : {frame.flags}")
+    println("  Payload Head Word : 0x{frame.payload_head}")
+    println("  Frame Checksum CRC: 0x{frame.crc}")
+
+    // 3. Cache-Line False Sharing Prevention (#[align(64)])
+    println("\n3. Cache-Line Alignment for Multithreading (#[align(64)]):")
+    let slot_size = sizeof(CacheAlignedWorkerSlot)
+    println("  sizeof(CacheAlignedWorkerSlot) = {slot_size} bytes")
+    println("  Aligned to 64-Byte Cache Line  : {slot_size % 64 == 0}")
+
+    // 4. Volatile Register I/O (MMIO Intrinsics)
+    println("\n4. Volatile Hardware MMIO Register Emulation:")
+    mut dma_status_reg: u32 = 0x00000000
+    let dma_reg_addr: usize = address_of(dma_status_reg)
+
+    println("  DMA Status Register Address: 0x{dma_reg_addr}")
+    println("  Initial Value              : 0x{volatile_read_u32(dma_reg_addr)}")
+
+    // Write command word to MMIO register
+    volatile_write_u32(dma_reg_addr, 0x80000001)
+    let active_status = volatile_read_u32(dma_reg_addr)
+    println("  DMA Activated (Write/Read) : 0x{active_status}")
+    println("  Direct Local Mirror Check  : 0x{dma_status_reg}")
+
+    // 5. Multi-Width Volatile Access (u8, u16, u64)
+    println("\n5. Multi-Width Volatile Intrinsics:")
+    mut byte_port: u8 = 0
+    mut word_port: u16 = 0
+    mut timer_port: u64 = 0
+
+    volatile_write_u8(address_of(byte_port), 0xFF)
+    volatile_write_u16(address_of(word_port), 0x0F0F)
+    volatile_write_u64(address_of(timer_port), 0x0123456789ABCDEF)
+
+    println("  Volatile Read 8-bit  : 0x{volatile_read_u8(address_of(byte_port))}")
+    println("  Volatile Read 16-bit : 0x{volatile_read_u16(address_of(word_port))}")
+    println("  Volatile Read 64-bit : 0x{volatile_read_u64(address_of(timer_port))}")
+
+    println("\n[Aerix Phase 24 Memory Layout & MMIO Verification Succeeded: 100% Deterministic]")
+}

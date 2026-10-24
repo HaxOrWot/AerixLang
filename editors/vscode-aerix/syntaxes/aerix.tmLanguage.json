@@ -4,6 +4,7 @@
   "scopeName": "source.aerix",
   "patterns": [
     { "include": "#comments" },
+    { "include": "#attributes" },
     { "include": "#pipeline" },
     { "include": "#cascade" },
     { "include": "#strings" },
@@ -445,7 +446,20 @@
       "patterns": [
         {
           "name": "support.function.builtin.aerix",
-          "match": "\\b(println|print|eprintln|arx_time_now_ns|arx_time_now|assert|panic|len|sizeof|input|readln|typeof|sleep_ms|arx_sleep_ms|arx_channel_new|arx_channel_send|arx_channel_recv|arx_channel_close|arx_channel_free|arx_thread_spawn|arx_thread_join|range|arx_canvas_set_pixel|arx_canvas_fill_rect|arx_canvas_clear|arx_now_ms)\\b(?=\\s*\\()"
+          "match": "\\b(println|print|eprintln|arx_time_now_ns|arx_time_now|assert|panic|len|sizeof|input|readln|typeof|sleep_ms|arx_sleep_ms|arx_channel_new|arx_channel_send|arx_channel_recv|arx_channel_close|arx_channel_free|arx_thread_spawn|arx_thread_join|range|arx_canvas_set_pixel|arx_canvas_fill_rect|arx_canvas_clear|arx_now_ms|volatile_read_u8|volatile_read_u16|volatile_read_u32|volatile_read_u64|volatile_read_i8|volatile_read_i16|volatile_read_i32|volatile_read_i64|volatile_write_u8|volatile_write_u16|volatile_write_u32|volatile_write_u64|volatile_write_i8|volatile_write_i16|volatile_write_i32|volatile_write_i64|volatile_load_u8|volatile_load_u16|volatile_load_u32|volatile_load_u64|volatile_load_i8|volatile_load_i16|volatile_load_i32|volatile_load_i64|volatile_store_u8|volatile_store_u16|volatile_store_u32|volatile_store_u64|volatile_store_i8|volatile_store_i16|volatile_store_i32|volatile_store_i64|address_of|arx_address_of|f32x4|f64x2)\\b(?=\\s*\\()"
+        }
+      ]
+    },
+    "attributes": {
+      "patterns": [
+        {
+          "match": "(#\\[)(packed|align)(?:\\((\\d+)\\))?(\\])",
+          "captures": {
+            "1": { "name": "punctuation.definition.annotation.aerix" },
+            "2": { "name": "entity.name.function.annotation.aerix" },
+            "3": { "name": "constant.numeric.integer.aerix" },
+            "4": { "name": "punctuation.definition.annotation.aerix" }
+          }
         }
       ]
     },

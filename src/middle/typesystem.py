@@ -37,17 +37,31 @@ class PrimitiveType(Type):
         return self.name in (
             "i8", "i16", "i32", "i64", "int",
             "u8", "u16", "u32", "u64", "uint",
+            "usize", "isize",
             "f32", "f64"
         )
 
     def is_integer(self) -> bool:
         return self.name in (
             "i8", "i16", "i32", "i64", "int",
-            "u8", "u16", "u32", "u64", "uint"
+            "u8", "u16", "u32", "u64", "uint",
+            "usize", "isize"
         )
 
     def is_float(self) -> bool:
         return self.name in ("f32", "f64")
+
+    def is_assignable_to(self, target: Type) -> bool:
+        if self.name == target.name:
+            return True
+        if isinstance(target, PrimitiveType):
+            if self.is_integer() and target.is_integer():
+                return True
+            if self.is_float() and target.is_float():
+                return True
+        if isinstance(target, OptionalType):
+            return self.is_assignable_to(target.inner)
+        return False
 
 
 class OptionalType(Type):
@@ -70,9 +84,11 @@ class FunctionType(Type):
 
 
 class ClassType(Type):
-    def __init__(self, name: str, base_class: Optional["ClassType"] = None):
+    def __init__(self, name: str, base_class: Optional["ClassType"] = None, is_packed: bool = False, alignment: Optional[int] = None):
         super().__init__(name)
         self.base_class = base_class
+        self.is_packed = is_packed
+        self.alignment = alignment
         self.fields: Dict[str, Type] = {}
         self.field_access: Dict[str, bool] = {}  # True = pub, False = priv
         self.methods: Dict[str, FunctionType] = {}
@@ -169,6 +185,33 @@ class TraitType(Type):
         return self.name == target.name
 
 
+# --- Phase 23: Fixed-Size Stack Array Type ---
+class FixedArrayType(Type):
+    """
+    Represents a compile-time fixed-size stack array: [T; N].
+    Stored as 'FixedArray_<elem_type>_<size>' in the type string system.
+    Maps directly to C99: T name[N]  (zero heap allocation).
+    """
+    def __init__(self, elem_type: Type, size: int):
+        super().__init__(f"FixedArray_{elem_type.name}_{size}")
+        self.elem_type = elem_type
+        self.size = size
+
+    def is_assignable_to(self, target: Type) -> bool:
+        if isinstance(target, FixedArrayType):
+            if self.size != target.size:
+                return False
+            if self.name == target.name:
+                return True
+            if isinstance(self.elem_type, PrimitiveType) and isinstance(target.elem_type, PrimitiveType):
+                if self.elem_type.is_integer() and target.elem_type.is_integer():
+                    return True
+                if self.elem_type.is_float() and target.elem_type.is_float():
+                    return True
+            return self.elem_type.is_assignable_to(target.elem_type)
+        return False
+
+
 # --- Standard Primitive Singletons ---
 TYPE_I8 = PrimitiveType("i8", 1)
 TYPE_I16 = PrimitiveType("i16", 2)
@@ -185,11 +228,40 @@ TYPE_CHAR = PrimitiveType("char", 1)
 TYPE_STR = PrimitiveType("str", 8)
 TYPE_VOID = PrimitiveType("void", 0)
 TYPE_NULL = PrimitiveType("null", 8)
+TYPE_USIZE = PrimitiveType("usize", 8)
+TYPE_ISIZE = PrimitiveType("isize", 8)
+
+# --- Phase 25: First-Class SIMD Vector Types ---
+class SimdType(Type):
+    """
+    Represents a 128-bit hardware SIMD vector type: f32x4 or f64x2.
+    Directly lowers to GCC/Clang vector extensions:
+      typedef float  f32x4 __attribute__ ((vector_size (16)));
+      typedef double f64x2 __attribute__ ((vector_size (16)));
+    """
+    def __init__(self, name: str, lane_type: Type, lanes: int):
+        super().__init__(name)
+        self.lane_type = lane_type
+        self.lanes = lanes
+        self.size_bytes = 16
+
+    def is_assignable_to(self, target: Type) -> bool:
+        if self.name == target.name:
+            return True
+        if isinstance(target, OptionalType):
+            return self.is_assignable_to(target.inner)
+        return False
+
+
+TYPE_F32X4 = SimdType("f32x4", TYPE_F32, 4)
+TYPE_F64X2 = SimdType("f64x2", TYPE_F64, 2)
 
 PRIMITIVES: Dict[str, Type] = {
     "i8": TYPE_I8, "i16": TYPE_I16, "i32": TYPE_I32, "i64": TYPE_I64, "int": TYPE_I64,
     "u8": TYPE_U8, "u16": TYPE_U16, "u32": TYPE_U32, "u64": TYPE_U64, "uint": TYPE_U64,
+    "usize": TYPE_USIZE, "isize": TYPE_ISIZE,
     "f32": TYPE_F32, "f64": TYPE_F64, "float": TYPE_F64,
+    "f32x4": TYPE_F32X4, "f64x2": TYPE_F64X2,
     "bool": TYPE_BOOL, "char": TYPE_CHAR, "str": TYPE_STR,
     "void": TYPE_VOID, "null": TYPE_NULL,
 }
@@ -203,6 +275,17 @@ def lookup_type(type_name: str, classes: Dict[str, Any], enums: Optional[Dict[st
         return OptionalType(inner_type)
     if type_name in PRIMITIVES:
         return PRIMITIVES[type_name]
+    # Phase 23: Resolve FixedArray_<elem>_<size> type strings
+    if type_name.startswith("FixedArray_"):
+        parts = type_name.split("_")  # ["FixedArray", elem, size]
+        if len(parts) >= 3:
+            try:
+                size = int(parts[-1])
+                elem_name = "_".join(parts[1:-1])
+                elem_t = lookup_type(elem_name, classes, enums, traits)
+                return FixedArrayType(elem_t, size)
+            except (ValueError, IndexError):
+                pass
     if type_name in classes:
         return classes[type_name]
     if enums and type_name in enums:

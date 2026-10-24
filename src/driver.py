@@ -22,7 +22,7 @@ class AerixCompiler:
         self.stdlib_path = stdlib_path
         self.linker = NativeLinker(stdlib_path)
 
-    def _compile_source_to_air(self, source: str, filename: str = "<stdin>") -> AIRModule:
+    def _compile_source_to_air(self, source: str, filename: str = "<stdin>", freestanding: bool = False) -> AIRModule:
         """Runs frontend, monomorphization, semantics, and AIR optimization passes."""
         lines = source.splitlines()
 
@@ -40,7 +40,7 @@ class AerixCompiler:
         ast = monomorphizer.monomorphize(ast)
 
         # 3. Semantic Analysis
-        analyzer = SemanticAnalyzer(filename, lines)
+        analyzer = SemanticAnalyzer(filename, lines, freestanding=freestanding)
         analyzer.analyze(ast)
 
         # 4. AIR Lowering
@@ -51,10 +51,10 @@ class AerixCompiler:
         optimizer = AIROptimizer()
         return optimizer.optimize(air_module)
 
-    def compile_source_to_c(self, source: str, filename: str = "<stdin>") -> str:
+    def compile_source_to_c(self, source: str, filename: str = "<stdin>", freestanding: bool = False) -> str:
         """Runs frontend and middle-end passes and emits optimized C99 source."""
-        opt_air = self._compile_source_to_air(source, filename)
-        codegen = C99CodeGenerator()
+        opt_air = self._compile_source_to_air(source, filename, freestanding=freestanding)
+        codegen = C99CodeGenerator(freestanding=freestanding)
         return codegen.generate(opt_air)
 
     def compile_source_to_wat(self, source: str, filename: str = "<stdin>") -> str:
@@ -118,13 +118,20 @@ class AerixCompiler:
         input_path: str,
         output_binary_path: Optional[str] = None,
         release: bool = False,
-        emit_c_path: Optional[str] = None
+        emit_c_path: Optional[str] = None,
+        freestanding: bool = False
     ) -> str:
-        """Compiles an Aerix source file (.arx) to a native executable (.exe)."""
+        """Compiles an Aerix source file (.arx) to a native executable or freestanding object."""
         with open(input_path, "r", encoding="utf-8") as f:
             source = f.read()
 
-        c_code = self.compile_source_to_c(source, input_path)
+        c_code = self.compile_source_to_c(source, input_path, freestanding=freestanding)
+
+        # Direct .c output requested
+        if output_binary_path and output_binary_path.endswith(".c"):
+            with open(output_binary_path, "w", encoding="utf-8") as f:
+                f.write(c_code)
+            return output_binary_path
 
         # Save C code if requested or to cache
         if emit_c_path:
@@ -142,9 +149,12 @@ class AerixCompiler:
         # Determine binary name
         if not output_binary_path:
             base_name = os.path.splitext(input_path)[0]
-            output_binary_path = f"{base_name}.exe" if os.name == "nt" else base_name
+            if freestanding:
+                output_binary_path = f"{base_name}.o"
+            else:
+                output_binary_path = f"{base_name}.exe" if os.name == "nt" else base_name
 
-        self.linker.compile_c_to_binary(c_file_path, output_binary_path, release=release)
+        self.linker.compile_c_to_binary(c_file_path, output_binary_path, release=release, freestanding=freestanding)
         return output_binary_path
 
     def run_file(self, input_path: str, args: Optional[list] = None) -> int:
