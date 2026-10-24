@@ -639,7 +639,12 @@ class C99CodeGenerator:
                         temps[insn.dest] = to_c_type(insn.target_type)
                     elif isinstance(insn, AIRLoad):
                         if insn.var_name in var_types_map:
-                            temps[insn.dest] = var_types_map[insn.var_name]
+                            vt = var_types_map[insn.var_name]
+                            if vt.startswith("__fixed_array:"):
+                                _, elem_c, _ = vt.split(":", 2)
+                                temps[insn.dest] = f"{elem_c}*"
+                            else:
+                                temps[insn.dest] = vt
                         elif insn.dest not in temps:
                             temps[insn.dest] = "int64_t"
                     elif isinstance(insn, AIRBinOp):
