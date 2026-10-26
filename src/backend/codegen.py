@@ -713,8 +713,15 @@ class C99CodeGenerator:
             else:
                 self.emit(f"{t_type} {t_name} = 0;", indent=indent)
 
-        if temps or var_types_map:
-            self.emit()
+        # Pre-scan for structured loops: (start_label -> end_label)
+        loop_pairs = {}
+        for i, insn in enumerate(instructions):
+            if isinstance(insn, AIRJump) and insn.target_label and insn.target_label.startswith(("while_start", "for_start")):
+                if i + 1 < len(instructions) and isinstance(instructions[i + 1], AIRLabel):
+                    end_lbl = instructions[i + 1].name
+                    loop_pairs[insn.target_label] = end_lbl
+
+        active_loops = []  # Stack of (start_lbl, end_lbl)
 
         # Emit instructions
         for insn in instructions:
@@ -837,13 +844,29 @@ class C99CodeGenerator:
                 access = f"self->{insn.field_name}" if insn.instance == "self" else f"{insn.instance}.{insn.field_name}"
                 self.emit(f"{access} = {insn.value};", indent=indent)
             elif isinstance(insn, AIRBranchIfNot):
-                self.emit(f"if (!({insn.condition})) goto {insn.target_label};", indent=indent)
+                if active_loops and insn.target_label == active_loops[-1][1]:
+                    self.emit(f"if (!({insn.condition})) break;", indent=indent)
+                else:
+                    self.emit(f"if (!({insn.condition})) goto {insn.target_label};", indent=indent)
             elif isinstance(insn, AIRBranchIf):
                 self.emit(f"if ({insn.condition}) goto {insn.target_label};", indent=indent)
             elif isinstance(insn, AIRJump):
-                self.emit(f"goto {insn.target_label};", indent=indent)
+                if active_loops and insn.target_label == active_loops[-1][0]:
+                    self.emit("continue;", indent=indent)
+                else:
+                    self.emit(f"goto {insn.target_label};", indent=indent)
             elif isinstance(insn, AIRLabel):
-                self.emit(f"{insn.name}:", indent=max(0, indent - 1))
+                if active_loops and insn.name == active_loops[-1][1]:
+                    active_loops.pop()
+                    indent = max(1, indent - 1)
+                    self.emit(f"}} {insn.name}:;", indent=indent)
+                elif insn.name in loop_pairs:
+                    end_lbl = loop_pairs[insn.name]
+                    active_loops.append((insn.name, end_lbl))
+                    self.emit(f"{insn.name}: while (1) {{", indent=indent)
+                    indent += 1
+                else:
+                    self.emit(f"{insn.name}:", indent=max(0, indent - 1))
             elif isinstance(insn, AIRReturn):
                 if is_main:
                     self.emit(f"return {insn.value if insn.value else '0'};", indent=indent)

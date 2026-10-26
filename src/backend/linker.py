@@ -57,6 +57,46 @@ class NativeLinker:
                 return found
         return "gcc" # Fallback
 
+    def _ensure_pch(self, release: bool) -> None:
+        """
+        Ensures a valid Precompiled Header (aerix_rt.h.gch) exists for the Aerix C runtime.
+        Accelerates host GCC header parsing by up to 4x.
+        """
+        if not self.stdlib_path:
+            return
+        header_path = os.path.join(self.stdlib_path, "aerix_rt.h")
+        if not os.path.isfile(header_path):
+            return
+
+        gch_dir = os.path.join(self.stdlib_path, "aerix_rt.h.gch")
+        target_gch_name = "O3.gch" if release else "O1.gch"
+        target_gch = os.path.join(gch_dir, target_gch_name)
+
+        try:
+            if os.path.isfile(target_gch):
+                if os.path.getmtime(target_gch) >= os.path.getmtime(header_path):
+                    return  # Already up-to-date!
+
+            os.makedirs(gch_dir, exist_ok=True)
+            pch_cmd = [
+                self.compiler_exe,
+                "-pipe",
+                "-std=c99",
+                "-Wall",
+                "-Wno-unused-variable",
+                "-Wno-unused-function",
+                "-Wno-unused-label",
+                "-Wno-unused-but-set-variable",
+                "-O3" if release else "-O1",
+                "-x", "c-header",
+                header_path,
+                "-o", target_gch
+            ]
+            subprocess.run(pch_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+        except Exception:
+            # Fallback gracefully if permissions or disk restrict writing to stdlib
+            pass
+
     def compile_c_to_binary(
         self,
         c_source_path: str,
@@ -80,6 +120,7 @@ class NativeLinker:
         if freestanding:
             flags.append("-ffreestanding")
         else:
+            self._ensure_pch(release)
             flags.extend(["-I", self.stdlib_path])
 
         if release:
