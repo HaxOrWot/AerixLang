@@ -12,11 +12,11 @@
 ### **The Expressive Native Systems Programming Language**
 *The velocity and elegance of modern scripting — fused with the raw speed, minimal footprint, and bare-metal power of native C.*
 
-[![Version](https://img.shields.io/badge/version-1.0.89--alpha-00DCFF.svg?style=for-the-badge&logo=visualstudiocode)](#)
+[![Version](https://img.shields.io/badge/version-1.0.90--alpha-00DCFF.svg?style=for-the-badge&logo=visualstudiocode)](#)
 [![Backend](https://img.shields.io/badge/backend-ANSI%20C99%20%2F%20GCC-1E90FF.svg?style=for-the-badge&logo=c)](#)
 [![Performance](https://img.shields.io/badge/performance-100%25%20C%20Native-00E676.svg?style=for-the-badge&logo=speedtest)](#)
-[![Tests](https://img.shields.io/badge/test%20suite-132%2F132%20PASS%20(100%25)-00E5FF.svg?style=for-the-badge)](#)
-[![Examples](https://img.shields.io/badge/examples-33%20runnable-FF9100.svg?style=for-the-badge)](#)
+[![Tests](https://img.shields.io/badge/test%20suite-168%2F168%20PASS%20(100%25)-00E5FF.svg?style=for-the-badge)](#)
+[![Examples](https://img.shields.io/badge/examples-39%20runnable-FF9100.svg?style=for-the-badge)](#)
 [![IDE Support](https://img.shields.io/badge/IDE-Antigravity%20%26%20VS%20Code-7C4DFF.svg?style=for-the-badge)](#)
 
 [Quickstart](#-30-second-interactive-quickstart) • [Interactive Showcase](#-interactive-code-showcase) • [Architecture](#-compiler-architecture) • [Benchmarks](#-scientific-benchmarks) • [Features](#-language-features-at-a-glance) • [Roadmap](#-project-roadmap--implementation-status) • [User Manual (USER.md)](USER.md) • [Master Guide (GUIDE.md)](GUIDE.md)
@@ -350,6 +350,12 @@ arx emit-c program.arx
 | **Retroactive Extensions** | `extend Vector2D { fn dist() }` | Add methods onto existing types without subclassing or overhead. |
 | **Interface Traits** | `trait Auditable`, `implements` | Decoupled compile-time contracts with static C dispatch. |
 | **Tagged Unions & Match** | `enum Status`, `match status { }` | Data-bearing algebraic types with exhaustive destructuring. |
+| **Advanced Pattern Matching** | `1..=10 => ...`, `(x, y) => ...`, `_` | Match ranges, tuple destructuring, wildcards, and `if let` / `guard let`. |
+| **Exception Handling** | `try { } catch err { } finally { }` | Native C99 thread-safe setjmp/longjmp unwinding with optional finally. |
+| **Loop Ergonomics** | `'outer: for ...`, `break 'outer` | Labeled loop control and zero-copy `.enumerate()` indexing. |
+| **Slices & Range Views** | `&[T]`, `&mut [T]`, `arr[1..4]` | Fat-pointer zero-copy sub-array views with `.len` access. |
+| **Closures & Lambdas** | `\|x\| x * 2`, `.map()`, `.filter()` | First-class functional expressions and pipeline transformations. |
+| **Default & Named Args** | `fn f(w: i32 = 1280)`, `f(w = 1920)` | Default parameter values and call-site named binding. |
 | **Scoped Cleanup** | `defer socket.close()` | Deterministic LIFO scope destruction preventing resource leaks. |
 | **Fail-Fast Guards** | `guard amount > 0 else { return }` | Early-exit flow control eliminating nested `if` pyramids. |
 | **Linear Memory Arena** | `LinearArena(capacity_bytes)` | O(1) instantaneous bump allocation for cache-line density. |
@@ -359,10 +365,10 @@ arx emit-c program.arx
 
 ## 🚦 Project Roadmap & Implementation Status
 
-Aerix is backed by a production-grade automated test suite (**102/102 tests passing**, 100% pass rate) across 25 master implementation phases:
+Aerix is backed by a production-grade automated test suite (**168/168 tests passing**, 100% pass rate) across 25 master implementation phases:
 
 <details open>
-<summary><b>📋 Implementation Status Matrix (22/25 Completed Phases)</b></summary>
+<summary><b>📋 Implementation Status Matrix (23/25 Completed Phases)</b></summary>
 
 <br>
 
@@ -375,7 +381,7 @@ Phase 05: AIR Lowering & Custom Optimizer         ✅ COMPLETE (22/22 tests pass
 Phase 06: C99 Machine Codegen & Linker Orchestr. ✅ COMPLETE (25/25 tests passed)
 Phase 07: Unified Developer CLI (`arx`, `arxc`)  ✅ COMPLETE (Turnkey CLI toolchain)
 Phase 08: Benchmarks & Standard Performance       ✅ COMPLETE (Fibonacci 100.2% C-speed)
-Phase 09: Packaging & VS Code Extension           ✅ COMPLETE (v1.0.89 published)
+Phase 09: Packaging & VS Code Extension           ✅ COMPLETE (v1.0.90 published)
 Phase 10: Method & Constructor Overloading        ✅ COMPLETE (Type & arity mangling)
 Phase 11: Reactive Properties & Operator Overload ✅ COMPLETE (prop & op keywords)
 Phase 12: Modern Flow Control & Type Extensions   ✅ COMPLETE (guard, extend, ~>)
@@ -389,9 +395,9 @@ Phase 19: Lightweight Concurrency & Channels     ✅ COMPLETE (spawn, Channel<T>
 Phase 20: WebAssembly Target & Browser Runtime   ✅ COMPLETE (WASM bytecode, Canvas & HTML5)
 Phase 21: Dynamic Collections & Text Engine      ✅ COMPLETE (List<T>, String, Slices)
 Phase 22: Complete Data Structures Suite          ✅ COMPLETE (Map, Set, Tuples, Buffers, for..in)
-Phase 23: Resilient Systems Error Handling       📅 PLANNED (Result<T, E>, ? Operator)
-Phase 24: Multi-File Modules & Package Manager   📅 PLANNED (import, aerix.toml, arx pm)
-Phase 25: Self-Hosting Compiler Infrastructure   📅 PLANNED (Aerix written in Aerix)
+Phase 23: Resilient Systems Error Handling       ✅ COMPLETE (try, catch, optional finally, throw)
+Phase 24: Language Ergonomics & Expressions       ✅ COMPLETE (Labeled loops, slices, lambdas, named args)
+Phase 25: Multi-File Modules & Package Manager   📅 PLANNED (import, aerix.toml, arx pm)
 ```
 
 </details>
@@ -405,7 +411,7 @@ Aerix provides first-class tooling across both **Visual Studio Code** and the **
 * **Real-Time IntelliSense**: Context-aware completions on `.`, cascade completions on `~>`, and thread completions on `spawn`.
 * **Physical Memory Visualizer**: Hover over any class or struct to view its exact byte offsets, padding, and L1 cache-line layout.
 * **Inlay Parameter Hints**: Ghost annotations showing inferred variable types and function parameter labels.
-* **Syntax Highlighting**: High-precision TextMate grammar covering all keywords, tagged unions, properties, and embedded string interpolation.
+* **Syntax Highlighting**: High-precision TextMate grammar covering try/catch/finally, loop labels, closures, slices, and named args.
 
 <details open>
 <summary><b>📦 Installing the Extension</b></summary>
@@ -414,12 +420,12 @@ Aerix provides first-class tooling across both **Visual Studio Code** and the **
 
 **Install into Visual Studio Code:**
 ```powershell
-code --install-extension editors/vscode-aerix/aerix-1.0.89.vsix --force
+code --install-extension editors/vscode-aerix/aerix-1.0.90.vsix --force
 ```
 
 **Install into Antigravity IDE:**
 ```powershell
-antigravity --install-extension editors/vscode-aerix/aerix-1.0.89.vsix --force
+antigravity --install-extension editors/vscode-aerix/aerix-1.0.90.vsix --force
 ```
 
 </details>
