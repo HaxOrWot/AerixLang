@@ -1,0 +1,60 @@
+// Aerix Language - Feature 3 Showcase: Slices & Range Views
+// Features: &[T], &mut [T], arr[start..end], sub-slices, mutation, and zero-copy passing
+
+fn print_slice(prefix: str, s: &[i64]) {
+    print(prefix + " [len=" + s.len + "]:");
+    for x in s {
+        print(" " + x);
+    }
+    println("");
+}
+
+fn sum_slice(s: &[i64]) -> i64 {
+    let mut total: i64 = 0;
+    for x in s {
+        total += x;
+    }
+    return total;
+}
+
+fn double_elements(s: &mut [i64]) {
+    for (i, v) in s.enumerate() {
+        s[i] = v * 2;
+    }
+}
+
+fn main() {
+    println("==================================================");
+    println("   Aerix Slices & Range Views Feature Showcase    ");
+    println("==================================================");
+
+    // 1. Fixed array allocation on stack
+    let mut numbers: [i64; 8] = [10, 20, 30, 40, 50, 60, 70, 80];
+    println("Original array initialized (8 elements):");
+    print_slice("Full numbers", &numbers);
+
+    // 2. Zero-copy sub-array slice [start..end]
+    println("\n--- 1. Creating Sub-Slice View [2..6] ---");
+    let view: &[i64] = numbers[2..6]; // elements 30, 40, 50, 60
+    print_slice("View [2..6]", view);
+    let view_sum = sum_slice(view);
+    println("Sum of elements in view: " + view_sum);
+
+    // 3. Sub-slice of an existing slice (nested view)
+    println("\n--- 2. Sub-Slicing an Existing View ---");
+    let sub_view = view[1..3]; // elements 40, 50 from view
+    print_slice("Sub-view [1..3] of view", sub_view);
+
+    // 4. In-place mutation via mutable slice &mut [T]
+    println("\n--- 3. In-Place Mutation via Mutable Slice ---");
+    println("Doubling elements in slice numbers[2..5] in-place...");
+    let mut_view: &mut [i64] = numbers[2..5];
+    double_elements(mut_view);
+
+    // 5. Verifying original array has been updated (Zero-Copy Proof!)
+    println("\nVerifying original array reflects mutations (zero-copy):");
+    print_slice("Updated numbers", &numbers);
+
+    println("\n==================================================");
+    println("All slice and range view features demonstrated successfully!");
+}

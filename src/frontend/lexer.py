@@ -330,6 +330,15 @@ class Lexer:
     def scan_char(self, line: int, col: int) -> None:
         if self.pos >= self.length or self.peek() == '\n':
             self.error("Unterminated character literal", line, col)
+
+        # Lifetime or loop label, e.g. 'outer or 'loop1
+        if (self.peek().isalpha() or self.peek() == '_') and self.peek(1) != "'":
+            label_name = "'"
+            while self.pos < self.length and (self.peek().isalnum() or self.peek() == '_'):
+                label_name += self.advance()
+            self.tokens.append(Token(TokenType.LABEL, label_name, line, col, self.filename, raw=label_name))
+            return
+
         ch = self.advance()
         if ch == '\\':
             esc = self.advance()

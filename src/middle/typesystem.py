@@ -82,6 +82,18 @@ class FunctionType(Type):
         self.param_types = param_types
         self.return_type = return_type
 
+    def is_assignable_to(self, target: Type) -> bool:
+        if self.name == target.name:
+            return True
+        if isinstance(target, FunctionType):
+            if len(self.param_types) != len(target.param_types):
+                return False
+            for p1, p2 in zip(self.param_types, target.param_types):
+                if not p2.is_assignable_to(p1):
+                    return False
+            return self.return_type.is_assignable_to(target.return_type)
+        return False
+
 
 class ClassType(Type):
     def __init__(self, name: str, base_class: Optional["ClassType"] = None, is_packed: bool = False, alignment: Optional[int] = None):
@@ -198,6 +210,8 @@ class FixedArrayType(Type):
         self.size = size
 
     def is_assignable_to(self, target: Type) -> bool:
+        if isinstance(target, SliceType):
+            return self.elem_type.is_assignable_to(target.elem_type)
         if isinstance(target, FixedArrayType):
             if self.size != target.size:
                 return False
@@ -208,6 +222,23 @@ class FixedArrayType(Type):
                     return True
                 if self.elem_type.is_float() and target.elem_type.is_float():
                     return True
+            return self.elem_type.is_assignable_to(target.elem_type)
+        return False
+
+
+class SliceType(Type):
+    """
+    Represents a borrowed slice / view over contiguous memory: &[T] or &mut [T].
+    Lowers to a fat pointer struct: { T* data; size_t len; }.
+    """
+    def __init__(self, elem_type: Type, is_mut: bool = False):
+        mut_str = "mut_" if is_mut else ""
+        super().__init__(f"Slice_{mut_str}{elem_type.name}")
+        self.elem_type = elem_type
+        self.is_mut = is_mut
+
+    def is_assignable_to(self, target: Type) -> bool:
+        if isinstance(target, SliceType):
             return self.elem_type.is_assignable_to(target.elem_type)
         return False
 
@@ -286,6 +317,22 @@ def lookup_type(type_name: str, classes: Dict[str, Any], enums: Optional[Dict[st
                 return FixedArrayType(elem_t, size)
             except (ValueError, IndexError):
                 pass
+    # Feature 3: Resolve Slice_[mut_]<elem> type strings
+    if type_name.startswith("Slice_"):
+        parts = type_name.split("_")
+        is_mut = (len(parts) >= 3 and parts[1] == "mut")
+        elem_name = "_".join(parts[2:] if is_mut else parts[1:])
+        elem_t = lookup_type(elem_name, classes, enums, traits)
+        return SliceType(elem_t, is_mut=is_mut)
+    # Feature 5: Resolve Fn_<p1>_<p2>_to_<ret> function pointer types
+    if type_name.startswith("Fn_"):
+        parts = type_name[3:].split("_to_")
+        if len(parts) == 2:
+            param_part, ret_part = parts
+            param_names = [p for p in param_part.split("_") if p]
+            param_types = [lookup_type(p, classes, enums, traits) for p in param_names]
+            ret_type = lookup_type(ret_part, classes, enums, traits)
+            return FunctionType(param_types, ret_type)
     if type_name in classes:
         return classes[type_name]
     if enums and type_name in enums:

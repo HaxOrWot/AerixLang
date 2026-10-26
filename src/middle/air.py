@@ -14,7 +14,8 @@ from src.frontend.ast_nodes import (
     ClassDefNode, CIncludeNode, CExternNode, PropertyDefNode, OperatorDefNode,
     GuardNode, CascadeNode, ExtendDefNode,
     EnumDefNode, EnumVariantNode, MatchNode, MatchCaseNode, SpawnNode,
-    TupleNode, TupleDestructureNode, FixedArrayLiteralNode, SizeofNode
+    TupleNode, TupleDestructureNode, FixedArrayLiteralNode, SizeofNode,
+    TryCatchNode, ThrowNode, LambdaNode, NamedArgNode
 )
 
 
@@ -264,6 +265,33 @@ class AIRSpawn(AIRInstruction):
         return f"SPAWN {self.fn_name}({args_str})"
 
 
+# --- Feature 1: Exception Handling Instructions ---
+
+@dataclass
+class AIRTryCatch(AIRInstruction):
+    """
+    try { try_instructions } catch (catch_var) { catch_instructions } finally { finally_instructions }
+    """
+    try_instructions: List[AIRInstruction]
+    catch_var: Optional[str]
+    catch_instructions: Optional[List[AIRInstruction]]
+    finally_instructions: Optional[List[AIRInstruction]]
+
+    def __repr__(self) -> str:
+        return f"TRY_CATCH (catch_var={self.catch_var})"
+
+
+@dataclass
+class AIRThrow(AIRInstruction):
+    """
+    Throws exception message.
+    """
+    message_temp: str
+
+    def __repr__(self) -> str:
+        return f"THROW {self.message_temp}"
+
+
 # --- Phase 23: Fixed-Size Stack Array Instructions ---
 
 @dataclass
@@ -318,10 +346,43 @@ class AIRFixedArraySet(AIRInstruction):
     index: str
     value: str
 
+@dataclass
+class AIRSliceInit(AIRInstruction):
+    """
+    Creates an Arx_Slice fat pointer view: { void* data; size_t len; }.
+    """
+    dest: str
+    source: str
+    start: Optional[str]
+    end: Optional[str]
+    elem_type: str
+    is_inclusive: bool = False
+    source_is_slice: bool = False
+
     def __repr__(self) -> str:
-        return f"{self.array_var}[{self.index}] = {self.value} (FixedArray)"
+        return f"{self.dest} = SLICE_INIT({self.source}[{self.start}..{self.end}])"
 
 
+@dataclass
+class AIRSliceGet(AIRInstruction):
+    dest: str
+    slice_var: str
+    index: str
+    elem_type: str
+
+    def __repr__(self) -> str:
+        return f"{self.dest} = SLICE_GET({self.slice_var}[{self.index}])"
+
+
+@dataclass
+class AIRSliceSet(AIRInstruction):
+    slice_var: str
+    index: str
+    value: str
+    elem_type: str
+
+    def __repr__(self) -> str:
+        return f"SLICE_SET({self.slice_var}[{self.index}] = {self.value})"
 
 
 @dataclass
@@ -334,6 +395,7 @@ class AIRFunction:
     is_static: bool = False
     param_types: List[str] = field(default_factory=list)
     var_types: Dict[str, str] = field(default_factory=dict)
+    temp_types: Dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
@@ -418,6 +480,7 @@ class AIRLowering:
         self.classes: Set[str] = set()
         self.class_fields: Dict[str, Dict[str, str]] = {}
         self.current_class: Optional[str] = None
+        self.loop_stack: List[Dict[str, Any]] = []
 
     def new_temp(self) -> str:
         self.temp_count += 1
@@ -507,6 +570,7 @@ class AIRLowering:
         self.current_insns = []
         self.defer_stack = []
         self.temp_types = {}
+        self.loop_stack = []
         params = [p.name for p in node.params]
         param_types = [(getattr(p, "type_name", None) or "i64") for p in node.params]
         self.var_types = {p.name: (getattr(p, "type_name", None) or "i64") for p in node.params}
@@ -529,7 +593,8 @@ class AIRLowering:
             is_pub=node.is_pub,
             is_static=node.is_static,
             param_types=param_types,
-            var_types=dict(self.var_types)
+            var_types=dict(self.var_types),
+            temp_types=dict(self.temp_types)
         )
 
     def lower_class(self, node: ClassDefNode) -> AIRClass:
@@ -819,6 +884,21 @@ class AIRLowering:
                         self.temp_types[res_val] = elem_t
                         self.current_insns.append(AIRBinOp(res_val, op, curr_val, val_temp))
                         self.current_insns.append(AIRFixedArraySet(inst_temp, idx_temp, res_val))
+                elif cls_name and cls_name.startswith("Slice_"):
+                    parts = cls_name.split("_")
+                    is_mut = (len(parts) >= 3 and parts[1] == "mut")
+                    elem_t = "_".join(parts[2:] if is_mut else parts[1:]) or "i64"
+                    if stmt.op == "=":
+                        self.current_insns.append(AIRSliceSet(inst_temp, idx_temp, val_temp, elem_t))
+                    else:
+                        op = stmt.op[:-1]
+                        curr_val = self.new_temp()
+                        self.temp_types[curr_val] = elem_t
+                        self.current_insns.append(AIRSliceGet(curr_val, inst_temp, idx_temp, elem_t))
+                        res_val = self.new_temp()
+                        self.temp_types[res_val] = elem_t
+                        self.current_insns.append(AIRBinOp(res_val, op, curr_val, val_temp))
+                        self.current_insns.append(AIRSliceSet(inst_temp, idx_temp, res_val, elem_t))
                 elif stmt.op == "=":
                     self.current_insns.append(AIRCallMethod(None, cls_name or "Class", "set", inst_temp, [idx_temp, val_temp]))
                 else:
@@ -846,6 +926,39 @@ class AIRLowering:
             self.current_insns = old_insns
             self.defer_stack.append(cleanup_insns)
             self.current_insns.append(AIRDeferPush(cleanup_insns))
+        elif isinstance(stmt, TryCatchNode):
+            saved_insns = self.current_insns
+            self.current_insns = []
+            for s in stmt.try_block.statements:
+                self.lower_statement(s)
+            try_insns = self.current_insns
+
+            catch_insns = None
+            if stmt.catch_block:
+                self.current_insns = []
+                if stmt.catch_var:
+                    self.var_types[stmt.catch_var] = "str"
+                for s in stmt.catch_block.statements:
+                    self.lower_statement(s)
+                catch_insns = self.current_insns
+
+            finally_insns = None
+            if stmt.finally_block:
+                self.current_insns = []
+                for s in stmt.finally_block.statements:
+                    self.lower_statement(s)
+                finally_insns = self.current_insns
+
+            self.current_insns = saved_insns
+            self.current_insns.append(AIRTryCatch(
+                try_instructions=try_insns,
+                catch_var=stmt.catch_var,
+                catch_instructions=catch_insns,
+                finally_instructions=finally_insns
+            ))
+        elif isinstance(stmt, ThrowNode):
+            msg_temp = self.lower_expression(stmt.expr)
+            self.current_insns.append(AIRThrow(msg_temp))
         elif isinstance(stmt, GuardNode):
             cond_temp = self.lower_expression(stmt.condition)
             guard_ok_lbl = self.new_label("guard_ok")
@@ -870,6 +983,12 @@ class AIRLowering:
         elif isinstance(stmt, WhileNode):
             loop_lbl = self.new_label("while_start")
             end_lbl = self.new_label("while_end")
+            self.loop_stack.append({
+                "start": loop_lbl,
+                "end": end_lbl,
+                "cont": loop_lbl,
+                "label": getattr(stmt, "label", None)
+            })
             self.current_insns.append(AIRLabel(loop_lbl))
             cond_temp = self.lower_expression(stmt.condition)
             self.current_insns.append(AIRBranchIfNot(cond_temp, end_lbl))
@@ -877,6 +996,22 @@ class AIRLowering:
                 self.lower_statement(s)
             self.current_insns.append(AIRJump(loop_lbl))
             self.current_insns.append(AIRLabel(end_lbl))
+            self.loop_stack.pop()
+        elif isinstance(stmt, LoopNode):
+            loop_lbl = self.new_label("loop_start")
+            end_lbl = self.new_label("loop_end")
+            self.loop_stack.append({
+                "start": loop_lbl,
+                "end": end_lbl,
+                "cont": loop_lbl,
+                "label": getattr(stmt, "label", None)
+            })
+            self.current_insns.append(AIRLabel(loop_lbl))
+            for s in stmt.body.statements:
+                self.lower_statement(s)
+            self.current_insns.append(AIRJump(loop_lbl))
+            self.current_insns.append(AIRLabel(end_lbl))
+            self.loop_stack.pop()
         elif isinstance(stmt, TupleDestructureNode):
             tup_temp = self.lower_expression(stmt.initializer)
             tup_type = self.temp_types.get(tup_temp, "Tuple")
@@ -889,27 +1024,46 @@ class AIRLowering:
                 self.current_insns.append(AIRGetField(field_temp, tup_temp, f"f{i}"))
                 self.current_insns.append(AIRStore(var_name, field_temp))
         elif isinstance(stmt, ForNode):
-            if isinstance(stmt.range_expr, RangeNode):
+            target_range = stmt.range_expr
+            if isinstance(target_range, CallNode) and isinstance(target_range.callee, MemberAccessNode) and target_range.callee.member == "enumerate":
+                target_range = target_range.callee.object_expr
+
+            if isinstance(target_range, RangeNode):
                 # For i in start..end
-                start_temp = self.lower_expression(stmt.range_expr.start)
-                end_temp = self.lower_expression(stmt.range_expr.end)
+                start_temp = self.lower_expression(target_range.start)
+                end_temp = self.lower_expression(target_range.end)
                 self.current_insns.append(AIRStore(stmt.var_name, start_temp))
                 loop_lbl = self.new_label("for_start")
+                cont_lbl = self.new_label("for_step")
                 end_lbl = self.new_label("for_end")
+                self.loop_stack.append({
+                    "start": loop_lbl,
+                    "end": end_lbl,
+                    "cont": cont_lbl,
+                    "label": getattr(stmt, "label", None)
+                })
                 self.current_insns.append(AIRLabel(loop_lbl))
                 
                 # Check condition (i < end or i <= end)
-                cmp_op = "<=" if stmt.range_expr.is_inclusive else "<"
+                cmp_op = "<=" if target_range.is_inclusive else "<"
                 cur_i = self.new_temp()
                 self.current_insns.append(AIRLoad(cur_i, stmt.var_name))
                 cond_temp = self.new_temp()
                 self.current_insns.append(AIRBinOp(cond_temp, cmp_op, cur_i, end_temp))
                 self.current_insns.append(AIRBranchIfNot(cond_temp, end_lbl))
+
+                if getattr(stmt, "index_var_name", None):
+                    idx_calc = self.new_temp()
+                    self.temp_types[idx_calc] = "i64"
+                    self.var_types[stmt.index_var_name] = "i64"
+                    self.current_insns.append(AIRBinOp(idx_calc, "-", cur_i, start_temp))
+                    self.current_insns.append(AIRStore(stmt.index_var_name, idx_calc))
                 
                 for s in stmt.body.statements:
                     self.lower_statement(s)
                     
                 # Increment: i += 1
+                self.current_insns.append(AIRLabel(cont_lbl))
                 one_temp = self.new_temp()
                 self.current_insns.append(AIRConst(one_temp, 1, "i64"))
                 nxt_i = self.new_temp()
@@ -917,16 +1071,19 @@ class AIRLowering:
                 self.current_insns.append(AIRStore(stmt.var_name, nxt_i))
                 self.current_insns.append(AIRJump(loop_lbl))
                 self.current_insns.append(AIRLabel(end_lbl))
+                self.loop_stack.pop()
             else:
-                # Collection iteration: for item in coll
-                coll_temp = self.lower_expression(stmt.range_expr)
-                coll_type = self.temp_types.get(coll_temp, self.var_types.get(stmt.range_expr.name if isinstance(stmt.range_expr, IdentifierNode) else ""))
+                # Collection iteration: for item in coll or for (idx, val) in coll.enumerate()
+                coll_temp = self.lower_expression(target_range)
+                coll_type = self.temp_types.get(coll_temp, self.var_types.get(target_range.name if isinstance(target_range, IdentifierNode) else ""))
                 len_temp = self.new_temp()
                 self.temp_types[len_temp] = "i64"
                 if coll_type and coll_type.startswith("FixedArray_"):
                     parts = coll_type.split("_")
                     sz = int(parts[-1]) if len(parts) >= 3 else 0
                     self.current_insns.append(AIRConst(len_temp, sz, "i64"))
+                elif coll_type and coll_type.startswith("Slice_"):
+                    self.current_insns.append(AIRGetField(len_temp, coll_temp, "len"))
                 else:
                     self.current_insns.append(AIRCallMethod(len_temp, coll_type or "Class", "len", coll_temp, []))
 
@@ -938,7 +1095,14 @@ class AIRLowering:
                 self.current_insns.append(AIRStore(idx_var, zero_temp))
 
                 loop_lbl = self.new_label("for_start")
+                cont_lbl = self.new_label("for_step")
                 end_lbl = self.new_label("for_end")
+                self.loop_stack.append({
+                    "start": loop_lbl,
+                    "end": end_lbl,
+                    "cont": cont_lbl,
+                    "label": getattr(stmt, "label", None)
+                })
                 self.current_insns.append(AIRLabel(loop_lbl))
 
                 cur_idx = self.new_temp()
@@ -949,6 +1113,10 @@ class AIRLowering:
                 self.current_insns.append(AIRBinOp(cond_temp, "<", cur_idx, len_temp))
                 self.current_insns.append(AIRBranchIfNot(cond_temp, end_lbl))
 
+                if getattr(stmt, "index_var_name", None):
+                    self.var_types[stmt.index_var_name] = "i64"
+                    self.current_insns.append(AIRStore(stmt.index_var_name, cur_idx))
+
                 elem_t = "i64"
                 if coll_type and coll_type.startswith("FixedArray_"):
                     parts = coll_type.split("_")
@@ -957,6 +1125,15 @@ class AIRLowering:
                     self.temp_types[item_temp] = elem_t
                     self.var_types[stmt.var_name] = elem_t
                     self.current_insns.append(AIRFixedArrayGet(item_temp, coll_temp, cur_idx, elem_t))
+                    self.current_insns.append(AIRStore(stmt.var_name, item_temp))
+                elif coll_type and coll_type.startswith("Slice_"):
+                    parts = coll_type.split("_")
+                    is_mut = (len(parts) >= 3 and parts[1] == "mut")
+                    elem_t = "_".join(parts[2:] if is_mut else parts[1:]) or "i64"
+                    item_temp = self.new_temp()
+                    self.temp_types[item_temp] = elem_t
+                    self.var_types[stmt.var_name] = elem_t
+                    self.current_insns.append(AIRSliceGet(item_temp, coll_temp, cur_idx, elem_t))
                     self.current_insns.append(AIRStore(stmt.var_name, item_temp))
                 else:
                     if coll_type and coll_type.startswith("List_"):
@@ -972,6 +1149,7 @@ class AIRLowering:
                 for s in stmt.body.statements:
                     self.lower_statement(s)
 
+                self.current_insns.append(AIRLabel(cont_lbl))
                 one_temp = self.new_temp()
                 self.temp_types[one_temp] = "i64"
                 self.current_insns.append(AIRConst(one_temp, 1, "i64"))
@@ -981,6 +1159,31 @@ class AIRLowering:
                 self.current_insns.append(AIRStore(idx_var, nxt_idx))
                 self.current_insns.append(AIRJump(loop_lbl))
                 self.current_insns.append(AIRLabel(end_lbl))
+                self.loop_stack.pop()
+        elif isinstance(stmt, BreakNode):
+            target_lbl = None
+            if stmt.label:
+                lbl_clean = stmt.label.lstrip("'")
+                for l in reversed(self.loop_stack):
+                    if l.get("label") == lbl_clean:
+                        target_lbl = l["end"]
+                        break
+            elif self.loop_stack:
+                target_lbl = self.loop_stack[-1]["end"]
+            if target_lbl:
+                self.current_insns.append(AIRJump(target_lbl))
+        elif isinstance(stmt, ContinueNode):
+            target_lbl = None
+            if stmt.label:
+                lbl_clean = stmt.label.lstrip("'")
+                for l in reversed(self.loop_stack):
+                    if l.get("label") == lbl_clean:
+                        target_lbl = l["cont"]
+                        break
+            elif self.loop_stack:
+                target_lbl = self.loop_stack[-1]["cont"]
+            if target_lbl:
+                self.current_insns.append(AIRJump(target_lbl))
         elif isinstance(stmt, ExprStmtNode):
             self.lower_expression(stmt.expr, is_statement=True)
         elif isinstance(stmt, MatchNode):
@@ -1027,6 +1230,111 @@ class AIRLowering:
                         self.lower_statement(s)
                     self.current_insns.append(AIRJump(match_end_lbl))
                     self.current_insns.append(AIRLabel(case_next_lbl))
+                elif isinstance(pat, RangeNode):
+                    start_t = self.lower_expression(pat.start)
+                    end_t = self.lower_expression(pat.end)
+                    c1 = self.new_temp()
+                    self.temp_types[c1] = "bool"
+                    self.current_insns.append(AIRBinOp(c1, ">=", target_temp, start_t))
+                    self.current_insns.append(AIRBranchIfNot(c1, case_next_lbl))
+                    c2 = self.new_temp()
+                    self.temp_types[c2] = "bool"
+                    op = "<=" if pat.is_inclusive else "<"
+                    self.current_insns.append(AIRBinOp(c2, op, target_temp, end_t))
+                    self.current_insns.append(AIRBranchIfNot(c2, case_next_lbl))
+
+                    if case.guard_expr:
+                        g_temp = self.lower_expression(case.guard_expr)
+                        self.current_insns.append(AIRBranchIfNot(g_temp, case_next_lbl))
+
+                    for s in case.body.statements:
+                        self.lower_statement(s)
+                    self.current_insns.append(AIRJump(match_end_lbl))
+                    self.current_insns.append(AIRLabel(case_next_lbl))
+                elif isinstance(pat, BinaryOpNode) and pat.op == "|":
+                    alts = []
+                    curr = pat
+                    while isinstance(curr, BinaryOpNode) and curr.op == "|":
+                        alts.append(curr.right)
+                        curr = curr.left
+                    alts.append(curr)
+                    alts.reverse()
+
+                    body_lbl = self.new_label("case_body")
+                    for idx, alt in enumerate(alts):
+                        is_last = (idx == len(alts) - 1)
+                        if isinstance(alt, RangeNode):
+                            s_t = self.lower_expression(alt.start)
+                            e_t = self.lower_expression(alt.end)
+                            c1 = self.new_temp()
+                            self.temp_types[c1] = "bool"
+                            self.current_insns.append(AIRBinOp(c1, ">=", target_temp, s_t))
+                            c2 = self.new_temp()
+                            self.temp_types[c2] = "bool"
+                            op = "<=" if alt.is_inclusive else "<"
+                            self.current_insns.append(AIRBinOp(c2, op, target_temp, e_t))
+                            cand = self.new_temp()
+                            self.temp_types[cand] = "bool"
+                            self.current_insns.append(AIRBinOp(cand, "&&", c1, c2))
+                            if not is_last:
+                                self.current_insns.append(AIRBranchIf(cand, body_lbl))
+                            else:
+                                self.current_insns.append(AIRBranchIfNot(cand, case_next_lbl))
+                        else:
+                            alt_t = self.lower_expression(alt)
+                            cmp_t = self.new_temp()
+                            self.temp_types[cmp_t] = "bool"
+                            self.current_insns.append(AIRBinOp(cmp_t, "==", target_temp, alt_t))
+                            if not is_last:
+                                self.current_insns.append(AIRBranchIf(cmp_t, body_lbl))
+                            else:
+                                self.current_insns.append(AIRBranchIfNot(cmp_t, case_next_lbl))
+
+                    self.current_insns.append(AIRLabel(body_lbl))
+                    if case.guard_expr:
+                        g_temp = self.lower_expression(case.guard_expr)
+                        self.current_insns.append(AIRBranchIfNot(g_temp, case_next_lbl))
+                    for s in case.body.statements:
+                        self.lower_statement(s)
+                    self.current_insns.append(AIRJump(match_end_lbl))
+                    self.current_insns.append(AIRLabel(case_next_lbl))
+                elif isinstance(pat, TupleNode):
+                    for i, elem_pat in enumerate(pat.elements):
+                        elem_target = self.new_temp()
+                        self.temp_types[elem_target] = "i64"
+                        self.current_insns.append(AIRGetField(elem_target, target_temp, f"f{i}"))
+                        if isinstance(elem_pat, IdentifierNode):
+                            if elem_pat.name != "_":
+                                self.var_types[elem_pat.name] = "i64"
+                                self.current_insns.append(AIRStore(elem_pat.name, elem_target))
+                        else:
+                            ep_t = self.lower_expression(elem_pat)
+                            cmp_t = self.new_temp()
+                            self.temp_types[cmp_t] = "bool"
+                            self.current_insns.append(AIRBinOp(cmp_t, "==", elem_target, ep_t))
+                            self.current_insns.append(AIRBranchIfNot(cmp_t, case_next_lbl))
+
+                    if case.guard_expr:
+                        g_temp = self.lower_expression(case.guard_expr)
+                        self.current_insns.append(AIRBranchIfNot(g_temp, case_next_lbl))
+
+                    for s in case.body.statements:
+                        self.lower_statement(s)
+                    self.current_insns.append(AIRJump(match_end_lbl))
+                    self.current_insns.append(AIRLabel(case_next_lbl))
+                elif isinstance(pat, IdentifierNode) and pat.name != "_":
+                    t_type = self.temp_types.get(target_temp, "i64")
+                    self.var_types[pat.name] = t_type
+                    self.current_insns.append(AIRStore(pat.name, target_temp))
+
+                    if case.guard_expr:
+                        g_temp = self.lower_expression(case.guard_expr)
+                        self.current_insns.append(AIRBranchIfNot(g_temp, case_next_lbl))
+
+                    for s in case.body.statements:
+                        self.lower_statement(s)
+                    self.current_insns.append(AIRJump(match_end_lbl))
+                    self.current_insns.append(AIRLabel(case_next_lbl))
                 else:
                     pat_temp = self.lower_expression(pat)
                     cmp_temp = self.new_temp()
@@ -1059,6 +1367,9 @@ class AIRLowering:
             self.temp_types[dest] = getattr(expr, "enum_name", "Enum")
             self.current_insns.append(AIRCall(dest, getattr(expr, "resolved_mangled_name", "enum_ctor"), arg_temps))
             return dest
+
+        if isinstance(expr, NamedArgNode):
+            return self.lower_expression(expr.value, is_statement)
 
         if isinstance(expr, LiteralNode):
 
@@ -1097,6 +1408,8 @@ class AIRLowering:
             r_type = self.temp_types.get(right_t, "i64")
             if expr.op in ("<", "<=", ">", ">=", "==", "!=", "&&", "||"):
                 self.temp_types[dest] = "bool"
+            elif expr.op == "+" and (l_type in ("str", "const char*") or r_type in ("str", "const char*")):
+                self.temp_types[dest] = "str"
             elif l_type in ("f32", "f64") or r_type in ("f32", "f64"):
                 self.temp_types[dest] = "f64"
             else:
@@ -1123,12 +1436,70 @@ class AIRLowering:
             self.current_insns.append(AIRSizeof(dest, expr.target_type))
             return dest
         elif isinstance(expr, UnaryOpNode):
+            if expr.op == "&":
+                if isinstance(expr.operand, IdentifierNode):
+                    arr_name = expr.operand.name
+                    arr_type = self.var_types.get(arr_name, "")
+                    if arr_type.startswith("FixedArray_"):
+                        parts = arr_type.split("_")
+                        elem_t = "_".join(parts[1:-1]) if len(parts) >= 3 else "i64"
+                        dest = self.new_temp()
+                        self.temp_types[dest] = f"Slice_{elem_t}"
+                        self.current_insns.append(AIRSliceInit(
+                            dest=dest,
+                            source=arr_name,
+                            start=None,
+                            end=None,
+                            elem_type=elem_t
+                        ))
+                        return dest
+                op_t = self.lower_expression(expr.operand)
+                op_type = self.temp_types.get(op_t, "")
+                if op_type.startswith("Slice_"):
+                    return op_t
+                dest = self.new_temp()
+                self.temp_types[dest] = "usize"
+                self.current_insns.append(AIRAddressOf(dest, op_t))
+                return dest
             op_t = self.lower_expression(expr.operand)
             dest = self.new_temp()
             self.temp_types[dest] = self.temp_types.get(op_t, "i64")
             self.current_insns.append(AIRUnaryOp(dest, expr.op, op_t))
             return dest
         elif isinstance(expr, CallNode):
+            if getattr(expr, "is_collection_fn", False):
+                coll_obj = expr.callee.object_expr
+                if isinstance(coll_obj, IdentifierNode):
+                    coll_temp = coll_obj.name
+                else:
+                    coll_temp = self.lower_expression(coll_obj)
+                fn_arg = expr.args[0]
+                fn_temp = self.lower_expression(fn_arg)
+                coll_type = expr.collection_type
+                method = expr.collection_method
+
+                dest = self.new_temp()
+                if method == "map":
+                    if hasattr(coll_type, "size"):
+                        ret_elem = coll_type.elem_type.name
+                        if hasattr(fn_arg, "return_type") and fn_arg.return_type:
+                            ret_elem = fn_arg.return_type
+                        self.temp_types[dest] = f"FixedArray_{ret_elem}_{coll_type.size}"
+                        self.current_insns.append(AIRFixedArrayInit(dest, elem_type=ret_elem, size=coll_type.size))
+                        for i in range(coll_type.size):
+                            idx_t = self.new_temp()
+                            self.temp_types[idx_t] = "i64"
+                            self.current_insns.append(AIRConst(idx_t, i, "i64"))
+                            elem_t = self.new_temp()
+                            self.temp_types[elem_t] = coll_type.elem_type.name
+                            self.current_insns.append(AIRFixedArrayGet(elem_t, coll_temp, idx_t, coll_type.elem_type.name))
+                            call_t = self.new_temp()
+                            self.temp_types[call_t] = ret_elem
+                            self.current_insns.append(AIRCall(call_t, fn_temp, [elem_t]))
+                            self.current_insns.append(AIRFixedArraySet(dest, idx_t, call_t))
+                        return dest
+                return coll_temp
+
             arg_temps = [self.lower_expression(a) for a in expr.args]
             dest = None if is_statement else self.new_temp()
             if isinstance(expr.callee, IdentifierNode):
@@ -1201,7 +1572,11 @@ class AIRLowering:
                     if fn_name == "sleep_ms":
                         fn_name = "arx_sleep_ms"
                     if dest:
-                        if fn_name in self.function_return_types:
+                        if fn_name in self.var_types and self.var_types[fn_name].startswith("Fn_"):
+                            fn_sig = self.var_types[fn_name]
+                            ret_part = fn_sig.split("_to_")[-1]
+                            self.temp_types[dest] = ret_part
+                        elif fn_name in self.function_return_types:
                             self.temp_types[dest] = self.function_return_types[fn_name]
                         elif fn_name == "arx_time_now":
                             self.temp_types[dest] = "f64"
@@ -1285,8 +1660,11 @@ class AIRLowering:
             return dest
         elif isinstance(expr, PipelineNode):
             # Pipeline: left |> right(args)
-            left_temp = self.lower_expression(expr.left)
-            call_args = [left_temp] + [self.lower_expression(a) for a in expr.right.args]
+            if expr.right.args and expr.right.args[0] is expr.left:
+                call_args = [self.lower_expression(a) for a in expr.right.args]
+            else:
+                left_temp = self.lower_expression(expr.left)
+                call_args = [left_temp] + [self.lower_expression(a) for a in expr.right.args]
             dest = self.new_temp()
             fn_name = expr.right.callee.name if isinstance(expr.right.callee, IdentifierNode) else "unknown"
             if fn_name in self.function_return_types:
@@ -1384,12 +1762,35 @@ class AIRLowering:
                 if cls_name == "str":
                     self.temp_types[dest] = "str"
                     self.current_insns.append(AIRCall(dest, "arx_str_slice", [inst_temp, start_temp, end_temp]))
+                elif cls_name and (cls_name.startswith("FixedArray_") or cls_name.startswith("Slice_") or getattr(expr, "is_slice", False)):
+                    slice_elem_t = getattr(expr, "slice_elem_type", "i64")
+                    self.temp_types[dest] = f"Slice_{slice_elem_t}"
+                    source_is_slice = bool(cls_name and cls_name.startswith("Slice_"))
+                    self.current_insns.append(AIRSliceInit(
+                        dest=dest,
+                        source=inst_temp,
+                        start=start_temp,
+                        end=end_temp,
+                        elem_type=slice_elem_t,
+                        is_inclusive=expr.index.is_inclusive,
+                        source_is_slice=source_is_slice
+                    ))
                 else:
                     self.temp_types[dest] = cls_name or "Class"
                     self.current_insns.append(AIRCallMethod(dest, cls_name or "Class", "slice", inst_temp, [start_temp, end_temp]))
                 return dest
             else:
                 idx_temp = self.lower_expression(expr.index)
+                if getattr(expr, "is_slice_index", False) or (cls_name and cls_name.startswith("Slice_")):
+                    slice_elem_t = getattr(expr, "slice_elem_type", None)
+                    if not slice_elem_t and cls_name and cls_name.startswith("Slice_"):
+                        parts = cls_name.split("_")
+                        is_mut = (len(parts) >= 3 and parts[1] == "mut")
+                        slice_elem_t = "_".join(parts[2:] if is_mut else parts[1:])
+                    slice_elem_t = slice_elem_t or "i64"
+                    self.temp_types[dest] = slice_elem_t
+                    self.current_insns.append(AIRSliceGet(dest, inst_temp, idx_temp, slice_elem_t))
+                    return dest
                 # Phase 25: SIMD Indexing vec[i]
                 if getattr(expr, "is_simd_index", False) or (cls_name and cls_name in ("f32x4", "f64x2")):
                     elem_t = "f32" if (getattr(expr, "simd_type", "") == "f32x4" or cls_name == "f32x4") else "f64"
@@ -1504,6 +1905,60 @@ class AIRLowering:
             fmt_str = "".join(fmt_pieces)
             self.temp_types[dest] = "str"
             self.current_insns.append(AIRFormatString(dest, fmt_str, arg_temps))
+            return dest
+        elif isinstance(expr, LambdaNode):
+            lambda_id = len(self.module.functions) + 1
+            lambda_name = f"__arx_lambda_{lambda_id}"
+
+            prev_insns = self.current_insns
+            prev_temp_types = self.temp_types
+            prev_var_types = self.var_types
+            prev_defer_stack = self.defer_stack
+            prev_loop_stack = self.loop_stack
+
+            self.current_insns = []
+            self.temp_types = {}
+            self.defer_stack = []
+            self.loop_stack = []
+            params = [p.name for p in expr.params]
+            param_types = [(getattr(p, "type_name", None) or "i64") for p in expr.params]
+            self.var_types = {p.name: (getattr(p, "type_name", None) or "i64") for p in expr.params}
+
+            ret_t = getattr(expr, "return_type", None) or "i64"
+            if isinstance(expr.body, BlockNode):
+                for s in expr.body.statements:
+                    self.lower_statement(s)
+                if not self.current_insns or not isinstance(self.current_insns[-1], AIRReturn):
+                    self.emit_defer_unwinds()
+                    self.current_insns.append(AIRReturn(None))
+            else:
+                ret_temp = self.lower_expression(expr.body)
+                self.emit_defer_unwinds()
+                self.current_insns.append(AIRReturn(ret_temp))
+
+            fn_obj = AIRFunction(
+                name=lambda_name,
+                params=params,
+                return_type=ret_t,
+                instructions=self.current_insns,
+                is_pub=False,
+                is_static=True,
+                param_types=param_types,
+                var_types=dict(self.var_types),
+                temp_types=dict(self.temp_types)
+            )
+            self.module.functions[lambda_name] = fn_obj
+
+            self.current_insns = prev_insns
+            self.temp_types = prev_temp_types
+            self.var_types = prev_var_types
+            self.defer_stack = prev_defer_stack
+            self.loop_stack = prev_loop_stack
+
+            dest = self.new_temp()
+            fn_sig = f"Fn_{'_'.join(param_types)}_to_{ret_t}"
+            self.temp_types[dest] = fn_sig
+            self.current_insns.append(AIRAssign(dest, lambda_name))
             return dest
 
         dest = self.new_temp()

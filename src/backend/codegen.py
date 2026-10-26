@@ -11,8 +11,10 @@ from src.middle.air import (
     AIRGetField, AIRSetField, AIRBranchIf, AIRBranchIfNot,
     AIRJump, AIRLabel, AIRReturn, AIRFormatString, AIRCallConstructor, AIRCast,
     AIRDeferPush, AIREnum, AIREnumVariant, AIRGetPayloadField, AIRSpawn,
-    AIRFixedArrayInit, AIRFixedArrayGet, AIRFixedArraySet,  # Phase 23
-    AIRSizeof, AIRAddressOf  # Phase 24
+    AIRFixedArrayInit, AIRFixedArrayGet, AIRFixedArraySet,
+    AIRSizeof, AIRAddressOf,
+    AIRTryCatch, AIRThrow,
+    AIRSliceInit, AIRSliceGet, AIRSliceSet
 )
 
 
@@ -58,6 +60,12 @@ def to_c_type(t_name: str) -> str:
             elem_name = "_".join(parts[1:-1])
             return f"{to_c_type(elem_name)}*"
         return "int64_t*"
+    # Feature 3: Slice types -> Arx_Slice
+    if t_name.startswith("Slice_"):
+        return "Arx_Slice"
+    # Feature 5: Function pointer types
+    if t_name.startswith("Fn_"):
+        return t_name
     if t_name.startswith("Arx_"):
         return t_name
     return C_TYPE_MAP.get(t_name, f"Arx_{t_name}")
@@ -230,6 +238,32 @@ class C99CodeGenerator:
             self.emit(f"#include {inc}")
         self.emit()
 
+        # --- Function Pointer Typedefs (Feature 5) ---
+        fn_types_seen = set()
+        for fn in module.functions.values():
+            for t in getattr(fn, "param_types", []):
+                if t and t.startswith("Fn_"):
+                    fn_types_seen.add(t)
+            for t in getattr(fn, "var_types", {}).values():
+                if t and t.startswith("Fn_"):
+                    fn_types_seen.add(t)
+            for t in getattr(fn, "temp_types", {}).values():
+                if t and t.startswith("Fn_"):
+                    fn_types_seen.add(t)
+            if fn.return_type and fn.return_type.startswith("Fn_"):
+                fn_types_seen.add(fn.return_type)
+
+        for fn_t in sorted(fn_types_seen):
+            parts = fn_t[3:].split("_to_")
+            if len(parts) == 2:
+                param_part, ret_part = parts
+                param_names = [p for p in param_part.split("_") if p]
+                params_c = ", ".join(to_c_type(p) for p in param_names) if param_names else "void"
+                ret_c = to_c_type(ret_part)
+                self.emit(f"typedef {ret_c} (*{fn_t})({params_c});")
+        if fn_types_seen:
+            self.emit()
+
         # --- Enum Typedefs & Declarations ---
         for enm in getattr(module, "enums", {}).values():
             self.generate_enum_struct(enm)
@@ -252,7 +286,7 @@ class C99CodeGenerator:
                 f_types = fn.param_types if hasattr(fn, "param_types") and fn.param_types else ["i64"] * len(fn.params)
                 param_strs = [f"{to_c_type(t)} {p}" for p, t in zip(fn.params, f_types)]
                 ret_t = to_c_type(fn.return_type)
-                fn_sym = fn.name if self.freestanding else f"arx_{fn.name}"
+                fn_sym = fn.name if (self.freestanding or fn.name.startswith("__arx_")) else f"arx_{fn.name}"
                 self.forward_decls.append(f"{ret_t} {fn_sym}({', '.join(param_strs) if param_strs else 'void'});")
 
         # Forward class method & constructor declarations
@@ -461,7 +495,7 @@ class C99CodeGenerator:
         f_types = fn.param_types if hasattr(fn, "param_types") and fn.param_types else ["i64"] * len(fn.params)
         param_strs = [f"{to_c_type(t)} {p}" for p, t in zip(fn.params, f_types)]
         params_decl = ", ".join(param_strs) if param_strs else "void"
-        fn_sym = fn.name if self.freestanding else f"arx_{fn.name}"
+        fn_sym = fn.name if (self.freestanding or fn.name.startswith("__arx_")) else f"arx_{fn.name}"
         self.emit(f"{ret_t} {fn_sym}({params_decl}) {{")
         self.generate_function_body(fn.instructions, indent=1, fn=fn)
         self.emit("}")
@@ -478,6 +512,9 @@ class C99CodeGenerator:
         # Collect all local temporaries and variables for declaration
         temps: Dict[str, str] = {}
         var_types_map: Dict[str, str] = {}
+        if fn and hasattr(fn, "temp_types"):
+            for t_name, t_type in fn.temp_types.items():
+                temps[t_name] = to_c_type(t_type)
 
         fn_params_set = set(fn.params) if (fn and hasattr(fn, "params") and fn.params) else set()
         if fn and hasattr(fn, "var_types") and fn.var_types:
@@ -494,8 +531,24 @@ class C99CodeGenerator:
                     else:
                         var_types_map[v_name] = to_c_type(v_type)
 
+        def collect_insns(insn_list):
+            res = []
+            for item in insn_list:
+                res.append(item)
+                if isinstance(item, AIRTryCatch):
+                    res.extend(collect_insns(item.try_instructions))
+                    if item.catch_instructions:
+                        res.extend(collect_insns(item.catch_instructions))
+                    if item.finally_instructions:
+                        res.extend(collect_insns(item.finally_instructions))
+            return res
+
+        all_insns = collect_insns(instructions)
+
         for _ in range(3):
-            for insn in instructions:
+            for insn in all_insns:
+                if isinstance(insn, AIRTryCatch) and insn.catch_var:
+                    var_types_map[insn.catch_var] = "const char*"
                 if hasattr(insn, "dest") and insn.dest and not insn.dest.startswith("self."):
                     if isinstance(insn, AIRConst):
                         temps[insn.dest] = to_c_type(insn.type_name)
@@ -643,6 +696,8 @@ class C99CodeGenerator:
                             if vt.startswith("__fixed_array:"):
                                 _, elem_c, _ = vt.split(":", 2)
                                 temps[insn.dest] = f"{elem_c}*"
+                            elif vt.startswith("Slice_") or vt == "Arx_Slice":
+                                temps[insn.dest] = "Arx_Slice"
                             else:
                                 temps[insn.dest] = vt
                         elif insn.dest not in temps:
@@ -657,6 +712,8 @@ class C99CodeGenerator:
                                 temps[insn.dest] = l_t if l_t in ("f32x4", "f64x2") else r_t
                         elif insn.op in ("<", "<=", ">", ">=", "==", "!=", "&&", "||"):
                             temps[insn.dest] = "bool"
+                        elif insn.op == "+" and (l_t in ("const char*", "char*", "str") or r_t in ("const char*", "char*", "str")):
+                            temps[insn.dest] = "const char*"
                         elif l_t in ("float", "double") or r_t in ("float", "double"):
                             temps[insn.dest] = "double"
                         else:
@@ -670,6 +727,11 @@ class C99CodeGenerator:
                         else:
                             temps[insn.dest] = fixed_t
                     elif isinstance(insn, AIRFixedArrayGet):
+                        temps[insn.dest] = to_c_type(insn.elem_type)
+                    # Feature 3: Slice temp inference
+                    elif isinstance(insn, AIRSliceInit):
+                        temps[insn.dest] = "Arx_Slice"
+                    elif isinstance(insn, AIRSliceGet):
                         temps[insn.dest] = to_c_type(insn.elem_type)
                     # Phase 24: Sizeof & AddressOf temp inference
                     elif isinstance(insn, AIRSizeof):
@@ -724,6 +786,27 @@ class C99CodeGenerator:
         active_loops = []  # Stack of (start_lbl, end_lbl)
 
         # Emit instructions
+        self.emit_instructions(instructions, indent=indent, temps=temps, var_types_map=var_types_map, is_main=is_main, fn=fn, active_loops=active_loops, loop_pairs=loop_pairs)
+
+    def emit_instructions(
+        self,
+        instructions: List[AIRInstruction],
+        indent: int,
+        temps: Dict[str, str],
+        var_types_map: Dict[str, str],
+        is_main: bool,
+        fn: Optional[AIRFunction],
+        active_loops: Optional[List[Tuple[str, str]]] = None,
+        loop_pairs: Optional[Dict[str, str]] = None
+    ) -> None:
+        if active_loops is None:
+            active_loops = []
+        if loop_pairs is None:
+            loop_pairs = {}
+            for i, insn in enumerate(instructions):
+                if isinstance(insn, AIRJump) and insn.target_label and insn.target_label.startswith(("while_start", "for_start")):
+                    if i + 1 < len(instructions) and isinstance(instructions[i + 1], AIRLabel):
+                        loop_pairs[insn.target_label] = instructions[i + 1].name
         for insn in instructions:
             if isinstance(insn, AIRDeferPush):
                 pass
@@ -801,6 +884,8 @@ class C99CodeGenerator:
                     self.emit(f"{insn.var_name} = ({v_type})({insn.src});", indent=indent)
                 else:
                     self.emit(f"{insn.var_name} = {insn.src};", indent=indent)
+            elif isinstance(insn, AIRAssign):
+                self.emit(f"{insn.dest} = {insn.src};", indent=indent)
             elif isinstance(insn, AIRBinOp):
                 op_c = insn.op
                 l_t = temps.get(insn.left, "")
@@ -818,15 +903,41 @@ class C99CodeGenerator:
                     self.emit(f"{insn.dest} = {left_expr} {op_c} {right_expr};", indent=indent)
                 elif op_c == "**":
                     self.emit(f"{insn.dest} = (int64_t)pow((double){insn.left}, (double){insn.right});", indent=indent)
+                elif op_c == "+" and (l_t in ("const char*", "char*", "str") or r_t in ("const char*", "char*", "str")):
+                    if l_t in ("const char*", "char*", "str"):
+                        l_arg = insn.left
+                    elif l_t in ("float", "double"):
+                        l_arg = f"arx_cast_f64_to_str((double)({insn.left}))"
+                    elif l_t == "bool":
+                        l_arg = f"arx_cast_bool_to_str({insn.left})"
+                    else:
+                        l_arg = f"arx_cast_i64_to_str((int64_t)({insn.left}))"
+
+                    if r_t in ("const char*", "char*", "str"):
+                        r_arg = insn.right
+                    elif r_t in ("float", "double"):
+                        r_arg = f"arx_cast_f64_to_str((double)({insn.right}))"
+                    elif r_t == "bool":
+                        r_arg = f"arx_cast_bool_to_str({insn.right})"
+                    else:
+                        r_arg = f"arx_cast_i64_to_str((int64_t)({insn.right}))"
+
+                    self.emit(f"{insn.dest} = arx_str_concat({l_arg}, {r_arg});", indent=indent)
                 else:
                     self.emit(f"{insn.dest} = {insn.left} {op_c} {insn.right};", indent=indent)
             elif isinstance(insn, AIRUnaryOp):
                 self.emit(f"{insn.dest} = {insn.op}{insn.operand};", indent=indent)
             elif isinstance(insn, AIRCall):
-                self.generate_call_instruction(insn, indent=indent, temps=temps)
+                self.generate_call_instruction(insn, indent=indent, temps=temps, var_types_map=var_types_map)
             elif isinstance(insn, AIRSpawn):
                 self.generate_spawn_instruction(insn, indent=indent, temps=temps)
             elif isinstance(insn, AIRCallMethod):
+                inst_t = temps.get(insn.instance, var_types_map.get(insn.instance, ""))
+                if inst_t in ("Arx_Slice",) or inst_t.startswith("Slice_"):
+                    if insn.method_name in ("len", "length"):
+                        if insn.dest:
+                            self.emit(f"{insn.dest} = (int64_t)({insn.instance}.len);", indent=indent)
+                        continue
                 inst_ref = insn.instance if insn.instance == "self" else f"&{insn.instance}"
                 args_str = ", ".join([inst_ref] + insn.args)
                 method_target = insn.method_name if insn.method_name.startswith("Arx_") else f"Arx_{insn.class_name}_{insn.method_name}"
@@ -835,6 +946,12 @@ class C99CodeGenerator:
                 else:
                     self.emit(f"{method_target}({args_str});", indent=indent)
             elif isinstance(insn, AIRGetField):
+                inst_t = temps.get(insn.instance, var_types_map.get(insn.instance, ""))
+                if inst_t in ("Arx_Slice",) or inst_t.startswith("Slice_"):
+                    if insn.field_name in ("len", "length"):
+                        if insn.dest:
+                            self.emit(f"{insn.dest} = (int64_t)({insn.instance}.len);", indent=indent)
+                        continue
                 access = f"self->{insn.field_name}" if insn.instance == "self" else f"{insn.instance}.{insn.field_name}"
                 self.emit(f"{insn.dest} = {access};", indent=indent)
             elif isinstance(insn, AIRGetPayloadField):
@@ -890,6 +1007,23 @@ class C99CodeGenerator:
                 self.emit(f"{insn.dest} = {insn.array_var}[{insn.index}];", indent=indent)
             elif isinstance(insn, AIRFixedArraySet):
                 self.emit(f"{insn.array_var}[{insn.index}] = {insn.value};", indent=indent)
+            # Feature 3: Slices and Range Views
+            elif isinstance(insn, AIRSliceInit):
+                elem_c = to_c_type(insn.elem_type)
+                if insn.start is None and insn.end is None:
+                    self.emit(f"{insn.dest} = arx_slice_new((void*)({insn.source}), sizeof({insn.source}) / sizeof({insn.source}[0]));", indent=indent)
+                else:
+                    is_inc = "true" if insn.is_inclusive else "false"
+                    if insn.source_is_slice:
+                        self.emit(f"{insn.dest} = arx_slice_sub({insn.source}, {insn.start}, {insn.end}, sizeof({elem_c}), {is_inc});", indent=indent)
+                    else:
+                        self.emit(f"{insn.dest} = arx_slice_create((void*)({insn.source}), {insn.start}, {insn.end}, sizeof({elem_c}), {is_inc});", indent=indent)
+            elif isinstance(insn, AIRSliceGet):
+                elem_c = to_c_type(insn.elem_type)
+                self.emit(f"{insn.dest} = (({elem_c}*)({insn.slice_var}.data))[{insn.index}];", indent=indent)
+            elif isinstance(insn, AIRSliceSet):
+                elem_c = to_c_type(insn.elem_type)
+                self.emit(f"(({elem_c}*)({insn.slice_var}.data))[{insn.index}] = {insn.value};", indent=indent)
             # Phase 24: Memory layout and MMIO instructions
             elif isinstance(insn, AIRAddressOf):
                 self.emit(f"{insn.dest} = (uintptr_t)&({insn.target});", indent=indent)
@@ -902,9 +1036,47 @@ class C99CodeGenerator:
                 else:
                     c_target = to_c_type(insn.target_type)
                 self.emit(f"{insn.dest} = (int64_t)sizeof({c_target});", indent=indent)
+            # Feature 1: Exception Handling
+            elif isinstance(insn, AIRTryCatch):
+                self.try_count = getattr(self, "try_count", 0) + 1
+                fid = self.try_count
+                self.emit(f"{{", indent=indent)
+                self.emit(f"Arx_ExceptionFrame __frame_{fid};", indent=indent + 1)
+                self.emit(f"arx_push_exc_frame(&__frame_{fid});", indent=indent + 1)
+                self.emit(f"int __exc_code_{fid} = setjmp(__frame_{fid}.env);", indent=indent + 1)
+                self.emit(f"const char* __exc_msg_{fid} = NULL;", indent=indent + 1)
+                self.emit(f"if (__exc_code_{fid} == 0) {{", indent=indent + 1)
+                self.emit_instructions(insn.try_instructions, indent=indent + 2, temps=temps, var_types_map=var_types_map, is_main=is_main, fn=fn)
+                self.emit(f"arx_pop_exc_frame();", indent=indent + 2)
+                self.emit(f"}} else {{", indent=indent + 1)
+                self.emit(f"__exc_msg_{fid} = __frame_{fid}.message;", indent=indent + 2)
+                self.emit(f"arx_pop_exc_frame();", indent=indent + 2)
+                if insn.catch_instructions is not None:
+                    if insn.catch_var:
+                        self.emit(f"{insn.catch_var} = __exc_msg_{fid};", indent=indent + 2)
+                    self.emit_instructions(insn.catch_instructions, indent=indent + 2, temps=temps, var_types_map=var_types_map, is_main=is_main, fn=fn)
+                self.emit(f"}}", indent=indent + 1)
+                if insn.finally_instructions is not None:
+                    self.emit(f"{{", indent=indent + 1)
+                    self.emit_instructions(insn.finally_instructions, indent=indent + 2, temps=temps, var_types_map=var_types_map, is_main=is_main, fn=fn)
+                    self.emit(f"}}", indent=indent + 1)
+                if insn.catch_instructions is None and insn.finally_instructions is not None:
+                    self.emit(f"if (__exc_code_{fid} != 0) {{", indent=indent + 1)
+                    self.emit(f"arx_throw(__exc_msg_{fid}, __exc_code_{fid});", indent=indent + 2)
+                    self.emit(f"}}", indent=indent + 1)
+                self.emit(f"}}", indent=indent)
+            elif isinstance(insn, AIRThrow):
+                t_msg = temps.get(insn.message_temp, "")
+                if t_msg in ("const char*", "char*", "str"):
+                    self.emit(f"arx_throw({insn.message_temp}, 1);", indent=indent)
+                elif t_msg in ("String", "Arx_String"):
+                    self.emit(f"arx_throw({insn.message_temp}.buf, 1);", indent=indent)
+                else:
+                    self.emit(f"arx_throw(arx_cast_i64_to_str((int64_t)({insn.message_temp})), 1);", indent=indent)
 
-    def generate_call_instruction(self, insn: AIRCall, indent: int, temps: Optional[Dict[str, str]] = None) -> None:
+    def generate_call_instruction(self, insn: AIRCall, indent: int, temps: Optional[Dict[str, str]] = None, var_types_map: Optional[Dict[str, str]] = None) -> None:
         t_types = temps or {}
+        v_types = var_types_map or {}
         if insn.fn_name == "println":
             if insn.args:
                 arg = insn.args[0]
@@ -964,7 +1136,8 @@ class C99CodeGenerator:
             if insn.dest:
                 self.emit(f"{insn.dest} = arx_time_now();", indent=indent)
         else:
-            prefix = "" if (self.freestanding or insn.fn_name.startswith("arx_") or insn.fn_name.startswith("Arx_")) else "arx_"
+            is_var_call = insn.fn_name in t_types or insn.fn_name in v_types or insn.fn_name.startswith("%") or insn.fn_name.startswith("__arx_")
+            prefix = "" if (self.freestanding or is_var_call or insn.fn_name.startswith("arx_") or insn.fn_name.startswith("Arx_")) else "arx_"
             c_fn = f"{prefix}{insn.fn_name}"
             args_str = ", ".join(insn.args)
             if insn.dest:

@@ -17,6 +17,7 @@ class TokenType(Enum):
     CHAR_LITERAL = auto()      # e.g. 'A', '\n'
     BOOL_LITERAL = auto()      # true, false
     IDENTIFIER = auto()        # Variable, function, or class names
+    LABEL = auto()             # Lifetime or loop label, e.g. 'outer
 
     # --- Keywords: Declarations ---
     FN = auto()                # fn
@@ -43,6 +44,10 @@ class TokenType(Enum):
     CONTINUE = auto()          # continue
     RETURN = auto()            # return
     SPAWN = auto()             # spawn (concurrency)
+    TRY = auto()               # try (exception handling)
+    CATCH = auto()             # catch
+    FINALLY = auto()           # finally
+    THROW = auto()             # throw
 
     # --- Keywords: OOP & Modifiers ---
     SELF = auto()              # self
@@ -165,6 +170,10 @@ KEYWORDS: dict[str, TokenType] = {
     "continue": TokenType.CONTINUE,
     "return": TokenType.RETURN,
     "spawn": TokenType.SPAWN,
+    "try": TokenType.TRY,
+    "catch": TokenType.CATCH,
+    "finally": TokenType.FINALLY,
+    "throw": TokenType.THROW,
 
     "self": TokenType.SELF,
     "super": TokenType.SUPER,

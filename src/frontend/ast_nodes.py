@@ -50,6 +50,13 @@ class CallNode(ASTNode):
 
 
 @dataclass
+class NamedArgNode(ASTNode):
+    """Represents a named function argument: name = value"""
+    name: str
+    value: ASTNode
+
+
+@dataclass
 class MemberAccessNode(ASTNode):
     object_expr: ASTNode
     member: str
@@ -168,6 +175,20 @@ class GuardNode(ASTNode):
 class WhileNode(ASTNode):
     condition: ASTNode
     body: BlockNode
+    label: Optional[str] = None
+
+
+@dataclass
+class TryCatchNode(ASTNode):
+    try_block: BlockNode
+    catch_var: Optional[str] = None
+    catch_block: Optional[BlockNode] = None
+    finally_block: Optional[BlockNode] = None
+
+
+@dataclass
+class ThrowNode(ASTNode):
+    expr: ASTNode
 
 
 @dataclass
@@ -189,22 +210,24 @@ class ForNode(ASTNode):
     var_name: str
     range_expr: ASTNode
     body: BlockNode
+    index_var_name: Optional[str] = None
+    label: Optional[str] = None
 
 
 @dataclass
 class LoopNode(ASTNode):
     body: BlockNode
-
+    label: Optional[str] = None
 
 
 @dataclass
 class BreakNode(ASTNode):
-    pass
+    label: Optional[str] = None
 
 
 @dataclass
 class ContinueNode(ASTNode):
-    pass
+    label: Optional[str] = None
 
 
 @dataclass
@@ -368,6 +391,14 @@ class CIncludeNode(ASTNode):
 @dataclass
 class CExternNode(ASTNode):
     func_def: FunctionDefNode
+
+
+@dataclass
+class LambdaNode(ASTNode):
+    """Represents an anonymous lambda / closure: |x, y| expr or |x| { ... }."""
+    params: List[ParamNode] = field(default_factory=list)
+    body: Optional[ASTNode] = None
+    return_type: Optional[str] = None
 
 
 @dataclass

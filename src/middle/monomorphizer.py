@@ -18,7 +18,8 @@ from src.frontend.ast_nodes import (
     ConstructorDefNode, DestructorDefNode, PropertyDefNode, OperatorDefNode,
     CascadeNode, GuardNode, ExtendDefNode,
     EnumDefNode, MatchNode, MatchCaseNode, SpawnNode,
-    TupleNode, TupleDestructureNode
+    TupleNode, TupleDestructureNode,
+    TryCatchNode, ThrowNode
 )
 
 
@@ -504,6 +505,14 @@ class GenericMonomorphizer:
                 self._substitute_in_body(node.value, type_map)
         elif isinstance(node, DeferNode):
             self._substitute_in_body(node.statement, type_map)
+        elif isinstance(node, TryCatchNode):
+            self._substitute_in_body(node.try_block, type_map)
+            if node.catch_block:
+                self._substitute_in_body(node.catch_block, type_map)
+            if node.finally_block:
+                self._substitute_in_body(node.finally_block, type_map)
+        elif isinstance(node, ThrowNode):
+            self._substitute_in_body(node.expr, type_map)
         elif isinstance(node, ExprStmtNode):
             self._substitute_in_body(node.expr, type_map)
         elif isinstance(node, MatchNode):

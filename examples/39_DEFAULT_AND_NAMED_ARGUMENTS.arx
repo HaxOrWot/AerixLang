@@ -1,0 +1,74 @@
+// Aerix Example 39: Default & Named Function Arguments
+// Demonstrates modern syntax ergonomics: optional parameters with default values
+// and self-documenting call-sites using named arguments.
+
+class ServerConfig {
+    pub host: str;
+    pub port: i64;
+    pub max_connections: i64;
+    pub tls_enabled: bool;
+
+    init(host: str = "127.0.0.1", port: i64 = 8080, max_connections: i64 = 1000, tls_enabled: bool = false) {
+        self.host = host;
+        self.port = port;
+        self.max_connections = max_connections;
+        self.tls_enabled = tls_enabled;
+    }
+
+    pub fn display() -> void {
+        println("ServerConfig -> host={self.host}, port={self.port}, max_conn={self.max_connections}, tls={self.tls_enabled}");
+    }
+}
+
+fn create_window(title: str = "Aerix App", width: i64 = 1280, height: i64 = 720, resizable: bool = true) -> void {
+    println("Window Created: '{title}' ({width}x{height}, resizable={resizable})");
+}
+
+fn calculate_discount(price: f64, rate: f64 = 0.10, tax: f64 = 0.05) -> f64 {
+    let discounted = price * (1.0 - rate);
+    return discounted * (1.0 + tax);
+}
+
+fn main() -> i64 {
+    println("=== Aerix Feature 6: Default & Named Arguments ===");
+
+    // 1. Using all default arguments
+    create_window();
+
+    // 2. Overriding first argument positionally, keeping rest default
+    create_window("Game Engine");
+
+    // 3. Named arguments in order
+    create_window(title = "Custom Size", width = 1920, height = 1080);
+
+    // 4. Named arguments out of order
+    create_window(height = 600, title = "Reversed Args", width = 800, resizable = false);
+
+    // 5. Specifying only specific parameters by name
+    create_window(resizable = false);
+
+    println("\n--- Calculations with Defaults ---");
+    let total1 = calculate_discount(100.0);
+    println("Default 10% off + 5% tax on $100: {total1}");
+
+    let total2 = calculate_discount(100.0, rate = 0.25);
+    println("Custom 25% off + 5% tax on $100: {total2}");
+
+    let total3 = calculate_discount(100.0, tax = 0.08, rate = 0.20);
+    println("Custom 20% off + 8% tax on $100: {total3}");
+
+    println("\n--- Class Constructor with Named & Default Arguments ---");
+    let default_cfg = ServerConfig();
+    default_cfg.display();
+
+    let prod_cfg = ServerConfig(
+        host = "0.0.0.0",
+        port = 443,
+        tls_enabled = true,
+        max_connections = 50000
+    );
+    prod_cfg.display();
+
+    println("\nAll Default & Named Argument demonstrations succeeded!");
+    return 0;
+}

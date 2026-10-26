@@ -19,7 +19,8 @@ from src.frontend.ast_nodes import (
     CIncludeNode, CExternNode, PropertyDefNode, OperatorDefNode,
     CascadeNode, GuardNode, ExtendDefNode,
     EnumVariantNode, EnumDefNode, MatchCaseNode, MatchNode, SpawnNode,
-    TupleNode, TupleDestructureNode, FixedArrayLiteralNode, SizeofNode
+    TupleNode, TupleDestructureNode, FixedArrayLiteralNode, SizeofNode,
+    TryCatchNode, ThrowNode, LambdaNode, NamedArgNode
 )
 
 
@@ -47,6 +48,7 @@ PRECEDENCES: Dict[TokenType, Precedence] = {
     TokenType.CASCADE: Precedence.PIPELINE,
     TokenType.QUESTION_QUESTION: Precedence.NULL_COALESCE,
     TokenType.OR_OR: Precedence.LOGICAL_OR,
+    TokenType.PIPE_CHAR: Precedence.LOGICAL_OR,
     TokenType.AND_AND: Precedence.LOGICAL_AND,
     TokenType.EQ_EQ: Precedence.EQUALITY,
     TokenType.NOT_EQ: Precedence.EQUALITY,
@@ -100,6 +102,8 @@ class Parser:
             TokenType.LBRACKET: self.parse_fixed_array_literal,  # Phase 23
             TokenType.SIZEOF: self.parse_sizeof,                 # Phase 24
             TokenType.LOOP: self.parse_loop_ident,
+            TokenType.PIPE_CHAR: self.parse_lambda,              # Feature 5: Closures & Lambdas
+            TokenType.OR_OR: self.parse_lambda,
         }
 
         self.infix_parselets: Dict[TokenType, Callable[[ASTNode], ASTNode]] = {
@@ -117,6 +121,7 @@ class Parser:
             TokenType.GTE: self.parse_binary,
             TokenType.AND_AND: self.parse_binary,
             TokenType.OR_OR: self.parse_binary,
+            TokenType.PIPE_CHAR: self.parse_binary,
             TokenType.QUESTION_QUESTION: self.parse_binary,
             TokenType.PIPE: self.parse_pipeline,
             TokenType.CASCADE: self.parse_cascade,
@@ -374,10 +379,24 @@ class Parser:
 
     def parse_type_annotation(self) -> str:
         tok = self.current()
-        # Phase 23: Fixed-size array type [T; N]
+        # Feature 3: Borrowed slice type &[T] or &mut [T]
+        if tok.type == TokenType.AMPERSAND:
+            self.advance() # consume '&'
+            is_mut = False
+            if self.match(TokenType.MUT):
+                is_mut = True
+            self.consume(TokenType.LBRACKET, "Expected '[' in slice type '&[T]'")
+            elem_type = self.parse_type_annotation()
+            self.consume(TokenType.RBRACKET, "Expected ']' in slice type '&[T]'")
+            mut_suffix = "mut_" if is_mut else ""
+            return f"Slice_{mut_suffix}{elem_type}"
+
+        # Phase 23 & Feature 3: Fixed-size array type [T; N] or Slice [T]
         if tok.type == TokenType.LBRACKET:
             self.advance()  # consume '['
             elem_type = self.parse_type_annotation()
+            if self.match(TokenType.RBRACKET):
+                return f"Slice_{elem_type}"
             self.consume(TokenType.SEMICOLON, "Expected ';' in fixed array type '[T; N]'")
             size_tok = self.consume(TokenType.INT_LITERAL, "Expected integer size in fixed array type '[T; N]'")
             size = int(size_tok.value)
@@ -396,6 +415,18 @@ class Parser:
             return tuple_t
         if tok.type in (TokenType.IDENTIFIER, TokenType.FN):
             base_type = self.advance().value
+            if base_type == "fn" and self.match(TokenType.LPAREN):
+                param_types = []
+                if self.current().type != TokenType.RPAREN:
+                    while True:
+                        param_types.append(self.parse_type_annotation())
+                        if not self.match(TokenType.COMMA):
+                            break
+                self.consume(TokenType.RPAREN, "Expected ')' after function type parameters")
+                ret_t = "void"
+                if self.match(TokenType.ARROW):
+                    ret_t = self.parse_type_annotation()
+                return f"Fn_{'_'.join(param_types)}_to_{ret_t}"
             if self.match(TokenType.LT):
                 type_args = []
                 while True:
@@ -723,6 +754,23 @@ class Parser:
         elif tok.type == TokenType.IF:
             return self.parse_if()
 
+        # Labeled loops, e.g. 'outer: for ... or outer: while ...
+        elif tok.type in (TokenType.LABEL, TokenType.IDENTIFIER) and self.peek(1).type == TokenType.COLON and self.peek(2).type in (TokenType.FOR, TokenType.WHILE, TokenType.LOOP):
+            label_tok = self.advance()
+            self.advance() # consume ':'
+            label_name = str(label_tok.value).lstrip("'")
+            if self.current().type == TokenType.FOR:
+                stmt = self.parse_for()
+                stmt.label = label_name
+                return stmt
+            elif self.current().type == TokenType.WHILE:
+                stmt = self.parse_while()
+                stmt.label = label_name
+                return stmt
+            elif self.current().type == TokenType.LOOP:
+                stmt = self.parse_loop()
+                stmt.label = label_name
+                return stmt
         elif tok.type == TokenType.WHILE:
             return self.parse_while()
         elif tok.type == TokenType.FOR:
@@ -740,14 +788,24 @@ class Parser:
             return self.parse_defer()
         elif tok.type == TokenType.BREAK:
             self.advance()
+            label = None
+            if self.current().type in (TokenType.LABEL, TokenType.IDENTIFIER):
+                label = str(self.advance().value).lstrip("'")
             while self.match(TokenType.SEMICOLON):
                 pass
-            return BreakNode(line=tok.line, col=tok.col)
+            return BreakNode(line=tok.line, col=tok.col, label=label)
         elif tok.type == TokenType.CONTINUE:
             self.advance()
+            label = None
+            if self.current().type in (TokenType.LABEL, TokenType.IDENTIFIER):
+                label = str(self.advance().value).lstrip("'")
             while self.match(TokenType.SEMICOLON):
                 pass
-            return ContinueNode(line=tok.line, col=tok.col)
+            return ContinueNode(line=tok.line, col=tok.col, label=label)
+        elif tok.type == TokenType.TRY:
+            return self.parse_try()
+        elif tok.type == TokenType.THROW:
+            return self.parse_throw()
         elif tok.type == TokenType.LBRACE:
             return self.parse_block()
         else:
@@ -789,8 +847,26 @@ class Parser:
             
         return VarDeclNode(line=start_tok.line, col=start_tok.col, name=name_tok.value, is_mut=is_mut, type_annotation=type_annot, initializer=initializer)
 
-    def parse_if(self) -> IfNode:
+    def parse_if(self) -> ASTNode:
         start_tok = self.consume(TokenType.IF, "Expected 'if'")
+        if self.match(TokenType.LET):
+            pat = self.parse_expression()
+            self.consume(TokenType.EQUALS, "Expected '=' in 'if let'")
+            expr = self.parse_expression()
+            then_block = self.parse_block()
+            else_block = None
+            if self.match(TokenType.ELSE):
+                if self.current().type == TokenType.IF:
+                    nested_if = self.parse_if()
+                    else_block = BlockNode(line=nested_if.line, col=nested_if.col, statements=[nested_if])
+                else:
+                    else_block = self.parse_block()
+            cases = [MatchCaseNode(line=pat.line, col=pat.col, pattern=pat, body=then_block)]
+            if else_block:
+                wildcard = IdentifierNode(line=else_block.line, col=else_block.col, name="_")
+                cases.append(MatchCaseNode(line=else_block.line, col=else_block.col, pattern=wildcard, body=else_block))
+            return MatchNode(line=start_tok.line, col=start_tok.col, expr=expr, cases=cases)
+
         condition = self.parse_expression()
         then_block = self.parse_block()
         
@@ -804,8 +880,44 @@ class Parser:
                 
         return IfNode(line=start_tok.line, col=start_tok.col, condition=condition, then_block=then_block, else_block=else_block)
 
-    def parse_guard(self) -> GuardNode:
+    def parse_guard(self) -> ASTNode:
         tok = self.consume(TokenType.GUARD, "Expected 'guard'")
+        if self.match(TokenType.LET):
+            pat = self.parse_expression()
+            self.consume(TokenType.EQUALS, "Expected '=' in 'guard let'")
+            expr = self.parse_expression()
+            self.consume(TokenType.ELSE, "Expected 'else' after guard let")
+            if self.current().type == TokenType.LBRACE:
+                else_block = self.parse_block()
+            else:
+                stmt = self.parse_statement()
+                else_block = BlockNode(line=stmt.line, col=stmt.col, statements=[stmt])
+            
+            binding_names = []
+            if isinstance(pat, IdentifierNode) and pat.name != "_":
+                binding_names.append(pat.name)
+            elif isinstance(pat, CallNode):
+                for a in pat.args:
+                    if isinstance(a, IdentifierNode) and a.name != "_":
+                        binding_names.append(a.name)
+            elif isinstance(pat, TupleNode):
+                for a in pat.elements:
+                    if isinstance(a, IdentifierNode) and a.name != "_":
+                        binding_names.append(a.name)
+
+            decl_stmts = [
+                VarDeclNode(line=tok.line, col=tok.col, name=b, is_mut=True, initializer=None)
+                for b in binding_names
+            ]
+            cases = [
+                MatchCaseNode(line=pat.line, col=pat.col, pattern=pat, body=BlockNode(line=tok.line, col=tok.col, statements=[])),
+                MatchCaseNode(line=else_block.line, col=else_block.col, pattern=IdentifierNode(line=tok.line, col=tok.col, name="_"), body=else_block)
+            ]
+            match_node = MatchNode(line=tok.line, col=tok.col, expr=expr, cases=cases)
+            if decl_stmts:
+                return BlockNode(line=tok.line, col=tok.col, statements=decl_stmts + [match_node])
+            return match_node
+
         condition = self.parse_expression()
         self.consume(TokenType.ELSE, "Expected 'else' after guard condition")
         if self.current().type == TokenType.LBRACE:
@@ -824,11 +936,28 @@ class Parser:
 
     def parse_for(self) -> ForNode:
         start_tok = self.consume(TokenType.FOR, "Expected 'for'")
-        var_tok = self.consume(TokenType.IDENTIFIER, "Expected loop variable name")
+        index_var_name = None
+        if self.match(TokenType.LPAREN):
+            idx_tok = self.consume(TokenType.IDENTIFIER, "Expected index variable in enumeration")
+            self.consume(TokenType.COMMA, "Expected ',' between index and value variable")
+            val_tok = self.consume(TokenType.IDENTIFIER, "Expected value variable in enumeration")
+            self.consume(TokenType.RPAREN, "Expected ')' after enumeration variables")
+            index_var_name = idx_tok.value
+            var_name = val_tok.value
+        elif self.current().type == TokenType.IDENTIFIER and self.peek(1).type == TokenType.COMMA:
+            idx_tok = self.advance()
+            self.advance() # consume comma
+            val_tok = self.consume(TokenType.IDENTIFIER, "Expected value variable in enumeration")
+            index_var_name = idx_tok.value
+            var_name = val_tok.value
+        else:
+            var_tok = self.consume(TokenType.IDENTIFIER, "Expected loop variable name")
+            var_name = var_tok.value
+
         self.consume(TokenType.IN, "Expected 'in' after for variable")
         range_expr = self.parse_expression()
         body = self.parse_block()
-        return ForNode(line=start_tok.line, col=start_tok.col, var_name=var_tok.value, range_expr=range_expr, body=body)
+        return ForNode(line=start_tok.line, col=start_tok.col, var_name=var_name, range_expr=range_expr, body=body, index_var_name=index_var_name)
 
     def parse_loop(self) -> LoopNode:
         start_tok = self.consume(TokenType.LOOP, "Expected 'loop'")
@@ -851,6 +980,43 @@ class Parser:
             pass
         return DeferNode(line=start_tok.line, col=start_tok.col, statement=stmt)
 
+    def parse_try(self) -> TryCatchNode:
+        start_tok = self.consume(TokenType.TRY, "Expected 'try'")
+        try_block = self.parse_block()
+        self.skip_newlines()
+
+        catch_var = None
+        catch_block = None
+        if self.match(TokenType.CATCH):
+            if self.current().type == TokenType.IDENTIFIER:
+                catch_var = self.advance().value
+            catch_block = self.parse_block()
+            self.skip_newlines()
+
+        finally_block = None
+        if self.match(TokenType.FINALLY):
+            finally_block = self.parse_block()
+            self.skip_newlines()
+
+        if catch_block is None and finally_block is None:
+            self.error("A 'try' statement must have at least a 'catch' block, a 'finally' block, or both.")
+
+        return TryCatchNode(
+            line=start_tok.line,
+            col=start_tok.col,
+            try_block=try_block,
+            catch_var=catch_var,
+            catch_block=catch_block,
+            finally_block=finally_block
+        )
+
+    def parse_throw(self) -> ThrowNode:
+        start_tok = self.consume(TokenType.THROW, "Expected 'throw'")
+        expr = self.parse_expression()
+        while self.match(TokenType.SEMICOLON):
+            pass
+        return ThrowNode(line=start_tok.line, col=start_tok.col, expr=expr)
+
     def parse_match(self) -> MatchNode:
         start_tok = self.consume(TokenType.MATCH, "Expected 'match'")
         expr = self.parse_expression()
@@ -867,6 +1033,12 @@ class Parser:
             self.consume(TokenType.FAT_ARROW, "Expected '=>' after match pattern")
             if self.current().type == TokenType.LBRACE:
                 body = self.parse_block()
+            elif self.current().type == TokenType.RETURN:
+                ret_node = self.parse_return()
+                body = BlockNode(line=ret_node.line, col=ret_node.col, statements=[ret_node])
+            elif self.current().type == TokenType.THROW:
+                throw_node = self.parse_throw()
+                body = BlockNode(line=throw_node.line, col=throw_node.col, statements=[throw_node])
             else:
                 stmt_expr = self.parse_expression()
                 body = BlockNode(line=stmt_expr.line, col=stmt_expr.col, statements=[ExprStmtNode(line=stmt_expr.line, col=stmt_expr.col, expr=stmt_expr)])
@@ -1146,17 +1318,31 @@ class Parser:
     def parse_call(self, left: ASTNode) -> ASTNode:
         lparen = self.advance() # consume '('
         args = self.parse_argument_list()
+        self.skip_newlines()
         self.consume(TokenType.RPAREN, "Expected ')' after arguments")
         return CallNode(line=left.line, col=left.col, callee=left, args=args)
 
     def parse_argument_list(self) -> List[ASTNode]:
         args = []
+        self.skip_newlines()
         if self.current().type == TokenType.RPAREN:
             return args
         while True:
-            args.append(self.parse_expression())
+            self.skip_newlines()
+            if self.current().type == TokenType.RPAREN:
+                break
+            if self.current().type == TokenType.IDENTIFIER and self.peek(1).type == TokenType.EQUALS:
+                name_tok = self.advance()
+                self.advance()  # consume '='
+                val = self.parse_expression()
+                args.append(NamedArgNode(line=name_tok.line, col=name_tok.col, name=name_tok.value, value=val))
+            else:
+                args.append(self.parse_expression())
+            self.skip_newlines()
             if not self.match(TokenType.COMMA):
                 break
+            self.skip_newlines()
+        self.skip_newlines()
         return args
 
     def parse_member_access(self, left: ASTNode) -> ASTNode:
@@ -1216,4 +1402,32 @@ class Parser:
         self.advance() # consume 'as'
         target_type = self.parse_type_annotation()
         return CastNode(line=left.line, col=left.col, expr=left, target_type=target_type)
+
+    def parse_lambda(self) -> LambdaNode:
+        start_tok = self.current()
+        params: List[ParamNode] = []
+        if self.match(TokenType.OR_OR):
+            # Zero-arg lambda: || expr
+            pass
+        elif self.match(TokenType.PIPE_CHAR):
+            if not self.match(TokenType.PIPE_CHAR):
+                while True:
+                    p_name_tok = self.consume(TokenType.IDENTIFIER, "Expected parameter name in lambda")
+                    p_type = "i64"
+                    if self.match(TokenType.COLON):
+                        p_type = self.parse_type_annotation()
+                    params.append(ParamNode(line=p_name_tok.line, col=p_name_tok.col, name=p_name_tok.value, type_name=p_type))
+                    if not self.match(TokenType.COMMA):
+                        break
+                self.consume(TokenType.PIPE_CHAR, "Expected '|' after lambda parameters")
+
+        ret_type = None
+        if self.match(TokenType.ARROW):
+            ret_type = self.parse_type_annotation()
+
+        if self.current().type == TokenType.LBRACE:
+            body = self.parse_block()
+        else:
+            body = self.parse_expression()
+        return LambdaNode(line=start_tok.line, col=start_tok.col, params=params, body=body, return_type=ret_type)
 

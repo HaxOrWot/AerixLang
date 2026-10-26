@@ -15,11 +15,12 @@ from src.frontend.ast_nodes import (
     TraitDefNode, CIncludeNode, CExternNode, BreakNode, ContinueNode,
     PropertyDefNode, OperatorDefNode, GuardNode, CascadeNode, ExtendDefNode,
     EnumDefNode, EnumVariantNode, MatchNode, MatchCaseNode, SpawnNode,
-    TupleNode, TupleDestructureNode, FixedArrayLiteralNode, SizeofNode
+    TupleNode, TupleDestructureNode, FixedArrayLiteralNode, SizeofNode,
+    TryCatchNode, ThrowNode, LambdaNode, NamedArgNode, ParamNode
 )
 from src.middle.typesystem import (
     Type, PrimitiveType, ClassType, FunctionType, OptionalType, EnumType, EnumVariant, TraitType,
-    FixedArrayType, SimdType,
+    FixedArrayType, SimdType, SliceType,
     TYPE_I64, TYPE_F64, TYPE_F32, TYPE_BOOL, TYPE_STR, TYPE_CHAR,
     TYPE_VOID, TYPE_NULL, TYPE_F32X4, TYPE_F64X2, lookup_type, PRIMITIVES
 )
@@ -101,6 +102,7 @@ class SemanticAnalyzer:
         self.enums: Dict[str, EnumType] = {}
         self.traits: Dict[str, TraitType] = {}
         self.functions: Dict[str, FunctionType] = {}
+        self.func_nodes: Dict[str, FunctionDefNode] = {}
         self.global_scope = Scope(kind="global")
         self.current_scope = self.global_scope
         self.current_function: Optional[FunctionDefNode] = None
@@ -333,8 +335,52 @@ class SemanticAnalyzer:
         ret_type = self.resolve_type(node.return_type)
         fn_type = FunctionType(param_types, ret_type)
         self.functions[node.name] = fn_type
+        self.func_nodes[node.name] = node
         # Add to global scope
         self.global_scope.define(Symbol(node.name, fn_type, False, node))
+
+    def resolve_call_args(self, func_name: str, params: List[ParamNode], call_args: List[ASTNode], call_node: ASTNode) -> List[ASTNode]:
+        """
+        Feature 6: Resolves call arguments with default parameter values and named arguments.
+        Re-orders and fills in defaults to produce a positional argument list matching params.
+        """
+        if not params and not call_args:
+            return []
+
+        has_named = any(isinstance(a, NamedArgNode) for a in call_args)
+        if not has_named and len(call_args) == len(params):
+            return call_args
+
+        param_map = {p.name: idx for idx, p in enumerate(params)}
+        resolved: List[Optional[ASTNode]] = [None] * len(params)
+        seen_named = False
+
+        pos_idx = 0
+        for arg in call_args:
+            if isinstance(arg, NamedArgNode):
+                seen_named = True
+                if arg.name not in param_map:
+                    self.error(f"Function '{func_name}' has no parameter named '{arg.name}'", arg)
+                idx = param_map[arg.name]
+                if resolved[idx] is not None:
+                    self.error(f"Argument '{arg.name}' already provided for function '{func_name}'", arg)
+                resolved[idx] = arg.value
+            else:
+                if seen_named:
+                    self.error(f"Positional argument cannot follow a named argument in call to '{func_name}'", arg)
+                if pos_idx >= len(params):
+                    self.error(f"Function '{func_name}' expects at most {len(params)} arguments, but got {len(call_args)}", arg)
+                resolved[pos_idx] = arg
+                pos_idx += 1
+
+        for idx, param in enumerate(params):
+            if resolved[idx] is None:
+                if param.default_val is not None:
+                    resolved[idx] = param.default_val
+                else:
+                    self.error(f"Missing required argument '{param.name}' in call to '{func_name}'", call_node)
+
+        return resolved
 
     def register_extension(self, node: ExtendDefNode) -> None:
         if node.target_type not in self.classes:
@@ -387,6 +433,10 @@ class SemanticAnalyzer:
             return self.visit_return(node)
         elif isinstance(node, DeferNode):
             return self.visit_defer(node)
+        elif isinstance(node, TryCatchNode):
+            return self.visit_try_catch(node)
+        elif isinstance(node, ThrowNode):
+            return self.visit_throw(node)
         elif isinstance(node, ExprStmtNode):
             return self.analyze_node(node.expr)
         elif isinstance(node, BinaryOpNode):
@@ -429,6 +479,10 @@ class SemanticAnalyzer:
             return self.visit_fixed_array_literal(node)
         elif isinstance(node, SizeofNode):
             return self.visit_sizeof(node)
+        elif isinstance(node, LambdaNode):
+            return self.visit_lambda(node)
+        elif isinstance(node, NamedArgNode):
+            return self.analyze_node(node.value)
         elif isinstance(node, (CIncludeNode, CExternNode, TraitDefNode, BreakNode, ContinueNode)):
             return TYPE_VOID
         return TYPE_VOID
@@ -559,6 +613,11 @@ class SemanticAnalyzer:
                     self.error(f"Type mismatch in array assignment: cannot assign '{val_type}' to element type '{obj_type.elem_type}'", node)
                 node.is_index_assign = True
                 return obj_type.elem_type
+            if isinstance(obj_type, SliceType):
+                if not val_type.is_assignable_to(obj_type.elem_type):
+                    self.error(f"Type mismatch in slice assignment: cannot assign '{val_type}' to element type '{obj_type.elem_type}'", node)
+                node.is_index_assign = True
+                return obj_type.elem_type
             if isinstance(obj_type, ClassType):
                 if obj_type.name.startswith("List_"):
                     elem_name = obj_type.name[5:]
@@ -684,6 +743,35 @@ class SemanticAnalyzer:
         self.current_scope = prev_scope
         return last_type
 
+    def visit_lambda(self, node: LambdaNode) -> Type:
+        lambda_scope = Scope(parent=self.current_scope, kind="function")
+        prev_scope = self.current_scope
+        prev_func = self.current_function
+        self.current_scope = lambda_scope
+
+        param_types = []
+        for p in node.params:
+            pt = self.resolve_type(p.type_name)
+            param_types.append(pt)
+            lambda_scope.define(Symbol(p.name, pt, False, p))
+
+        ret_type_str = node.return_type or "i64"
+        dummy_fn = FunctionDefNode(line=node.line, col=node.col, name="__lambda", params=node.params, return_type=ret_type_str, body=node.body if isinstance(node.body, BlockNode) else BlockNode(line=node.line, col=node.col, statements=[]))
+        self.current_function = dummy_fn
+
+        if isinstance(node.body, BlockNode):
+            self.visit_block(node.body)
+            ret_type = self.resolve_type(node.return_type) if node.return_type else TYPE_VOID
+        else:
+            body_type = self.analyze_node(node.body)
+            ret_type = self.resolve_type(node.return_type) if node.return_type else body_type
+
+        self.current_scope = prev_scope
+        self.current_function = prev_func
+        fn_type = FunctionType(param_types, ret_type)
+        self.node_types[id(node)] = fn_type
+        return fn_type
+
     def visit_if(self, node: IfNode) -> Type:
         cond_type = self.analyze_node(node.condition)
         if cond_type != TYPE_BOOL:
@@ -780,16 +868,43 @@ class SemanticAnalyzer:
             node.is_enum_match = False
             for case in node.cases:
                 pat = case.pattern
+                case_scope = Scope(parent=self.current_scope, kind="match_case")
+                prev_scope = self.current_scope
+                self.current_scope = case_scope
+
                 if isinstance(pat, IdentifierNode) and pat.name == "_":
                     pass
+                elif isinstance(pat, IdentifierNode):
+                    case_scope.define(Symbol(pat.name, target_type, False, pat))
+                elif isinstance(pat, RangeNode):
+                    p1 = self.analyze_node(pat.start)
+                    p2 = self.analyze_node(pat.end)
+                    if not p1.is_assignable_to(target_type) or not p2.is_assignable_to(target_type):
+                        self.error(f"Range pattern bounds do not match target type '{target_type}'", pat)
+                elif isinstance(pat, BinaryOpNode) and pat.op == "|":
+                    def check_alt(alt_node):
+                        if isinstance(alt_node, BinaryOpNode) and alt_node.op == "|":
+                            check_alt(alt_node.left)
+                            check_alt(alt_node.right)
+                        elif isinstance(alt_node, RangeNode):
+                            self.analyze_node(alt_node.start)
+                            self.analyze_node(alt_node.end)
+                        elif isinstance(alt_node, IdentifierNode) and alt_node.name == "_":
+                            pass
+                        else:
+                            self.analyze_node(alt_node)
+                    check_alt(pat)
+                elif isinstance(pat, TupleNode):
+                    for idx, el in enumerate(pat.elements):
+                        if isinstance(el, IdentifierNode):
+                            if el.name != "_":
+                                case_scope.define(Symbol(el.name, TYPE_I64, False, el))
+                        else:
+                            self.analyze_node(el)
                 else:
                     p_type = self.analyze_node(pat)
                     if not p_type.is_assignable_to(target_type):
                         self.error(f"Pattern type '{p_type}' does not match expression type '{target_type}'", pat)
-
-                case_scope = Scope(parent=self.current_scope, kind="match_case")
-                prev_scope = self.current_scope
-                self.current_scope = case_scope
 
                 if case.guard_expr:
                     g_type = self.analyze_node(case.guard_expr)
@@ -827,11 +942,17 @@ class SemanticAnalyzer:
         return TYPE_VOID
 
     def visit_for(self, node: ForNode) -> Type:
-        range_type = self.analyze_node(node.range_expr)
+        target_expr = node.range_expr
+        if isinstance(node.range_expr, CallNode) and isinstance(node.range_expr.callee, MemberAccessNode) and node.range_expr.callee.member == "enumerate":
+            target_expr = node.range_expr.callee.object_expr
+
+        range_type = self.analyze_node(target_expr)
         for_scope = Scope(parent=self.current_scope, kind="for")
         elem_type = TYPE_I64
-        if not isinstance(node.range_expr, RangeNode):
+        if not isinstance(target_expr, RangeNode):
             if isinstance(range_type, FixedArrayType):
+                elem_type = range_type.elem_type
+            elif isinstance(range_type, SliceType):
                 elem_type = range_type.elem_type
             elif range_type.name.startswith("List_"):
                 elem_name = range_type.name[5:]
@@ -843,7 +964,11 @@ class SemanticAnalyzer:
                 elem_type = range_type.methods["get"].return_type
             elif range_type == TYPE_STR:
                 elem_type = TYPE_STR
+
+        if getattr(node, "index_var_name", None):
+            for_scope.define(Symbol(node.index_var_name, TYPE_I64, False, node))
         for_scope.define(Symbol(node.var_name, elem_type, False, node))
+
         prev_scope = self.current_scope
         self.current_scope = for_scope
         self.visit_block(node.body)
@@ -866,6 +991,27 @@ class SemanticAnalyzer:
 
     def visit_defer(self, node: DeferNode) -> Type:
         self.analyze_node(node.statement)
+        return TYPE_VOID
+
+    def visit_try_catch(self, node: TryCatchNode) -> Type:
+        self.visit_block(node.try_block)
+
+        if node.catch_block:
+            catch_scope = Scope(parent=self.current_scope, kind="catch")
+            if node.catch_var:
+                catch_scope.define(Symbol(node.catch_var, TYPE_STR, False, node))
+            prev_scope = self.current_scope
+            self.current_scope = catch_scope
+            self.visit_block(node.catch_block)
+            self.current_scope = prev_scope
+
+        if node.finally_block:
+            self.visit_block(node.finally_block)
+
+        return TYPE_VOID
+
+    def visit_throw(self, node: ThrowNode) -> Type:
+        self.analyze_node(node.expr)
         return TYPE_VOID
 
     def visit_literal(self, node: LiteralNode) -> Type:
@@ -988,6 +1134,13 @@ class SemanticAnalyzer:
         operand_type = self.analyze_node(node.operand)
         if node.op == "!":
             return TYPE_BOOL
+        if node.op == "&":
+            if isinstance(operand_type, FixedArrayType):
+                slice_t = SliceType(operand_type.elem_type)
+                self.node_types[id(node)] = slice_t
+                return slice_t
+            if isinstance(operand_type, SliceType):
+                return operand_type
         return operand_type
 
     def visit_call(self, node: CallNode) -> Type:
@@ -1134,6 +1287,14 @@ class SemanticAnalyzer:
             if name in self.classes:
                 # Value / Stack class instantiation (e.g. Hero("Arthur"))
                 cls_type = self.classes[name]
+                if cls_type.constructors:
+                    for fn_type, v_name, mangled_name, ctor_node in cls_type.constructors:
+                        if v_name is None and ctor_node and hasattr(ctor_node, "params"):
+                            try:
+                                node.args = self.resolve_call_args(name, ctor_node.params, node.args, node)
+                                break
+                            except Exception:
+                                pass
                 arg_types = [self.analyze_node(arg) for arg in node.args]
                 res = cls_type.resolve_constructor(arg_types)
                 if res:
@@ -1152,6 +1313,8 @@ class SemanticAnalyzer:
                 return cls_type
             if name in self.functions:
                 fn_type = self.functions[name]
+                if name in self.func_nodes:
+                    node.args = self.resolve_call_args(name, self.func_nodes[name].params, node.args, node)
                 for arg in node.args:
                     self.analyze_node(arg)
                 return fn_type.return_type
@@ -1214,7 +1377,25 @@ class SemanticAnalyzer:
                 else:
                     self.error(f"SIMD vector type '{obj_type.name}' has no method '{m}'", node)
 
+            if node.callee.member == "enumerate":
+                node.is_enumerate_call = True
+                return obj_type
+
+            if isinstance(obj_type, SliceType) and node.callee.member in ("len", "length"):
+                node.is_slice_len = True
+                return TYPE_I64
+
             if isinstance(obj_type, ClassType):
+                m_name = node.callee.member
+                candidates = obj_type.method_overloads.get(m_name, [])
+                if candidates:
+                    for fn_type, is_pub, mangled_name, m_node in candidates:
+                        if m_node and hasattr(m_node, "params"):
+                            try:
+                                node.args = self.resolve_call_args(m_name, m_node.params, node.args, node)
+                                break
+                            except Exception:
+                                pass
                 arg_types = [self.analyze_node(arg) for arg in node.args]
                 res = obj_type.resolve_method(node.callee.member, arg_types)
                 if res:
@@ -1247,6 +1428,28 @@ class SemanticAnalyzer:
                     return fn_type.return_type
                 else:
                     self.error(f"Trait '{obj_type.name}' has no method '{m_name}'", node)
+            elif isinstance(obj_type, (FixedArrayType, SliceType)):
+                member = node.callee.member
+                if member in ("map", "filter"):
+                    if len(node.args) != 1:
+                        self.error(f"'{member}()' expects 1 argument (closure/function), but got {len(node.args)}", node)
+                    arg_type = self.analyze_node(node.args[0])
+                    node.is_collection_fn = True
+                    node.collection_method = member
+                    node.collection_type = obj_type
+                    if member == "map":
+                        ret_elem = arg_type.return_type if isinstance(arg_type, FunctionType) else obj_type.elem_type
+                        if isinstance(obj_type, FixedArrayType):
+                            res_type = FixedArrayType(ret_elem, obj_type.size)
+                        else:
+                            res_type = SliceType(ret_elem)
+                        self.node_types[id(node)] = res_type
+                        return res_type
+                    elif member == "filter":
+                        self.node_types[id(node)] = obj_type
+                        return obj_type
+                else:
+                    self.error(f"Array/Slice has no method '{member}'", node)
             elif obj_type == TYPE_STR:
                 member = node.callee.member
                 for arg in node.args:
@@ -1279,7 +1482,11 @@ class SemanticAnalyzer:
         # Pipeline: left |> right(args)
         # Type of left is fed as first argument to right
         left_type = self.analyze_node(node.left)
-        return self.visit_call(node.right)
+        if isinstance(node.right, CallNode):
+            if not node.right.args or node.right.args[0] is not node.left:
+                node.right.args.insert(0, node.left)
+            return self.visit_call(node.right)
+        return TYPE_VOID
 
     def visit_cascade(self, node: CascadeNode) -> Type:
         target_t = self.analyze_node(node.target)
@@ -1338,6 +1545,12 @@ class SemanticAnalyzer:
                 return TYPE_I64
             self.error(f"Fixed array '[{obj_type.elem_type.name}; {obj_type.size}]' has no member '{node.member}'", node)
 
+        if isinstance(obj_type, SliceType):
+            if node.member in ("len", "length"):
+                node.is_slice_len = True
+                return TYPE_I64
+            self.error(f"Slice '{obj_type.name}' has no member '{node.member}'", node)
+
         # Phase 25: SIMD Components (.x, .y, .z, .w)
         if isinstance(obj_type, SimdType):
             member = node.member
@@ -1385,11 +1598,27 @@ class SemanticAnalyzer:
             self.analyze_node(node.index.end)
             if obj_type == TYPE_STR:
                 return TYPE_STR
+            if isinstance(obj_type, FixedArrayType):
+                node.is_slice = True
+                node.slice_elem_type = obj_type.elem_type.name
+                slice_t = SliceType(obj_type.elem_type)
+                self.node_types[id(node)] = slice_t
+                return slice_t
+            if isinstance(obj_type, SliceType):
+                node.is_slice = True
+                node.slice_elem_type = obj_type.elem_type.name
+                self.node_types[id(node)] = obj_type
+                return obj_type
             if isinstance(obj_type, ClassType):
                 return obj_type
             return obj_type
 
         idx_type = self.analyze_node(node.index)
+        if isinstance(obj_type, SliceType):
+            node.is_slice_index = True
+            node.slice_elem_type = obj_type.elem_type.name
+            self.node_types[id(node)] = obj_type.elem_type
+            return obj_type.elem_type
         if isinstance(obj_type, SimdType):
             if not (isinstance(idx_type, PrimitiveType) and idx_type.is_integer()):
                 self.error(f"SIMD vector index must be an integer, but got '{idx_type}'", node.index)
@@ -1426,9 +1655,18 @@ class SemanticAnalyzer:
             self.error("Dynamic heap allocation via 'new' is prohibited in freestanding bare-metal mode. Instantiate value objects directly on the stack.", node)
         if node.class_name not in self.classes:
             self.error(f"Unknown class in 'new': '{node.class_name}'", node)
+        cls_type = self.classes[node.class_name]
+        if cls_type.constructors:
+            for fn_type, v_name, mangled_name, ctor_node in cls_type.constructors:
+                if v_name is None and ctor_node and hasattr(ctor_node, "params"):
+                    try:
+                        node.args = self.resolve_call_args(node.class_name, ctor_node.params, node.args, node)
+                        break
+                    except Exception:
+                        pass
         for arg in node.args:
             self.analyze_node(arg)
-        return self.classes[node.class_name]
+        return cls_type
 
     def visit_cast(self, node: CastNode) -> Type:
         src_type = self.analyze_node(node.expr)

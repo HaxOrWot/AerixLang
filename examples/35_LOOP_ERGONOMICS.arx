@@ -1,0 +1,89 @@
+// Aerix Language — Feature 2 Showcase: Loop Ergonomics
+// Features: break & continue, Labeled Loops ('outer / outer:), loop {} and arr.enumerate()
+
+fn search_2d_matrix() {
+    println("\n--- 1. Labeled Loop Matrix Search ---");
+    let mut found_r: i64 = -1;
+    let mut found_c: i64 = -1;
+
+    // Labeled outer loop: break immediately when target is found
+    'search: for r in 0..5 {
+        for c in 0..5 {
+            let value = r * 10 + c;
+            if value == 34 {
+                found_r = r;
+                found_c = c;
+                println("Found target 34 at (" + r + ", " + c + ")");
+                break 'search;
+            }
+        }
+    }
+
+    println("Matrix search terminated with result: r=" + found_r + ", c=" + found_c);
+}
+
+fn demonstrate_enumerate() {
+    println("\n--- 2. Collection Enumeration with .enumerate() ---");
+    let scores: [i64; 4] = [98, 85, 92, 100];
+
+    // Iterating with (index, value) unpacking
+    for (rank, score) in scores.enumerate() {
+        let player_num = rank + 1;
+        println("Player #" + player_num + " Score: " + score);
+    }
+
+    println("\nRange Enumeration (5..8):");
+    for (i, v) in 5..8 {
+        println("Offset " + i + " -> Value " + v);
+    }
+}
+
+fn demonstrate_labeled_continue() {
+    println("\n--- 3. Labeled Continue in Nested Loops ---");
+    let mut processed_cells: i64 = 0;
+
+    outer: for i in 1..=3 {
+        for j in 1..=3 {
+            if j == 2 {
+                println("Skipping remainder of row " + i + " at column 2");
+                continue outer;
+            }
+            println("Cell (" + i + ", " + j + ") processed");
+            processed_cells += 1;
+        }
+    }
+
+    println("Total processed cells: " + processed_cells);
+}
+
+fn demonstrate_infinite_loop() {
+    println("\n--- 4. Infinite loop structure with break ---");
+    let mut counter: i64 = 0;
+
+    loop {
+        counter += 1;
+        if counter == 3 {
+            println("Counter reached 3, continuing...");
+            continue;
+        }
+        if counter >= 5 {
+            println("Counter reached 5, breaking loop!");
+            break;
+        }
+        println("Loop step: " + counter);
+    }
+}
+
+fn main() {
+    println("==================================================");
+    println("      Aerix Loop Ergonomics Feature Showcase      ");
+    println("==================================================");
+
+    search_2d_matrix();
+    demonstrate_enumerate();
+    demonstrate_labeled_continue();
+    demonstrate_infinite_loop();
+
+    println("\n==================================================");
+    println("All loop ergonomics features demonstrated successfully!");
+}

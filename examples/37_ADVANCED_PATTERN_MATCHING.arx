@@ -1,0 +1,97 @@
+// Aerix Language - Feature 4 Showcase: Advanced Pattern Matching
+// Features: Match with Ranges (200..=299), OR-patterns (1 | 2 | 3), Wildcards (_),
+//           Guards (x if x > 100), Tuples ((x, y)), if let, and guard let
+
+fn classify_http_status(code: i64) -> str {
+    match code {
+        200..=299 => return "2xx: Success",
+        300..=399 => return "3xx: Redirection",
+        400..=499 => return "4xx: Client Error",
+        500..=599 => return "5xx: Server Error",
+        _ => return "Other Status"
+    }
+}
+
+fn classify_severity(level: i64) -> str {
+    match level {
+        1 | 2 => return "Low Severity",
+        3 | 4 => return "Medium Severity",
+        5 => return "Critical Severity",
+        _ => return "Unknown Level"
+    }
+}
+
+fn describe_point(p: (i64, i64)) {
+    match p {
+        (0, 0) => println("  -> Point is at Origin (0, 0)"),
+        (0, _) => println("  -> Point is on the Y-Axis"),
+        (_, 0) => println("  -> Point is on the X-Axis"),
+        (x, y) => println("  -> Point in Quadrant at (" + x + ", " + y + ")")
+    }
+}
+
+fn evaluate_score(score: i64) {
+    match score {
+        s if s >= 90 => println("  -> Grade A (Score: " + s + ")"),
+        s if s >= 75 => println("  -> Grade B (Score: " + s + ")"),
+        s if s >= 50 => println("  -> Grade C (Score: " + s + ")"),
+        _ => println("  -> Needs Improvement")
+    }
+}
+
+fn authenticate(token: i64) -> str {
+    guard let 777 = token else {
+        return "Access Denied: Invalid Security Token";
+    }
+    return "Access Granted: Welcome Admin";
+}
+
+fn main() {
+    println("==================================================");
+    println(" Aerix Advanced Pattern Matching Feature Showcase ");
+    println("==================================================");
+
+    // 1. Range Pattern Matching
+    println("\n--- 1. Range Matching (200..=299) ---");
+    println("HTTP 200: " + classify_http_status(200));
+    println("HTTP 204: " + classify_http_status(204));
+    println("HTTP 404: " + classify_http_status(404));
+    println("HTTP 502: " + classify_http_status(502));
+
+    // 2. OR-Pattern Alternatives
+    println("\n--- 2. OR-Pattern Alternatives (1 | 2 | 3) ---");
+    println("Level 1: " + classify_severity(1));
+    println("Level 4: " + classify_severity(4));
+    println("Level 5: " + classify_severity(5));
+
+    // 3. Tuple Destructuring in Pattern Match
+    println("\n--- 3. Tuple Patterns ((x, y)) ---");
+    describe_point((0, 0));
+    describe_point((0, 42));
+    describe_point((15, 0));
+    describe_point((8, 12));
+
+    // 4. Pattern Guards (x if condition)
+    println("\n--- 4. Pattern Guards (x if cond) ---");
+    evaluate_score(95);
+    evaluate_score(82);
+    evaluate_score(60);
+    evaluate_score(30);
+
+    // 5. if let Pattern Matching
+    println("\n--- 5. if let Pattern Matching ---");
+    let test_code = 200;
+    if let 200 = test_code {
+        println("  -> if let matched successfully (code = 200)");
+    } else {
+        println("  -> if let failed match");
+    }
+
+    // 6. guard let Flow Control
+    println("\n--- 6. guard let Early-Exit Flow Control ---");
+    println(authenticate(777));
+    println(authenticate(123));
+
+    println("\n==================================================");
+    println("All advanced pattern matching features demonstrated successfully!");
+}

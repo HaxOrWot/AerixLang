@@ -15,6 +15,7 @@
 #include <stdarg.h>
 #include <math.h>
 #include <ctype.h>
+#include <setjmp.h>
 
 #if defined(_WIN32) || defined(_WIN64)
     #include <windows.h>
@@ -58,6 +59,48 @@ static inline void arx_panic(const char* msg, const char* file, int line) {
 #define ARX_ASSERT(cond, msg) \
     do { if (!(cond)) arx_panic(msg, __FILE__, __LINE__); } while(0)
 
+// --- Feature 1: Structured Exception Handling (SEH / setjmp-longjmp) ---
+#if defined(_MSC_VER)
+    #define ARX_THREAD_LOCAL __declspec(thread)
+#elif defined(__GNUC__) || defined(__clang__)
+    #define ARX_THREAD_LOCAL __thread
+#else
+    #define ARX_THREAD_LOCAL
+#endif
+
+typedef struct Arx_ExceptionFrame {
+    jmp_buf env;
+    struct Arx_ExceptionFrame* prev;
+    const char* message;
+    int code;
+} Arx_ExceptionFrame;
+
+static ARX_THREAD_LOCAL Arx_ExceptionFrame* arx_top_frame = NULL;
+
+static inline void arx_push_exc_frame(Arx_ExceptionFrame* frame) {
+    frame->prev = arx_top_frame;
+    frame->message = NULL;
+    frame->code = 0;
+    arx_top_frame = frame;
+}
+
+static inline void arx_pop_exc_frame(void) {
+    if (arx_top_frame != NULL) {
+        arx_top_frame = arx_top_frame->prev;
+    }
+}
+
+static inline void arx_throw(const char* msg, int code) {
+    if (arx_top_frame != NULL) {
+        arx_top_frame->message = msg ? msg : "Exception";
+        arx_top_frame->code = (code != 0) ? code : 1;
+        longjmp(arx_top_frame->env, arx_top_frame->code);
+    } else {
+        fprintf(stderr, "\n\033[1;31m[AERIX UNCAUGHT EXCEPTION]\033[0m: %s (code %d)\n\n", msg ? msg : "Error", code);
+        exit(code != 0 ? code : 1);
+    }
+}
+
 // --- Safe Memory Allocators ---
 static inline void* arx_alloc(size_t bytes) {
     void* ptr = malloc(bytes);
@@ -71,6 +114,40 @@ static inline void arx_free(void* ptr) {
     if (ptr) {
         free(ptr);
     }
+}
+
+// --- Feature 3: Slices & Sub-Array Range Views (&[T], &mut [T]) ---
+typedef struct {
+    void* data;
+    size_t len;
+} Arx_Slice;
+
+static inline Arx_Slice arx_slice_new(void* data, size_t len) {
+    Arx_Slice s;
+    s.data = data;
+    s.len = len;
+    return s;
+}
+
+static inline Arx_Slice arx_slice_create(void* data, int64_t start, int64_t end, size_t elem_size, bool is_inclusive) {
+    if (is_inclusive) end += 1;
+    if (start < 0) start = 0;
+    if (end < start) end = start;
+    Arx_Slice s;
+    s.data = (char*)data + (start * elem_size);
+    s.len = (size_t)(end - start);
+    return s;
+}
+
+static inline Arx_Slice arx_slice_sub(Arx_Slice s, int64_t start, int64_t end, size_t elem_size, bool is_inclusive) {
+    if (is_inclusive) end += 1;
+    if (start < 0) start = 0;
+    if ((size_t)end > s.len) end = (int64_t)s.len;
+    if (end < start) end = start;
+    Arx_Slice sub;
+    sub.data = (char*)s.data + (start * elem_size);
+    sub.len = (size_t)(end - start);
+    return sub;
 }
 
 // --- High-Resolution Timer ---

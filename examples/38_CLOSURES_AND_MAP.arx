@@ -1,0 +1,39 @@
+// Aerix Language - Feature 5: Closures, Lambdas, and Functional Collections
+// Demonstrates closure expressions, higher-order functions, and .map() pipeline
+
+fn apply_op(val: i64, operation: fn(i64) -> i64) -> i64 {
+    return operation(val);
+}
+
+fn main() {
+    println("=== Feature 5: Closures and Functional Ergonomics ===");
+
+    // 1. Inline single-expression lambda
+    let square = |x: i64| x * x;
+    println(square(7));
+
+    // 2. Multi-parameter lambda
+    let add_mult = |a: i64, b: i64, c: i64| (a + b) * c;
+    println(add_mult(2, 3, 4));
+
+    // 3. Higher-order function passing lambda
+    let doubled = apply_op(25, |n: i64| n * 2);
+    println(doubled);
+
+    // 4. Multi-statement block lambda
+    let complex_calc = |x: i64| {
+        let step1 = x + 10;
+        let step2 = step1 * 3;
+        return step2 - 5;
+    };
+    println(complex_calc(5));
+
+    // 5. Functional .map() over fixed arrays
+    let numbers = [10, 20, 30];
+    let mapped = numbers.map(|x: i64| x / 2);
+    println(mapped[0]);
+    println(mapped[1]);
+    println(mapped[2]);
+
+    println("Closures & Functional Pipelines working successfully!");
+}

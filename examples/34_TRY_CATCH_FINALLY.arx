@@ -1,0 +1,68 @@
+// Aerix Language — Feature 1 Showcase: Structured Exception Handling
+// Syntax: try { ... } catch (optional err) { ... } finally { ... } & throw
+
+fn divide_safe(a: i64, b: i64) -> i64 {
+    if b == 0 {
+        throw "DivisionByZeroError: denominator cannot be zero!";
+    }
+    return a / b;
+}
+
+fn simulate_database_query(query: str) {
+    try {
+        println("Connecting to Database...");
+        if query == "DROP TABLE users;" {
+            throw "SecurityAlert: Malicious query rejected!";
+        }
+        println("Query executed successfully: " + query);
+    } finally {
+        println("[CLEANUP] Closing database connection.");
+    }
+}
+
+fn main() {
+    println("==================================================");
+    println("   Aerix Structured Exception Handling Showcase   ");
+    println("==================================================");
+
+    // 1. Basic try-catch with safe math
+    println("\n--- 1. Arithmetic Exception Handling ---");
+    try {
+        let result1 = divide_safe(100, 5);
+        println("100 / 5 = " + result1);
+
+        println("Attempting 100 / 0...");
+        let result2 = divide_safe(100, 0);
+        println("Result: " + result2);
+    } catch err {
+        println("Caught Exception: " + err);
+    }
+
+    // 2. Try-Catch with Optional Finally
+    println("\n--- 2. Resource Management with Finally ---");
+    try {
+        simulate_database_query("SELECT * FROM products;");
+        simulate_database_query("DROP TABLE users;");
+    } catch err {
+        println("Caught Query Exception: " + err);
+    }
+
+    // 3. Nested Try-Catch Propagation
+    println("\n--- 3. Nested Exception Handling ---");
+    try {
+        println("Outer try begin");
+        try {
+            println("Inner try begin");
+            throw "Inner localized fault";
+        } catch inner_err {
+            println("Inner handler caught: " + inner_err);
+        } finally {
+            println("Inner finally completed");
+        }
+        println("Outer try continuing cleanly");
+    } catch outer_err {
+        println("Outer caught: " + outer_err);
+    }
+
+    println("\nProgram finished successfully without crashes!");
+}
