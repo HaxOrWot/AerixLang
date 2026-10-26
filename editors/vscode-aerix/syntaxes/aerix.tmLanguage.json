@@ -4,9 +4,11 @@
   "scopeName": "source.aerix",
   "patterns": [
     { "include": "#comments" },
+    { "include": "#labels" },
     { "include": "#attributes" },
     { "include": "#pipeline" },
     { "include": "#cascade" },
+    { "include": "#closures" },
     { "include": "#strings" },
     { "include": "#numbers" },
     { "include": "#cinterop" },
@@ -18,6 +20,7 @@
     { "include": "#operator_definition" },
     { "include": "#class_field" },
     { "include": "#member_access" },
+    { "include": "#named_args" },
     { "include": "#variable_declaration" },
     { "include": "#keywords_control" },
     { "include": "#keywords_decl" },
@@ -40,6 +43,36 @@
           "name": "comment.block.aerix",
           "begin": "/\\*",
           "end": "\\*/"
+        }
+      ]
+    },
+    "labels": {
+      "patterns": [
+        {
+          "match": "('[a-zA-Z_][a-zA-Z0-9_]*)\\s*(:)",
+          "captures": {
+            "1": { "name": "entity.name.label.aerix" },
+            "2": { "name": "punctuation.separator.colon.aerix" }
+          }
+        },
+        {
+          "match": "\\b(break|continue)\\s+('[a-zA-Z_][a-zA-Z0-9_]*)",
+          "captures": {
+            "1": { "name": "keyword.control.aerix" },
+            "2": { "name": "entity.name.label.aerix" }
+          }
+        }
+      ]
+    },
+    "closures": {
+      "patterns": [
+        {
+          "match": "(\\|)([a-zA-Z0-9_,\\s]*?)(\\|)(?=\\s*(?:=>|\\{|[a-zA-Z0-9_]))",
+          "captures": {
+            "1": { "name": "punctuation.definition.parameters.begin.aerix" },
+            "2": { "name": "variable.parameter.closure.aerix" },
+            "3": { "name": "punctuation.definition.parameters.end.aerix" }
+          }
         }
       ]
     },
@@ -335,6 +368,17 @@
         }
       ]
     },
+    "named_args": {
+      "patterns": [
+        {
+          "match": "\\b([a-zA-Z_][a-zA-Z0-9_]*)\\s*(=)(?!>|=)",
+          "captures": {
+            "1": { "name": "variable.parameter.named.aerix" },
+            "2": { "name": "keyword.operator.assignment.aerix" }
+          }
+        }
+      ]
+    },
     "variable_declaration": {
       "patterns": [
         {
@@ -356,6 +400,14 @@
     },
     "keywords_control": {
       "patterns": [
+        {
+          "name": "keyword.control.trycatch.aerix",
+          "match": "\\b(try|catch|finally|throw)\\b"
+        },
+        {
+          "name": "keyword.control.pattern.aerix",
+          "match": "\\b(if\\s+let|guard\\s+let)\\b"
+        },
         {
           "name": "keyword.control.match.aerix",
           "match": "\\bmatch\\b"
@@ -446,7 +498,7 @@
       "patterns": [
         {
           "name": "support.function.builtin.aerix",
-          "match": "\\b(println|print|eprintln|arx_time_now_ns|arx_time_now|assert|panic|len|sizeof|input|readln|typeof|sleep_ms|arx_sleep_ms|arx_channel_new|arx_channel_send|arx_channel_recv|arx_channel_close|arx_channel_free|arx_thread_spawn|arx_thread_join|range|arx_canvas_set_pixel|arx_canvas_fill_rect|arx_canvas_clear|arx_now_ms|volatile_read_u8|volatile_read_u16|volatile_read_u32|volatile_read_u64|volatile_read_i8|volatile_read_i16|volatile_read_i32|volatile_read_i64|volatile_write_u8|volatile_write_u16|volatile_write_u32|volatile_write_u64|volatile_write_i8|volatile_write_i16|volatile_write_i32|volatile_write_i64|volatile_load_u8|volatile_load_u16|volatile_load_u32|volatile_load_u64|volatile_load_i8|volatile_load_i16|volatile_load_i32|volatile_load_i64|volatile_store_u8|volatile_store_u16|volatile_store_u32|volatile_store_u64|volatile_store_i8|volatile_store_i16|volatile_store_i32|volatile_store_i64|address_of|arx_address_of|f32x4|f64x2)\\b(?=\\s*\\()"
+          "match": "\\b(println|print|eprintln|arx_time_now_ns|arx_time_now|assert|panic|len|sizeof|input|readln|typeof|sleep_ms|arx_sleep_ms|arx_channel_new|arx_channel_send|arx_channel_recv|arx_channel_close|arx_channel_free|arx_thread_spawn|arx_thread_join|range|arx_canvas_set_pixel|arx_canvas_fill_rect|arx_canvas_clear|arx_now_ms|volatile_read_u8|volatile_read_u16|volatile_read_u32|volatile_read_u64|volatile_read_i8|volatile_read_i16|volatile_read_i32|volatile_read_i64|volatile_write_u8|volatile_write_u16|volatile_write_u32|volatile_write_u64|volatile_write_i8|volatile_write_i16|volatile_write_i32|volatile_write_i64|volatile_load_u8|volatile_load_u16|volatile_load_u32|volatile_load_u64|volatile_load_i8|volatile_load_i16|volatile_load_i32|volatile_load_i64|volatile_store_u8|volatile_store_u16|volatile_store_u32|volatile_store_u64|volatile_store_i8|volatile_store_i16|volatile_store_i32|volatile_store_i64|address_of|arx_address_of|f32x4|f64x2|enumerate|map|filter)\\b(?=\\s*\\()"
         }
       ]
     },
@@ -465,6 +517,10 @@
     },
     "types": {
       "patterns": [
+        {
+          "name": "storage.type.slice.aerix",
+          "match": "&(?:mut\\s+)?\\[[a-zA-Z0-9_?<>\\s]+\\]"
+        },
         {
           "name": "support.class.collection.aerix",
           "match": "\\b(List|Map|Set|Stack|Queue|Deque|ByteBuffer|String)\\b"

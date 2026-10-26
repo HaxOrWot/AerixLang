@@ -65,7 +65,11 @@ const AERIX_KEYWORDS = [
     { name: 'cinclude', detail: 'C Header Inclusion', doc: 'Directly includes an ANSI C header without overhead.\n```aerix\ncinclude "<math.h>"\n```' },
     { name: 'cextern', detail: 'C External Binding', doc: 'Declares an external C symbol or library function.' },
     { name: 'get', detail: 'Property Getter', doc: 'Returns the value of a property accessor.' },
-    { name: 'set', detail: 'Property Setter', doc: 'Defines the mutation logic and validation for a property accessor.' }
+    { name: 'set', detail: 'Property Setter', doc: 'Defines the mutation logic and validation for a property accessor.' },
+    { name: 'try', detail: 'Try Block (Exception Frame)', doc: 'Encloses fallible code inside an exception frame:\n```aerix\ntry {\n    risky_operation();\n} catch err {\n    println("Caught: {err}");\n} finally {\n    cleanup();\n}\n```' },
+    { name: 'catch', detail: 'Catch Handler', doc: 'Catches exceptions thrown in the preceding try block:\n```aerix\ncatch err {\n    println("Error: {err}");\n}\n```' },
+    { name: 'finally', detail: 'Finally Block (Optional Guarantee)', doc: 'Guaranteed execution block running on normal completion or after exception handling:\n```aerix\nfinally {\n    db.close();\n}\n```' },
+    { name: 'throw', detail: 'Throw Exception', doc: 'Raises an exception and unwinds to the nearest enclosing try-catch block:\n```aerix\nthrow "Invalid parameter value";\n```' }
 ];
 
 /**

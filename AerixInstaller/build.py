@@ -4,7 +4,7 @@ AerixInstaller/build.py
 One-click build orchestrator for the Aerix Setup Installer.
 1. Generates high-DPI icons & wizard bitmaps.
 2. Locates or installs Inno Setup (ISCC).
-3. Compiles AerixSetup-1.0.89.exe.
+3. Compiles AerixSetup-1.0.90.exe.
 4. Generates SHA-256 integrity checksums.
 """
 
