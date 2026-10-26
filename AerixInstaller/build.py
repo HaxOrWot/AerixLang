@@ -93,7 +93,7 @@ def main():
     print(build_res.stdout.strip())
 
     # Step 4: Verify Output
-    expected_exe = os.path.join(dist_dir, "AerixSetup-1.0.89.exe")
+    expected_exe = os.path.join(dist_dir, "AerixSetup-1.0.90.exe")
     if os.path.exists(expected_exe):
         size_mb = os.path.getsize(expected_exe) / (1024 * 1024)
         hasher = hashlib.sha256()

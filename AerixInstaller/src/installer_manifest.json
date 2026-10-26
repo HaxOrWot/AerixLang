@@ -1,6 +1,6 @@
 {
   "name": "Aerix",
-  "version": "1.0.89",
+  "version": "1.0.90",
   "release_channel": "alpha",
   "publisher": "HaxOrWot",
   "url": "https://github.com/HaxOrWot/AerixLang",
@@ -19,7 +19,7 @@
     { "source": "arx.bat", "dest": "bin\\arx.bat" },
     { "source": "src\\", "dest": "src\\" },
     { "source": "stdlib\\aerix_rt.h", "dest": "stdlib\\aerix_rt.h" },
-    { "source": "editors\\vscode-aerix\\aerix-1.0.89.vsix", "dest": "editors\\aerix-1.0.89.vsix" },
+    { "source": "editors\\vscode-aerix\\aerix-1.0.90.vsix", "dest": "editors\\aerix-1.0.90.vsix" },
     { "source": "AerixInstaller\\assets\\aerix.ico", "dest": "assets\\aerix.ico" },
     { "source": "AerixInstaller\\assets\\aerix_file.ico", "dest": "assets\\aerix_file.ico" },
     { "source": "README.md", "dest": "docs\\README.md" },

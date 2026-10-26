@@ -41,7 +41,7 @@ else:
 from src.driver import AerixCompiler
 from src.frontend.diagnostics import report_fatal_error, enable_windows_ansi
 
-VERSION = "1.0.89-alpha"
+VERSION = "1.0.90-alpha"
 
 # Safe console icons that never crash cp1252/cp437
 ICON_OK = "[OK]"
