@@ -75,6 +75,155 @@ class ModuleVerificationError(ModuleError):
     pass
 
 
+def tag_ast_filename(node: Any, filename: str) -> None:
+    """Recursively tags AST nodes with their originating source filename for accurate diagnostics."""
+    if node is None or isinstance(node, (int, float, str, bool, bytes)):
+        return
+    if isinstance(node, ASTNode) and getattr(node, "filename", None) is None:
+        try:
+            node.filename = filename
+        except Exception:
+            pass
+    if hasattr(node, "__dict__"):
+        for val in node.__dict__.values():
+            if isinstance(val, list):
+                for item in val:
+                    tag_ast_filename(item, filename)
+            elif isinstance(val, ASTNode):
+                tag_ast_filename(val, filename)
+
+
+def extract_referenced_symbols(node: Any) -> Set[str]:
+    """
+    Recursively extracts all identifier and type symbols referenced by an AST node.
+    Used to compute transitive dependency closures when importing selective symbols.
+    """
+    symbols: Set[str] = set()
+    if node is None or isinstance(node, (int, float, str, bool, bytes)):
+        return symbols
+
+    def clean_type_name(tname: Optional[str]) -> Optional[str]:
+        if not tname:
+            return None
+        clean = tname.strip().lstrip("&").strip()
+        if clean.startswith("mut "):
+            clean = clean[4:].strip()
+        if "[" in clean:
+            inner = clean.strip("[]")
+            clean = inner.split(";")[0].strip()
+        clean = clean.split("<")[0].strip()
+        return clean if clean and clean.isidentifier() else None
+
+    node_type = type(node).__name__
+
+    if hasattr(node, "name") and isinstance(node.name, str) and node_type == "IdentifierNode":
+        symbols.add(node.name)
+
+    if hasattr(node, "class_name") and isinstance(node.class_name, str):
+        c = clean_type_name(node.class_name)
+        if c:
+            symbols.add(c)
+
+    if hasattr(node, "base_class") and isinstance(node.base_class, str):
+        c = clean_type_name(node.base_class)
+        if c:
+            symbols.add(c)
+
+    if hasattr(node, "traits") and isinstance(node.traits, list):
+        for tr in node.traits:
+            if isinstance(tr, str) and tr.isidentifier():
+                symbols.add(tr)
+
+    if hasattr(node, "return_type") and isinstance(node.return_type, str):
+        c = clean_type_name(node.return_type)
+        if c:
+            symbols.add(c)
+
+    if hasattr(node, "type_name") and isinstance(node.type_name, str):
+        c = clean_type_name(node.type_name)
+        if c:
+            symbols.add(c)
+
+    if hasattr(node, "target_type") and isinstance(node.target_type, str):
+        c = clean_type_name(node.target_type)
+        if c:
+            symbols.add(c)
+
+    if hasattr(node, "__dict__"):
+        for k, v in node.__dict__.items():
+            if k in ("name", "line", "col", "filename", "source_lines", "resolved_mangled_name", "resolved_type"):
+                continue
+            if isinstance(v, list):
+                for item in v:
+                    symbols.update(extract_referenced_symbols(item))
+            elif isinstance(v, dict):
+                for item in v.values():
+                    symbols.update(extract_referenced_symbols(item))
+            elif isinstance(v, ASTNode):
+                symbols.update(extract_referenced_symbols(v))
+
+    return symbols
+
+
+def filter_declarations_with_dependencies(
+    declarations: List[ASTNode],
+    requested_symbols: Optional[List[str]] = None
+) -> List[ASTNode]:
+    """
+    Filters declarations for module/file imports:
+    1. Always strips 'fn main()' since main is only the entrypoint for the root file.
+    2. If requested_symbols is provided, computes transitive dependency closure so that
+       any helper functions, types, and constants required by the requested symbols
+       are automatically preserved.
+    3. If requested_symbols is None/empty, includes all declarations except 'main'.
+    """
+    # 1. Exclude 'fn main()' from any imported unit
+    non_main = [
+        d for d in declarations
+        if not (isinstance(d, FunctionDefNode) and d.name == "main")
+    ]
+
+    if not requested_symbols:
+        return non_main
+
+    # 2. Build index of available named declarations
+    decls_by_name: Dict[str, ASTNode] = {}
+    for d in non_main:
+        name = getattr(d, "name", None)
+        if name:
+            decls_by_name[name] = d
+
+    # 3. Compute transitive closure
+    needed_names: Set[str] = set(requested_symbols)
+    queue = list(requested_symbols)
+
+    while queue:
+        curr_name = queue.pop(0)
+        decl = decls_by_name.get(curr_name)
+        if decl:
+            refs = extract_referenced_symbols(decl)
+            for ref in refs:
+                if ref in decls_by_name and ref not in needed_names:
+                    needed_names.add(ref)
+                    queue.append(ref)
+
+    # 4. Filter declarations matching closure or unnamed extensions of needed types
+    result = []
+    for d in non_main:
+        name = getattr(d, "name", None)
+        if name is not None:
+            if name in needed_names:
+                result.append(d)
+        else:
+            if isinstance(d, ExtendDefNode):
+                if d.class_name in needed_names:
+                    result.append(d)
+            else:
+                result.append(d)
+
+    return result
+
+
 class ModuleResolver:
     """
     Orchestrates Phase 25 multi-file compilation and module resolution.
@@ -385,10 +534,12 @@ class ModuleResolver:
             nested_resolver.module_symbols = self.module_symbols
             file_ast = nested_resolver.resolve(file_ast)
 
+            tag_ast_filename(file_ast, resolved_path)
+
             exported_symbols = set()
             for d in file_ast.declarations:
                 name = getattr(d, "name", None)
-                if name:
+                if name and not (isinstance(d, FunctionDefNode) and name == "main"):
                     exported_symbols.add(name)
 
             # Filter selective imports if requested: import { a, b } from "./file.arx"
@@ -403,12 +554,9 @@ class ModuleResolver:
                             col=node.col,
                             hint=f"Available symbols in '{os.path.basename(resolved_path)}': {', '.join(sorted(exported_symbols))}"
                         )
-                for d in file_ast.declarations:
-                    name = getattr(d, "name", None)
-                    if name is None or name in node.symbols:
-                        declarations.append(d)
+                declarations.extend(filter_declarations_with_dependencies(file_ast.declarations, node.symbols))
             else:
-                declarations.extend(file_ast.declarations)
+                declarations.extend(filter_declarations_with_dependencies(file_ast.declarations, None))
 
             self.loaded_files.add(norm_key)
         finally:
@@ -480,7 +628,7 @@ class ModuleResolver:
 
                 for d in mod_ast.declarations:
                     name = getattr(d, "name", None)
-                    if name:
+                    if name and not (isinstance(d, FunctionDefNode) and name == "main"):
                         symbols_exported.add(name)
                     module_declarations.append(d)
 
@@ -499,12 +647,9 @@ class ModuleResolver:
                             col=node.col,
                             hint=f"Available symbols in '{module_name}': {', '.join(sorted(symbols_exported))}"
                         )
-                filtered = []
-                for d in module_declarations:
-                    name = getattr(d, "name", None)
-                    if name is None or name in node.symbols:
-                        filtered.append(d)
-                return filtered
+                return filter_declarations_with_dependencies(module_declarations, node.symbols)
+            else:
+                return filter_declarations_with_dependencies(module_declarations, None)
 
         finally:
             self.resolving_stack.pop()

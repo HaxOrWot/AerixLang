@@ -80,9 +80,7 @@ def publish(tag=None):
     else:
         print(f"\n[*] Creating new release {tag_name}...")
         title = f"Aerix v{version}: Windows Installer & VS Code Extension"
-        cmd = ["gh", "release", "create", tag_name, setup_exe, vsix_file, "--title", title]
-        if any(pre in version.lower() for pre in ["-pre", "-alpha", "-beta", "-rc"]):
-            cmd.append("--prerelease")
+        cmd = ["gh", "release", "create", tag_name, setup_exe, vsix_file, "--title", title, "--latest"]
         notes_path = os.path.join(root_dir, "scratch", f"RELEASE_NOTES_v{version}.md")
         if os.path.exists(notes_path):
             cmd.extend(["--notes-file", notes_path])

@@ -85,6 +85,9 @@ Source: "..\..\src\*"; DestDir: "{app}\src"; Flags: ignoreversion recursesubdirs
 ; Standard Library Native Runtime
 Source: "..\..\stdlib\aerix_rt.h"; DestDir: "{app}\stdlib"; Flags: ignoreversion
 
+; Inbuilt Standard Modules
+Source: "..\..\modules\*"; DestDir: "{app}\modules"; Flags: ignoreversion recursesubdirs createallsubdirs
+
 ; Official IDE Extension VSIX Bundle & Pre-extracted Tree for Resilient Deployment
 Source: "..\..\editors\vscode-aerix\aerix-{#MyAppVersion}.vsix"; DestDir: "{app}\editors"; Flags: ignoreversion
 Source: "..\..\editors\vscode-aerix\*"; DestDir: "{app}\editors\extension"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "*.vsix"

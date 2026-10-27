@@ -350,6 +350,61 @@ fn main() {
             self.assertEqual(proc.returncode, 0, f"Execution failed: {proc.stderr}")
             self.assertIn("MULTI FILE AND MODULE COEXISTENCE SUCCESS", proc.stdout)
 
+    def test_selective_import_transitive_dependencies(self):
+        """
+        Validates that when a function is selectively imported, its internal helper functions
+        are automatically pulled in via transitive dependency resolution, while unrelated functions
+        and any 'fn main()' from the imported file are excluded.
+        """
+        with tempfile.TemporaryDirectory() as tmpdir:
+            sorter_path = os.path.join(tmpdir, "sorter.arx")
+            main_path = os.path.join(tmpdir, "main.arx")
+            out_bin = os.path.join(tmpdir, "main.exe")
+
+            with open(sorter_path, "w", encoding="utf-8") as f:
+                f.write("""
+fn helper_add(a: i64, b: i64) -> i64 => a + b;
+
+pub fn calculate_sum(val: i64) -> i64 {
+    return helper_add(val, 10);
+}
+
+pub fn unneeded_func() -> i64 {
+    return 999;
+}
+
+fn main() {
+    println("Should not execute");
+}
+""")
+
+            with open(main_path, "w", encoding="utf-8") as f:
+                f.write("""
+import { calculate_sum } from "./sorter.arx";
+
+fn main() {
+    let res = calculate_sum(40);
+    if res == 50 {
+        println("TRANSITIVE DEPENDENCY IMPORT SUCCESS");
+    }
+}
+""")
+
+            with open(main_path, "r", encoding="utf-8") as f:
+                c_code = self.compiler.compile_source_to_c(f.read(), filename=main_path)
+            self.assertIn("calculate_sum", c_code)
+            self.assertIn("helper_add", c_code)
+            self.assertNotIn("unneeded_func", c_code)
+
+            self.compiler.compile_file(main_path, output_binary_path=out_bin)
+            self.assertTrue(os.path.exists(out_bin))
+
+            import subprocess
+            proc = subprocess.run([out_bin], capture_output=True, text=True)
+            self.assertEqual(proc.returncode, 0, f"Execution failed: {proc.stderr}")
+            self.assertIn("TRANSITIVE DEPENDENCY IMPORT SUCCESS", proc.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()
+

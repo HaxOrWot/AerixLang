@@ -4,6 +4,7 @@ Enforces static typing, immutability (let vs mut), scope resolution,
 OOP access control (pub/priv), and Class Hierarchy Analysis (CHA).
 """
 
+import os
 from typing import Dict, List, Optional, Any
 from src.frontend.ast_nodes import (
     ASTNode, ProgramNode, FunctionDefNode, ParamNode, BlockNode,
@@ -126,8 +127,16 @@ class SemanticAnalyzer:
                 raise SemanticError(msg, dummy_node, self.filename, line_str)
 
     def error(self, msg: str, node: ASTNode, hint: Optional[str] = None) -> None:
-        line_str = self.source_lines[node.line - 1] if 0 < node.line <= len(self.source_lines) else ""
-        raise SemanticError(msg, node, self.filename, line_str, hint=hint)
+        target_file = getattr(node, "filename", None) or self.filename
+        source_lines = self.source_lines
+        if target_file != self.filename and os.path.isfile(target_file):
+            try:
+                with open(target_file, "r", encoding="utf-8") as f:
+                    source_lines = f.read().splitlines()
+            except OSError:
+                pass
+        line_str = source_lines[node.line - 1] if 0 < node.line <= len(source_lines) else ""
+        raise SemanticError(msg, node, target_file, line_str, hint=hint)
 
     def resolve_type(self, type_name: str) -> Type:
         if self.freestanding:
