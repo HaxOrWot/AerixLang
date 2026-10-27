@@ -18,11 +18,9 @@ def get_project_version(root_dir):
     with open(arx_py, "r", encoding="utf-8") as f:
         for line in f:
             if line.strip().startswith("VERSION ="):
-                # e.g. VERSION = "1.0.89-alpha" -> 1.0.89
                 raw_ver = line.split("=")[1].strip().strip('"').strip("'")
-                base_ver = raw_ver.split("-")[0]
-                return base_ver
-    return "1.0.89"
+                return raw_ver
+    return "1.0.91-pre"
 
 def publish(tag=None):
     root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -83,9 +81,13 @@ def publish(tag=None):
         print(f"\n[*] Creating new release {tag_name}...")
         title = f"Aerix v{version}: Windows Installer & VS Code Extension"
         cmd = ["gh", "release", "create", tag_name, setup_exe, vsix_file, "--title", title]
+        if any(pre in version.lower() for pre in ["-pre", "-alpha", "-beta", "-rc"]):
+            cmd.append("--prerelease")
         notes_path = os.path.join(root_dir, "scratch", f"RELEASE_NOTES_v{version}.md")
         if os.path.exists(notes_path):
             cmd.extend(["--notes-file", notes_path])
+        else:
+            cmd.append("--generate-notes")
         subprocess.run(cmd, check=True)
 
     print("\n==================================================================")

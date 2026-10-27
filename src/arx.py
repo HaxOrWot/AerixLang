@@ -41,7 +41,7 @@ else:
 from src.driver import AerixCompiler
 from src.frontend.diagnostics import report_fatal_error, enable_windows_ansi
 
-VERSION = "1.0.90-alpha"
+VERSION = "1.0.91-pre"
 
 # Safe console icons that never crash cp1252/cp437
 ICON_OK = "[OK]"
@@ -161,12 +161,14 @@ def cmd_check(file_path: str, freestanding: bool = False):
     try:
         from src.frontend.lexer import Lexer
         from src.frontend.parser import Parser
+        from src.middle.modules import ModuleResolver
         from src.middle.monomorphizer import GenericMonomorphizer
         from src.middle.semantic import SemanticAnalyzer
         lexer = Lexer(source, file_path)
         tokens = lexer.tokenize()
         parser = Parser(tokens, lines, filename=file_path)
         ast = parser.parse()
+        ast = ModuleResolver(base_filename=file_path).resolve(ast)
         ast = GenericMonomorphizer().monomorphize(ast)
         analyzer = SemanticAnalyzer(file_path, lines, freestanding=freestanding)
         analyzer.analyze(ast)
@@ -309,6 +311,69 @@ def cmd_pm(subcmd: str, pm_args: List[str]):
         print(f"Unknown pm command '{subcmd}'. Available: init, add, list.")
 
 
+def cmd_module(subcmd: str, module_name: str):
+    """Manages, compiles, and verifies Aerix inbuilt modules."""
+    from src.middle.modules import ModuleResolver, ModuleVerificationError
+    resolver = ModuleResolver()
+
+    if subcmd == "list":
+        print(f"\n\033[1;36m[AERIX MODULES] Registered & Local Modules\033[0m")
+        print("=" * 55)
+        found_any = False
+        seen_modules = set()
+        for p in resolver.search_paths:
+            if not os.path.isdir(p):
+                continue
+            for entry in sorted(os.listdir(p)):
+                entry_dir = os.path.join(p, entry)
+                if os.path.isdir(entry_dir) and entry not in seen_modules:
+                    manifest = os.path.join(entry_dir, ".module_verified")
+                    is_verified = os.path.isfile(manifest)
+                    status_badge = f"\033[1;32m[VERIFIED]\033[0m" if is_verified else f"\033[1;33m[UNVERIFIED]\033[0m"
+                    arx_files = sorted([f for f in os.listdir(entry_dir) if f.endswith(".arx")])
+                    files_str = ", ".join(arx_files) if arx_files else "none"
+                    print(f"  {status_badge} \033[1;37m{entry}\033[0m")
+                    print(f"      {ICON_ARROW} Files: {files_str}")
+                    seen_modules.add(entry)
+                    found_any = True
+        if not found_any:
+            print("  No module directories found in search paths.")
+        print()
+
+    elif subcmd == "verify":
+        if not module_name:
+            print("\033[1;31m[ERROR]\033[0m: 'arx module verify <module_name>' requires a module name.")
+            sys.exit(1)
+        print(f"\n\033[1;36m[MODULE VERIFICATION] Compiling & Verifying '{module_name}'\033[0m")
+        print("=" * 55)
+        try:
+            mod_dir = None
+            for p in resolver.search_paths:
+                candidate = os.path.join(p, module_name)
+                if os.path.isdir(candidate):
+                    mod_dir = candidate
+                    break
+            if not mod_dir:
+                print(f"\033[1;31m[ERROR]\033[0m: Module folder '{module_name}' not found in search paths.")
+                sys.exit(1)
+
+            arx_files = []
+            for root, _, files in os.walk(mod_dir):
+                for f in files:
+                    if f.endswith(".arx"):
+                        arx_files.append(os.path.normpath(os.path.join(root, f)))
+            meta = resolver.verify_and_register_module(mod_dir, module_name, arx_files)
+            files_str = ", ".join(meta.get("files", []))
+            print(f"  \033[1;32m{ICON_OK}\033[0m Module '{module_name}' verified & registered successfully!")
+            print(f"      {ICON_ARROW} Files:            {files_str}")
+            print(f"      {ICON_ARROW} Symbols exported: {len(meta.get('symbols', []))}")
+            print(f"      {ICON_ARROW} Lockfile:         .module_verified")
+            print()
+        except Exception as e:
+            print(f"\033[1;31m[VERIFICATION FAILED]\033[0m {e}")
+            sys.exit(1)
+
+
 def cmd_lsp():
     """Starts the Aerix Language Server Protocol (LSP) daemon."""
     from src.tools.lsp import main as lsp_main
@@ -417,6 +482,11 @@ def _main_cli():
     pm_parser.add_argument("subcmd", choices=["init", "add", "list"], help="Package manager action")
     pm_parser.add_argument("pm_args", nargs="*", help="Arguments for package manager action")
 
+    # module
+    module_parser = subparsers.add_parser("module", help="Manage, compile, and verify Aerix modules")
+    module_parser.add_argument("subcmd", choices=["list", "verify"], help="Module action")
+    module_parser.add_argument("module_name", nargs="?", default="", help="Name of module to verify")
+
     # lsp
     subparsers.add_parser("lsp", help="Start the Aerix Language Server Protocol (LSP) daemon")
 
@@ -433,11 +503,14 @@ def _main_cli():
     new_parser = subparsers.add_parser("new", help="Scaffold a new Aerix project")
     new_parser.add_argument("name", help="Project name")
 
+    # version
+    subparsers.add_parser("version", help="Print Aerix compiler and toolchain version")
+
     # If the user passes a file directly (e.g. `arx main.arx` instead of `arx run main.arx`),
     # automatically default to `run`:
     if len(sys.argv) > 1 and not sys.argv[1].startswith("-"):
         first_arg = sys.argv[1]
-        valid_commands = {"doctor", "setup-tools", "test", "new", "check", "version", "run", "build", "emit-c", "wasm", "repl", "fmt", "lint", "pm", "lsp", "-h", "--help"}
+        valid_commands = {"doctor", "setup-tools", "test", "new", "check", "version", "run", "build", "emit-c", "wasm", "repl", "fmt", "lint", "pm", "module", "lsp", "-h", "--help"}
         if first_arg not in valid_commands and (first_arg.endswith(".arx") or os.path.exists(first_arg)):
             sys.argv.insert(1, "run")
 
@@ -465,6 +538,8 @@ def _main_cli():
         cmd_lint(args.file)
     elif args.command == "pm":
         cmd_pm(args.subcmd, args.pm_args)
+    elif args.command == "module":
+        cmd_module(args.subcmd, args.module_name)
     elif args.command == "lsp":
         cmd_lsp()
     elif args.command == "wasm":

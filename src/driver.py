@@ -34,6 +34,10 @@ class AerixCompiler:
         parser = Parser(tokens, lines, filename=filename)
         ast = parser.parse()
 
+        # 2a. Module Resolver (Phase 25)
+        from src.middle.modules import ModuleResolver
+        ast = ModuleResolver(base_filename=filename).resolve(ast)
+
         # 2b. Generic Monomorphizer (Phase 18)
         from src.middle.monomorphizer import GenericMonomorphizer
         monomorphizer = GenericMonomorphizer()

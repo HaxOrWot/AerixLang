@@ -4,6 +4,7 @@
   "scopeName": "source.aerix",
   "patterns": [
     { "include": "#comments" },
+    { "include": "#imports" },
     { "include": "#labels" },
     { "include": "#attributes" },
     { "include": "#pipeline" },
@@ -19,11 +20,13 @@
     { "include": "#property_definition" },
     { "include": "#operator_definition" },
     { "include": "#class_field" },
+    { "include": "#qualified_access" },
     { "include": "#member_access" },
     { "include": "#named_args" },
     { "include": "#variable_declaration" },
     { "include": "#keywords_control" },
     { "include": "#keywords_decl" },
+    { "include": "#math_functions" },
     { "include": "#builtins" },
     { "include": "#types" },
     { "include": "#constants" },
@@ -36,6 +39,10 @@
     "comments": {
       "patterns": [
         {
+          "name": "comment.line.documentation.aerix",
+          "match": "///.*$"
+        },
+        {
           "name": "comment.line.double-slash.aerix",
           "match": "//.*$"
         },
@@ -43,6 +50,38 @@
           "name": "comment.block.aerix",
           "begin": "/\\*",
           "end": "\\*/"
+        }
+      ]
+    },
+    "imports": {
+      "patterns": [
+        {
+          "match": "\\b(import)\\s+([A-Z][a-zA-Z0-9_]*)\\s*(;)?",
+          "captures": {
+            "1": { "name": "keyword.control.import.aerix" },
+            "2": { "name": "entity.name.namespace.aerix" },
+            "3": { "name": "punctuation.terminator.aerix" }
+          }
+        },
+        {
+          "match": "\\b(import)\\s*(\\{)([^}]+)(\\})\\s*(from)\\s*(\"[^\"]+\")\\s*(;)?",
+          "captures": {
+            "1": { "name": "keyword.control.import.aerix" },
+            "2": { "name": "punctuation.brackets.curly.aerix" },
+            "3": { "name": "variable.other.readwrite.import.aerix" },
+            "4": { "name": "punctuation.brackets.curly.aerix" },
+            "5": { "name": "keyword.control.import.from.aerix" },
+            "6": { "name": "string.quoted.double.aerix" },
+            "7": { "name": "punctuation.terminator.aerix" }
+          }
+        },
+        {
+          "match": "\\b(import)\\s*(\"[^\"]+\")\\s*(;)?",
+          "captures": {
+            "1": { "name": "keyword.control.import.aerix" },
+            "2": { "name": "string.quoted.double.aerix" },
+            "3": { "name": "punctuation.terminator.aerix" }
+          }
         }
       ]
     },
@@ -111,9 +150,9 @@
             },
             {
               "name": "meta.template.expression.aerix",
-              "begin": "\\{",
+              "begin": "(\\$?\\{)",
               "beginCaptures": {
-                "0": { "name": "punctuation.definition.template-expression.begin.aerix" }
+                "1": { "name": "punctuation.definition.template-expression.begin.aerix" }
               },
               "end": "\\}",
               "endCaptures": {
@@ -125,8 +164,10 @@
                 { "include": "#cascade" },
                 { "include": "#strings" },
                 { "include": "#numbers" },
+                { "include": "#qualified_access" },
                 { "include": "#member_access" },
                 { "include": "#enum_access" },
+                { "include": "#math_functions" },
                 { "include": "#builtins" },
                 { "include": "#constants" },
                 { "include": "#function_call" },
@@ -160,7 +201,7 @@
           "match": "\\b0[bB][01]+\\b"
         },
         {
-          "name": "constant.numeric.decimal.aerix",
+          "name": "constant.numeric.integer.aerix",
           "match": "\\b[0-9]+\\b"
         }
       ]
@@ -198,10 +239,11 @@
     "constructor_definition": {
       "patterns": [
         {
-          "begin": "\\b(init|drop)\\s*(\\()",
+          "begin": "\\b(?:(pub|priv|prot)\\s+)?(init|drop)\\s*(\\()",
           "beginCaptures": {
-            "1": { "name": "entity.name.function.constructor.aerix" },
-            "2": { "name": "punctuation.definition.parameters.begin.aerix" }
+            "1": { "name": "storage.modifier.aerix" },
+            "2": { "name": "entity.name.function.constructor.aerix" },
+            "3": { "name": "punctuation.definition.parameters.begin.aerix" }
           },
           "end": "\\)",
           "endCaptures": {
@@ -332,6 +374,34 @@
         "5": { "name": "storage.type.primitive.aerix" }
       }
     },
+    "qualified_access": {
+      "patterns": [
+        {
+          "match": "\\b([A-Z][a-zA-Z0-9_]*)\\s*(\\.)\\s*([A-Z][A-Z0-9_]*)\\b",
+          "captures": {
+            "1": { "name": "entity.name.namespace.aerix" },
+            "2": { "name": "punctuation.accessor.aerix" },
+            "3": { "name": "constant.other.caps.aerix" }
+          }
+        },
+        {
+          "match": "\\b([A-Z][a-zA-Z0-9_]*)\\s*(\\.)\\s*([a-zA-Z_][a-zA-Z0-9_]*)\\s*(?=\\()",
+          "captures": {
+            "1": { "name": "entity.name.namespace.aerix" },
+            "2": { "name": "punctuation.accessor.aerix" },
+            "3": { "name": "entity.name.function.member.aerix" }
+          }
+        },
+        {
+          "match": "\\b([A-Z][a-zA-Z0-9_]*)\\s*(\\.)\\s*([a-zA-Z_][a-zA-Z0-9_]*)\\b",
+          "captures": {
+            "1": { "name": "entity.name.type.class.aerix" },
+            "2": { "name": "punctuation.accessor.aerix" },
+            "3": { "name": "variable.other.property.aerix" }
+          }
+        }
+      ]
+    },
     "member_access": {
       "patterns": [
         {
@@ -382,6 +452,26 @@
     "variable_declaration": {
       "patterns": [
         {
+          "match": "\\b(let)\\s+(?:(mut)\\s+)?([a-zA-Z_][a-zA-Z0-9_]*)\\s*(:)(?!:)\\s*\\b(i8|i16|i32|i64|int|u8|u16|u32|u64|uint|usize|isize|f32|f64|float|f32x4|f64x2|bool|char|str|void|null)\\b",
+          "captures": {
+            "1": { "name": "keyword.other.let.aerix" },
+            "2": { "name": "storage.modifier.mut.aerix" },
+            "3": { "name": "variable.other.readwrite.aerix" },
+            "4": { "name": "punctuation.separator.colon.aerix" },
+            "5": { "name": "storage.type.primitive.aerix" }
+          }
+        },
+        {
+          "match": "\\b(let)\\s+(?:(mut)\\s+)?([a-zA-Z_][a-zA-Z0-9_]*)\\s*(:)(?!:)\\s*([A-Z][a-zA-Z0-9_]*(?:<[a-zA-Z0-9_,\\s]+>)?\\??)",
+          "captures": {
+            "1": { "name": "keyword.other.let.aerix" },
+            "2": { "name": "storage.modifier.mut.aerix" },
+            "3": { "name": "variable.other.readwrite.aerix" },
+            "4": { "name": "punctuation.separator.colon.aerix" },
+            "5": { "name": "entity.name.type.class.aerix" }
+          }
+        },
+        {
           "match": "\\b(let)\\s+(?:(mut)\\s+)?([a-zA-Z_][a-zA-Z0-9_]*)",
           "captures": {
             "1": { "name": "keyword.other.let.aerix" },
@@ -395,11 +485,24 @@
             "1": { "name": "storage.modifier.mut.aerix" },
             "2": { "name": "variable.other.readwrite.aerix" }
           }
+        },
+        {
+          "match": "\\b(const)\\s+([a-zA-Z_][a-zA-Z0-9_]*)\\s*(:)(?!:)\\s*([a-zA-Z0-9_?<>]+)",
+          "captures": {
+            "1": { "name": "storage.modifier.const.aerix" },
+            "2": { "name": "constant.other.caps.aerix" },
+            "3": { "name": "punctuation.separator.colon.aerix" },
+            "4": { "name": "storage.type.primitive.aerix" }
+          }
         }
       ]
     },
     "keywords_control": {
       "patterns": [
+        {
+          "name": "keyword.control.import.aerix",
+          "match": "\\b(import|from)\\b"
+        },
         {
           "name": "keyword.control.trycatch.aerix",
           "match": "\\b(try|catch|finally|throw)\\b"
@@ -490,7 +593,15 @@
         },
         {
           "name": "variable.language.self.aerix",
-          "match": "\\bself\\b"
+          "match": "\\b(self|super)\\b"
+        }
+      ]
+    },
+    "math_functions": {
+      "patterns": [
+        {
+          "name": "support.function.math.aerix",
+          "match": "\\b(abs|min|max|clamp|sign|is_even|is_odd|floor|ceil|round|trunc|fract|lerp|smoothstep|sqrt|cbrt|hypot|pow|factorial|nPr|nCr|gcd|lcm|is_prime|next_prime|deg_to_rad|rad_to_deg|sin|cos|tan|cot|sec|csc|exp|ln|log10|log2|pow_f64)\\b(?=\\s*\\()"
         }
       ]
     },
@@ -498,7 +609,7 @@
       "patterns": [
         {
           "name": "support.function.builtin.aerix",
-          "match": "\\b(println|print|eprintln|arx_time_now_ns|arx_time_now|assert|panic|len|sizeof|input|readln|typeof|sleep_ms|arx_sleep_ms|arx_channel_new|arx_channel_send|arx_channel_recv|arx_channel_close|arx_channel_free|arx_thread_spawn|arx_thread_join|range|arx_canvas_set_pixel|arx_canvas_fill_rect|arx_canvas_clear|arx_now_ms|volatile_read_u8|volatile_read_u16|volatile_read_u32|volatile_read_u64|volatile_read_i8|volatile_read_i16|volatile_read_i32|volatile_read_i64|volatile_write_u8|volatile_write_u16|volatile_write_u32|volatile_write_u64|volatile_write_i8|volatile_write_i16|volatile_write_i32|volatile_write_i64|volatile_load_u8|volatile_load_u16|volatile_load_u32|volatile_load_u64|volatile_load_i8|volatile_load_i16|volatile_load_i32|volatile_load_i64|volatile_store_u8|volatile_store_u16|volatile_store_u32|volatile_store_u64|volatile_store_i8|volatile_store_i16|volatile_store_i32|volatile_store_i64|address_of|arx_address_of|f32x4|f64x2|enumerate|map|filter)\\b(?=\\s*\\()"
+          "match": "\\b(println|print|eprintln|assert|panic|len|sizeof|input|readln|typeof|sleep_ms|arx_sleep_ms|arx_time_now_ns|arx_time_now|arx_channel_new|arx_channel_send|arx_channel_recv|arx_channel_close|arx_channel_free|arx_thread_spawn|arx_thread_join|range|enumerate|map|filter|arx_canvas_set_pixel|arx_canvas_fill_rect|arx_canvas_clear|arx_now_ms|volatile_read_u8|volatile_read_u16|volatile_read_u32|volatile_read_u64|volatile_read_i8|volatile_read_i16|volatile_read_i32|volatile_read_i64|volatile_write_u8|volatile_write_u16|volatile_write_u32|volatile_write_u64|volatile_write_i8|volatile_write_i16|volatile_write_i32|volatile_write_i64|volatile_load_u8|volatile_load_u16|volatile_load_u32|volatile_load_u64|volatile_load_i8|volatile_load_i16|volatile_load_i32|volatile_load_i64|volatile_store_u8|volatile_store_u16|volatile_store_u32|volatile_store_u64|volatile_store_i8|volatile_store_i16|volatile_store_i32|volatile_store_i64|address_of|arx_address_of)\\b(?=\\s*\\()"
         }
       ]
     },
@@ -523,7 +634,7 @@
         },
         {
           "name": "support.class.collection.aerix",
-          "match": "\\b(List|Map|Set|Stack|Queue|Deque|ByteBuffer|String)\\b"
+          "match": "\\b(List|Map|Set|Stack|Queue|Deque|ByteBuffer|String|Channel)\\b"
         },
         {
           "name": "storage.type.primitive.aerix",
@@ -544,6 +655,10 @@
         {
           "name": "constant.language.null.aerix",
           "match": "\\bnull\\b"
+        },
+        {
+          "name": "constant.other.caps.aerix",
+          "match": "\\b[A-Z][A-Z0-9_]{1,}\\b"
         },
         {
           "name": "constant.language.wildcard.aerix",
@@ -602,6 +717,10 @@
         {
           "name": "keyword.operator.null-coalescing.aerix",
           "match": "(\\?\\?)"
+        },
+        {
+          "name": "keyword.operator.bitwise.aerix",
+          "match": "(<<|>>|&|\\||\\^|~)"
         }
       ]
     },

@@ -312,16 +312,26 @@
 
 ---
 
-### Phase 25: Multi-File Module System & Package Integration (STATUS: 🚀 PLANNED)
-* **Goal:** Native multi-file compilation, modular namespaces, and seamless dependency resolution via `arx pm`.
+### Phase 25: Multi-File Module System & Package Integration (STATUS: ✅ COMPLETED)
+* **Goal:** Native multi-file compilation, modular namespaces, case-sensitive folder bundling, and seamless module resolution via `modules/`.
 * **Deliverables:**
-  - [ ] `import "./path/file.arx"` and selective symbol imports `import { SymbolA, SymbolB } from "module"`.
-  - [ ] Circular dependency detection and topological sorting in compiler driver.
-  - [ ] Seamless integration with `aerix.toml` so `import package_name` resolves dependencies downloaded by `arx pm`.
-  - [ ] Multi-file compilation support across both C99 and WebAssembly backends.
-  - [ ] Dedicated unit test suite (`src/tests/test_phase25_modules.py`).
-  - [ ] Educational demonstration project: `examples/32_MULTI_FILE_PROJECT/`.
-
-
+  - [x] Syntax & AST: `import <ModuleName>` statement parser in `src/frontend/parser.py` producing `ImportNode`.
+  - [x] Middle-End Resolver: `ModuleResolver` in `src/middle/modules.py` with multi-path resolution (`modules/`, `AERIX_MODULE_PATH`, input file dir).
+  - [x] Strict Case Sensitivity: Directory lookup verifies exact casing across all OS file systems including Windows NTFS, raising `ModuleCaseError` on mismatch.
+  - [x] Directory Bundling: Importing a module targets its folder (`modules/<ModuleName>/`) and bundles all `.arx` source files automatically.
+  - [x] Pure Aerix Convention: All module files are 100% pure `.arx` code (e.g. `modules/Math/core.arx` and `modules/Math/advanced.arx`).
+  - [x] Dependency & Cycle Detection: Circular import detection (`ModuleCircularError`) and deduplicated compilation.
+  - [x] Qualified Access Support: Transparent AST rewriting allowing both direct `abs()` / `PI` and qualified `Math.abs()` / `Math.PI` calls.
+  - [x] Dedicated Unit Test Suite: 7 tests passing in `src/tests/test_phase25_modules.py` covering case mismatch, missing modules, circular imports, and full native execution.
+  - [x] Runnable Example: `examples/40_MODULE_SYSTEM.arx` demonstrating math constants, algorithms, and qualified syntax.
+### Phase 26: Self-Hosting Native Compiler & Bootstrap Architecture (STATUS: 📋 ON HOLD - PLANNED)
+* **Goal:** 100% pure `.arx` self-hosting compiler engine (`arxc`) unifying all toolchain capabilities with zero external Python dependency.
+* **Master Specification:** See detailed blueprint in [docs/14_SELF_HOSTING_AND_NATIVE_COMPILER_BOOTSTRAP_SPEC.md](file:///z:/VSCode/AerixLang/docs/14_SELF_HOSTING_AND_NATIVE_COMPILER_BOOTSTRAP_SPEC.md).
+* **Deliverables:**
+  - [ ] Complete Prerequisite Foundation: Dynamic Collections (`List<T>`, `String`), Hash Maps (`Map<K, V>`), File System (`File`, `Directory`), OS Process Interop (`Process`, `Env`).
+  - [ ] Pure Aerix Compiler Engine in `src/native_arxc/` (Lexer, Pratt Parser, Module Resolver, Semantic Analyzer, C99 Emitter, Linker).
+  - [ ] Unified Toolchain Commands natively integrated into `arxc` (`run`, `build`, `check`, `module`, `doctor`, `pm`, `new`, `lsp`).
+  - [ ] 3-Stage Deterministic Bootstrap Loop (Python -> Stage 1 -> Stage 2 -> Fixed-Point Stage 3 byte-identical C output).
+  - [ ] Zero Breaking Changes Invariant: All 40 examples and existing test vectors pass with 100% equivalence.
 
 

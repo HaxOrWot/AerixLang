@@ -22,7 +22,7 @@ from src.middle.semantic import SemanticAnalyzer, SemanticError
 from src.tools.formatter import AerixFormatter
 from src.tools.linter import AerixLinter
 
-LSP_VERSION = "1.0.90-alpha"
+LSP_VERSION = "1.0.91-pre"
 
 # LSP CompletionItemKind constants
 KIND_TEXT = 1

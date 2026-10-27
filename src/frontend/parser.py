@@ -20,7 +20,7 @@ from src.frontend.ast_nodes import (
     CascadeNode, GuardNode, ExtendDefNode,
     EnumVariantNode, EnumDefNode, MatchCaseNode, MatchNode, SpawnNode,
     TupleNode, TupleDestructureNode, FixedArrayLiteralNode, SizeofNode,
-    TryCatchNode, ThrowNode, LambdaNode, NamedArgNode
+    TryCatchNode, ThrowNode, LambdaNode, NamedArgNode, ImportNode
 )
 
 
@@ -146,7 +146,7 @@ class Parser:
             TokenType.RETURN, TokenType.DEFER, TokenType.BREAK, TokenType.CONTINUE,
             TokenType.GUARD, TokenType.MATCH, TokenType.CLASS, TokenType.ENUM,
             TokenType.EXTEND, TokenType.TRAIT, TokenType.PUB, TokenType.PRIV,
-            TokenType.CINCLUDE, TokenType.CEXTERN, TokenType.RBRACE
+            TokenType.CINCLUDE, TokenType.CEXTERN, TokenType.IMPORT, TokenType.RBRACE
         }
 
         # Advance at least once if not at EOF
@@ -272,7 +272,9 @@ class Parser:
             if name == "align":
                 alignment = int(arg) if arg is not None else 64
 
-        if tok.type == TokenType.CINCLUDE:
+        if tok.type == TokenType.IMPORT:
+            return self.parse_import()
+        elif tok.type == TokenType.CINCLUDE:
             return self.parse_cinclude()
         elif tok.type == TokenType.CEXTERN:
             return self.parse_cextern()
@@ -302,6 +304,48 @@ class Parser:
         tok = self.advance() # consume cextern
         func_def = self.parse_function_def(is_extern=True)
         return CExternNode(line=tok.line, col=tok.col, func_def=func_def)
+
+    def parse_import(self) -> ImportNode:
+        tok = self.advance()  # consume 'import'
+        symbols: List[str] = []
+
+        # 1. Selective import: import { a, b, c } from ...
+        if self.match(TokenType.LBRACE):
+            while True:
+                sym_tok = self.consume(TokenType.IDENTIFIER, "Expected symbol name inside import list '{ ... }'")
+                symbols.append(sym_tok.value)
+                if not self.match(TokenType.COMMA):
+                    break
+            self.consume(TokenType.RBRACE, "Expected '}' after import symbol list")
+            self.consume(TokenType.FROM, "Expected 'from' after import symbol list")
+
+        # 2. Target can be string literal (user file) or identifier (inbuilt module)
+        cur = self.current()
+        if cur.type == TokenType.STRING_LITERAL:
+            path_tok = self.advance()
+            while self.match(TokenType.SEMICOLON):
+                pass
+            return ImportNode(
+                line=tok.line,
+                col=tok.col,
+                file_path=path_tok.value,
+                symbols=symbols,
+                is_user_file=True
+            )
+        elif cur.type == TokenType.IDENTIFIER:
+            name_tok = self.advance()
+            while self.match(TokenType.SEMICOLON):
+                pass
+            return ImportNode(
+                line=tok.line,
+                col=tok.col,
+                module_name=name_tok.value,
+                symbols=symbols,
+                is_user_file=False
+            )
+        else:
+            self.error("Expected module name or file path string after 'import'")
+            return ImportNode(line=tok.line, col=tok.col)
 
     def parse_function_def(self, is_extern: bool = False, is_static: bool = False, is_virtual: bool = False, is_override: bool = False, is_pub: Optional[bool] = None) -> FunctionDefNode:
         start_tok = self.current()
@@ -745,7 +789,9 @@ class Parser:
             self.skip_newlines()
         tok = self.current()
 
-        if tok.type in (TokenType.LET, TokenType.MUT, TokenType.CONST):
+        if tok.type == TokenType.IMPORT:
+            return self.parse_import()
+        elif tok.type in (TokenType.LET, TokenType.MUT, TokenType.CONST):
             return self.parse_var_decl()
         elif tok.type == TokenType.GUARD:
             return self.parse_guard()

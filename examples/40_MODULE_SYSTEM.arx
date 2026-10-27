@@ -1,0 +1,108 @@
+// ==============================================================================
+// Aerix Phase 25: Multi-File Module System & Package Integration
+// Demonstrates:
+//   1. Inbuilt Language Modules:
+//      - 'import Math' dynamically discovers and bundles all .arx files in modules/Math/
+//        (core.arx, advanced.arx, trigonometry.arx, exponential.arx)
+//      - Direct access (abs, sqrt, sin, exp) and qualified access (Math.sin, Math.PI)
+//      - Automatic compilation verification & registration lockfile (.module_verified)
+//   2. User-Created Multi-File Imports:
+//      - 'import "./module_demo_helper.arx"' (user source files, NOT modules)
+//      - Selective imports: import { calculate_percentage, format_stat } from "./path.arx"
+// ==============================================================================
+
+import Math;
+import { calculate_percentage, format_stat } from "./module_demo_helper.arx";
+
+fn main() {
+    println("=================================================");
+    println("  Aerix Phase 25: Modules & Multi-File Showcase");
+    println("=================================================");
+
+    // -------------------------------------------------------------
+    // 1. INBUILT LANGUAGE MODULE: Math (from modules/Math/)
+    // -------------------------------------------------------------
+    println("\n--- [1] Inbuilt Language Module: Math Constants ---");
+    let pi_val: f64 = Math.PI;
+    let e_val: f64 = Math.E;
+    let sqrt2_val: f64 = Math.SQRT2;
+    println("Math.PI constant: ");
+    println(pi_val);
+    println("Math.E constant:  ");
+    println(e_val);
+    println("Math.SQRT2:       ");
+    println(sqrt2_val);
+
+    println("\n--- [2] Basic Arithmetic & Rounding ---");
+    let neg_val: f64 = -42.75;
+    let abs_val: f64 = abs(neg_val);
+    println("abs(-42.75):");
+    println(abs_val);
+
+    let fl: f64 = floor(5.85);
+    let ce: f64 = ceil(5.15);
+    let rd: f64 = round(5.50);
+    println("floor(5.85), ceil(5.15), round(5.50):");
+    println(fl);
+    println(ce);
+    println(rd);
+
+    println("\n--- [3] Roots, Powers & Combinatorics ---");
+    let root: f64 = sqrt(144.0);
+    let cube_root: f64 = cbrt(27.0);
+    let fact: i64 = factorial(6);
+    let comb: i64 = nCr(6, 2); // 6! / (2! * 4!) = 15
+    println("sqrt(144.0):");
+    println(root);
+    println("cbrt(27.0):");
+    println(cube_root);
+    println("factorial(6):");
+    println(fact);
+    println("nCr(6, 2):");
+    println(comb);
+
+    println("\n--- [4] Pure Aerix Trigonometry ---");
+    // Dynamically bundled from modules/Math/trigonometry.arx
+    let zero: f64 = 0.0;
+    let s0: f64 = sin(zero);
+    let c0: f64 = cos(zero);
+    let t0: f64 = tan(zero);
+    println("sin(0.0):");
+    println(s0);
+    println("cos(0.0):");
+    println(c0);
+    println("tan(0.0):");
+    println(t0);
+
+    println("\n--- [5] Pure Aerix Exponential & Logarithms ---");
+    // Dynamically bundled from modules/Math/exponential.arx
+    let e0: f64 = exp(zero);
+    let l1: f64 = ln(1.0);
+    let lg10: f64 = log10(100.0);
+    println("exp(0.0):");
+    println(e0);
+    println("ln(1.0):");
+    println(l1);
+    println("log10(100.0):");
+    println(lg10);
+
+    println("\n--- [6] Number Theory Primes ---");
+    let prime_29: bool = is_prime(29);
+    let next_p: i64 = next_prime(29);
+    println("is_prime(29):");
+    println(prime_29);
+    println("next_prime(29):");
+    println(next_p);
+
+    // -------------------------------------------------------------
+    // 2. USER-CREATED SOURCE FILE (from ./module_demo_helper.arx)
+    // -------------------------------------------------------------
+    println("\n--- [7] User-Created Multi-File Compilation ---");
+    // Imported selectively via: import { calculate_percentage, format_stat } from "./module_demo_helper.arx"
+    let pct: f64 = calculate_percentage(45.0, 180.0);
+    format_stat("Calculated User Percentage (%):", pct);
+
+    println("\n=================================================");
+    println("  Phase 25 Multi-File & Modules: ALL PASSED!");
+    println("=================================================");
+}

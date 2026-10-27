@@ -1,0 +1,17 @@
+// ==============================================================================
+// User-Created Source File (Not an Inbuilt Module)
+// In Aerix, user files are authored by developers and imported via relative paths:
+//   import "./module_demo_helper.arx";
+// ==============================================================================
+
+pub fn calculate_percentage(part: f64, total: f64) -> f64 {
+    if total == 0.0 {
+        return 0.0;
+    }
+    return (part / total) * 100.0;
+}
+
+pub fn format_stat(label: str, value: f64) -> void {
+    println(label);
+    println(value);
+}

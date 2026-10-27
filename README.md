@@ -12,11 +12,11 @@
 ### **The Expressive Native Systems Programming Language**
 *The velocity and elegance of modern scripting — fused with the raw speed, minimal footprint, and bare-metal power of native C.*
 
-[![Version](https://img.shields.io/badge/version-1.0.90--alpha-00DCFF.svg?style=for-the-badge&logo=visualstudiocode)](#)
+[![Version](https://img.shields.io/badge/version-1.0.91--pre-00DCFF.svg?style=for-the-badge&logo=visualstudiocode)](#)
 [![Backend](https://img.shields.io/badge/backend-ANSI%20C99%20%2F%20GCC-1E90FF.svg?style=for-the-badge&logo=c)](#)
 [![Performance](https://img.shields.io/badge/performance-100%25%20C%20Native-00E676.svg?style=for-the-badge&logo=speedtest)](#)
-[![Tests](https://img.shields.io/badge/test%20suite-168%2F168%20PASS%20(100%25)-00E5FF.svg?style=for-the-badge)](#)
-[![Examples](https://img.shields.io/badge/examples-39%20runnable-FF9100.svg?style=for-the-badge)](#)
+[![Tests](https://img.shields.io/badge/test%20suite-183%2F183%20PASS%20(100%25)-00E5FF.svg?style=for-the-badge)](#)
+[![Examples](https://img.shields.io/badge/examples-40%20runnable-FF9100.svg?style=for-the-badge)](#)
 [![IDE Support](https://img.shields.io/badge/IDE-Antigravity%20%26%20VS%20Code-7C4DFF.svg?style=for-the-badge)](#)
 
 [Quickstart](#-30-second-interactive-quickstart) • [Interactive Showcase](#-interactive-code-showcase) • [Architecture](#-compiler-architecture) • [Benchmarks](#-scientific-benchmarks) • [Features](#-language-features-at-a-glance) • [Roadmap](#-project-roadmap--implementation-status) • [User Manual (USER.md)](USER.md) • [Master Guide (GUIDE.md)](GUIDE.md)
@@ -397,7 +397,7 @@ Phase 21: Dynamic Collections & Text Engine      ✅ COMPLETE (List<T>, String, 
 Phase 22: Complete Data Structures Suite          ✅ COMPLETE (Map, Set, Tuples, Buffers, for..in)
 Phase 23: Resilient Systems Error Handling       ✅ COMPLETE (try, catch, optional finally, throw)
 Phase 24: Language Ergonomics & Expressions       ✅ COMPLETE (Labeled loops, slices, lambdas, named args)
-Phase 25: Multi-File Modules & Package Manager   📅 PLANNED (import, aerix.toml, arx pm)
+Phase 25: Multi-File Modules & Package Integration ✅ COMPLETE (import, case-sensitive modules, folder bundling)
 ```
 
 </details>
@@ -420,12 +420,12 @@ Aerix provides first-class tooling across both **Visual Studio Code** and the **
 
 **Install into Visual Studio Code:**
 ```powershell
-code --install-extension editors/vscode-aerix/aerix-1.0.90.vsix --force
+code --install-extension editors/vscode-aerix/aerix-1.0.91-pre.vsix --force
 ```
 
 **Install into Antigravity IDE:**
 ```powershell
-antigravity --install-extension editors/vscode-aerix/aerix-1.0.90.vsix --force
+antigravity --install-extension editors/vscode-aerix/aerix-1.0.91-pre.vsix --force
 ```
 
 </details>

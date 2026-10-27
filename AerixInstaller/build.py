@@ -82,7 +82,24 @@ def main():
 
     # Step 3: Compile Setup Executable
     iss_file = os.path.join(src_dir, "aerix_setup.iss")
-    print(f"\n[*] Step 3: Compiling installer script: {iss_file}...")
+    version = "1.0.91-pre"
+    with open(iss_file, "r", encoding="utf-8") as f:
+        for line in f:
+            if line.strip().startswith("#define MyAppVersion"):
+                version = line.split('"')[1]
+                break
+
+    # Clean up any older setup executables (Rule 1.8)
+    for item in os.listdir(dist_dir):
+        if item.startswith("AerixSetup-") and item.endswith(".exe") and item != f"AerixSetup-{version}.exe":
+            old_path = os.path.join(dist_dir, item)
+            try:
+                os.remove(old_path)
+                print(f"[*] Purged older installer version: {item}")
+            except Exception as e:
+                print(f"[!] Could not remove {item}: {e}")
+
+    print(f"\n[*] Step 3: Compiling installer script (Version {version}): {iss_file}...")
     compile_cmd = [iscc_path, iss_file]
     build_res = subprocess.run(compile_cmd, capture_output=True, text=True)
 
@@ -93,7 +110,7 @@ def main():
     print(build_res.stdout.strip())
 
     # Step 4: Verify Output
-    expected_exe = os.path.join(dist_dir, "AerixSetup-1.0.90.exe")
+    expected_exe = os.path.join(dist_dir, f"AerixSetup-{version}.exe")
     if os.path.exists(expected_exe):
         size_mb = os.path.getsize(expected_exe) / (1024 * 1024)
         hasher = hashlib.sha256()
@@ -111,6 +128,7 @@ def main():
         print("==================================================================")
     else:
         print(f"[!] Warning: Expected output binary not found at {expected_exe}")
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()

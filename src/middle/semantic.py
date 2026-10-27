@@ -16,7 +16,7 @@ from src.frontend.ast_nodes import (
     PropertyDefNode, OperatorDefNode, GuardNode, CascadeNode, ExtendDefNode,
     EnumDefNode, EnumVariantNode, MatchNode, MatchCaseNode, SpawnNode,
     TupleNode, TupleDestructureNode, FixedArrayLiteralNode, SizeofNode,
-    TryCatchNode, ThrowNode, LambdaNode, NamedArgNode, ParamNode
+    TryCatchNode, ThrowNode, LambdaNode, NamedArgNode, ParamNode, ImportNode
 )
 from src.middle.typesystem import (
     Type, PrimitiveType, ClassType, FunctionType, OptionalType, EnumType, EnumVariant, TraitType,
@@ -483,7 +483,7 @@ class SemanticAnalyzer:
             return self.visit_lambda(node)
         elif isinstance(node, NamedArgNode):
             return self.analyze_node(node.value)
-        elif isinstance(node, (CIncludeNode, CExternNode, TraitDefNode, BreakNode, ContinueNode)):
+        elif isinstance(node, (CIncludeNode, CExternNode, TraitDefNode, BreakNode, ContinueNode, ImportNode)):
             return TYPE_VOID
         return TYPE_VOID
 

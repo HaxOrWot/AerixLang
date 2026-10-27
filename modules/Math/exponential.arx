@@ -1,0 +1,81 @@
+// ==============================================================================
+// Aerix Standard Modules: Math::Exponential
+// Pure Aerix implementations of natural exponentials and logarithmic functions.
+// ==============================================================================
+
+pub fn exp(x: f64) -> f64 {
+    if x == 0.0 {
+        return 1.0;
+    }
+    mut neg: bool = false;
+    mut val: f64 = x;
+    if val < 0.0 {
+        neg = true;
+        val = 0.0 - val;
+    }
+
+    mut term: f64 = 1.0;
+    mut sum: f64 = 1.0;
+    for i in 1..25 {
+        term = term * val / (i as f64);
+        sum = sum + term;
+    }
+
+    if neg {
+        return 1.0 / sum;
+    }
+    return sum;
+}
+
+pub fn ln(x: f64) -> f64 {
+    if x <= 0.0 {
+        return 0.0 - (1.0 / 0.0);
+    }
+    if x == 1.0 {
+        return 0.0;
+    }
+
+    mut m: f64 = x;
+    mut k: i64 = 0;
+    while m > 1.5 {
+        m = m / 2.0;
+        k = k + 1;
+    }
+    while m < 0.75 {
+        m = m * 2.0;
+        k = k - 1;
+    }
+
+    let y: f64 = (m - 1.0) / (m + 1.0);
+    let y2: f64 = y * y;
+    mut y_pow: f64 = y;
+    mut sum: f64 = y;
+
+    for i in 1..15 {
+        y_pow = y_pow * y2;
+        let denom: f64 = (2 * i + 1) as f64;
+        sum = sum + y_pow / denom;
+    }
+
+    let ln2_const: f64 = 0.6931471805599453;
+    return 2.0 * sum + (k as f64) * ln2_const;
+}
+
+pub fn log10(x: f64) -> f64 {
+    let ln10_const: f64 = 2.302585092994046;
+    return ln(x) / ln10_const;
+}
+
+pub fn log2(x: f64) -> f64 {
+    let ln2_const: f64 = 0.6931471805599453;
+    return ln(x) / ln2_const;
+}
+
+pub fn pow_f64(base: f64, exponent: f64) -> f64 {
+    if base <= 0.0 {
+        return 0.0;
+    }
+    return exp(exponent * ln(base));
+}
+
+

@@ -1,0 +1,165 @@
+// ==============================================================================
+// Aerix Standard Modules: Math::Advanced
+// Advanced algorithms: roots, combinatorics, number theory, and conversions.
+// ==============================================================================
+
+pub fn sqrt(x: f64) -> f64 {
+    if x <= 0.0 {
+        return 0.0;
+    }
+    mut guess: f64 = x / 2.0;
+    if guess == 0.0 {
+        guess = 1.0;
+    }
+    for i in 0..25 {
+        guess = (guess + x / guess) / 2.0;
+    }
+    return guess;
+}
+
+pub fn cbrt(x: f64) -> f64 {
+    if x == 0.0 {
+        return 0.0;
+    }
+    mut sign_mult: f64 = 1.0;
+    mut val: f64 = x;
+    if val < 0.0 {
+        sign_mult = 0.0 - 1.0;
+        val = 0.0 - val;
+    }
+    mut guess: f64 = val / 3.0;
+    if guess == 0.0 {
+        guess = 1.0;
+    }
+    for i in 0..30 {
+        guess = (2.0 * guess + val / (guess * guess)) / 3.0;
+    }
+    return guess * sign_mult;
+}
+
+pub fn hypot(a: f64, b: f64) -> f64 {
+    return sqrt(a * a + b * b);
+}
+
+pub fn pow(base: f64, exp: i64) -> f64 {
+    if exp == 0 {
+        return 1.0;
+    }
+    mut res: f64 = 1.0;
+    mut n: i64 = exp;
+    mut b: f64 = base;
+    if n < 0 {
+        b = 1.0 / b;
+        n = 0 - n;
+    }
+    while n > 0 {
+        if n % 2 == 1 {
+            res = res * b;
+        }
+        b = b * b;
+        n = n / 2;
+    }
+    return res;
+}
+
+pub fn factorial(n: i64) -> i64 {
+    if n <= 1 {
+        return 1;
+    }
+    mut res: i64 = 1;
+    for i in 2..=n {
+        res = res * i;
+    }
+    return res;
+}
+
+pub fn nPr(n: i64, r: i64) -> i64 {
+    if r < 0 || r > n {
+        return 0;
+    }
+    mut res: i64 = 1;
+    for i in (n - r + 1)..=n {
+        res = res * i;
+    }
+    return res;
+}
+
+pub fn nCr(n: i64, r: i64) -> i64 {
+    if r < 0 || r > n {
+        return 0;
+    }
+    mut k: i64 = r;
+    if k > n - k {
+        k = n - k;
+    }
+    mut res: i64 = 1;
+    for i in 1..=k {
+        res = res * (n - k + i) / i;
+    }
+    return res;
+}
+
+pub fn deg_to_rad(deg: f64) -> f64 {
+    return deg * (3.141592653589793 / 180.0);
+}
+
+pub fn rad_to_deg(rad: f64) -> f64 {
+    return rad * (180.0 / 3.141592653589793);
+}
+
+pub fn gcd(a: i64, b: i64) -> i64 {
+    mut x: i64 = a;
+    mut y: i64 = b;
+    if x < 0 {
+        x = 0 - x;
+    }
+    if y < 0 {
+        y = 0 - y;
+    }
+    while y != 0 {
+        let t: i64 = y;
+        y = x % y;
+        x = t;
+    }
+    return x;
+}
+
+pub fn lcm(a: i64, b: i64) -> i64 {
+    if a == 0 || b == 0 {
+        return 0;
+    }
+    let g: i64 = gcd(a, b);
+    let prod: i64 = a * b;
+    if prod < 0 {
+        return (0 - prod) / g;
+    }
+    return prod / g;
+}
+
+pub fn is_prime(n: i64) -> bool {
+    if n <= 1 {
+        return false;
+    }
+    if n <= 3 {
+        return true;
+    }
+    if n % 2 == 0 || n % 3 == 0 {
+        return false;
+    }
+    mut i: i64 = 5;
+    while i * i <= n {
+        if n % i == 0 || n % (i + 2) == 0 {
+            return false;
+        }
+        i = i + 6;
+    }
+    return true;
+}
+
+pub fn next_prime(n: i64) -> i64 {
+    mut cand: i64 = n + 1;
+    while !is_prime(cand) {
+        cand = cand + 1;
+    }
+    return cand;
+}

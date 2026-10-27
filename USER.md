@@ -792,9 +792,53 @@ arx wasm main.arx --serve
 
 ---
 
-## 15. Production Examples Catalog (27 Programs)
+## 14.5 Multi-File Module System & Package Integration (Phase 25)
 
-The repository provides 27 runnable programs in [`examples/`](file:///z:/VSCode/AerixLang/examples/):
+Aerix provides a structured multi-file architecture with a clear conceptual separation between **Inbuilt Language Modules** and **User-Created Source Files**.
+
+### 1. Inbuilt Language Modules (`import <ModuleName>;`)
+Modules are standard libraries built into the Aerix language (e.g., `import Math;`).
+* **Folder-Level Bundling:** When importing an inbuilt module, the compiler targets the directory `modules/<ModuleName>/` (e.g. `modules/Math/`) and compiles **all `.arx` files** located in that folder.
+* **Strict Case Sensitivity:** Module resolution strictly enforces exact directory casing across all operating systems. On Windows NTFS, `import math` or `import MATH` is rejected at compile time with a `ModuleCaseError`.
+* **Pure Aerix Standard:** All modules in `modules/` are written 100% in pure Aerix (`.arx`) code without external wrapper files.
+* **Qualified & Direct Invocation:** Developers can call imported symbols directly (`abs(-5.0)`) or qualified with the module name (`Math.abs(-5.0)` or `Math.PI`).
+
+```aerix
+import Math;
+
+fn main() {
+    let s: f64 = Math.sqrt(144.0); // Qualified access
+    let a: f64 = abs(-10.0);       // Direct access
+    let p: f64 = Math.PI;          // Module constant access
+    println(s);
+}
+```
+
+### 2. User-Created Source Files (`import "./path/file.arx";`)
+If a developer creates a source file (such as `test.arx` or `helper.arx`), it is a **user source file**, **not** an inbuilt module.
+* **Relative & Absolute Path Resolution:** User files are imported using path string literals:
+  ```aerix
+  import "./test.arx";
+  import "../utils/database.arx";
+  ```
+* **Resolved from Source Location:** Paths are resolved relative to the importing `.arx` file on disk.
+* **Topological Sorting & Cycle Detection:** The compiler builds a Directed Acyclic Graph (DAG) of user files, resolves dependencies in topological order, and detects circular dependency chains (`ModuleCircularError`).
+
+### 3. Selective Symbol Imports (`import { SymbolA, SymbolB } from ...`)
+Both user files and inbuilt modules support selective symbol imports to explicitly control the scope:
+```aerix
+// Selective import from a user source file:
+import { calculate_bonus, Employee } from "./payroll.arx";
+
+// Selective import from an inbuilt module:
+import { abs, sqrt } from Math;
+```
+
+---
+
+## 15. Production Examples Catalog (40 Programs)
+
+The repository provides 40 runnable programs in [`examples/`](file:///z:/VSCode/AerixLang/examples/):
 
 | File | Topic & Concept |
 | :--- | :--- |
@@ -825,6 +869,19 @@ The repository provides 27 runnable programs in [`examples/`](file:///z:/VSCode/
 | `25_GENERICS_AND_MONOMORPHISM.arx` | Zero-overhead static generic monomorphization (`<T>`). |
 | `26_CONCURRENCY_AND_CHANNELS.arx` | Multi-core `spawn`, `Channel<T>`, joins, argpacks. |
 | `27_WASM_BROWSER_RUNTIME.arx` | WebAssembly bytecode emission, canvas rendering, DOM interop. |
+| `28_DYNAMIC_COLLECTIONS_AND_STRINGS.arx` | Heap collections `List<T>`, rich strings, dynamic resizing. |
+| `29_DATA_STRUCTURES_SHOWCASE.arx` | `Map<K, V>`, `Set<T>`, LIFO `Stack<T>`, and `for..in` loops. |
+| `30_FIXED_STACK_ARRAYS.arx` | Fixed-size stack arrays `[T; N]`, repeat syntax, zero allocations. |
+| `31_PACKED_LAYOUT_AND_MMIO.arx` | `#[packed]`, `#[align(N)]`, volatile MMIO registers, and `sizeof`. |
+| `32_SIMD_VECTOR_MATH.arx` | SIMD vector types `f32x4`, `f64x2`, vector arithmetic and geometric math. |
+| `33_FREESTANDING_MICROCONTROLLER_FIRMWARE.arx` | Zero-libc freestanding bare-metal OS firmware compilation. |
+| `34_TRY_CATCH_FINALLY.arx` | Resilient error handling `try { ... } catch (err: str) { ... } finally { ... }`. |
+| `35_LOOP_ERGONOMICS.arx` | Labeled loops (`'outer:`), `loop`, labeled break, and `.enumerate()`. |
+| `36_SLICES_AND_RANGE_VIEWS.arx` | Zero-copy slice views `&[T]`, sub-slicing, and in-place element mutation. |
+| `37_ADVANCED_PATTERN_MATCHING.arx` | `if let`, `guard let`, OR-patterns, and match guards (`if cond`). |
+| `38_CLOSURES_AND_MAP.arx` | Anonymous closures `\|x\| x * 2`, lambda syntax, higher-order functions. |
+| `39_DEFAULT_AND_NAMED_ARGUMENTS.arx` | Default parameter values and caller-side named arguments. |
+| `40_MODULE_SYSTEM.arx` | Multi-file module imports (`import Math`), strict case-sensitivity, folder bundling. |
 
 ---
 
@@ -832,8 +889,9 @@ The repository provides 27 runnable programs in [`examples/`](file:///z:/VSCode/
 
 ```ebnf
 Program         ::= ( TopLevelDecl )* ;
-TopLevelDecl    ::= FunctionDecl | ClassDecl | TraitDecl | EnumDecl | ExtendDecl | ConstDecl | Directive ;
+TopLevelDecl    ::= ImportDecl | FunctionDecl | ClassDecl | TraitDecl | EnumDecl | ExtendDecl | ConstDecl | Directive ;
 
+ImportDecl      ::= "import" Identifier [ ";" ] ;
 Directive       ::= "cinclude" StringLiteral | "cextern" FunctionDecl ;
 FunctionDecl    ::= [ Visibility ] [ "static" | "virtual" | "override" ] "fn" Identifier [ GenericParams ] "(" [ ParamList ] ")" [ "->" Type ] ( Block | "=>" Expression ) ;
 ClassDecl       ::= "class" Identifier [ GenericParams ] [ "extends" Identifier ] [ "implements" IdentifierList ] "{" ( ClassMember )* "}" ;

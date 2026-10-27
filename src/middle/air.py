@@ -15,7 +15,7 @@ from src.frontend.ast_nodes import (
     GuardNode, CascadeNode, ExtendDefNode,
     EnumDefNode, EnumVariantNode, MatchNode, MatchCaseNode, SpawnNode,
     TupleNode, TupleDestructureNode, FixedArrayLiteralNode, SizeofNode,
-    TryCatchNode, ThrowNode, LambdaNode, NamedArgNode
+    TryCatchNode, ThrowNode, LambdaNode, NamedArgNode, ImportNode
 )
 
 
@@ -530,7 +530,9 @@ class AIRLowering:
 
 
         for decl in program.declarations:
-            if isinstance(decl, CIncludeNode):
+            if isinstance(decl, ImportNode):
+                continue
+            elif isinstance(decl, CIncludeNode):
                 module.c_includes.append(decl.header)
             elif isinstance(decl, FunctionDefNode):
                 fn = self.lower_function(decl)

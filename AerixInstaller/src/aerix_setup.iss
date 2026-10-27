@@ -1,11 +1,11 @@
 ; -----------------------------------------------------------------------------
 ; Aerix Language - Official Inno Setup Modern Installer Script
-; Produces: AerixSetup-1.0.90.exe
+; Produces: AerixSetup-1.0.91-pre.exe
 ; Streamlined with Tree Checkboxes, Destination Browse, and Embedded VSIX
 ; -----------------------------------------------------------------------------
 
 #define MyAppName "AerixLang"
-#define MyAppVersion "1.0.90"
+#define MyAppVersion "1.0.91-pre"
 #define MyAppPublisher "HaxOrWot"
 #define MyAppURL "https://github.com/HaxOrWot/AerixLang"
 #define MyAppExeName "arx.bat"

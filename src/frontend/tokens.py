@@ -78,6 +78,7 @@ class TokenType(Enum):
     # --- Keywords: Interop & Modules ---
     USE = auto()               # use (module import)
     IMPORT = auto()            # import
+    FROM = auto()              # from (selective import)
     CINCLUDE = auto()          # cinclude (direct C header)
     CEXTERN = auto()           # cextern (C function binding)
 
@@ -201,6 +202,7 @@ KEYWORDS: dict[str, TokenType] = {
 
     "use": TokenType.USE,
     "import": TokenType.IMPORT,
+    "from": TokenType.FROM,
     "cinclude": TokenType.CINCLUDE,
     "cextern": TokenType.CEXTERN,
 

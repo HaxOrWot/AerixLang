@@ -69,7 +69,9 @@ const AERIX_KEYWORDS = [
     { name: 'try', detail: 'Try Block (Exception Frame)', doc: 'Encloses fallible code inside an exception frame:\n```aerix\ntry {\n    risky_operation();\n} catch err {\n    println("Caught: {err}");\n} finally {\n    cleanup();\n}\n```' },
     { name: 'catch', detail: 'Catch Handler', doc: 'Catches exceptions thrown in the preceding try block:\n```aerix\ncatch err {\n    println("Error: {err}");\n}\n```' },
     { name: 'finally', detail: 'Finally Block (Optional Guarantee)', doc: 'Guaranteed execution block running on normal completion or after exception handling:\n```aerix\nfinally {\n    db.close();\n}\n```' },
-    { name: 'throw', detail: 'Throw Exception', doc: 'Raises an exception and unwinds to the nearest enclosing try-catch block:\n```aerix\nthrow "Invalid parameter value";\n```' }
+    { name: 'throw', detail: 'Throw Exception', doc: 'Raises an exception and unwinds to the nearest enclosing try-catch block:\n```aerix\nthrow "Invalid parameter value";\n```' },
+    { name: 'import', detail: 'Module / Source Import', doc: 'Imports an inbuilt language module or a relative Aerix source file:\n```aerix\nimport Math;\nimport { calculate_percentage, format_stat } from "./helper.arx";\n```' },
+    { name: 'from', detail: 'Import Source Clause', doc: 'Specifies the source file path in selective imports:\n```aerix\nimport { a, b } from "./utils.arx";\n```' }
 ];
 
 /**
@@ -275,6 +277,105 @@ const AERIX_BUILTINS = [
         name: 'f64x2',
         detail: 'f64x2(x: f64, y: f64) -> f64x2',
         doc: 'Constructs a 128-bit 2-lane double precision float SIMD vector. Supports overloaded operators `+`, `-`, `*`, `/` and dot(), length(), normalize(), min(), max().'
+    },
+    // Standard Math Functions (Math module exports)
+    { name: 'abs', detail: 'abs(x: f64) -> f64', doc: 'Returns the absolute value of $x$.' },
+    { name: 'min', detail: 'min(a: f64, b: f64) -> f64', doc: 'Returns the smaller of two floating-point numbers $a$ and $b$.' },
+    { name: 'max', detail: 'max(a: f64, b: f64) -> f64', doc: 'Returns the larger of two floating-point numbers $a$ and $b$.' },
+    { name: 'clamp', detail: 'clamp(val: f64, low: f64, high: f64) -> f64', doc: 'Clamps $val$ within the closed interval $[low, high]$.' },
+    { name: 'sign', detail: 'sign(x: f64) -> f64', doc: 'Returns $1.0$ if $x > 0$, $-1.0$ if $x < 0$, or $0.0$.' },
+    { name: 'is_even', detail: 'is_even(n: i64) -> bool', doc: 'Returns true if integer $n$ is divisible by 2.' },
+    { name: 'is_odd', detail: 'is_odd(n: i64) -> bool', doc: 'Returns true if integer $n$ is not divisible by 2.' },
+    { name: 'floor', detail: 'floor(x: f64) -> f64', doc: 'Returns the largest integer less than or equal to $x$.' },
+    { name: 'ceil', detail: 'ceil(x: f64) -> f64', doc: 'Returns the smallest integer greater than or equal to $x$.' },
+    { name: 'round', detail: 'round(x: f64) -> f64', doc: 'Rounds $x$ to the nearest whole integer.' },
+    { name: 'trunc', detail: 'trunc(x: f64) -> f64', doc: 'Truncates $x$ toward zero.' },
+    { name: 'fract', detail: 'fract(x: f64) -> f64', doc: 'Returns the fractional part of $x$ ($x - \\text{floor}(x)$).' },
+    { name: 'lerp', detail: 'lerp(a: f64, b: f64, t: f64) -> f64', doc: 'Performs linear interpolation between $a$ and $b$ using parameter $t$.' },
+    { name: 'smoothstep', detail: 'smoothstep(edge0: f64, edge1: f64, x: f64) -> f64', doc: 'Performs Hermite smooth interpolation between $edge0$ and $edge1$.' },
+    { name: 'sqrt', detail: 'sqrt(x: f64) -> f64', doc: 'Calculates the square root $\\sqrt{x}$ with high-precision convergence.' },
+    { name: 'cbrt', detail: 'cbrt(x: f64) -> f64', doc: 'Calculates the cube root $\\sqrt[3]{x}$.' },
+    { name: 'hypot', detail: 'hypot(a: f64, b: f64) -> f64', doc: 'Calculates Euclidean distance / hypotenuse $\\sqrt{a^2 + b^2}$.' },
+    { name: 'pow', detail: 'pow(base: f64, exp: i64) -> f64', doc: 'Raises floating-point $base$ to integer exponent $exp$.' },
+    { name: 'factorial', detail: 'factorial(n: i64) -> i64', doc: 'Calculates factorial $n! = n \\times (n-1) \\times \\dots \\times 1$.' },
+    { name: 'nPr', detail: 'nPr(n: i64, r: i64) -> i64', doc: 'Calculates permutations $P(n, r) = \\frac{n!}{(n-r)!}$.' },
+    { name: 'nCr', detail: 'nCr(n: i64, r: i64) -> i64', doc: 'Calculates combinations / binomial coefficient $C(n, r) = \\frac{n!}{r!(n-r)!}$.' },
+    { name: 'gcd', detail: 'gcd(a: i64, b: i64) -> i64', doc: 'Calculates the Greatest Common Divisor of $a$ and $b$ using Euclidean algorithm.' },
+    { name: 'lcm', detail: 'lcm(a: i64, b: i64) -> i64', doc: 'Calculates the Least Common Multiple of $a$ and $b$.' },
+    { name: 'is_prime', detail: 'is_prime(n: i64) -> bool', doc: 'Determines whether $n$ is a prime number.' },
+    { name: 'next_prime', detail: 'next_prime(n: i64) -> i64', doc: 'Finds the smallest prime number strictly greater than $n$.' },
+    { name: 'deg_to_rad', detail: 'deg_to_rad(deg: f64) -> f64', doc: 'Converts angles from degrees to radians ($deg \\times \\frac{\\pi}{180}$).' },
+    { name: 'rad_to_deg', detail: 'rad_to_deg(rad: f64) -> f64', doc: 'Converts angles from radians to degrees ($rad \\times \\frac{180}{\\pi}$).' },
+    { name: 'sin', detail: 'sin(x: f64) -> f64', doc: 'Calculates the trigonometric sine $\\sin(x)$ using Taylor series polynomial reduction.' },
+    { name: 'cos', detail: 'cos(x: f64) -> f64', doc: 'Calculates the trigonometric cosine $\\cos(x)$ using Taylor series polynomial reduction.' },
+    { name: 'tan', detail: 'tan(x: f64) -> f64', doc: 'Calculates trigonometric tangent $\\tan(x) = \\frac{\\sin(x)}{\\cos(x)}$.' },
+    { name: 'cot', detail: 'cot(x: f64) -> f64', doc: 'Calculates trigonometric cotangent $\\cot(x) = \\frac{1}{\\tan(x)}$.' },
+    { name: 'sec', detail: 'sec(x: f64) -> f64', doc: 'Calculates trigonometric secant $\\sec(x) = \\frac{1}{\\cos(x)}$.' },
+    { name: 'csc', detail: 'csc(x: f64) -> f64', doc: 'Calculates trigonometric cosecant $\\csc(x) = \\frac{1}{\\sin(x)}$.' },
+    { name: 'exp', detail: 'exp(x: f64) -> f64', doc: 'Calculates the natural exponential $e^x$.' },
+    { name: 'ln', detail: 'ln(x: f64) -> f64', doc: 'Calculates the natural logarithm $\\ln(x)$ for $x > 0$.' },
+    { name: 'log10', detail: 'log10(x: f64) -> f64', doc: 'Calculates the base-10 common logarithm $\\log_{10}(x)$.' },
+    { name: 'log2', detail: 'log2(x: f64) -> f64', doc: 'Calculates the binary logarithm $\\log_2(x)$.' },
+    { name: 'pow_f64', detail: 'pow_f64(base: f64, exp: f64) -> f64', doc: 'Calculates generalized real power $base^{exp} = \\exp(exp \\times \\ln(base))$.' }
+];
+
+/**
+ * Aerix Inbuilt Modules Catalog
+ */
+const AERIX_MODULES = [
+    {
+        name: 'Math',
+        detail: 'Aerix Standard Math Module',
+        doc: 'Comprehensive pure-Aerix high-performance mathematical functions, constants, trigonometry, exponentials, combinatorics, and algorithms.\n\n```aerix\nimport Math;\nlet val: f64 = Math.PI;\nlet s: f64 = Math.sin(0.0);\n```',
+        constants: [
+            { name: 'PI', type: 'f64', value: '3.141592653589793', doc: 'Archimedes constant $\\pi$ (ratio of circumference to diameter).' },
+            { name: 'E', type: 'f64', value: '2.718281828459045', doc: 'Euler\'s number $e$ (base of natural logarithms).' },
+            { name: 'TAU', type: 'f64', value: '6.283185307179586', doc: 'Circle constant $\\tau = 2\\pi$.' },
+            { name: 'SQRT2', type: 'f64', value: '1.4142135623730951', doc: 'Square root of 2 $\\sqrt{2}$.' },
+            { name: 'LN2', type: 'f64', value: '0.6931471805599453', doc: 'Natural logarithm of 2.' },
+            { name: 'LN10', type: 'f64', value: '2.302585092994046', doc: 'Natural logarithm of 10.' },
+            { name: 'INF', type: 'f64', value: '1.0e308', doc: 'Positive infinity approximation.' }
+        ],
+        functions: [
+            { name: 'abs', sig: 'abs(x: f64) -> f64', doc: 'Returns the absolute value of $x$.' },
+            { name: 'min', sig: 'min(a: f64, b: f64) -> f64', doc: 'Returns the smaller of two numbers.' },
+            { name: 'max', sig: 'max(a: f64, b: f64) -> f64', doc: 'Returns the larger of two numbers.' },
+            { name: 'clamp', sig: 'clamp(val: f64, low: f64, high: f64) -> f64', doc: 'Clamps $val$ between $low$ and $high$.' },
+            { name: 'sign', sig: 'sign(x: f64) -> f64', doc: 'Returns $1.0$ if $x > 0$, $-1.0$ if $x < 0$, or $0.0$.' },
+            { name: 'is_even', sig: 'is_even(n: i64) -> bool', doc: 'Checks if $n$ is even.' },
+            { name: 'is_odd', sig: 'is_odd(n: i64) -> bool', doc: 'Checks if $n$ is odd.' },
+            { name: 'floor', sig: 'floor(x: f64) -> f64', doc: 'Floor rounding.' },
+            { name: 'ceil', sig: 'ceil(x: f64) -> f64', doc: 'Ceil rounding.' },
+            { name: 'round', sig: 'round(x: f64) -> f64', doc: 'Nearest integer rounding.' },
+            { name: 'trunc', sig: 'trunc(x: f64) -> f64', doc: 'Truncation toward zero.' },
+            { name: 'fract', sig: 'fract(x: f64) -> f64', doc: 'Fractional part.' },
+            { name: 'lerp', sig: 'lerp(a: f64, b: f64, t: f64) -> f64', doc: 'Linear interpolation.' },
+            { name: 'smoothstep', sig: 'smoothstep(edge0: f64, edge1: f64, x: f64) -> f64', doc: 'Hermite smoothstep.' },
+            { name: 'sqrt', sig: 'sqrt(x: f64) -> f64', doc: 'High-precision square root.' },
+            { name: 'cbrt', sig: 'cbrt(x: f64) -> f64', doc: 'Cube root.' },
+            { name: 'hypot', sig: 'hypot(a: f64, b: f64) -> f64', doc: 'Hypotenuse $\\sqrt{a^2 + b^2}$.' },
+            { name: 'pow', sig: 'pow(base: f64, exp: i64) -> f64', doc: 'Integer power exponentiation.' },
+            { name: 'factorial', sig: 'factorial(n: i64) -> i64', doc: 'Factorial $n!$.' },
+            { name: 'nPr', sig: 'nPr(n: i64, r: i64) -> i64', doc: 'Permutations $P(n, r)$.' },
+            { name: 'nCr', sig: 'nCr(n: i64, r: i64) -> i64', doc: 'Combinations $C(n, r)$.' },
+            { name: 'gcd', sig: 'gcd(a: i64, b: i64) -> i64', doc: 'Greatest common divisor.' },
+            { name: 'lcm', sig: 'lcm(a: i64, b: i64) -> i64', doc: 'Least common multiple.' },
+            { name: 'is_prime', sig: 'is_prime(n: i64) -> bool', doc: 'Prime check.' },
+            { name: 'next_prime', sig: 'next_prime(n: i64) -> i64', doc: 'Next prime search.' },
+            { name: 'deg_to_rad', sig: 'deg_to_rad(deg: f64) -> f64', doc: 'Degrees to radians.' },
+            { name: 'rad_to_deg', sig: 'rad_to_deg(rad: f64) -> f64', doc: 'Radians to degrees.' },
+            { name: 'sin', sig: 'sin(x: f64) -> f64', doc: 'Trigonometric sine.' },
+            { name: 'cos', sig: 'cos(x: f64) -> f64', doc: 'Trigonometric cosine.' },
+            { name: 'tan', sig: 'tan(x: f64) -> f64', doc: 'Trigonometric tangent.' },
+            { name: 'cot', sig: 'cot(x: f64) -> f64', doc: 'Trigonometric cotangent.' },
+            { name: 'sec', sig: 'sec(x: f64) -> f64', doc: 'Trigonometric secant.' },
+            { name: 'csc', sig: 'csc(x: f64) -> f64', doc: 'Trigonometric cosecant.' },
+            { name: 'exp', sig: 'exp(x: f64) -> f64', doc: 'Natural exponential $e^x$.' },
+            { name: 'ln', sig: 'ln(x: f64) -> f64', doc: 'Natural logarithm $\\ln(x)$.' },
+            { name: 'log10', sig: 'log10(x: f64) -> f64', doc: 'Base-10 logarithm.' },
+            { name: 'log2', sig: 'log2(x: f64) -> f64', doc: 'Base-2 logarithm.' },
+            { name: 'pow_f64', sig: 'pow_f64(base: f64, exp: f64) -> f64', doc: 'Real power $base^{exp}$.' }
+        ]
     }
 ];
 
@@ -297,6 +398,29 @@ function analyzeDocument(document) {
     for (let l = 0; l < lines.length; l++) {
         const line = lines[l];
         const trimmed = line.trim();
+
+        // Match Import: import Math; or import "./path.arx"; or import { a, b } from "...";
+        const importMatch = trimmed.match(/^import\s+(?:\{([^}]+)\}\s+from\s+["']([^"']+)["']|([A-Z][a-zA-Z0-9_]*)|["']([^"']+)["'])\s*;?/);
+        if (importMatch) {
+            if (importMatch[1]) {
+                const importedNames = importMatch[1].split(',').map(s => s.trim()).filter(Boolean);
+                for (const name of importedNames) {
+                    if (!functions.has(name)) {
+                        functions.set(name, []);
+                    }
+                    functions.get(name).push({
+                        name: name,
+                        params: [],
+                        rawParams: '...',
+                        returnType: 'any',
+                        line: l,
+                        isMethod: false,
+                        className: null
+                    });
+                }
+            }
+            continue;
+        }
 
         // Check Enum Declaration: enum <Name> {
         const enumMatch = trimmed.match(/^enum\s+([a-zA-Z_][a-zA-Z0-9_]*)/);
@@ -633,10 +757,41 @@ function activate(context) {
                 return items;
             }
 
-            // E. Dot Access: obj. or self.
+            // E. Import Completion: import <modules>
+            if (/\bimport\s+[a-zA-Z0-9_]*$/.test(linePrefix)) {
+                for (const mod of AERIX_MODULES) {
+                    const item = new vscode.CompletionItem(mod.name, vscode.CompletionItemKind.Module);
+                    item.detail = `Inbuilt Module '${mod.name}'`;
+                    item.documentation = new vscode.MarkdownString(mod.doc);
+                    item.insertText = `${mod.name};`;
+                    items.push(item);
+                }
+                return items;
+            }
+
+            // F. Dot Access: obj., self., or Module. (e.g. Math.)
             const dotMatch = linePrefix.match(/([a-zA-Z_][a-zA-Z0-9_]*)\.$/);
             if (dotMatch) {
                 const targetIdent = dotMatch[1];
+
+                // Inbuilt Module Access: Math.<constant|function>
+                const mod = AERIX_MODULES.find(m => m.name === targetIdent);
+                if (mod) {
+                    for (const c of mod.constants) {
+                        const item = new vscode.CompletionItem(c.name, vscode.CompletionItemKind.Constant);
+                        item.detail = `(constant) ${mod.name}.${c.name}: ${c.type} = ${c.value}`;
+                        item.documentation = new vscode.MarkdownString(c.doc);
+                        items.push(item);
+                    }
+                    for (const f of mod.functions) {
+                        const item = new vscode.CompletionItem(f.name, vscode.CompletionItemKind.Function);
+                        item.detail = `(function) ${mod.name}.${f.sig}`;
+                        item.documentation = new vscode.MarkdownString(f.doc);
+                        item.insertText = new vscode.SnippetString(`${f.name}($0)`);
+                        items.push(item);
+                    }
+                    return items;
+                }
 
                 // self.
                 if (targetIdent === 'self') {
@@ -896,6 +1051,27 @@ function activate(context) {
                 md.appendCodeblock(`trait ${tr.name}`, 'aerix');
                 md.appendMarkdown(`### Abstract Interface Trait Contract\nZero-overhead compile-time behavior specification.`);
                 return new vscode.Hover(md);
+            }
+
+            // Inbuilt Module Hover: Math
+            const mod = AERIX_MODULES.find(m => m.name === word);
+            if (mod) {
+                const md = new vscode.MarkdownString();
+                md.appendMarkdown(`### Inbuilt Module: \`${mod.name}\`\n*${mod.detail}*\n\n${mod.doc}\n\n` +
+                    `**Constants:** ` + mod.constants.map(c => `\`${c.name}\``).join(', ') + `\n\n` +
+                    `**Functions:** ` + mod.functions.map(f => `\`${f.name}()\``).join(', '));
+                return new vscode.Hover(md);
+            }
+
+            // Inbuilt Module Constants Hover (e.g. PI, E, TAU, SQRT2, LN2, LN10, INF)
+            for (const m of AERIX_MODULES) {
+                const c = m.constants.find(con => con.name === word);
+                if (c) {
+                    const md = new vscode.MarkdownString();
+                    md.appendCodeblock(`${m.name}.${c.name}: ${c.type} = ${c.value}`, 'aerix');
+                    md.appendMarkdown(c.doc);
+                    return new vscode.Hover(md);
+                }
             }
 
             // 6. Built-ins

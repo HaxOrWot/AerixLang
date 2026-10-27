@@ -1,0 +1,110 @@
+// ==============================================================================
+// Aerix Standard Modules: Math::Trigonometry
+// Pure Aerix implementations of trigonometric algorithms via polynomial expansions.
+// ==============================================================================
+
+pub fn sin(x: f64) -> f64 {
+    let pi: f64 = 3.141592653589793;
+    let tau: f64 = 6.283185307179586;
+
+    mut rad: f64 = x;
+    while rad > pi {
+        rad = rad - tau;
+    }
+    while rad < 0.0 - pi {
+        rad = rad + tau;
+    }
+
+    let r2: f64 = rad * rad;
+    mut term: f64 = rad;
+    mut sum: f64 = rad;
+
+    term = 0.0 - term * r2 / 6.0;
+    sum = sum + term;
+
+    term = 0.0 - term * r2 / 20.0;
+    sum = sum + term;
+
+    term = 0.0 - term * r2 / 42.0;
+    sum = sum + term;
+
+    term = 0.0 - term * r2 / 72.0;
+    sum = sum + term;
+
+    term = 0.0 - term * r2 / 110.0;
+    sum = sum + term;
+
+    term = 0.0 - term * r2 / 156.0;
+    sum = sum + term;
+
+    return sum;
+}
+
+pub fn cos(x: f64) -> f64 {
+    let pi: f64 = 3.141592653589793;
+    let tau: f64 = 6.283185307179586;
+
+    mut rad: f64 = x;
+    while rad > pi {
+        rad = rad - tau;
+    }
+    while rad < 0.0 - pi {
+        rad = rad + tau;
+    }
+
+    let r2: f64 = rad * rad;
+    mut term: f64 = 1.0;
+    mut sum: f64 = 1.0;
+
+    term = 0.0 - term * r2 / 2.0;
+    sum = sum + term;
+
+    term = 0.0 - term * r2 / 12.0;
+    sum = sum + term;
+
+    term = 0.0 - term * r2 / 30.0;
+    sum = sum + term;
+
+    term = 0.0 - term * r2 / 56.0;
+    sum = sum + term;
+
+    term = 0.0 - term * r2 / 90.0;
+    sum = sum + term;
+
+    term = 0.0 - term * r2 / 132.0;
+    sum = sum + term;
+
+    return sum;
+}
+
+pub fn tan(x: f64) -> f64 {
+    let c: f64 = cos(x);
+    if c == 0.0 {
+        return 1.0 / 0.0;
+    }
+    return sin(x) / c;
+}
+
+pub fn cot(x: f64) -> f64 {
+    let s: f64 = sin(x);
+    if s == 0.0 {
+        return 1.0 / 0.0;
+    }
+    return cos(x) / s;
+}
+
+pub fn sec(x: f64) -> f64 {
+    let c: f64 = cos(x);
+    if c == 0.0 {
+        return 1.0 / 0.0;
+    }
+    return 1.0 / c;
+}
+
+pub fn csc(x: f64) -> f64 {
+    let s: f64 = sin(x);
+    if s == 0.0 {
+        return 1.0 / 0.0;
+    }
+    return 1.0 / s;
+}

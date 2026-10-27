@@ -46,6 +46,12 @@
 - **Zero Runtime Overhead**: Resolve all overloads, named inits, and properties at compile time during semantic analysis. Generated C99 code must contain direct function calls with 0 virtual dispatch when types are statically known.
 - **Cache-Line Alignment**: Optimize struct definitions in descending alignment order ($8 \rightarrow 4 \rightarrow 2 \rightarrow 1$ bytes) to maximize CPU L1 cache utilization.
 
+### 1.8 Strict Artifact Cleanliness: Always Purge Older VSIX and Setup EXE Versions
+- **EVERYTIME YOU COMPILE THE VSIX EXTENSION OR THE SETUP EXE FILE THERE WILL BE AN OLDER VERSION OF EACH AND YOU MUST DELETE THOSE OLDER VERSIONS ALWAYS.**
+- **VSIX Extension Cleanliness**: In `editors/vscode-aerix/`, whenever a new `.vsix` package is compiled, automatically scan and delete all older `.vsix` files. Only the single latest `.vsix` artifact must remain.
+- **Setup EXE Cleanliness**: In `AerixInstaller/dist/`, whenever a new installer executable (`AerixSetup-*.exe`) is compiled, automatically scan and delete all older setup `.exe` files. Only the single latest installer binary must remain.
+- **Zero Stale Binaries Invariant**: Never allow obsolete or superseded release binaries to accumulate in the repository.
+
 ---
 
 ## 2. Aerix Language Core Identity

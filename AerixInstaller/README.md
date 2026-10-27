@@ -25,7 +25,7 @@
 
 ## 🚀 Mission Overview
 
-The **Aerix Setup Installer** delivers an enterprise-grade, modern, and zero-friction installation experience for developers on Microsoft Windows. Instead of wrestling with manual environment variables, ZIP extractions, or blank document icons, developers download and run a single, beautifully branded **`AerixSetup-1.0.90.exe`**.
+The **Aerix Setup Installer** delivers an enterprise-grade, modern, and zero-friction installation experience for developers on Microsoft Windows. Instead of wrestling with manual environment variables, ZIP extractions, or blank document icons, developers download and run a single, beautifully branded **`AerixSetup-1.0.91-pre.exe`**.
 
 ### 🌟 Key Capabilities
 
@@ -82,7 +82,7 @@ AerixInstaller/
 │   ├── installer_manifest.json        # Component payload configuration manifest
 │   └── register_file_assoc.ps1        # Standalone PowerShell shell registration script
 └── dist/                              # Output compilation binaries
-    └── AerixSetup-1.0.90.exe          # Production standalone Windows installer (~2.30 MB)
+    └── AerixSetup-1.0.91-pre.exe          # Production standalone Windows installer (~2.30 MB)
 ```
 
 ---
@@ -99,7 +99,7 @@ python AerixInstaller/build.py
 ### Build Pipeline Execution:
 1. **Asset Synthesis:** Generates high-DPI `.ico` mipmaps and 24-bit `.bmp` wizard artwork via `generate_assets.py`.
 2. **ISCC Resolution:** Automatically locates `iscc.exe` (or auto-installs Inno Setup via `winget` if missing).
-3. **Payload Compression:** Compresses all components with LZMA2 ultra64 solid compression into `dist\AerixSetup-1.0.90.exe`.
+3. **Payload Compression:** Compresses all components with LZMA2 ultra64 solid compression into `dist\AerixSetup-1.0.91-pre.exe`.
 4. **Integrity Digest:** Verifies output binary and outputs cryptographic SHA-256 hash.
 
 ---
@@ -110,5 +110,5 @@ For automated CI/CD runners, Docker containers, or provisioning scripts:
 
 ```powershell
 # Completely silent installation with all features enabled:
-.\AerixSetup-1.0.90.exe /VERYSILENT /SUPPRESSMSGBOXES /TASKS="envPath,fileAssoc,contextMenu,vscodeExt,antigravityExt" /LOG="install.log"
+.\AerixSetup-1.0.91-pre.exe /VERYSILENT /SUPPRESSMSGBOXES /TASKS="envPath,fileAssoc,contextMenu,vscodeExt,antigravityExt" /LOG="install.log"
 ```
