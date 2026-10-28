@@ -824,15 +824,30 @@ If a developer creates a source file (such as `test.arx` or `helper.arx`), it is
 * **Resolved from Source Location:** Paths are resolved relative to the importing `.arx` file on disk.
 * **Topological Sorting & Cycle Detection:** The compiler builds a Directed Acyclic Graph (DAG) of user files, resolves dependencies in topological order, and detects circular dependency chains (`ModuleCircularError`).
 
-### 3. Selective Symbol Imports (`import { SymbolA, SymbolB } from ...`)
-Both user files and inbuilt modules support selective symbol imports to explicitly control the scope:
-```aerix
-// Selective import from a user source file:
-import { calculate_bonus, Employee } from "./payroll.arx";
+### 3. Selective Symbol Imports & `from ... import ...` Syntax
+Both user files and inbuilt modules support selective symbol imports using either `import { ... } from ...` or `from ... import { ... }`:
 
-// Selective import from an inbuilt module:
+```aerix
+// Style 1: From-style import (User files)
+from "./payroll.arx" import { calculate_bonus, Employee };
+
+// Style 1: From-style import (Inbuilt modules)
+from Random import { seed, randint, uniform, choice };
+from Math import { abs, sqrt, PI };
+
+// Style 2: Import-first syntax
+import { calculate_bonus, Employee } from "./payroll.arx";
 import { abs, sqrt } from Math;
 ```
+
+### 4. Inbuilt Standard Modules Catalog
+Aerix provides high-performance standard library modules written 100% in pure `.arx`:
+* **`Math` (`modules/Math`)**: Constants (`PI`, `E`, `TAU`), basic arithmetic (`abs`, `min`, `max`), trigonometry (`sin`, `cos`, `tan`), exponentials (`exp`, `ln`, `pow`), and number theory (`gcd`, `lcm`, `factorial`, `is_prime`).
+* **`Random` (`modules/Random`)**: Full Python-grade PRNG module powered by bare-metal SplitMix64:
+  - **Core & State**: `seed(s)`, `getstate()`, `setstate(s)`, `random()`, `getrandbits(k)`, `uniform(a, b)`.
+  - **Integers**: `randint(a, b)`, `randrange(start, stop)`, `randrange_step(start, stop, step)`.
+  - **Distributions**: `triangular(low, high, mode)`, `normalvariate(mu, sigma)`, `gauss(mu, sigma)`, `lognormvariate(mu, sigma)`, `expovariate(lambd)`, `paretovariate(alpha)`, `weibullvariate(alpha, beta)`, `betavariate(alpha, beta)`, `gammavariate(alpha, beta)`, `vonmisesvariate(mu, kappa)`.
+  - **Sequences & Slices**: `choice(&[T])`, `shuffle(&mut [T])`, `sample(src, dest)`.
 
 ---
 

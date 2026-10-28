@@ -574,6 +574,10 @@ class C99CodeGenerator:
                             temps[insn.dest] = "const char*"
                         elif insn.fn_name == "arx_time_now":
                             temps[insn.dest] = "double"
+                        elif insn.fn_name in ("arx_prng_next_i64", "arx_prng_get_state"):
+                            temps[insn.dest] = "int64_t"
+                        elif insn.fn_name == "arx_prng_next_f64":
+                            temps[insn.dest] = "double"
                         elif insn.fn_name.startswith("arx_make_Tuple_"):
                             temps[insn.dest] = f"Arx_{insn.fn_name[9:]}"
                         elif insn.fn_name in (

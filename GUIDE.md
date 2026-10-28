@@ -3436,6 +3436,12 @@ import Math;
 let a = Math.abs(-15.5);       // Qualified module access
 let s = sqrt(144.0);           // Direct access to bundled module symbols
 let p = Math.PI;               // Module constant access
+
+// Python-grade Random module & from-import syntax
+from Random import { seed, randint, uniform, choice };
+seed(42);
+let roll = randint(1, 6);
+let rate = uniform(0.0, 1.0);
 ```
 
 ---

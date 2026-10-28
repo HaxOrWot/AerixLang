@@ -1040,7 +1040,7 @@ class SemanticAnalyzer:
         sym = self.current_scope.lookup(node.name)
         if not sym:
             # Check built-in global functions (print, println, input, readln, typeof)
-            if node.name in ("print", "println", "eprintln", "assert", "panic", "arx_time_now", "input", "readln", "typeof"):
+            if node.name in ("print", "println", "eprintln", "assert", "panic", "arx_time_now", "arx_prng_seed", "arx_prng_next_i64", "arx_prng_next_f64", "arx_prng_get_state", "arx_prng_set_state", "input", "readln", "typeof"):
                 return TYPE_STR if node.name in ("input", "readln", "typeof") else TYPE_VOID
             # Check parameterless enum variant
             for e_name, e_type in self.enums.items():
@@ -1193,6 +1193,14 @@ class SemanticAnalyzer:
                 return TYPE_STR
             if name == "arx_time_now":
                 return TYPE_F64
+            if name in ("arx_prng_next_i64", "arx_prng_get_state"):
+                return TYPE_I64
+            if name == "arx_prng_next_f64":
+                return TYPE_F64
+            if name in ("arx_prng_seed", "arx_prng_set_state"):
+                for arg in node.args:
+                    self.analyze_node(arg)
+                return TYPE_VOID
             if name in ("sleep_ms", "arx_sleep_ms"):
                 for arg in node.args:
                     self.analyze_node(arg)

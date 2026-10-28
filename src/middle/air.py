@@ -1582,6 +1582,10 @@ class AIRLowering:
                             self.temp_types[dest] = self.function_return_types[fn_name]
                         elif fn_name == "arx_time_now":
                             self.temp_types[dest] = "f64"
+                        elif fn_name in ("arx_prng_next_i64", "arx_prng_get_state"):
+                            self.temp_types[dest] = "i64"
+                        elif fn_name == "arx_prng_next_f64":
+                            self.temp_types[dest] = "f64"
                         elif fn_name.startswith("volatile_read_") or fn_name.startswith("arx_volatile_read_"):
                             suffix = fn_name.split("read_")[-1]
                             self.temp_types[dest] = suffix

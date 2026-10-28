@@ -77,6 +77,7 @@ def publish(tag=None):
 
         print(f"[*] Uploading/updating allowed assets into {tag_name}...")
         subprocess.run(["gh", "release", "upload", tag_name, setup_exe, vsix_file, "--clobber"], check=True)
+        subprocess.run(["gh", "release", "edit", tag_name, "--latest"], check=False)
     else:
         print(f"\n[*] Creating new release {tag_name}...")
         title = f"Aerix v{version}: Windows Installer & VS Code Extension"

@@ -1,0 +1,52 @@
+// ==============================================================================
+// Aerix Standard Modules: Random::Integers
+// Discrete integer random variates: randint, randrange, and stepped ranges.
+// ==============================================================================
+
+pub fn randint(a: i64, b: i64) -> i64 {
+    if a == b {
+        return a;
+    }
+    mut low: i64 = a;
+    mut high: i64 = b;
+    if low > high {
+        low = b;
+        high = a;
+    }
+    let span: i64 = high - low + 1;
+    mut r: i64 = arx_prng_next_i64();
+    if r < 0 {
+        r = 0 - r;
+    }
+    return low + (r % span);
+}
+
+pub fn randrange(start: i64, stop: i64) -> i64 {
+    if start >= stop {
+        return start;
+    }
+    let span: i64 = stop - start;
+    mut r: i64 = arx_prng_next_i64();
+    if r < 0 {
+        r = 0 - r;
+    }
+    return start + (r % span);
+}
+
+pub fn randrange_step(start: i64, stop: i64, step: i64) -> i64 {
+    if step <= 0 {
+        return start;
+    }
+    if start >= stop {
+        return start;
+    }
+    let n: i64 = (stop - start + step - 1) / step;
+    if n <= 0 {
+        return start;
+    }
+    mut r: i64 = arx_prng_next_i64();
+    if r < 0 {
+        r = 0 - r;
+    }
+    return start + (r % n) * step;
+}

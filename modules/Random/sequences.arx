@@ -1,0 +1,92 @@
+// ==============================================================================
+// Aerix Standard Modules: Random::Sequences
+// Sequence operations on slices: choice, shuffle, and sample.
+// ==============================================================================
+
+pub fn choice(s: &[i64]) -> i64 {
+    if s.len == 0 {
+        return 0;
+    }
+    let idx: i64 = randint(0, s.len - 1);
+    return s[idx];
+}
+
+pub fn choice_f64(s: &[f64]) -> f64 {
+    if s.len == 0 {
+        return 0.0;
+    }
+    let idx: i64 = randint(0, s.len - 1);
+    return s[idx];
+}
+
+pub fn choice_str(s: &[str]) -> str {
+    if s.len == 0 {
+        return "";
+    }
+    let idx: i64 = randint(0, s.len - 1);
+    return s[idx];
+}
+
+pub fn shuffle(s: &mut [i64]) {
+    let n: i64 = s.len;
+    if n <= 1 {
+        return;
+    }
+    for i in 0..(n - 1) {
+        let j: i64 = randint(i, n - 1);
+        let tmp: i64 = s[i];
+        s[i] = s[j];
+        s[j] = tmp;
+    }
+}
+
+pub fn shuffle_f64(s: &mut [f64]) {
+    let n: i64 = s.len;
+    if n <= 1 {
+        return;
+    }
+    for i in 0..(n - 1) {
+        let j: i64 = randint(i, n - 1);
+        let tmp: f64 = s[i];
+        s[i] = s[j];
+        s[j] = tmp;
+    }
+}
+
+pub fn shuffle_str(s: &mut [str]) {
+    let n: i64 = s.len;
+    if n <= 1 {
+        return;
+    }
+    for i in 0..(n - 1) {
+        let j: i64 = randint(i, n - 1);
+        let tmp: str = s[i];
+        s[i] = s[j];
+        s[j] = tmp;
+    }
+}
+
+pub fn sample(src: &[i64], dest: &mut [i64]) {
+    let k: i64 = dest.len;
+    let n: i64 = src.len;
+    if k <= 0 || n <= 0 {
+        return;
+    }
+    mut count: i64 = k;
+    if count > n {
+        count = n;
+    }
+    for i in 0..count {
+        dest[i] = src[i];
+    }
+    for i in 0..count {
+        let j: i64 = randint(i, n - 1);
+        let tmp: i64 = dest[i];
+        if j < count {
+            dest[i] = dest[j];
+            dest[j] = tmp;
+        } else {
+            dest[i] = src[j];
+        }
+    }
+}

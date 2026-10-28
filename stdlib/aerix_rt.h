@@ -164,6 +164,50 @@ static inline f64 arx_time_now(void) {
 #endif
 }
 
+// --- High-Performance PRNG (SplitMix64) ---
+static u64 _arx_prng_state = 0;
+
+static inline void arx_prng_seed(i64 seed) {
+    if (seed == 0) {
+#if defined(_WIN32) || defined(_WIN64)
+        LARGE_INTEGER counter;
+        QueryPerformanceCounter(&counter);
+        _arx_prng_state = (u64)counter.QuadPart;
+#else
+        struct timespec ts;
+        clock_gettime(CLOCK_MONOTONIC, &ts);
+        _arx_prng_state = ((u64)ts.tv_sec << 32) ^ (u64)ts.tv_nsec;
+#endif
+        if (_arx_prng_state == 0) _arx_prng_state = 0x853c49e6748fea9bULL;
+    } else {
+        _arx_prng_state = (u64)seed;
+    }
+}
+
+static inline i64 arx_prng_next_i64(void) {
+    if (_arx_prng_state == 0) {
+        arx_prng_seed(0);
+    }
+    u64 z = (_arx_prng_state += 0x9e3779b97f4a7c15ULL);
+    z = (z ^ (z >> 30)) * 0xbf58476d1ce4e5b9ULL;
+    z = (z ^ (z >> 27)) * 0x94d049bb133111ebULL;
+    return (i64)(z ^ (z >> 31));
+}
+
+static inline f64 arx_prng_next_f64(void) {
+    u64 raw = (u64)arx_prng_next_i64();
+    return (f64)(raw >> 11) * (1.0 / 9007199254740992.0);
+}
+
+static inline i64 arx_prng_get_state(void) {
+    if (_arx_prng_state == 0) arx_prng_seed(0);
+    return (i64)_arx_prng_state;
+}
+
+static inline void arx_prng_set_state(i64 s) {
+    _arx_prng_state = (u64)s;
+}
+
 // --- Formatted String Utility ---
 static inline char* arx_format_str(const char* fmt, ...) {
     va_list args;

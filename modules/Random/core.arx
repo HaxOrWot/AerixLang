@@ -1,0 +1,47 @@
+// ==============================================================================
+// Aerix Standard Modules: Random::Core
+// Core pseudo-random number generator, seeding, state, and uniform float generation.
+// Standard ANSI C99 runtime PRNG integration.
+// ==============================================================================
+
+pub fn seed(s: i64) {
+    arx_prng_seed(s);
+}
+
+pub fn getstate() -> i64 {
+    return arx_prng_get_state();
+}
+
+pub fn setstate(state: i64) {
+    arx_prng_set_state(state);
+}
+
+pub fn random() -> f64 {
+    return arx_prng_next_f64();
+}
+
+pub fn getrandbits(k: i64) -> i64 {
+    if k <= 0 {
+        return 0;
+    }
+    if k >= 63 {
+        mut raw: i64 = arx_prng_next_i64();
+        if raw < 0 {
+            raw = 0 - raw;
+        }
+        return raw;
+    }
+    mut mask: i64 = 1;
+    for i in 1..k {
+        mask = (mask * 2) + 1;
+    }
+    mut r: i64 = arx_prng_next_i64();
+    if r < 0 {
+        r = 0 - r;
+    }
+    return r % (mask + 1);
+}
+
+pub fn uniform(a: f64, b: f64) -> f64 {
+    return a + (b - a) * random();
+}

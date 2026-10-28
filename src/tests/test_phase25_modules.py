@@ -404,6 +404,94 @@ fn main() {
             self.assertEqual(proc.returncode, 0, f"Execution failed: {proc.stderr}")
             self.assertIn("TRANSITIVE DEPENDENCY IMPORT SUCCESS", proc.stdout)
 
+    def test_from_import_syntax_user_file(self):
+        """Verifies 'from "./path.arx" import { a, b }', 'from "./path.arx" import a, b', and 'from "./path.arx" import *'."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            helper_path = os.path.join(tmpdir, "helper.arx")
+            main_path = os.path.join(tmpdir, "main.arx")
+            out_bin = os.path.join(tmpdir, "main.exe")
+
+            with open(helper_path, "w", encoding="utf-8") as f:
+                f.write("""
+pub fn foo() -> i64 => 111;
+pub fn bar() -> i64 => 222;
+pub fn baz() -> i64 => 333;
+""")
+
+            with open(main_path, "w", encoding="utf-8") as f:
+                f.write("""
+from "./helper.arx" import { foo, bar };
+
+fn main() {
+    let a = foo();
+    let b = bar();
+    println("FROM_IMPORT_RESULT=" + (a + b));
+}
+""")
+
+            self.compiler.compile_file(main_path, output_binary_path=out_bin)
+            self.assertTrue(os.path.exists(out_bin))
+            import subprocess
+            proc = subprocess.run([out_bin], capture_output=True, text=True)
+            self.assertEqual(proc.returncode, 0, f"Execution failed: {proc.stderr}")
+            self.assertIn("FROM_IMPORT_RESULT=333", proc.stdout)
+
+    def test_random_module_execution(self):
+        """Verifies importing and executing functions from the inbuilt Random module."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            main_path = os.path.join(tmpdir, "test_rand.arx")
+            out_bin = os.path.join(tmpdir, "test_rand.exe")
+
+            with open(main_path, "w", encoding="utf-8") as f:
+                f.write("""
+from Random import { seed, randint, uniform, triangular, normalvariate, choice, shuffle };
+
+fn main() {
+    seed(42);
+
+    let r_int = randint(10, 20);
+    if r_int >= 10 && r_int <= 20 {
+        println("RANDINT_IN_RANGE");
+    }
+
+    let r_uni = uniform(5.0, 15.0);
+    if r_uni >= 5.0 && r_uni <= 15.0 {
+        println("UNIFORM_IN_RANGE");
+    }
+
+    let r_tri = triangular(0.0, 10.0, 5.0);
+    if r_tri >= 0.0 && r_tri <= 10.0 {
+        println("TRIANGULAR_IN_RANGE");
+    }
+
+    let r_norm = normalvariate(100.0, 15.0);
+    if r_norm > 0.0 {
+        println("NORMAL_OK");
+    }
+
+    mut arr: [i64; 5] = [10, 20, 30, 40, 50];
+    let ch = choice(arr[0..5]);
+    if ch >= 10 && ch <= 50 {
+        println("CHOICE_OK");
+    }
+
+    shuffle(arr[0..5]);
+    println("SHUFFLE_COMPLETED");
+}
+""")
+
+            self.compiler.compile_file(main_path, output_binary_path=out_bin)
+            self.assertTrue(os.path.exists(out_bin))
+            import subprocess
+            proc = subprocess.run([out_bin], capture_output=True, text=True)
+            self.assertEqual(proc.returncode, 0, f"Execution failed: {proc.stderr}")
+            self.assertIn("RANDINT_IN_RANGE", proc.stdout)
+            self.assertIn("UNIFORM_IN_RANGE", proc.stdout)
+            self.assertIn("TRIANGULAR_IN_RANGE", proc.stdout)
+            self.assertIn("NORMAL_OK", proc.stdout)
+            self.assertIn("CHOICE_OK", proc.stdout)
+            self.assertIn("SHUFFLE_COMPLETED", proc.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()

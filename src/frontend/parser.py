@@ -272,7 +272,7 @@ class Parser:
             if name == "align":
                 alignment = int(arg) if arg is not None else 64
 
-        if tok.type == TokenType.IMPORT:
+        if tok.type in (TokenType.IMPORT, TokenType.FROM):
             return self.parse_import()
         elif tok.type == TokenType.CINCLUDE:
             return self.parse_cinclude()
@@ -306,8 +306,60 @@ class Parser:
         return CExternNode(line=tok.line, col=tok.col, func_def=func_def)
 
     def parse_import(self) -> ImportNode:
-        tok = self.advance()  # consume 'import'
+        tok = self.current()
         symbols: List[str] = []
+
+        # Form 1: from <target> import { a, b } OR from <target> import a, b OR from <target> import *
+        if self.match(TokenType.FROM):
+            cur = self.current()
+            is_user_file = False
+            file_path = None
+            module_name = None
+
+            if cur.type == TokenType.STRING_LITERAL:
+                is_user_file = True
+                file_path = self.advance().value
+            elif cur.type == TokenType.IDENTIFIER:
+                is_user_file = False
+                module_name = self.advance().value
+            else:
+                self.error("Expected module name or file path string after 'from'")
+
+            self.consume(TokenType.IMPORT, "Expected 'import' after 'from <target>'")
+
+            # Check symbol list format
+            if self.match(TokenType.LBRACE):
+                while True:
+                    sym_tok = self.consume(TokenType.IDENTIFIER, "Expected symbol name inside import list '{ ... }'")
+                    symbols.append(sym_tok.value)
+                    if not self.match(TokenType.COMMA):
+                        break
+                self.consume(TokenType.RBRACE, "Expected '}' after import symbol list")
+            elif self.match(TokenType.STAR):
+                symbols = []
+            elif self.current().type == TokenType.IDENTIFIER:
+                while True:
+                    sym_tok = self.consume(TokenType.IDENTIFIER, "Expected symbol name in import list")
+                    symbols.append(sym_tok.value)
+                    if not self.match(TokenType.COMMA):
+                        break
+            else:
+                self.error("Expected import symbol list '{ ... }', identifier list, or '*' after 'import'")
+
+            while self.match(TokenType.SEMICOLON):
+                pass
+
+            return ImportNode(
+                line=tok.line,
+                col=tok.col,
+                module_name=module_name,
+                file_path=file_path,
+                symbols=symbols,
+                is_user_file=is_user_file
+            )
+
+        # Form 2: import { a, b } from <target> OR import <target>
+        self.consume(TokenType.IMPORT, "Expected 'import'")
 
         # 1. Selective import: import { a, b, c } from ...
         if self.match(TokenType.LBRACE):
@@ -789,7 +841,7 @@ class Parser:
             self.skip_newlines()
         tok = self.current()
 
-        if tok.type == TokenType.IMPORT:
+        if tok.type in (TokenType.IMPORT, TokenType.FROM):
             return self.parse_import()
         elif tok.type in (TokenType.LET, TokenType.MUT, TokenType.CONST):
             return self.parse_var_decl()

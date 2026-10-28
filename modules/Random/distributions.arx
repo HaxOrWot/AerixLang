@@ -1,0 +1,233 @@
+// ==============================================================================
+// Aerix Standard Modules: Random::Distributions
+// Continuous and statistical probability distributions:
+// uniform, triangular, normal/gauss, lognormal, expovariate, paretovariate,
+// weibullvariate, betavariate, gammavariate, and vonmisesvariate.
+// ==============================================================================
+
+fn _rnd_sqrt(x: f64) -> f64 {
+    if x <= 0.0 {
+        return 0.0;
+    }
+    mut guess: f64 = x / 2.0;
+    if guess == 0.0 {
+        guess = 1.0;
+    }
+    for i in 0..25 {
+        guess = (guess + x / guess) / 2.0;
+    }
+    return guess;
+}
+
+fn _rnd_ln(x: f64) -> f64 {
+    if x <= 0.0 {
+        return 0.0 - 1000000.0;
+    }
+    if x == 1.0 {
+        return 0.0;
+    }
+    mut m: f64 = x;
+    mut k: i64 = 0;
+    while m > 1.5 {
+        m = m / 2.0;
+        k = k + 1;
+    }
+    while m < 0.75 {
+        m = m * 2.0;
+        k = k - 1;
+    }
+    let y: f64 = (m - 1.0) / (m + 1.0);
+    let y2: f64 = y * y;
+    mut term: f64 = y;
+    mut sum: f64 = 0.0;
+    mut denom: f64 = 1.0;
+    for i in 0..16 {
+        sum = sum + term / denom;
+        term = term * y2;
+        denom = denom + 2.0;
+    }
+    return 2.0 * sum + (k as f64) * 0.6931471805599453;
+}
+
+fn _rnd_exp(x: f64) -> f64 {
+    if x == 0.0 {
+        return 1.0;
+    }
+    mut neg: bool = false;
+    mut val: f64 = x;
+    if val < 0.0 {
+        neg = true;
+        val = 0.0 - val;
+    }
+    mut term: f64 = 1.0;
+    mut sum: f64 = 1.0;
+    for i in 1..25 {
+        term = term * val / (i as f64);
+        sum = sum + term;
+    }
+    if neg {
+        return 1.0 / sum;
+    }
+    return sum;
+}
+
+fn _rnd_cos(x: f64) -> f64 {
+    let pi2: f64 = 6.283185307179586;
+    mut norm: f64 = x;
+    while norm < 0.0 {
+        norm = norm + pi2;
+    }
+    while norm >= pi2 {
+        norm = norm - pi2;
+    }
+    let x2: f64 = norm * norm;
+    mut term: f64 = 1.0;
+    mut sum: f64 = 1.0;
+    mut sign: f64 = 0.0 - 1.0;
+    for i in 1..12 {
+        let n: f64 = (2 * i) as f64;
+        term = term * x2 / (n * (n - 1.0));
+        sum = sum + sign * term;
+        sign = 0.0 - sign;
+    }
+    return sum;
+}
+
+pub fn triangular(low: f64, high: f64, mode: f64) -> f64 {
+    let u: f64 = random();
+    let span: f64 = high - low;
+    if span == 0.0 {
+        return low;
+    }
+    let c: f64 = (mode - low) / span;
+    if u > c {
+        return high - span * _rnd_sqrt((1.0 - u) * (1.0 - c));
+    }
+    return low + span * _rnd_sqrt(u * c);
+}
+
+pub fn expovariate(lambd: f64) -> f64 {
+    mut u: f64 = random();
+    if u <= 0.0000000000000001 {
+        u = 0.0000000000000001;
+    }
+    return (0.0 - _rnd_ln(1.0 - u)) / lambd;
+}
+
+pub fn normalvariate(mu: f64, sigma: f64) -> f64 {
+    mut u1: f64 = random();
+    if u1 <= 0.0000000000000001 {
+        u1 = 0.0000000000000001;
+    }
+    let u2: f64 = random();
+    let z0: f64 = _rnd_sqrt(0.0 - 2.0 * _rnd_ln(u1)) * _rnd_cos(6.283185307179586 * u2);
+    return mu + z0 * sigma;
+}
+
+pub fn gauss(mu: f64, sigma: f64) -> f64 {
+    return normalvariate(mu, sigma);
+}
+
+pub fn lognormvariate(mu: f64, sigma: f64) -> f64 {
+    return _rnd_exp(normalvariate(mu, sigma));
+}
+
+pub fn paretovariate(alpha: f64) -> f64 {
+    mut u: f64 = 1.0 - random();
+    if u <= 0.0000000000000001 {
+        u = 0.0000000000000001;
+    }
+    return _rnd_exp((0.0 - (1.0 / alpha)) * _rnd_ln(u));
+}
+
+pub fn weibullvariate(alpha: f64, beta: f64) -> f64 {
+    mut u: f64 = 1.0 - random();
+    if u <= 0.0000000000000001 {
+        u = 0.0000000000000001;
+    }
+    let val: f64 = 0.0 - _rnd_ln(u);
+    return alpha * _rnd_exp((1.0 / beta) * _rnd_ln(val));
+}
+
+pub fn betavariate(alpha: f64, beta: f64) -> f64 {
+    mut y1: f64 = 0.0;
+    mut y2: f64 = 0.0;
+    while true {
+        mut u1: f64 = random();
+        if u1 <= 0.0000000000000001 {
+            u1 = 0.0000000000000001;
+        }
+        mut u2: f64 = random();
+        if u2 <= 0.0000000000000001 {
+            u2 = 0.0000000000000001;
+        }
+        y1 = _rnd_exp((1.0 / alpha) * _rnd_ln(u1));
+        y2 = _rnd_exp((1.0 / beta) * _rnd_ln(u2));
+        if y1 + y2 <= 1.0 {
+            if y1 + y2 > 0.0 {
+                return y1 / (y1 + y2);
+            }
+        }
+    }
+    return 0.5;
+}
+
+pub fn gammavariate(alpha: f64, beta: f64) -> f64 {
+    if alpha <= 0.0 || beta <= 0.0 {
+        return 0.0;
+    }
+    if alpha < 1.0 {
+        mut u: f64 = random();
+        if u <= 0.0000000000000001 {
+            u = 0.0000000000000001;
+        }
+        return gammavariate(alpha + 1.0, beta) * _rnd_exp((1.0 / alpha) * _rnd_ln(u));
+    }
+    let d: f64 = alpha - (1.0 / 3.0);
+    let c: f64 = 1.0 / (3.0 * _rnd_sqrt(d));
+    while true {
+        let z: f64 = normalvariate(0.0, 1.0);
+        let v: f64 = 1.0 + c * z;
+        if v > 0.0 {
+            let v3: f64 = v * v * v;
+            mut u: f64 = random();
+            if u <= 0.0000000000000001 {
+                u = 0.0000000000000001;
+            }
+            if u < 1.0 - 0.0331 * z * z * z * z {
+                return d * v3 * beta;
+            }
+            if _rnd_ln(u) < 0.5 * z * z + d * (1.0 - v3 + _rnd_ln(v3)) {
+                return d * v3 * beta;
+            }
+        }
+    }
+    return d * beta;
+}
+
+pub fn vonmisesvariate(mu: f64, kappa: f64) -> f64 {
+    if kappa <= 0.000001 {
+        return 6.283185307179586 * random();
+    }
+    let a: f64 = 1.0 + _rnd_sqrt(1.0 + 4.0 * kappa * kappa);
+    let b: f64 = (a - _rnd_sqrt(2.0 * a)) / (2.0 * kappa);
+    let r: f64 = (1.0 + b * b) / (2.0 * b);
+    while true {
+        let u1: f64 = random();
+        let z: f64 = _rnd_cos(3.14159265358979323846 * u1);
+        let f: f64 = (1.0 + r * z) / (r + z);
+        let c: f64 = kappa * (r - f);
+        let u2: f64 = random();
+        if u2 < c * (2.0 - c) || u2 <= c * _rnd_exp(1.0 - c) {
+            let u3: f64 = random();
+            mut theta: f64 = 0.0;
+            if u3 > 0.5 {
+                theta = mu + 3.14159265358979323846 * (1.0 - f);
+            } else {
+                theta = mu - 3.14159265358979323846 * (1.0 - f);
+            }
+            return theta;
+        }
+    }
+    return mu;
+}

@@ -313,6 +313,8 @@
 ---
 
 ### Phase 25: Multi-File Module System & Package Integration (STATUS: ✅ COMPLETED)
+- [x] rom ... import ... syntax support alongside import ... from ...
+- [x] Inbuilt Random standard module in modules/Random/ with SplitMix64 PRNG and continuous distributions
 * **Goal:** Native multi-file compilation, modular namespaces, case-sensitive folder bundling, and seamless module resolution via `modules/`.
 * **Deliverables:**
   - [x] Syntax & AST: `import <ModuleName>` statement parser in `src/frontend/parser.py` producing `ImportNode`.

@@ -56,6 +56,50 @@
     "imports": {
       "patterns": [
         {
+          "match": "\\b(from)\\s+(\"[^\"]+\")\\s+(import)\\s*(\\{)([^}]+)(\\})\\s*(;)?",
+          "captures": {
+            "1": { "name": "keyword.control.import.from.aerix" },
+            "2": { "name": "string.quoted.double.aerix" },
+            "3": { "name": "keyword.control.import.aerix" },
+            "4": { "name": "punctuation.brackets.curly.aerix" },
+            "5": { "name": "variable.other.readwrite.import.aerix" },
+            "6": { "name": "punctuation.brackets.curly.aerix" },
+            "7": { "name": "punctuation.terminator.aerix" }
+          }
+        },
+        {
+          "match": "\\b(from)\\s+(\"[^\"]+\")\\s+(import)\\s+([^;\\n]+)\\s*(;)?",
+          "captures": {
+            "1": { "name": "keyword.control.import.from.aerix" },
+            "2": { "name": "string.quoted.double.aerix" },
+            "3": { "name": "keyword.control.import.aerix" },
+            "4": { "name": "variable.other.readwrite.import.aerix" },
+            "5": { "name": "punctuation.terminator.aerix" }
+          }
+        },
+        {
+          "match": "\\b(from)\\s+([A-Z][a-zA-Z0-9_]*)\\s+(import)\\s*(\\{)([^}]+)(\\})\\s*(;)?",
+          "captures": {
+            "1": { "name": "keyword.control.import.from.aerix" },
+            "2": { "name": "entity.name.namespace.aerix" },
+            "3": { "name": "keyword.control.import.aerix" },
+            "4": { "name": "punctuation.brackets.curly.aerix" },
+            "5": { "name": "variable.other.readwrite.import.aerix" },
+            "6": { "name": "punctuation.brackets.curly.aerix" },
+            "7": { "name": "punctuation.terminator.aerix" }
+          }
+        },
+        {
+          "match": "\\b(from)\\s+([A-Z][a-zA-Z0-9_]*)\\s+(import)\\s+([^;\\n]+)\\s*(;)?",
+          "captures": {
+            "1": { "name": "keyword.control.import.from.aerix" },
+            "2": { "name": "entity.name.namespace.aerix" },
+            "3": { "name": "keyword.control.import.aerix" },
+            "4": { "name": "variable.other.readwrite.import.aerix" },
+            "5": { "name": "punctuation.terminator.aerix" }
+          }
+        },
+        {
           "match": "\\b(import)\\s+([A-Z][a-zA-Z0-9_]*)\\s*(;)?",
           "captures": {
             "1": { "name": "keyword.control.import.aerix" },
