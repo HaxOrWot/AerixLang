@@ -504,7 +504,7 @@
           "match": "\\b(import|from)\\b"
         },
         {
-          "name": "keyword.control.trycatch.aerix",
+          "name": "keyword.control.aerix",
           "match": "\\b(try|catch|finally|throw)\\b"
         },
         {
@@ -545,7 +545,7 @@
         },
         {
           "name": "keyword.control.aerix",
-          "match": "\\b(if|else|elif|while|for|in|loop|return|break|continue)\\b"
+          "match": "\\b(if|else|elif|while|for|in|loop|return|break|continue|try|catch|finally|throw)\\b"
         }
       ]
     },
