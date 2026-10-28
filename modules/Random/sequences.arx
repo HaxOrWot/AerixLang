@@ -3,11 +3,23 @@
 // Sequence operations on slices: choice, shuffle, and sample.
 // ==============================================================================
 
+fn _seq_randint(a: i64, b: i64) -> i64 {
+    if a >= b {
+        return a;
+    }
+    let span: i64 = b - a + 1;
+    mut r: i64 = arx_prng_next_i64();
+    if r < 0 {
+        r = 0 - r;
+    }
+    return a + (r % span);
+}
+
 pub fn choice(s: &[i64]) -> i64 {
     if s.len == 0 {
         return 0;
     }
-    let idx: i64 = randint(0, s.len - 1);
+    let idx: i64 = _seq_randint(0, s.len - 1);
     return s[idx];
 }
 
@@ -15,7 +27,7 @@ pub fn choice_f64(s: &[f64]) -> f64 {
     if s.len == 0 {
         return 0.0;
     }
-    let idx: i64 = randint(0, s.len - 1);
+    let idx: i64 = _seq_randint(0, s.len - 1);
     return s[idx];
 }
 
@@ -23,7 +35,7 @@ pub fn choice_str(s: &[str]) -> str {
     if s.len == 0 {
         return "";
     }
-    let idx: i64 = randint(0, s.len - 1);
+    let idx: i64 = _seq_randint(0, s.len - 1);
     return s[idx];
 }
 
@@ -33,7 +45,7 @@ pub fn shuffle(s: &mut [i64]) {
         return;
     }
     for i in 0..(n - 1) {
-        let j: i64 = randint(i, n - 1);
+        let j: i64 = _seq_randint(i, n - 1);
         let tmp: i64 = s[i];
         s[i] = s[j];
         s[j] = tmp;
@@ -46,7 +58,7 @@ pub fn shuffle_f64(s: &mut [f64]) {
         return;
     }
     for i in 0..(n - 1) {
-        let j: i64 = randint(i, n - 1);
+        let j: i64 = _seq_randint(i, n - 1);
         let tmp: f64 = s[i];
         s[i] = s[j];
         s[j] = tmp;
@@ -59,7 +71,7 @@ pub fn shuffle_str(s: &mut [str]) {
         return;
     }
     for i in 0..(n - 1) {
-        let j: i64 = randint(i, n - 1);
+        let j: i64 = _seq_randint(i, n - 1);
         let tmp: str = s[i];
         s[i] = s[j];
         s[j] = tmp;
@@ -80,7 +92,7 @@ pub fn sample(src: &[i64], dest: &mut [i64]) {
         dest[i] = src[i];
     }
     for i in 0..count {
-        let j: i64 = randint(i, n - 1);
+        let j: i64 = _seq_randint(i, n - 1);
         let tmp: i64 = dest[i];
         if j < count {
             dest[i] = dest[j];

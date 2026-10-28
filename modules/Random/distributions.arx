@@ -5,6 +5,10 @@
 // weibullvariate, betavariate, gammavariate, and vonmisesvariate.
 // ==============================================================================
 
+fn _rnd_float() -> f64 {
+    return arx_prng_next_f64();
+}
+
 fn _rnd_sqrt(x: f64) -> f64 {
     if x <= 0.0 {
         return 0.0;
@@ -94,7 +98,7 @@ fn _rnd_cos(x: f64) -> f64 {
 }
 
 pub fn triangular(low: f64, high: f64, mode: f64) -> f64 {
-    let u: f64 = random();
+    let u: f64 = _rnd_float();
     let span: f64 = high - low;
     if span == 0.0 {
         return low;
@@ -107,7 +111,7 @@ pub fn triangular(low: f64, high: f64, mode: f64) -> f64 {
 }
 
 pub fn expovariate(lambd: f64) -> f64 {
-    mut u: f64 = random();
+    mut u: f64 = _rnd_float();
     if u <= 0.0000000000000001 {
         u = 0.0000000000000001;
     }
@@ -115,11 +119,11 @@ pub fn expovariate(lambd: f64) -> f64 {
 }
 
 pub fn normalvariate(mu: f64, sigma: f64) -> f64 {
-    mut u1: f64 = random();
+    mut u1: f64 = _rnd_float();
     if u1 <= 0.0000000000000001 {
         u1 = 0.0000000000000001;
     }
-    let u2: f64 = random();
+    let u2: f64 = _rnd_float();
     let z0: f64 = _rnd_sqrt(0.0 - 2.0 * _rnd_ln(u1)) * _rnd_cos(6.283185307179586 * u2);
     return mu + z0 * sigma;
 }
@@ -133,7 +137,7 @@ pub fn lognormvariate(mu: f64, sigma: f64) -> f64 {
 }
 
 pub fn paretovariate(alpha: f64) -> f64 {
-    mut u: f64 = 1.0 - random();
+    mut u: f64 = 1.0 - _rnd_float();
     if u <= 0.0000000000000001 {
         u = 0.0000000000000001;
     }
@@ -141,7 +145,7 @@ pub fn paretovariate(alpha: f64) -> f64 {
 }
 
 pub fn weibullvariate(alpha: f64, beta: f64) -> f64 {
-    mut u: f64 = 1.0 - random();
+    mut u: f64 = 1.0 - _rnd_float();
     if u <= 0.0000000000000001 {
         u = 0.0000000000000001;
     }
@@ -153,11 +157,11 @@ pub fn betavariate(alpha: f64, beta: f64) -> f64 {
     mut y1: f64 = 0.0;
     mut y2: f64 = 0.0;
     while true {
-        mut u1: f64 = random();
+        mut u1: f64 = _rnd_float();
         if u1 <= 0.0000000000000001 {
             u1 = 0.0000000000000001;
         }
-        mut u2: f64 = random();
+        mut u2: f64 = _rnd_float();
         if u2 <= 0.0000000000000001 {
             u2 = 0.0000000000000001;
         }
@@ -177,7 +181,7 @@ pub fn gammavariate(alpha: f64, beta: f64) -> f64 {
         return 0.0;
     }
     if alpha < 1.0 {
-        mut u: f64 = random();
+        mut u: f64 = _rnd_float();
         if u <= 0.0000000000000001 {
             u = 0.0000000000000001;
         }
@@ -190,7 +194,7 @@ pub fn gammavariate(alpha: f64, beta: f64) -> f64 {
         let v: f64 = 1.0 + c * z;
         if v > 0.0 {
             let v3: f64 = v * v * v;
-            mut u: f64 = random();
+            mut u: f64 = _rnd_float();
             if u <= 0.0000000000000001 {
                 u = 0.0000000000000001;
             }
@@ -207,19 +211,19 @@ pub fn gammavariate(alpha: f64, beta: f64) -> f64 {
 
 pub fn vonmisesvariate(mu: f64, kappa: f64) -> f64 {
     if kappa <= 0.000001 {
-        return 6.283185307179586 * random();
+        return 6.283185307179586 * _rnd_float();
     }
     let a: f64 = 1.0 + _rnd_sqrt(1.0 + 4.0 * kappa * kappa);
     let b: f64 = (a - _rnd_sqrt(2.0 * a)) / (2.0 * kappa);
     let r: f64 = (1.0 + b * b) / (2.0 * b);
     while true {
-        let u1: f64 = random();
+        let u1: f64 = _rnd_float();
         let z: f64 = _rnd_cos(3.14159265358979323846 * u1);
         let f: f64 = (1.0 + r * z) / (r + z);
         let c: f64 = kappa * (r - f);
-        let u2: f64 = random();
+        let u2: f64 = _rnd_float();
         if u2 < c * (2.0 - c) || u2 <= c * _rnd_exp(1.0 - c) {
-            let u3: f64 = random();
+            let u3: f64 = _rnd_float();
             mut theta: f64 = 0.0;
             if u3 > 0.5 {
                 theta = mu + 3.14159265358979323846 * (1.0 - f);

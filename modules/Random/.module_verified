@@ -1,7 +1,7 @@
 {
   "module": "Random",
   "verified": true,
-  "hash": "675f26f48eedde54af227ae632437b1bfaa30bd4c25419d843c8a320aa135d90",
+  "hash": "96476eb8940dc850c16f4c951b7f73cd294fda4f5602d1d72743b4a9e528509e",
   "files": [
     "core.arx",
     "distributions.arx",
@@ -11,8 +11,10 @@
   "symbols": [
     "_rnd_cos",
     "_rnd_exp",
+    "_rnd_float",
     "_rnd_ln",
     "_rnd_sqrt",
+    "_seq_randint",
     "betavariate",
     "choice",
     "choice_f64",
