@@ -358,6 +358,7 @@ class AIRSliceInit(AIRInstruction):
     elem_type: str
     is_inclusive: bool = False
     source_is_slice: bool = False
+    fixed_len: Optional[int] = None
 
     def __repr__(self) -> str:
         return f"{self.dest} = SLICE_INIT({self.source}[{self.start}..{self.end}])"
@@ -502,6 +503,13 @@ class AIRLowering:
             decl.name: decl.return_type
             for decl in program.declarations if isinstance(decl, FunctionDefNode)
         }
+        self.function_param_types = {
+            decl.name: [(getattr(p, 'type_name', None) or 'i64') for p in decl.params]
+            for decl in program.declarations if isinstance(decl, FunctionDefNode)
+        }
+        for decl in program.declarations:
+            if isinstance(decl, FunctionDefNode) and getattr(decl, 'mangled_name', None):
+                self.function_param_types[decl.mangled_name] = [(getattr(p, 'type_name', None) or 'i64') for p in decl.params]
         self.class_method_returns = {}
         for decl in program.declarations:
             if isinstance(decl, ClassDefNode):
@@ -1503,6 +1511,32 @@ class AIRLowering:
                 return coll_temp
 
             arg_temps = [self.lower_expression(a) for a in expr.args]
+            if isinstance(expr.callee, IdentifierNode) and expr.callee.name in self.function_param_types:
+                param_types = self.function_param_types[expr.callee.name]
+                for idx in range(min(len(arg_temps), len(param_types))):
+                    expected = param_types[idx]
+                    if expected.startswith('Slice_') or expected.startswith('&[') or expected.startswith('&mut ['):
+                        arg_t = self.temp_types.get(arg_temps[idx], '') or self.var_types.get(arg_temps[idx], '')
+                        if arg_t.startswith('FixedArray_'):
+                            parts = arg_t.split('_')
+                            elem_t = parts[1]
+                            try:
+                                arr_size = int(parts[2])
+                            except (ValueError, IndexError):
+                                arr_size = None
+                            slice_dest = self.new_temp()
+                            self.temp_types[slice_dest] = expected
+                            self.current_insns.append(AIRSliceInit(
+                                dest=slice_dest,
+                                source=arg_temps[idx],
+                                start=None,
+                                end=None,
+                                elem_type=elem_t,
+                                is_inclusive=False,
+                                source_is_slice=False,
+                                fixed_len=arr_size
+                            ))
+                            arg_temps[idx] = slice_dest
             dest = None if is_statement else self.new_temp()
             if isinstance(expr.callee, IdentifierNode):
                 fn_name = expr.callee.name

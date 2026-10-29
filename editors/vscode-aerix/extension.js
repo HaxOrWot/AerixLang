@@ -316,7 +316,30 @@ const AERIX_BUILTINS = [
     { name: 'ln', detail: 'ln(x: f64) -> f64', doc: 'Calculates the natural logarithm $\\ln(x)$ for $x > 0$.' },
     { name: 'log10', detail: 'log10(x: f64) -> f64', doc: 'Calculates the base-10 common logarithm $\\log_{10}(x)$.' },
     { name: 'log2', detail: 'log2(x: f64) -> f64', doc: 'Calculates the binary logarithm $\\log_2(x)$.' },
-    { name: 'pow_f64', detail: 'pow_f64(base: f64, exp: f64) -> f64', doc: 'Calculates generalized real power $base^{exp} = \\exp(exp \\times \\ln(base))$.' }
+    { name: 'pow_f64', detail: 'pow_f64(base: f64, exp: f64) -> f64', doc: 'Calculates generalized real power $base^{exp} = \\exp(exp \\times \\ln(base))$.' },
+    // Standard Random Functions (Random module exports)
+    { name: 'seed', detail: 'seed(s: i64) -> void', doc: 'Initializes the internal PRNG state. If s is 0, auto-seeds from high-resolution OS monotonic performance counters.' },
+    { name: 'getstate', detail: 'getstate() -> i64', doc: 'Returns the current 64-bit internal integer state of the PRNG generator.' },
+    { name: 'setstate', detail: 'setstate(state: i64) -> void', doc: 'Restores the internal PRNG generator state from a previously saved state.' },
+    { name: 'random', detail: 'random() -> f64', doc: 'Returns the next random floating point number in the range [0.0, 1.0).' },
+    { name: 'uniform', detail: 'uniform(a: f64, b: f64) -> f64', doc: 'Returns a random floating point number N such that a <= N <= b.' },
+    { name: 'randint', detail: 'randint(a: i64, b: i64) -> i64', doc: 'Returns a random integer N such that a <= N <= b (inclusive on both ends).' },
+    { name: 'randrange', detail: 'randrange(start: i64, stop: i64) -> i64', doc: 'Returns a randomly selected element from range(start, stop).' },
+    { name: 'randrange_step', detail: 'randrange_step(start: i64, stop: i64, step: i64) -> i64', doc: 'Returns a randomly selected element from range(start, stop, step).' },
+    { name: 'getrandbits', detail: 'getrandbits(k: i64) -> i64', doc: 'Generates a non-negative integer with k random bits.' },
+    { name: 'triangular', detail: 'triangular(low: f64, high: f64, mode: f64) -> f64', doc: 'Returns a random floating point number from a triangular distribution.' },
+    { name: 'normalvariate', detail: 'normalvariate(mu: f64, sigma: f64) -> f64', doc: 'Normal distribution with mean mu and standard deviation sigma.' },
+    { name: 'gauss', detail: 'gauss(mu: f64, sigma: f64) -> f64', doc: 'Gaussian distribution (identical to normalvariate).' },
+    { name: 'lognormvariate', detail: 'lognormvariate(mu: f64, sigma: f64) -> f64', doc: 'Log normal distribution.' },
+    { name: 'expovariate', detail: 'expovariate(lambd: f64) -> f64', doc: 'Exponential distribution with rate parameter lambd.' },
+    { name: 'paretovariate', detail: 'paretovariate(alpha: f64) -> f64', doc: 'Pareto distribution with shape parameter alpha.' },
+    { name: 'weibullvariate', detail: 'weibullvariate(alpha: f64, beta: f64) -> f64', doc: 'Weibull distribution with scale parameter alpha and shape parameter beta.' },
+    { name: 'betavariate', detail: 'betavariate(alpha: f64, beta: f64) -> f64', doc: 'Beta distribution using Johnk algorithm.' },
+    { name: 'gammavariate', detail: 'gammavariate(alpha: f64, beta: f64) -> f64', doc: 'Gamma distribution using Marsaglia and Tsang method.' },
+    { name: 'vonmisesvariate', detail: 'vonmisesvariate(mu: f64, kappa: f64) -> f64', doc: 'Circular von Mises distribution.' },
+    { name: 'choice', detail: 'choice(s: &[i64]) -> i64', doc: 'Returns a random element from non-empty slice or fixed array.' },
+    { name: 'shuffle', detail: 'shuffle(s: &mut [i64]) -> void', doc: 'Shuffles slice or fixed array in-place using Fisher-Yates algorithm.' },
+    { name: 'sample', detail: 'sample(src: &[i64], dest: &mut [i64]) -> void', doc: 'Copies elements from src to dest with partial shuffle without replacement.' }
 ];
 
 /**
@@ -376,6 +399,40 @@ const AERIX_MODULES = [
             { name: 'log2', sig: 'log2(x: f64) -> f64', doc: 'Base-2 logarithm.' },
             { name: 'pow_f64', sig: 'pow_f64(base: f64, exp: f64) -> f64', doc: 'Real power $base^{exp}$.' }
         ]
+    },
+    {
+        name: 'Random',
+        detail: 'Aerix Standard Random Module',
+        doc: 'Pseudo-random number generator module powered by high-performance SplitMix64 engine.\n\n```aerix\nimport Random;\nRandom.seed(42);\nlet r: i64 = Random.randint(1, 100);\nlet f: f64 = Random.uniform(0.0, 1.0);\n```',
+        constants: [],
+        functions: [
+            { name: 'seed', sig: 'seed(s: i64)', doc: 'Initializes internal PRNG state. If s is 0, auto-seeds from high-resolution OS monotonic performance counters.' },
+            { name: 'getstate', sig: 'getstate() -> i64', doc: 'Returns the current 64-bit internal integer state of the PRNG generator.' },
+            { name: 'setstate', sig: 'setstate(state: i64)', doc: 'Restores the internal PRNG generator state from a previously saved state.' },
+            { name: 'random', sig: 'random() -> f64', doc: 'Returns the next random floating point number in the range [0.0, 1.0).' },
+            { name: 'uniform', sig: 'uniform(a: f64, b: f64) -> f64', doc: 'Returns a random floating point number N such that a <= N <= b.' },
+            { name: 'randint', sig: 'randint(a: i64, b: i64) -> i64', doc: 'Returns a random integer N such that a <= N <= b (inclusive on both ends).' },
+            { name: 'randrange', sig: 'randrange(start: i64, stop: i64) -> i64', doc: 'Returns a randomly selected element from range(start, stop).' },
+            { name: 'randrange_step', sig: 'randrange_step(start: i64, stop: i64, step: i64) -> i64', doc: 'Returns a randomly selected element from range(start, stop, step).' },
+            { name: 'getrandbits', sig: 'getrandbits(k: i64) -> i64', doc: 'Generates a non-negative integer with k random bits.' },
+            { name: 'triangular', sig: 'triangular(low: f64, high: f64, mode: f64) -> f64', doc: 'Returns a random floating point number from a triangular distribution.' },
+            { name: 'normalvariate', sig: 'normalvariate(mu: f64, sigma: f64) -> f64', doc: 'Normal distribution with mean mu and standard deviation sigma.' },
+            { name: 'gauss', sig: 'gauss(mu: f64, sigma: f64) -> f64', doc: 'Gaussian distribution (identical to normalvariate).' },
+            { name: 'lognormvariate', sig: 'lognormvariate(mu: f64, sigma: f64) -> f64', doc: 'Log normal distribution.' },
+            { name: 'expovariate', sig: 'expovariate(lambd: f64) -> f64', doc: 'Exponential distribution with rate parameter lambd.' },
+            { name: 'paretovariate', sig: 'paretovariate(alpha: f64) -> f64', doc: 'Pareto distribution with shape parameter alpha.' },
+            { name: 'weibullvariate', sig: 'weibullvariate(alpha: f64, beta: f64) -> f64', doc: 'Weibull distribution with scale parameter alpha and shape parameter beta.' },
+            { name: 'betavariate', sig: 'betavariate(alpha: f64, beta: f64) -> f64', doc: 'Beta distribution using Johnk algorithm.' },
+            { name: 'gammavariate', sig: 'gammavariate(alpha: f64, beta: f64) -> f64', doc: 'Gamma distribution using Marsaglia and Tsang method.' },
+            { name: 'vonmisesvariate', sig: 'vonmisesvariate(mu: f64, kappa: f64) -> f64', doc: 'Circular von Mises distribution.' },
+            { name: 'choice', sig: 'choice(s: &[i64]) -> i64', doc: 'Returns a random element from non-empty slice or fixed array.' },
+            { name: 'choice_f64', sig: 'choice_f64(s: &[f64]) -> f64', doc: 'Returns a random f64 element from non-empty slice or fixed array.' },
+            { name: 'choice_str', sig: 'choice_str(s: &[str]) -> str', doc: 'Returns a random string element from non-empty slice or fixed array.' },
+            { name: 'shuffle', sig: 'shuffle(s: &mut [i64])', doc: 'Shuffles slice or fixed array in-place using Fisher-Yates algorithm.' },
+            { name: 'shuffle_f64', sig: 'shuffle_f64(s: &mut [f64])', doc: 'Shuffles f64 slice or fixed array in-place.' },
+            { name: 'shuffle_str', sig: 'shuffle_str(s: &mut [str])', doc: 'Shuffles string slice or fixed array in-place.' },
+            { name: 'sample', sig: 'sample(src: &[i64], dest: &mut [i64])', doc: 'Copies elements from src to dest with partial shuffle without replacement.' }
+        ]
     }
 ];
 
@@ -399,6 +456,29 @@ function analyzeDocument(document) {
         const line = lines[l];
         const trimmed = line.trim();
 
+        // Match from ... import ...
+        const fromMatch = trimmed.match(/^from\s+(?:["']([^"']+)["']|([A-Z][a-zA-Z0-9_]*))\s+import\s+(?:\{([^}]+)\}|([*])|([^;]+))\s*;?/);
+        if (fromMatch) {
+            const modTarget = fromMatch[2];
+            const symList = fromMatch[3] || fromMatch[5];
+            if (fromMatch[4] === '*' && modTarget) {
+                const foundMod = AERIX_MODULES.find(m => m.name === modTarget);
+                if (foundMod) {
+                    for (const f of foundMod.functions) {
+                        if (!functions.has(f.name)) functions.set(f.name, []);
+                        functions.get(f.name).push({ name: f.name, params: [], rawParams: f.sig, returnType: 'any', line: l, isMethod: false, className: null });
+                    }
+                }
+            } else if (symList) {
+                const importedNames = symList.split(',').map(s => s.trim()).filter(Boolean);
+                for (const name of importedNames) {
+                    if (!functions.has(name)) functions.set(name, []);
+                    functions.get(name).push({ name: name, params: [], rawParams: '...', returnType: 'any', line: l, isMethod: false, className: null });
+                }
+            }
+            continue;
+        }
+
         // Match Import: import Math; or import "./path.arx"; or import { a, b } from "...";
         const importMatch = trimmed.match(/^import\s+(?:\{([^}]+)\}\s+from\s+["']([^"']+)["']|([A-Z][a-zA-Z0-9_]*)|["']([^"']+)["'])\s*;?/);
         if (importMatch) {
@@ -417,6 +497,15 @@ function analyzeDocument(document) {
                         isMethod: false,
                         className: null
                     });
+                }
+            } else if (importMatch[3]) {
+                const modName = importMatch[3];
+                const foundMod = AERIX_MODULES.find(m => m.name === modName);
+                if (foundMod) {
+                    for (const f of foundMod.functions) {
+                        if (!functions.has(f.name)) functions.set(f.name, []);
+                        functions.get(f.name).push({ name: f.name, params: [], rawParams: f.sig, returnType: 'any', line: l, isMethod: false, className: null });
+                    }
                 }
             }
             continue;

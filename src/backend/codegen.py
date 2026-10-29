@@ -1015,7 +1015,8 @@ class C99CodeGenerator:
             elif isinstance(insn, AIRSliceInit):
                 elem_c = to_c_type(insn.elem_type)
                 if insn.start is None and insn.end is None:
-                    self.emit(f"{insn.dest} = arx_slice_new((void*)({insn.source}), sizeof({insn.source}) / sizeof({insn.source}[0]));", indent=indent)
+                    len_str = str(insn.fixed_len) if getattr(insn, "fixed_len", None) is not None else f"sizeof({insn.source}) / sizeof({insn.source}[0])"
+                    self.emit(f"{insn.dest} = arx_slice_new((void*)({insn.source}), {len_str});", indent=indent)
                 else:
                     is_inc = "true" if insn.is_inclusive else "false"
                     if insn.source_is_slice:
