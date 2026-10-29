@@ -5,6 +5,7 @@ __pycache__/
 *.py[cod]
 *$py.class
 *.spec
+.pytest_cache/
 
 # Build outputs and compilation artifacts
 build/
