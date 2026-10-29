@@ -27,6 +27,7 @@
     { "include": "#keywords_control" },
     { "include": "#keywords_decl" },
     { "include": "#math_functions" },
+    { "include": "#random_functions" },
     { "include": "#builtins" },
     { "include": "#types" },
     { "include": "#constants" },
@@ -212,6 +213,7 @@
                 { "include": "#member_access" },
                 { "include": "#enum_access" },
                 { "include": "#math_functions" },
+    { "include": "#random_functions" },
                 { "include": "#builtins" },
                 { "include": "#constants" },
                 { "include": "#function_call" },
@@ -646,6 +648,14 @@
         {
           "name": "support.function.math.aerix",
           "match": "\\b(abs|min|max|clamp|sign|is_even|is_odd|floor|ceil|round|trunc|fract|lerp|smoothstep|sqrt|cbrt|hypot|pow|factorial|nPr|nCr|gcd|lcm|is_prime|next_prime|deg_to_rad|rad_to_deg|sin|cos|tan|cot|sec|csc|exp|ln|log10|log2|pow_f64)\\b(?=\\s*\\()"
+        }
+      ]
+    },
+    "random_functions": {
+      "patterns": [
+        {
+          "name": "support.function.random.aerix",
+          "match": "\\b(seed|getstate|setstate|random|uniform|randint|randrange|randrange_step|getrandbits|triangular|normalvariate|gauss|lognormvariate|expovariate|paretovariate|weibullvariate|betavariate|gammavariate|vonmisesvariate|choice|choice_f64|choice_str|shuffle|shuffle_f64|shuffle_str|sample)\\b(?=\\s*\\()"
         }
       ]
     },

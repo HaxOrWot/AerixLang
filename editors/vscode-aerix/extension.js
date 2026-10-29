@@ -338,7 +338,11 @@ const AERIX_BUILTINS = [
     { name: 'gammavariate', detail: 'gammavariate(alpha: f64, beta: f64) -> f64', doc: 'Gamma distribution using Marsaglia and Tsang method.' },
     { name: 'vonmisesvariate', detail: 'vonmisesvariate(mu: f64, kappa: f64) -> f64', doc: 'Circular von Mises distribution.' },
     { name: 'choice', detail: 'choice(s: &[i64]) -> i64', doc: 'Returns a random element from non-empty slice or fixed array.' },
+    { name: 'choice_f64', detail: 'choice_f64(s: &[f64]) -> f64', doc: 'Returns a random f64 element from non-empty slice or fixed array.' },
+    { name: 'choice_str', detail: 'choice_str(s: &[str]) -> str', doc: 'Returns a random string element from non-empty slice or fixed array.' },
     { name: 'shuffle', detail: 'shuffle(s: &mut [i64]) -> void', doc: 'Shuffles slice or fixed array in-place using Fisher-Yates algorithm.' },
+    { name: 'shuffle_f64', detail: 'shuffle_f64(s: &mut [f64]) -> void', doc: 'Shuffles f64 slice or fixed array in-place.' },
+    { name: 'shuffle_str', detail: 'shuffle_str(s: &mut [str]) -> void', doc: 'Shuffles string slice or fixed array in-place.' },
     { name: 'sample', detail: 'sample(src: &[i64], dest: &mut [i64]) -> void', doc: 'Copies elements from src to dest with partial shuffle without replacement.' }
 ];
 
@@ -466,7 +470,17 @@ function analyzeDocument(document) {
                 if (foundMod) {
                     for (const f of foundMod.functions) {
                         if (!functions.has(f.name)) functions.set(f.name, []);
-                        functions.get(f.name).push({ name: f.name, params: [], rawParams: f.sig, returnType: 'any', line: l, isMethod: false, className: null });
+                        functions.get(f.name).push({
+                            name: f.name,
+                            params: [],
+                            rawParams: f.sig,
+                            returnType: 'any',
+                            doc: f.doc,
+                            module: modTarget,
+                            line: l,
+                            isMethod: false,
+                            className: null
+                        });
                     }
                 }
             } else if (symList) {
@@ -504,7 +518,17 @@ function analyzeDocument(document) {
                 if (foundMod) {
                     for (const f of foundMod.functions) {
                         if (!functions.has(f.name)) functions.set(f.name, []);
-                        functions.get(f.name).push({ name: f.name, params: [], rawParams: f.sig, returnType: 'any', line: l, isMethod: false, className: null });
+                        functions.get(f.name).push({
+                            name: f.name,
+                            params: [],
+                            rawParams: f.sig,
+                            returnType: 'any',
+                            doc: f.doc,
+                            module: modName,
+                            line: l,
+                            isMethod: false,
+                            className: null
+                        });
                     }
                 }
             }
@@ -847,7 +871,7 @@ function activate(context) {
             }
 
             // E. Import Completion: import <modules>
-            if (/\bimport\s+[a-zA-Z0-9_]*$/.test(linePrefix)) {
+            if (/\b(?:import|from)\s+[a-zA-Z0-9_]*$/.test(linePrefix)) {
                 for (const mod of AERIX_MODULES) {
                     const item = new vscode.CompletionItem(mod.name, vscode.CompletionItemKind.Module);
                     item.detail = `Inbuilt Module '${mod.name}'`;
@@ -859,7 +883,7 @@ function activate(context) {
             }
 
             // F. Dot Access: obj., self., or Module. (e.g. Math.)
-            const dotMatch = linePrefix.match(/([a-zA-Z_][a-zA-Z0-9_]*)\.$/);
+            const dotMatch = linePrefix.match(/([a-zA-Z_][a-zA-Z0-9_]*)\.([a-zA-Z0-9_]*)$/);
             if (dotMatch) {
                 const targetIdent = dotMatch[1];
 
@@ -877,6 +901,7 @@ function activate(context) {
                         item.detail = `(function) ${mod.name}.${f.sig}`;
                         item.documentation = new vscode.MarkdownString(f.doc);
                         item.insertText = new vscode.SnippetString(`${f.name}($0)`);
+                        item.sortText = '0_' + f.name;
                         items.push(item);
                     }
                     return items;
@@ -1011,7 +1036,10 @@ function activate(context) {
                 if (fnName !== 'main') {
                     for (const fn of fnList) {
                         const item = new vscode.CompletionItem(fn.name, vscode.CompletionItemKind.Function);
-                        item.detail = `fn ${fn.name}(${fn.rawParams}) -> ${fn.returnType}`;
+                        item.detail = fn.module ? `(${fn.module}) ${fn.rawParams}` : `fn ${fn.name}(${fn.rawParams}) -> ${fn.returnType}`;
+                        if (fn.doc) {
+                            item.documentation = new vscode.MarkdownString(fn.doc);
+                        }
                         item.insertText = new vscode.SnippetString(`${fn.name}($0)`);
                         item.sortText = '0_' + fn.name;
                         items.push(item);
