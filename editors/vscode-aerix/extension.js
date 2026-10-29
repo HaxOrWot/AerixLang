@@ -873,12 +873,12 @@ function activate(context) {
             }
 
             // E. Import Completion: import <modules>
-            if (/\b(?:import|from)\s+[a-zA-Z0-9_]*$/.test(linePrefix)) {
+            if (/\bimport\s+(?:[A-Z][a-zA-Z0-9_]*\s*,\s*)*[a-zA-Z0-9_]*$/.test(linePrefix) || /\bfrom\s+[a-zA-Z0-9_]*$/.test(linePrefix)) {
                 for (const mod of AERIX_MODULES) {
                     const item = new vscode.CompletionItem(mod.name, vscode.CompletionItemKind.Module);
                     item.detail = `Inbuilt Module '${mod.name}'`;
                     item.documentation = new vscode.MarkdownString(mod.doc);
-                    item.insertText = `${mod.name};`;
+                    item.insertText = /,\s*[a-zA-Z0-9_]*$/.test(linePrefix) ? mod.name : `${mod.name};`;
                     items.push(item);
                 }
                 return items;
