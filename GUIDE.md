@@ -3432,10 +3432,11 @@ let mut dict = Map<str, i64>()
 dict["alpha"] = 100
 
 // 15. MULTI-FILE MODULE SYSTEM (Phase 25)
-import Math;
+import Math, Random;
 let a = Math.abs(-15.5);       // Qualified module access
 let s = sqrt(144.0);           // Direct access to bundled module symbols
 let p = Math.PI;               // Module constant access
+let roll = Random.randint(1, 6); // Multi-module import access
 
 // Python-grade Random module & from-import syntax
 from Random import { seed, randint, uniform, choice };

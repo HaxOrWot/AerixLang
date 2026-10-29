@@ -386,12 +386,17 @@ class Parser:
             )
         elif cur.type == TokenType.IDENTIFIER:
             name_tok = self.advance()
+            module_names = [name_tok.value]
+            while self.match(TokenType.COMMA):
+                next_mod = self.consume(TokenType.IDENTIFIER, "Expected module name after ',' in import statement")
+                module_names.append(next_mod.value)
             while self.match(TokenType.SEMICOLON):
                 pass
             return ImportNode(
                 line=tok.line,
                 col=tok.col,
                 module_name=name_tok.value,
+                module_names=module_names,
                 symbols=symbols,
                 is_user_file=False
             )

@@ -163,6 +163,32 @@ fn main() {
         ast = parser.parse()
         self.assertTrue(any(isinstance(d, ImportNode) and d.module_name == "Math" and not d.is_user_file for d in ast.declarations))
 
+    def test_parser_parses_multi_module_import(self):
+        code = "import Math, Random;\nfn main() { return; }\n"
+        lexer = Lexer(code, "<test>")
+        tokens = lexer.tokenize()
+        parser = Parser(tokens, code.splitlines(), filename="<test>")
+        ast = parser.parse()
+        import_nodes = [d for d in ast.declarations if isinstance(d, ImportNode)]
+        self.assertEqual(len(import_nodes), 1)
+        self.assertEqual(import_nodes[0].module_names, ["Math", "Random"])
+        self.assertFalse(import_nodes[0].is_user_file)
+
+    def test_multi_module_import_execution(self):
+        code = """
+import Math, Random
+
+fn main() {
+    let a: f64 = Math.abs(0.0 - 15.5);
+    let r: i64 = Random.randint(10, 20);
+    assert(a == 15.5);
+    assert(r >= 10 && r <= 20);
+}
+"""
+        c_code = self.compiler.compile_source_to_c(code, filename="test_multi_import.arx")
+        self.assertIn("arx_abs", c_code)
+        self.assertIn("arx_randint", c_code)
+
     def test_parser_parses_user_file_import(self):
         code = 'import "./helper.arx";\nfn main() { return; }\n'
         lexer = Lexer(code, "<test>")

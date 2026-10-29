@@ -387,11 +387,13 @@ class EnumDefNode(ASTNode):
 class ImportNode(ASTNode):
     """Phase 25: Represents an import statement:
     1. Inbuilt Module: import Math;
-    2. User File: import "./helper.arx";
-    3. Selective Module: import { abs, sqrt } from Math;
-    4. Selective User File: import { foo, bar } from "./helper.arx";
+    2. Multiple Modules: import Math, Random;
+    3. User File: import "./helper.arx";
+    4. Selective Module: import { abs, sqrt } from Math;
+    5. Selective User File: import { foo, bar } from "./helper.arx";
     """
     module_name: Optional[str] = None
+    module_names: List[str] = field(default_factory=list)
     file_path: Optional[str] = None
     symbols: List[str] = field(default_factory=list)
     is_user_file: bool = False

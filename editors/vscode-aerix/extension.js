@@ -493,8 +493,8 @@ function analyzeDocument(document) {
             continue;
         }
 
-        // Match Import: import Math; or import "./path.arx"; or import { a, b } from "...";
-        const importMatch = trimmed.match(/^import\s+(?:\{([^}]+)\}\s+from\s+["']([^"']+)["']|([A-Z][a-zA-Z0-9_]*)|["']([^"']+)["'])\s*;?/);
+        // Match Import: import Math; or import "./path.arx"; or import { a, b } from "..."; or import Math, Random;
+        const importMatch = trimmed.match(/^import\s+(?:\{([^}]+)\}\s+from\s+["']([^"']+)["']|((?:[A-Z][a-zA-Z0-9_]*)(?:\s*,\s*[A-Z][a-zA-Z0-9_]*)*)|["']([^"']+)["'])\s*;?/);
         if (importMatch) {
             if (importMatch[1]) {
                 const importedNames = importMatch[1].split(',').map(s => s.trim()).filter(Boolean);
@@ -513,22 +513,24 @@ function analyzeDocument(document) {
                     });
                 }
             } else if (importMatch[3]) {
-                const modName = importMatch[3];
-                const foundMod = AERIX_MODULES.find(m => m.name === modName);
-                if (foundMod) {
-                    for (const f of foundMod.functions) {
-                        if (!functions.has(f.name)) functions.set(f.name, []);
-                        functions.get(f.name).push({
-                            name: f.name,
-                            params: [],
-                            rawParams: f.sig,
-                            returnType: 'any',
-                            doc: f.doc,
-                            module: modName,
-                            line: l,
-                            isMethod: false,
-                            className: null
-                        });
+                const modNames = importMatch[3].split(',').map(s => s.trim()).filter(Boolean);
+                for (const modName of modNames) {
+                    const foundMod = AERIX_MODULES.find(m => m.name === modName);
+                    if (foundMod) {
+                        for (const f of foundMod.functions) {
+                            if (!functions.has(f.name)) functions.set(f.name, []);
+                            functions.get(f.name).push({
+                                name: f.name,
+                                params: [],
+                                rawParams: f.sig,
+                                returnType: 'any',
+                                doc: f.doc,
+                                module: modName,
+                                line: l,
+                                isMethod: false,
+                                className: null
+                            });
+                        }
                     }
                 }
             }

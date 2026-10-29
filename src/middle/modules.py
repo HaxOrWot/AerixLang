@@ -565,7 +565,14 @@ class ModuleResolver:
         return declarations
 
     def _resolve_inbuilt_module_import(self, node: ImportNode) -> List[ASTNode]:
-        module_name = node.module_name or ""
+        modules_to_resolve = node.module_names if getattr(node, "module_names", None) else ([node.module_name] if node.module_name else [])
+        all_declarations: List[ASTNode] = []
+        for mod_name in modules_to_resolve:
+            decls = self._resolve_single_inbuilt_module(mod_name, node)
+            all_declarations.extend(decls)
+        return all_declarations
+
+    def _resolve_single_inbuilt_module(self, module_name: str, node: ImportNode) -> List[ASTNode]:
         if module_name in self.resolving_stack:
             chain = " -> ".join(self.resolving_stack + [module_name])
             raise ModuleCircularError(

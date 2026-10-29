@@ -397,7 +397,7 @@ Phase 21: Dynamic Collections & Text Engine      ✅ COMPLETE (List<T>, String, 
 Phase 22: Complete Data Structures Suite          ✅ COMPLETE (Map, Set, Tuples, Buffers, for..in)
 Phase 23: Resilient Systems Error Handling       ✅ COMPLETE (try, catch, optional finally, throw)
 Phase 24: Language Ergonomics & Expressions       ✅ COMPLETE (Labeled loops, slices, lambdas, named args)
-Phase 25: Multi-File Modules & Package Integration ✅ COMPLETE (import, from-import syntax, case-sensitive modules, folder bundling, Math & Random stdlib)
+Phase 25: Multi-File Modules & Package Integration ✅ COMPLETE (import, multi-module comma imports, from-import syntax, case-sensitive modules, folder bundling, Math & Random stdlib)
 ```
 
 </details>

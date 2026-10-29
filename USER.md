@@ -796,20 +796,25 @@ arx wasm main.arx --serve
 
 Aerix provides a structured multi-file architecture with a clear conceptual separation between **Inbuilt Language Modules** and **User-Created Source Files**.
 
-### 1. Inbuilt Language Modules (`import <ModuleName>;`)
-Modules are standard libraries built into the Aerix language (e.g., `import Math;`).
+### 1. Inbuilt Language Modules (`import <ModuleName>;` or `import ModA, ModB;`)
+Modules are standard libraries built into the Aerix language (e.g., `import Math;` or `import Math, Random;`).
+* **Multi-Module Importing:** Multiple inbuilt modules can be imported simultaneously in a single comma-separated statement:
+  ```aerix
+  import Math, Random;
+  ```
 * **Folder-Level Bundling:** When importing an inbuilt module, the compiler targets the directory `modules/<ModuleName>/` (e.g. `modules/Math/`) and compiles **all `.arx` files** located in that folder.
 * **Strict Case Sensitivity:** Module resolution strictly enforces exact directory casing across all operating systems. On Windows NTFS, `import math` or `import MATH` is rejected at compile time with a `ModuleCaseError`.
 * **Pure Aerix Standard:** All modules in `modules/` are written 100% in pure Aerix (`.arx`) code without external wrapper files.
 * **Qualified & Direct Invocation:** Developers can call imported symbols directly (`abs(-5.0)`) or qualified with the module name (`Math.abs(-5.0)` or `Math.PI`).
 
 ```aerix
-import Math;
+import Math, Random;
 
 fn main() {
     let s: f64 = Math.sqrt(144.0); // Qualified access
     let a: f64 = abs(-10.0);       // Direct access
     let p: f64 = Math.PI;          // Module constant access
+    let r: i64 = Random.randint(1, 100);
     println(s);
 }
 ```
