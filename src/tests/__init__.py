@@ -1,3 +1,0 @@
-"""
-Aerix Test Suite
-"""
