@@ -92,12 +92,12 @@ class GenericMonomorphizer:
                         break
 
         # Load concrete classes from prelude
-        for cls_name in ("String", "ByteBuffer"):
+        for cls_name in ("String", "ByteBuffer", "File", "Directory", "Process", "Env"):
             if self._references_class(ast, cls_name) and not any(isinstance(d, ClassDefNode) and d.name == cls_name for d in ast.declarations):
                 for decl in prelude_ast.declarations:
                     if isinstance(decl, ClassDefNode) and decl.name == cls_name:
                         regular_decls.insert(0, copy.deepcopy(decl))
-                        if cls_name == "String":
+                        if cls_name in ("String", "Directory", "Env"):
                             ast.generic_uses.add(("List", ("str",)))
                             if "List" not in self.generic_classes:
                                 for p_decl in prelude_ast.declarations:
@@ -177,6 +177,14 @@ class GenericMonomorphizer:
             generic_uses=ast.generic_uses
         )
 
+    _WALK_ATTRS = (
+        "statements", "declarations", "body", "methods", "constructor", "constructors",
+        "args", "params", "expr", "left", "right", "value", "target", "object_expr",
+        "index", "condition", "then_block", "else_block", "initializer", "callee",
+        "call", "elements", "cases", "try_block", "catch_block", "finally_block",
+        "iterable", "start", "end", "parts", "operand"
+    )
+
     def _references_class(self, ast: ASTNode, class_name: str) -> bool:
         found = False
         def walk(n):
@@ -195,7 +203,7 @@ class GenericMonomorphizer:
             if isinstance(n, FunctionDefNode) and getattr(n, "return_type", None) == class_name:
                 found = True
                 return
-            for attr in ("statements", "declarations", "body", "args", "params", "expr", "left", "right", "value", "target", "object_expr", "index", "condition", "then_block", "else_block", "initializer", "callee", "call", "elements"):
+            for attr in self._WALK_ATTRS:
                 v = getattr(n, attr, None)
                 if isinstance(v, list):
                     for item in v:
@@ -223,7 +231,7 @@ class GenericMonomorphizer:
             if isinstance(n, FunctionDefNode) and getattr(n, "return_type", None) and getattr(n, "return_type", "").startswith(f"{tpl_name}_"):
                 found = True
                 return
-            for attr in ("statements", "declarations", "body", "args", "params", "expr", "left", "right", "value", "target", "object_expr", "index", "condition", "then_block", "else_block", "initializer", "callee", "call", "elements"):
+            for attr in self._WALK_ATTRS:
                 v = getattr(n, attr, None)
                 if isinstance(v, list):
                     for item in v:
@@ -242,7 +250,7 @@ class GenericMonomorphizer:
             if isinstance(n, CallNode) and isinstance(n.callee, MemberAccessNode) and n.callee.member == "split":
                 found = True
                 return
-            for attr in ("statements", "declarations", "body", "args", "params", "expr", "left", "right", "value", "target", "object_expr", "index", "condition", "then_block", "else_block", "initializer", "callee", "call"):
+            for attr in self._WALK_ATTRS:
                 v = getattr(n, attr, None)
                 if isinstance(v, list):
                     for item in v:

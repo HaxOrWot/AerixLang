@@ -309,13 +309,12 @@ class C99CodeGenerator:
             seen_method_syms = set()
             for method_name, method_fn in cls.methods.items():
                 ret_t = to_c_type(method_fn.return_type)
-                m_types = method_fn.param_types[1:] if hasattr(method_fn, "param_types") and len(method_fn.param_types) > 1 else ["i64"] * len(method_fn.params[1:])
-                param_strs = [f"Arx_{cls.name}* self"] + [f"{to_c_type(t)} {p}" for p, t in zip(method_fn.params[1:], m_types)]
+                decl_params = self._format_method_params(cls.name, method_fn)
                 fn_sym = method_fn.name if method_fn.name.startswith("Arx_") else f"Arx_{cls.name}_{method_name}"
                 if fn_sym in seen_method_syms:
                     continue
                 seen_method_syms.add(fn_sym)
-                self.forward_decls.append(f"{ret_t} {fn_sym}({', '.join(param_strs)});")
+                self.forward_decls.append(f"{ret_t} {fn_sym}({decl_params});")
 
 
         for fwd in self.forward_decls:
@@ -478,16 +477,32 @@ class C99CodeGenerator:
         seen_impl_syms = set()
         for method_name, method_fn in cls.methods.items():
             ret_t = to_c_type(method_fn.return_type)
-            m_types = method_fn.param_types[1:] if hasattr(method_fn, "param_types") and len(method_fn.param_types) > 1 else ["i64"] * len(method_fn.params[1:])
-            param_strs = [f"Arx_{cls.name}* self"] + [f"{to_c_type(t)} {p}" for p, t in zip(method_fn.params[1:], m_types)]
+            decl_params = self._format_method_params(cls.name, method_fn)
             fn_sym = method_fn.name if method_fn.name.startswith("Arx_") else f"Arx_{cls.name}_{method_name}"
             if fn_sym in seen_impl_syms:
                 continue
             seen_impl_syms.add(fn_sym)
-            self.emit(f"{ret_t} {fn_sym}({', '.join(param_strs)}) {{")
+            self.emit(f"{ret_t} {fn_sym}({decl_params}) {{")
             self.generate_function_body(method_fn.instructions, indent=1, fn=method_fn)
             self.emit("}")
             self.emit()
+
+    def _format_method_params(self, cls_name: str, method_fn: AIRFunction) -> str:
+        if getattr(method_fn, "is_static", False):
+            m_types = (
+                method_fn.param_types
+                if getattr(method_fn, "param_types", None) and len(method_fn.param_types) == len(method_fn.params)
+                else ["i64"] * len(method_fn.params)
+            )
+            param_strs = [f"{to_c_type(t)} {p}" for p, t in zip(method_fn.params, m_types)]
+            return ", ".join(param_strs) if param_strs else "void"
+        m_types = (
+            method_fn.param_types[1:]
+            if hasattr(method_fn, "param_types") and len(method_fn.param_types) > 1
+            else ["i64"] * len(method_fn.params[1:])
+        )
+        param_strs = [f"Arx_{cls_name}* self"] + [f"{to_c_type(t)} {p}" for p, t in zip(method_fn.params[1:], m_types)]
+        return ", ".join(param_strs)
 
 
     def generate_function(self, fn: AIRFunction) -> None:
@@ -503,7 +518,10 @@ class C99CodeGenerator:
 
     def generate_main_function(self, fn: AIRFunction) -> None:
         self.emit("int main(int argc, char** argv) {")
-        self.emit("    (void)argc; (void)argv;", indent=1)
+        if self.freestanding:
+            self.emit("    (void)argc; (void)argv;", indent=1)
+        else:
+            self.emit("    arx_init_args(argc, argv);", indent=1)
         self.generate_function_body(fn.instructions, indent=1, is_main=True, fn=fn)
         self.emit("}")
         self.emit()
@@ -582,25 +600,36 @@ class C99CodeGenerator:
                             temps[insn.dest] = f"Arx_{insn.fn_name[9:]}"
                         elif insn.fn_name in (
                             "arx_str_trim", "arx_str_to_upper", "arx_str_to_lower", "arx_str_replace",
-                            "arx_str_copy", "arx_str_slice", "arx_str_join", "arx_str_repeat",
-                            "arx_str_concat", "arx_str_char_at", "arx_list_get_str", "arx_list_pop_str",
+                            "arx_str_copy", "arx_str_slice", "arx_str_substr", "arx_str_join", "arx_str_repeat",
+                            "arx_str_concat", "arx_str_char_at", "arx_byte_to_str", "arx_bytebuf_to_str",
+                            "arx_list_get_str", "arx_list_pop_str",
                             "arx_list_swap_remove_str", "arx_list_remove_at_str",
-                            "arx_map_get_str_str", "arx_map_get_i64_str", "arx_set_get_str"
+                            "arx_map_get_str_str", "arx_map_get_i64_str", "arx_set_get_str",
+                            "arx_file_read_to_string", "arx_proc_run_capture", "arx_env_get",
+                            "arx_env_cwd", "arx_os_name", "arx_args_get",
+                            "arx_path_join", "arx_path_dirname", "arx_path_basename"
                         ):
                             temps[insn.dest] = "const char*"
                         elif insn.fn_name in (
                             "arx_str_contains", "arx_str_starts_with", "arx_str_ends_with",
                             "arx_list_contains", "arx_list_contains_str", "arx_map_has", "arx_map_has_str",
                             "arx_set_add", "arx_set_has", "arx_set_remove",
-                            "arx_set_add_str", "arx_set_has_str", "arx_set_remove_str"
+                            "arx_set_add_str", "arx_set_has_str", "arx_set_remove_str",
+                            "arx_file_exists", "arx_file_write_string", "arx_file_append_string",
+                            "arx_file_remove", "arx_file_copy", "arx_dir_exists", "arx_dir_create",
+                            "arx_env_set"
                         ):
                             temps[insn.dest] = "bool"
-                        elif insn.fn_name in ("arx_str_len", "arx_list_len", "arx_list_get_i64", "arx_list_pop_i64", "arx_str_split"):
+                        elif insn.fn_name in (
+                            "arx_str_len", "arx_list_len", "arx_list_get_i64", "arx_list_pop_i64", "arx_str_split",
+                            "arx_str_byte_at", "arx_str_to_i64", "arx_dir_list_files", "arx_dir_list_dirs",
+                            "arx_args_list", "arx_args_count", "arx_proc_execute"
+                        ):
                             temps[insn.dest] = "int64_t"
                         elif insn.fn_name in (
                             "arx_list_get_f64", "arx_list_pop_f64",
                             "arx_list_swap_remove_f64", "arx_list_remove_at_f64",
-                            "arx_bytebuf_read_f32", "arx_bytebuf_read_f64"
+                            "arx_bytebuf_read_f32", "arx_bytebuf_read_f64", "arx_str_to_f64"
                         ):
                             temps[insn.dest] = "double"
                         elif insn.fn_name.startswith("volatile_read_") or insn.fn_name.startswith("arx_volatile_read_") or insn.fn_name.startswith("volatile_load_") or insn.fn_name.startswith("arx_volatile_load_"):
@@ -620,19 +649,30 @@ class C99CodeGenerator:
                             else:
                                 temps[insn.dest] = "f64x2"
                         else:
-                            ret_t = "int64_t"
-                            is_enum_ctor = False
+                            ret_t = temps.get(insn.dest, "int64_t")
+                            found_ret = False
                             if hasattr(self, "module") and self.module:
                                 for enm in getattr(self.module, "enums", {}).values():
                                     for v in enm.variants:
                                         if insn.fn_name == f"Arx_{enm.name}_{v.name}":
                                             ret_t = f"Arx_{enm.name}"
-                                            is_enum_ctor = True
+                                            found_ret = True
                                             break
-                                    if is_enum_ctor:
+                                    if found_ret:
                                         break
-                                if not is_enum_ctor and insn.fn_name in self.module.functions:
+                                if not found_ret and insn.fn_name in self.module.functions:
                                     ret_t = to_c_type(self.module.functions[insn.fn_name].return_type)
+                                    found_ret = True
+                                if not found_ret:
+                                    for cls in self.module.classes.values():
+                                        for m_name, m_fn in cls.methods.items():
+                                            m_sym = m_fn.name if m_fn.name.startswith("Arx_") else f"Arx_{cls.name}_{m_name}"
+                                            if insn.fn_name == m_sym or insn.fn_name == m_fn.name:
+                                                ret_t = to_c_type(m_fn.return_type)
+                                                found_ret = True
+                                                break
+                                        if found_ret:
+                                            break
                             temps[insn.dest] = ret_t
                     elif isinstance(insn, AIRGetPayloadField):
                         field_t = "int64_t"
@@ -927,6 +967,8 @@ class C99CodeGenerator:
                         r_arg = f"arx_cast_i64_to_str((int64_t)({insn.right}))"
 
                     self.emit(f"{insn.dest} = arx_str_concat({l_arg}, {r_arg});", indent=indent)
+                elif op_c in ("==", "!=", "<", "<=", ">", ">=") and (l_t in ("const char*", "char*", "str") or r_t in ("const char*", "char*", "str")):
+                    self.emit(f"{insn.dest} = (arx_str_compare({insn.left}, {insn.right}) {op_c} 0);", indent=indent)
                 else:
                     self.emit(f"{insn.dest} = {insn.left} {op_c} {insn.right};", indent=indent)
             elif isinstance(insn, AIRUnaryOp):
@@ -1082,7 +1124,23 @@ class C99CodeGenerator:
     def generate_call_instruction(self, insn: AIRCall, indent: int, temps: Optional[Dict[str, str]] = None, var_types_map: Optional[Dict[str, str]] = None) -> None:
         t_types = temps or {}
         v_types = var_types_map or {}
-        if insn.fn_name == "println":
+        if insn.fn_name == "eprintln":
+            if insn.args:
+                arg = insn.args[0]
+                t_type = t_types.get(arg, "int64_t")
+                if t_type in ("const char*", "char*", "str"):
+                    self.emit(f'fprintf(stderr, "%s\\n", {arg});', indent=indent)
+                elif t_type in ("String", "Arx_String"):
+                    self.emit(f'fprintf(stderr, "%s\\n", {arg}.buf);', indent=indent)
+                elif t_type in ("float", "double"):
+                    self.emit(f'fprintf(stderr, "%g\\n", (double){arg});', indent=indent)
+                elif t_type == "bool":
+                    self.emit(f'fprintf(stderr, "%s\\n", {arg} ? "true" : "false");', indent=indent)
+                else:
+                    self.emit(f'fprintf(stderr, "%lld\\n", (long long){arg});', indent=indent)
+            else:
+                self.emit('fprintf(stderr, "\\n");', indent=indent)
+        elif insn.fn_name == "println":
             if insn.args:
                 arg = insn.args[0]
                 t_type = t_types.get(arg, "int64_t")

@@ -1,0 +1,329 @@
+// Aerix Bootstrap Compiler — Shared Type System Utilities
+// Canonicalizes Aerix type annotations, splits generic/array types, and maps to C99 types.
+
+pub fn btype_strip_spaces(s: str) -> str {
+    let bb = ByteBuffer()
+    let n = s.len()
+    mut i = 0
+    while i < n {
+        let b = s.byte_at(i)
+        if b != 32 && b != 9 && b != 10 && b != 13 {
+            bb.write_u8(b)
+        }
+        i = i + 1
+    }
+    let out = bb.to_str()
+    bb.free()
+    return out
+}
+
+pub fn btype_norm(raw: str) -> str {
+    let t = btype_strip_spaces(raw)
+    if t == "" || t == "()" || t == "unit" || t == "void" { return "void" }
+    if t == "int" { return "i64" }
+    if t == "uint" { return "u64" }
+    if t == "float" { return "f64" }
+    if t == "string" { return "str" }
+    return t
+}
+
+pub fn btype_is_int(t: str) -> bool {
+    let nt = btype_norm(t)
+    return nt == "i8" || nt == "i16" || nt == "i32" || nt == "i64" || nt == "u8" || nt == "u16" || nt == "u32" || nt == "u64" || nt == "usize" || nt == "isize"
+}
+
+pub fn btype_is_float(t: str) -> bool {
+    let nt = btype_norm(t)
+    return nt == "f32" || nt == "f64"
+}
+
+pub fn btype_is_numeric(t: str) -> bool {
+    return btype_is_int(t) || btype_is_float(t)
+}
+
+pub fn btype_is_str(t: str) -> bool {
+    return btype_norm(t) == "str"
+}
+
+pub fn btype_is_ptr(t: str) -> bool {
+    let nt = btype_norm(t)
+    let n = nt.len()
+    return n > 1 && nt.byte_at(n - 1) == 42
+}
+
+pub fn btype_ptr_inner(t: str) -> str {
+    let nt = btype_norm(t)
+    let n = nt.len()
+    if n > 1 && nt.byte_at(n - 1) == 42 {
+        return btype_norm(nt.slice(0, n - 1))
+    }
+    return "void"
+}
+
+pub fn btype_is_fixed_arr(t: str) -> bool {
+    let nt = btype_norm(t)
+    let n = nt.len()
+    return n >= 3 && nt.byte_at(0) == 91 && nt.byte_at(n - 1) == 93 && nt.contains(";")
+}
+
+pub fn btype_arr_elem(t: str) -> str {
+    let nt = btype_norm(t)
+    let n = nt.len()
+    mut i = 1
+    while i < n - 1 {
+        if nt.byte_at(i) == 59 {
+            return btype_norm(nt.slice(1, i))
+        }
+        i = i + 1
+    }
+    return "i64"
+}
+
+pub fn btype_arr_len(t: str) -> i64 {
+    let nt = btype_norm(t)
+    let n = nt.len()
+    mut i = 1
+    while i < n - 1 {
+        if nt.byte_at(i) == 59 {
+            return nt.slice(i + 1, n - 1).to_i64()
+        }
+        i = i + 1
+    }
+    return 0
+}
+
+pub fn btype_is_list(t: str) -> bool {
+    let nt = btype_norm(t)
+    return nt.starts_with("List<") && nt.ends_with(">")
+}
+
+pub fn btype_is_set(t: str) -> bool {
+    let nt = btype_norm(t)
+    return nt.starts_with("Set<") && nt.ends_with(">")
+}
+
+pub fn btype_is_stack(t: str) -> bool {
+    let nt = btype_norm(t)
+    return nt.starts_with("Stack<") && nt.ends_with(">")
+}
+
+pub fn btype_is_queue(t: str) -> bool {
+    let nt = btype_norm(t)
+    return nt.starts_with("Queue<") && nt.ends_with(">")
+}
+
+pub fn btype_is_deque(t: str) -> bool {
+    let nt = btype_norm(t)
+    return nt.starts_with("Deque<") && nt.ends_with(">")
+}
+
+pub fn btype_is_tuple(t: str) -> bool {
+    let nt = btype_norm(t)
+    return nt.starts_with("Tuple<") && nt.ends_with(">")
+}
+
+pub fn btype_sqd_elem(t: str) -> str {
+    let nt = btype_norm(t)
+    if nt.len() <= 7 { return "i64" }
+    return nt.slice(6, nt.len() - 1)
+}
+
+pub fn btype_tuple_count(t: str) -> i64 {
+    let nt = btype_norm(t)
+    if !btype_is_tuple(nt) { return 0 }
+    if nt.len() <= 7 { return 0 }
+    mut count: i64 = 1
+    mut depth: i64 = 0
+    mut i: i64 = 6
+    let lim = nt.len() - 1
+    while i < lim {
+        let ch = nt.byte_at(i)
+        if ch == 60 { depth = depth + 1 } else if ch == 62 { depth = depth - 1 } else if ch == 44 && depth == 0 { count = count + 1 }
+        i = i + 1
+    }
+    return count
+}
+
+pub fn btype_tuple_elem(t: str, idx: i64) -> str {
+    let nt = btype_norm(t)
+    if !btype_is_tuple(nt) { return "i64" }
+    if nt.len() <= 7 { return "i64" }
+    mut cur: i64 = 0
+    mut start: i64 = 6
+    mut depth: i64 = 0
+    mut i: i64 = 6
+    let lim = nt.len() - 1
+    while i < lim {
+        let ch = nt.byte_at(i)
+        if ch == 60 { depth = depth + 1 } else if ch == 62 { depth = depth - 1 } else if ch == 44 && depth == 0 {
+            if cur == idx { return nt.slice(start, i) }
+            cur = cur + 1
+            start = i + 1
+        }
+        i = i + 1
+    }
+    if cur == idx { return nt.slice(start, lim) }
+    return "i64"
+}
+
+pub fn btype_is_map(t: str) -> bool {
+    let nt = btype_norm(t)
+    return nt.starts_with("Map<") && nt.ends_with(">")
+}
+
+pub fn btype_list_elem(t: str) -> str {
+    let nt = btype_norm(t)
+    let n = nt.len()
+    if nt.starts_with("List<") && n > 6 {
+        return btype_norm(nt.slice(5, n - 1))
+    }
+    if nt.starts_with("Set<") && n > 5 {
+        return btype_norm(nt.slice(4, n - 1))
+    }
+    return "i64"
+}
+
+pub fn btype_map_key(t: str) -> str {
+    let nt = btype_norm(t)
+    let n = nt.len()
+    if !nt.starts_with("Map<") || n < 7 { return "str" }
+    mut depth = 0
+    mut i = 4
+    while i < n - 1 {
+        let b = nt.byte_at(i)
+        if b == 60 {
+            depth = depth + 1
+        } else if b == 62 {
+            depth = depth - 1
+        } else if b == 44 && depth == 0 {
+            return btype_norm(nt.slice(4, i))
+        }
+        i = i + 1
+    }
+    return "str"
+}
+
+pub fn btype_map_val(t: str) -> str {
+    let nt = btype_norm(t)
+    let n = nt.len()
+    if !nt.starts_with("Map<") || n < 7 { return "i64" }
+    mut depth = 0
+    mut i = 4
+    while i < n - 1 {
+        let b = nt.byte_at(i)
+        if b == 60 {
+            depth = depth + 1
+        } else if b == 62 {
+            depth = depth - 1
+        } else if b == 44 && depth == 0 {
+            return btype_norm(nt.slice(i + 1, n - 1))
+        }
+        i = i + 1
+    }
+    return "i64"
+}
+
+pub fn btype_mangle(raw_t: str) -> str {
+    let nt = btype_norm(raw_t)
+    if btype_is_stack(nt) { return "Stack_" + btype_mangle(btype_sqd_elem(nt)) }
+    if btype_is_queue(nt) { return "Queue_" + btype_mangle(btype_sqd_elem(nt)) }
+    if btype_is_deque(nt) { return "Deque_" + btype_mangle(btype_sqd_elem(nt)) }
+    if btype_is_tuple(nt) {
+        let tc = btype_tuple_count(nt)
+        mut out = "Tuple"
+        mut i: i64 = 0
+        while i < tc {
+            out = out + "_" + btype_mangle(btype_tuple_elem(nt, i))
+            i = i + 1
+        }
+        return out
+    }
+    if nt == "List<i64>" { return "List_i64" }
+    if nt == "List<str>" { return "List_str" }
+    if nt == "List<f64>" { return "List_f64" }
+    if nt == "List<bool>" { return "List_bool" }
+    if btype_is_list(nt) {
+        return "List_" + btype_mangle(btype_list_elem(nt))
+    }
+    if btype_is_set(nt) {
+        return "Set_" + btype_mangle(btype_list_elem(nt))
+    }
+    if btype_is_map(nt) {
+        return "Map_" + btype_mangle(btype_map_key(nt)) + "_" + btype_mangle(btype_map_val(nt))
+    }
+    if btype_is_ptr(nt) {
+        return "ptr_" + btype_mangle(btype_ptr_inner(nt))
+    }
+    if btype_is_fixed_arr(nt) {
+        return "arr_" + btype_mangle(btype_arr_elem(nt)) + "_" + (btype_arr_len(nt) as str)
+    }
+    let bb = ByteBuffer()
+    let n = nt.len()
+    mut i = 0
+    while i < n {
+        let b = nt.byte_at(i)
+        let is_alnum = (b >= 65 && b <= 90) || (b >= 97 && b <= 122) || (b >= 48 && b <= 57) || b == 95
+        if is_alnum {
+            bb.write_u8(b)
+        } else {
+            bb.write_u8(95)
+        }
+        i = i + 1
+    }
+    let res = bb.to_str()
+    bb.free()
+    return res
+}
+
+pub fn btype_to_c(raw_t: str) -> str {
+    let t = btype_norm(raw_t)
+    if t == "void" { return "void" }
+    if t == "i8" { return "int8_t" }
+    if t == "i16" { return "int16_t" }
+    if t == "i32" { return "int32_t" }
+    if t == "i64" { return "int64_t" }
+    if t == "u8" { return "uint8_t" }
+    if t == "u16" { return "uint16_t" }
+    if t == "u32" { return "uint32_t" }
+    if t == "u64" { return "uint64_t" }
+    if t == "usize" { return "size_t" }
+    if t == "isize" { return "ptrdiff_t" }
+    if t == "f32" { return "float" }
+    if t == "f64" { return "double" }
+    if t == "bool" { return "bool" }
+    if t == "char" { return "char" }
+    if t == "str" { return "const char*" }
+    if t == "null" { return "void*" }
+    if btype_is_ptr(t) {
+        return btype_to_c(btype_ptr_inner(t)) + "*"
+    }
+    if btype_is_list(t) || btype_is_map(t) || btype_is_set(t) {
+        return "Arx_" + btype_mangle(t)
+    }
+    if t == "ByteBuffer" { return "Arx_ByteBuffer" }
+    if t == "String" { return "Arx_String" }
+    if t == "File" { return "Arx_File" }
+    if t == "Directory" { return "Arx_Directory" }
+    if t == "Process" { return "Arx_Process" }
+    if t == "Env" { return "Arx_Env" }
+    return "Arx_" + btype_mangle(t)
+}
+
+pub fn btype_default_c_val(raw_t: str) -> str {
+    let t = btype_norm(raw_t)
+    if t == "i8" || t == "i16" || t == "i32" || t == "i64" || t == "u8" || t == "u16" || t == "u32" || t == "u64" || t == "usize" || t == "isize" {
+        return "0"
+    }
+    if t == "f32" || t == "f64" { return "0.0" }
+    if t == "bool" { return "false" }
+    if t == "char" { return "0" }
+    if t == "str" { return "\"\"" }
+    if btype_is_ptr(t) || t == "null" { return "NULL" }
+    let bb = ByteBuffer()
+    bb.write_u8(123)
+    bb.write_u8(48)
+    bb.write_u8(125)
+    let z = bb.to_str()
+    bb.free()
+    return z
+}

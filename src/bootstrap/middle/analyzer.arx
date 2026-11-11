@@ -1,0 +1,1833 @@
+// Aerix Bootstrap Compiler — Semantic Analyzer & Type Resolver
+// Resolves symbols, overloads, generics, inheritance, enums, and expression/statement types.
+
+import "../frontend/ast.arx"
+import "../frontend/parser.arx"
+import "./types.arx"
+
+// Call & dispatch conventions stored in call_kinds[node_id]
+pub fn CK_NONE() -> i64 { return 0 }
+pub fn CK_NORMAL() -> i64 { return 1 }
+pub fn CK_METHOD() -> i64 { return 2 }
+pub fn CK_STATIC() -> i64 { return 3 }
+pub fn CK_CTOR() -> i64 { return 4 }
+pub fn CK_ENUM_VAR() -> i64 { return 5 }
+pub fn CK_BUILTIN() -> i64 { return 6 }
+pub fn CK_STR_METHOD() -> i64 { return 7 }
+pub fn CK_ARR_METHOD() -> i64 { return 8 }
+pub fn CK_NEW() -> i64 { return 9 }
+
+pub class Analyzer {
+    // Frozen AST arena copied from Parser
+    pub nk: List<i64>
+    pub sa: List<str>
+    pub sb: List<str>
+    pub ia: List<i64>
+    pub la: List<i64>
+    pub ra: List<i64>
+    pub ea: List<i64>
+    pub ls: List<i64>
+    pub ll: List<i64>
+    pub ln: List<i64>
+    pub ch: List<i64>
+    pub ncount: i64
+    pub root_decls: List<i64>
+    pub root_count: i64
+    pub c_includes: List<str>
+    pub c_inc_count: i64
+
+    // Monomorphized generic registries
+    pub gen_list_types: List<str>
+    pub gen_list_count: i64
+    pub gen_map_keys: List<str>
+    pub gen_map_vals: List<str>
+    pub gen_map_count: i64
+    pub gen_set_types: List<str>
+    pub gen_set_count: i64
+    pub gen_stack_types: List<str>
+    pub gen_stack_count: i64
+    pub gen_queue_types: List<str>
+    pub gen_queue_count: i64
+    pub gen_deque_types: List<str>
+    pub gen_deque_count: i64
+    pub gen_tuple_types: List<str>
+    pub gen_tuple_count: i64
+    pub seen_generics: Map<str, i64>
+
+    // Top-level ordered declarations
+    pub cls_names: List<str>
+    pub cls_nodes: List<i64>
+    pub cls_count: i64
+    pub cls_idx_map: Map<str, i64>
+    pub cls_order: List<i64>
+    pub cls_order_count: i64
+    pub cls_base_map: Map<str, str>
+    pub cls_field_types: Map<str, str>
+
+    pub enum_names: List<str>
+    pub enum_nodes: List<i64>
+    pub enum_count: i64
+    pub enum_idx_map: Map<str, i64>
+    pub enum_var_tag: Map<str, i64>
+    pub enum_var_node: Map<str, i64>
+
+    pub global_nodes: List<i64>
+    pub global_count: i64
+    pub global_types: Map<str, str>
+
+    pub fn_nodes: List<i64>
+    pub fn_count: i64
+    pub ext_nodes: List<i64>
+    pub ext_count: i64
+
+    // Callable signature registry
+    pub over_counts: Map<str, i64>
+    pub sig_keys: List<str>
+    pub sig_nodes: List<i64>
+    pub sig_cnames: List<str>
+    pub sig_rets: List<str>
+    pub sig_is_static: List<i64>
+    pub sig_count: i64
+    pub sig_by_key: Map<str, str>
+
+    // Per-node resolved outputs (size = ncount)
+    pub node_types: List<str>
+    pub call_targets: List<str>
+    pub call_kinds: List<i64>
+    pub call_fn_nodes: List<i64>
+    pub node_ext: List<str>
+
+    // Lexical scope stack
+    pub scope_names: List<str>
+    pub scope_types: List<str>
+    pub scope_count: i64
+    pub scope_marks: List<i64>
+    pub scope_depth: i64
+
+    pub cur_class: str
+    pub cur_ret_type: str
+    pub has_errors: i64
+
+    init(p: Parser) {
+        self.nk = p.nk
+        self.sa = p.sa
+        self.sb = p.sb
+        self.ia = p.ia
+        self.la = p.la
+        self.ra = p.ra
+        self.ea = p.ea
+        self.ls = p.ls
+        self.ll = p.ll
+        self.ln = p.ln
+        self.ch = p.ch
+        self.ncount = p.ncount
+        self.root_decls = p.root_decls
+        self.root_count = p.root_count
+        self.c_includes = p.c_includes
+        self.c_inc_count = p.c_inc_count
+
+        self.gen_list_types = List<str>()
+        self.gen_list_count = 0
+        self.gen_map_keys = List<str>()
+        self.gen_map_vals = List<str>()
+        self.gen_map_count = 0
+        self.gen_set_types = List<str>()
+        self.gen_set_count = 0
+        self.gen_stack_types = List<str>()
+        self.gen_stack_count = 0
+        self.gen_queue_types = List<str>()
+        self.gen_queue_count = 0
+        self.gen_deque_types = List<str>()
+        self.gen_deque_count = 0
+        self.gen_tuple_types = List<str>()
+        self.gen_tuple_count = 0
+        self.seen_generics = Map<str, i64>()
+
+        self.cls_names = List<str>()
+        self.cls_nodes = List<i64>()
+        self.cls_count = 0
+        self.cls_idx_map = Map<str, i64>()
+        self.cls_order = List<i64>()
+        self.cls_order_count = 0
+        self.cls_base_map = Map<str, str>()
+        self.cls_field_types = Map<str, str>()
+
+        self.enum_names = List<str>()
+        self.enum_nodes = List<i64>()
+        self.enum_count = 0
+        self.enum_idx_map = Map<str, i64>()
+        self.enum_var_tag = Map<str, i64>()
+        self.enum_var_node = Map<str, i64>()
+
+        self.global_nodes = List<i64>()
+        self.global_count = 0
+        self.global_types = Map<str, str>()
+
+        self.fn_nodes = List<i64>()
+        self.fn_count = 0
+        self.ext_nodes = List<i64>()
+        self.ext_count = 0
+
+        self.over_counts = Map<str, i64>()
+        self.sig_keys = List<str>()
+        self.sig_nodes = List<i64>()
+        self.sig_cnames = List<str>()
+        self.sig_rets = List<str>()
+        self.sig_is_static = List<i64>()
+        self.sig_count = 0
+        self.sig_by_key = Map<str, str>()
+
+        self.node_types = List<str>()
+        self.call_targets = List<str>()
+        self.call_kinds = List<i64>()
+        self.call_fn_nodes = List<i64>()
+        self.node_ext = List<str>()
+
+        self.scope_names = List<str>()
+        self.scope_types = List<str>()
+        self.scope_count = 0
+        self.scope_marks = List<i64>()
+        self.scope_depth = 0
+        self.cur_class = ""
+        self.cur_ret_type = "void"
+        self.has_errors = 0
+
+        // Copy generic instantiations recorded during parsing
+        mut gi = 0
+        while gi < p.gen_list_count {
+            self.ensure_generic_type("List<" + p.gen_list_types.get(gi) + ">")
+            gi = gi + 1
+        }
+        mut mi = 0
+        while mi < p.gen_map_count {
+            self.ensure_generic_type("Map<" + p.gen_map_keys.get(mi) + "," + p.gen_map_vals.get(mi) + ">")
+            mi = mi + 1
+        }
+        mut si = 0
+        while si < p.gen_set_count {
+            self.ensure_generic_type("Set<" + p.gen_set_types.get(si) + ">")
+            si = si + 1
+        }
+        mut stki = 0
+        while stki < p.gen_stack_count {
+            self.ensure_generic_type("Stack<" + p.gen_stack_types.get(stki) + ">")
+            stki = stki + 1
+        }
+        mut quei = 0
+        while quei < p.gen_queue_count {
+            self.ensure_generic_type("Queue<" + p.gen_queue_types.get(quei) + ">")
+            quei = quei + 1
+        }
+        mut deqi = 0
+        while deqi < p.gen_deque_count {
+            self.ensure_generic_type("Deque<" + p.gen_deque_types.get(deqi) + ">")
+            deqi = deqi + 1
+        }
+        mut tupi = 0
+        while tupi < p.gen_tuple_count {
+            self.ensure_generic_type(p.gen_tuple_types.get(tupi))
+            tupi = tupi + 1
+        }
+
+        // Pre-size per-node resolution arrays
+        mut i = 0
+        while i < self.ncount {
+            self.node_types.push("")
+            self.call_targets.push("")
+            self.call_kinds.push(0)
+            self.call_fn_nodes.push(-1)
+            self.node_ext.push("")
+            i = i + 1
+        }
+    }
+
+    priv fn child_at(nid: i64, idx: i64) -> i64 {
+        return self.ch.get(self.ls.get(nid) + idx)
+    }
+
+    priv fn child_count(nid: i64) -> i64 {
+        return self.ll.get(nid)
+    }
+
+    pub fn ensure_generic_type(raw_t: str) {
+        let nt = btype_norm(raw_t)
+        if btype_is_ptr(nt) {
+            self.ensure_generic_type(btype_ptr_inner(nt))
+            return
+        }
+        if btype_is_list(nt) {
+            let elem = btype_list_elem(nt)
+            self.ensure_generic_type(elem)
+            let key = "L::" + elem
+            if !self.seen_generics.has_key(key) {
+                self.seen_generics.insert(key, 1)
+                self.gen_list_types.push(elem)
+                self.gen_list_count = self.gen_list_count + 1
+            }
+        } else if btype_is_set(nt) {
+            let elem = btype_list_elem(nt)
+            self.ensure_generic_type(elem)
+            let key = "S::" + elem
+            if !self.seen_generics.has_key(key) {
+                self.seen_generics.insert(key, 1)
+                self.gen_set_types.push(elem)
+                self.gen_set_count = self.gen_set_count + 1
+            }
+        } else if btype_is_map(nt) {
+            let kt = btype_map_key(nt)
+            let vt = btype_map_val(nt)
+            self.ensure_generic_type(kt)
+            self.ensure_generic_type(vt)
+            let key = "M::" + kt + "::" + vt
+            if !self.seen_generics.has_key(key) {
+                self.seen_generics.insert(key, 1)
+                self.gen_map_keys.push(kt)
+                self.gen_map_vals.push(vt)
+                self.gen_map_count = self.gen_map_count + 1
+            }
+        } else if btype_is_stack(nt) {
+            let elem = btype_sqd_elem(nt)
+            self.ensure_generic_type(elem)
+            let key = "STK::" + elem
+            if !self.seen_generics.has_key(key) {
+                self.seen_generics.insert(key, 1)
+                self.gen_stack_types.push(elem)
+                self.gen_stack_count = self.gen_stack_count + 1
+            }
+        } else if btype_is_queue(nt) {
+            let elem = btype_sqd_elem(nt)
+            self.ensure_generic_type(elem)
+            let key = "QUE::" + elem
+            if !self.seen_generics.has_key(key) {
+                self.seen_generics.insert(key, 1)
+                self.gen_queue_types.push(elem)
+                self.gen_queue_count = self.gen_queue_count + 1
+            }
+        } else if btype_is_deque(nt) {
+            let elem = btype_sqd_elem(nt)
+            self.ensure_generic_type(elem)
+            let key = "DEQ::" + elem
+            if !self.seen_generics.has_key(key) {
+                self.seen_generics.insert(key, 1)
+                self.gen_deque_types.push(elem)
+                self.gen_deque_count = self.gen_deque_count + 1
+            }
+        } else if btype_is_tuple(nt) {
+            let tc = btype_tuple_count(nt)
+            mut ti = 0
+            while ti < tc {
+                self.ensure_generic_type(btype_tuple_elem(nt, ti))
+                ti = ti + 1
+            }
+            let key = "TUP::" + nt
+            if !self.seen_generics.has_key(key) {
+                self.seen_generics.insert(key, 1)
+                self.gen_tuple_types.push(nt)
+                self.gen_tuple_count = self.gen_tuple_count + 1
+            }
+        }
+    }
+
+    // --- Scope Stack ---
+
+    priv fn scope_push() {
+        self.scope_marks.push(self.scope_count)
+        self.scope_depth = self.scope_depth + 1
+    }
+
+    priv fn scope_pop() {
+        if self.scope_depth <= 0 { return }
+        self.scope_depth = self.scope_depth - 1
+        let target = self.scope_marks.pop()
+        while self.scope_count > target {
+            self.scope_names.pop()
+            self.scope_types.pop()
+            self.scope_count = self.scope_count - 1
+        }
+    }
+
+    priv fn scope_def(name: str, raw_t: str) {
+        let nt = btype_norm(raw_t)
+        self.ensure_generic_type(nt)
+        self.scope_names.push(name)
+        self.scope_types.push(nt)
+        self.scope_count = self.scope_count + 1
+    }
+
+    priv fn scope_lookup(name: str) -> str {
+        mut i = self.scope_count - 1
+        while i >= 0 {
+            if self.scope_names.get(i) == name {
+                return self.scope_types.get(i)
+            }
+            i = i - 1
+        }
+        if self.global_types.has_key(name) {
+            return self.global_types.get(name)
+        }
+        return ""
+    }
+
+    // --- Signature & Overload Registration ---
+
+    priv fn inc_over(key: str) {
+        mut prev = 0
+        if self.over_counts.has_key(key) {
+            prev = self.over_counts.get(key)
+        }
+        self.over_counts.insert(key, prev + 1)
+    }
+
+    priv fn param_sig_str(params_grp: i64) -> str {
+        if params_grp < 0 { return "" }
+        let n = self.child_count(params_grp)
+        if n == 0 { return "" }
+        let bb = ByteBuffer()
+        mut i = 0
+        while i < n {
+            if i > 0 { bb.write_u8(95) }
+            let pid = self.child_at(params_grp, i)
+            let pt = btype_mangle(self.sb.get(pid))
+            bb.write_str(pt)
+            i = i + 1
+        }
+        let s = bb.to_str()
+        bb.free()
+        return s
+    }
+
+    priv fn reg_sig(key: str, fn_nid: i64, cname: str, ret_t: str, is_static: i64) {
+        let idx = self.sig_count
+        self.sig_keys.push(key)
+        self.sig_nodes.push(fn_nid)
+        self.sig_cnames.push(cname)
+        self.sig_rets.push(btype_norm(ret_t))
+        self.sig_is_static.push(is_static)
+        self.sig_count = self.sig_count + 1
+        if self.sig_by_key.has_key(key) {
+            self.sig_by_key.insert(key, self.sig_by_key.get(key) + "," + (idx as str))
+        } else {
+            self.sig_by_key.insert(key, idx as str)
+        }
+        self.call_targets.set(fn_nid, cname)
+    }
+
+    // --- Pass 1: Collect Declarations & Signatures ---
+
+    priv fn count_decls() {
+        mut ri = 0
+        while ri < self.root_count {
+            let nid = self.root_decls.get(ri)
+            let k = self.nk.get(nid)
+            if k == NK_FN_DEF() {
+                let fname = self.sa.get(nid)
+                self.inc_over("fn::" + fname)
+                self.fn_nodes.push(nid)
+                self.fn_count = self.fn_count + 1
+            } else if k == NK_CEXTERN() {
+                self.fn_nodes.push(nid)
+                self.fn_count = self.fn_count + 1
+            } else if k == NK_CLASS_DEF() {
+                let cname = self.sa.get(nid)
+                let base_cls = self.sb.get(nid)
+                self.cls_idx_map.insert(cname, self.cls_count)
+                self.cls_names.push(cname)
+                self.cls_nodes.push(nid)
+                self.cls_count = self.cls_count + 1
+                self.cls_base_map.insert(cname, base_cls)
+
+                let ctors_grp = self.ra.get(nid)
+                let ccnt = self.child_count(ctors_grp)
+                mut ci = 0
+                while ci < ccnt {
+                    self.inc_over("ctor::" + cname)
+                    ci = ci + 1
+                }
+                let methods_grp = self.ea.get(nid)
+                let mcnt = self.child_count(methods_grp)
+                mut mi = 0
+                while mi < mcnt {
+                    let mid = self.child_at(methods_grp, mi)
+                    self.inc_over("m::" + cname + "::" + self.sa.get(mid))
+                    mi = mi + 1
+                }
+            } else if k == NK_ENUM_DEF() {
+                let ename = self.sa.get(nid)
+                self.enum_idx_map.insert(ename, self.enum_count)
+                self.enum_names.push(ename)
+                self.enum_nodes.push(nid)
+                self.enum_count = self.enum_count + 1
+            } else if k == NK_EXTEND_DEF() {
+                let tname = btype_norm(self.sa.get(nid))
+                self.ext_nodes.push(nid)
+                self.ext_count = self.ext_count + 1
+                let mcnt = self.child_count(nid)
+                mut mi = 0
+                while mi < mcnt {
+                    let mid = self.child_at(nid, mi)
+                    self.inc_over("m::" + tname + "::" + self.sa.get(mid))
+                    mi = mi + 1
+                }
+            } else if k == NK_VAR_DECL_GLOBAL() {
+                self.global_nodes.push(nid)
+                self.global_count = self.global_count + 1
+            }
+            ri = ri + 1
+        }
+    }
+
+    priv fn build_sigs() {
+        mut ri = 0
+        while ri < self.root_count {
+            let nid = self.root_decls.get(ri)
+            let k = self.nk.get(nid)
+            if k == NK_FN_DEF() {
+                let fname = self.sa.get(nid)
+                let ret_t = btype_norm(self.sb.get(nid))
+                self.ensure_generic_type(ret_t)
+                let pg = self.la.get(nid)
+                self.scan_params_generics(pg)
+                let okey = "fn::" + fname
+                mut ocnt = 1
+                if self.over_counts.has_key(okey) { ocnt = self.over_counts.get(okey) }
+                mut cname = "arx_" + fname
+                if fname == "main" {
+                    cname = "arx_main"
+                } else if ocnt > 1 {
+                    cname = "arx_" + fname + "__" + self.param_sig_str(pg)
+                }
+                self.reg_sig(okey, nid, cname, ret_t, 0)
+            } else if k == NK_CEXTERN() {
+                let fname = self.sa.get(nid)
+                let ret_t = btype_norm(self.sb.get(nid))
+                self.ensure_generic_type(ret_t)
+                self.scan_params_generics(self.la.get(nid))
+                self.reg_sig("fn::" + fname, nid, fname, ret_t, 0)
+            } else if k == NK_CLASS_DEF() {
+                let cname = self.sa.get(nid)
+                let fields_grp = self.la.get(nid)
+                let fcnt = self.child_count(fields_grp)
+                mut fi = 0
+                while fi < fcnt {
+                    let fid = self.child_at(fields_grp, fi)
+                    let ft = btype_norm(self.sb.get(fid))
+                    self.ensure_generic_type(ft)
+                    self.cls_field_types.insert(cname + "::" + self.sa.get(fid), ft)
+                    self.node_types.set(fid, ft)
+                    fi = fi + 1
+                }
+                let ctors_grp = self.ra.get(nid)
+                let ccnt = self.child_count(ctors_grp)
+                mut ck_cnt = 1
+                if self.over_counts.has_key("ctor::" + cname) {
+                    ck_cnt = self.over_counts.get("ctor::" + cname)
+                }
+                mut ci = 0
+                while ci < ccnt {
+                    let cid = self.child_at(ctors_grp, ci)
+                    let pg = self.la.get(cid)
+                    self.scan_params_generics(pg)
+                    mut fnm = "Arx_" + cname + "_init"
+                    if ck_cnt > 1 {
+                        fnm = fnm + "__" + self.param_sig_str(pg)
+                    }
+                    self.reg_sig("ctor::" + cname, cid, fnm, cname, 0)
+                    ci = ci + 1
+                }
+                let methods_grp = self.ea.get(nid)
+                let mcnt = self.child_count(methods_grp)
+                mut mi = 0
+                while mi < mcnt {
+                    let mid = self.child_at(methods_grp, mi)
+                    let mname = self.sa.get(mid)
+                    let mret = btype_norm(self.sb.get(mid))
+                    self.ensure_generic_type(mret)
+                    let mpg = self.la.get(mid)
+                    self.scan_params_generics(mpg)
+                    let mkey = "m::" + cname + "::" + mname
+                    mut m_oc = 1
+                    if self.over_counts.has_key(mkey) { m_oc = self.over_counts.get(mkey) }
+                    mut cm = "Arx_" + cname + "_" + mname
+                    if m_oc > 1 {
+                        cm = cm + "__" + self.param_sig_str(mpg)
+                    }
+                    mut is_st = 0
+                    if has_flag(self.ia.get(mid), FLAG_STATIC()) { is_st = 1 }
+                    self.reg_sig(mkey, mid, cm, mret, is_st)
+                    mi = mi + 1
+                }
+            } else if k == NK_ENUM_DEF() {
+                let ename = self.sa.get(nid)
+                let vcnt = self.child_count(nid)
+                mut vi = 0
+                while vi < vcnt {
+                    let vid = self.child_at(nid, vi)
+                    let vname = self.sa.get(vid)
+                    let vkey = ename + "::" + vname
+                    self.enum_var_tag.insert(vkey, vi)
+                    self.enum_var_node.insert(vkey, vid)
+                    let fcnt = self.child_count(vid)
+                    mut fi = 0
+                    while fi < fcnt {
+                        let pid = self.child_at(vid, fi)
+                        self.ensure_generic_type(btype_norm(self.sb.get(pid)))
+                        fi = fi + 1
+                    }
+                    vi = vi + 1
+                }
+            } else if k == NK_EXTEND_DEF() {
+                let tname = btype_norm(self.sa.get(nid))
+                self.ensure_generic_type(tname)
+                let mcnt = self.child_count(nid)
+                mut mi = 0
+                while mi < mcnt {
+                    let mid = self.child_at(nid, mi)
+                    let mname = self.sa.get(mid)
+                    let mret = btype_norm(self.sb.get(mid))
+                    self.ensure_generic_type(mret)
+                    let mpg = self.la.get(mid)
+                    self.scan_params_generics(mpg)
+                    let mkey = "m::" + tname + "::" + mname
+                    mut m_oc = 1
+                    if self.over_counts.has_key(mkey) { m_oc = self.over_counts.get(mkey) }
+                    mut cm = "Arx_ext_" + btype_mangle(tname) + "_" + mname
+                    if m_oc > 1 {
+                        cm = cm + "__" + self.param_sig_str(mpg)
+                    }
+                    mut is_st = 0
+                    if has_flag(self.ia.get(mid), FLAG_STATIC()) { is_st = 1 }
+                    self.reg_sig(mkey, mid, cm, mret, is_st)
+                    mi = mi + 1
+                }
+            }
+            ri = ri + 1
+        }
+    }
+
+    priv fn scan_params_generics(params_grp: i64) {
+        if params_grp < 0 { return }
+        let n = self.child_count(params_grp)
+        mut i = 0
+        while i < n {
+            let pid = self.child_at(params_grp, i)
+            let pt = btype_norm(self.sb.get(pid))
+            self.ensure_generic_type(pt)
+            i = i + 1
+        }
+    }
+
+    priv fn sort_classes_topo() {
+        let visited = List<i64>()
+        mut i = 0
+        while i < self.cls_count {
+            visited.push(0)
+            i = i + 1
+        }
+        mut idx = 0
+        while idx < self.cls_count {
+            self.visit_cls_topo(idx, visited)
+            idx = idx + 1
+        }
+    }
+
+    priv fn visit_cls_topo(ci: i64, visited: List<i64>) {
+        if ci < 0 || ci >= self.cls_count { return }
+        if visited.get(ci) == 2 { return }
+        if visited.get(ci) == 1 { return }
+        visited.set(ci, 1)
+        let nid = self.cls_nodes.get(ci)
+        let base_cls = self.sb.get(nid)
+        if base_cls != "" && self.cls_idx_map.has_key(base_cls) {
+            self.visit_cls_topo(self.cls_idx_map.get(base_cls), visited)
+        }
+        // Also visit class-typed value fields so embedded structs come first!
+        let fields_grp = self.la.get(nid)
+        let fcnt = self.child_count(fields_grp)
+        mut fi = 0
+        while fi < fcnt {
+            let fid = self.child_at(fields_grp, fi)
+            let ft = btype_norm(self.sb.get(fid))
+            if self.cls_idx_map.has_key(ft) {
+                self.visit_cls_topo(self.cls_idx_map.get(ft), visited)
+            } else if btype_is_tuple(ft) {
+                let tcnt = btype_tuple_count(ft)
+                mut ti = 0
+                while ti < tcnt {
+                    let te = btype_norm(btype_tuple_elem(ft, ti))
+                    if self.cls_idx_map.has_key(te) {
+                        self.visit_cls_topo(self.cls_idx_map.get(te), visited)
+                    }
+                    ti = ti + 1
+                }
+            }
+            fi = fi + 1
+        }
+        visited.set(ci, 2)
+        self.cls_order.push(ci)
+        self.cls_order_count = self.cls_order_count + 1
+    }
+
+    // --- Class Field / Overload Resolution Helpers ---
+
+    priv fn lookup_field_type(cls_name: str, field_name: str) -> str {
+        mut cur = cls_name
+        mut guard_cnt = 0
+        while cur != "" && guard_cnt < 32 {
+            let fkey = cur + "::" + field_name
+            if self.cls_field_types.has_key(fkey) {
+                return self.cls_field_types.get(fkey)
+            }
+            if self.cls_base_map.has_key(cur) {
+                cur = self.cls_base_map.get(cur)
+            } else {
+                cur = ""
+            }
+            guard_cnt = guard_cnt + 1
+        }
+        return ""
+    }
+
+    priv fn find_best_overload(key: str, arg_types: List<str>, argc: i64) -> i64 {
+        if !self.sig_by_key.has_key(key) { return -1 }
+        let raw = self.sig_by_key.get(key)
+        let parts = raw.split(",")
+        let pc = parts.len()
+        if pc == 1 {
+            return parts.get(0).to_i64()
+        }
+        mut best = -1
+        mut best_score = -1
+        mut pi = 0
+        while pi < pc {
+            let sidx = parts.get(pi).to_i64()
+            let fn_nid = self.sig_nodes.get(sidx)
+            let pg = self.la.get(fn_nid)
+            mut max_p = 0
+            mut min_p = 0
+            if pg >= 0 {
+                max_p = self.child_count(pg)
+                mut j = 0
+                while j < max_p {
+                    let pid = self.child_at(pg, j)
+                    if self.la.get(pid) < 0 { min_p = min_p + 1 }
+                    j = j + 1
+                }
+            }
+            if argc >= min_p && argc <= max_p {
+                mut score = 100 - (max_p - argc)
+                if pg >= 0 {
+                    mut ai = 0
+                    while ai < argc {
+                        let pid = self.child_at(pg, ai)
+                        let pt = btype_norm(self.sb.get(pid))
+                        let at = btype_norm(arg_types.get(ai))
+                        if pt == at {
+                            score = score + 50
+                        } else if btype_is_numeric(pt) && btype_is_numeric(at) {
+                            score = score + 10
+                        }
+                        ai = ai + 1
+                    }
+                }
+                if score > best_score {
+                    best_score = score
+                    best = sidx
+                }
+            }
+            pi = pi + 1
+        }
+        if best >= 0 { return best }
+        return parts.get(0).to_i64()
+    }
+
+    priv fn lookup_method_sig(recv_cls: str, mname: str, arg_types: List<str>, argc: i64) -> i64 {
+        mut cur = recv_cls
+        mut guard_cnt = 0
+        while cur != "" && guard_cnt < 32 {
+            let key = "m::" + cur + "::" + mname
+            let res = self.find_best_overload(key, arg_types, argc)
+            if res >= 0 { return res }
+            if self.cls_base_map.has_key(cur) {
+                cur = self.cls_base_map.get(cur)
+            } else {
+                cur = ""
+            }
+            guard_cnt = guard_cnt + 1
+        }
+        return -1
+    }
+
+    // --- Pass 2: Infer Types & Resolve All Statements / Expressions ---
+
+    pub fn analyze() {
+        self.count_decls()
+        self.build_sigs()
+        self.sort_classes_topo()
+
+        // Ensure List<str> is always emitted if needed for Env.args / Directory.list_* / str.split
+        self.ensure_generic_type("List<str>")
+
+        // Analyze globals first
+        mut gi = 0
+        while gi < self.global_count {
+            let gid = self.global_nodes.get(gi)
+            let vname = self.sa.get(gid)
+            let decl_t = self.sb.get(gid)
+            let init_id = self.la.get(gid)
+            mut res_t = "i64"
+            if decl_t != "" {
+                res_t = btype_norm(decl_t)
+                if init_id >= 0 { self.analyze_expr(init_id) }
+            } else if init_id >= 0 {
+                res_t = self.analyze_expr(init_id)
+            }
+            self.ensure_generic_type(res_t)
+            self.node_types.set(gid, res_t)
+            self.global_types.insert(vname, res_t)
+            gi = gi + 1
+        }
+
+        // Analyze top-level functions
+        mut fi = 0
+        while fi < self.fn_count {
+            self.analyze_fn_body(self.fn_nodes.get(fi), "")
+            fi = fi + 1
+        }
+
+        // Analyze class default fields, constructors, dtor, methods
+        mut ci = 0
+        while ci < self.cls_count {
+            let cid = self.cls_nodes.get(ci)
+            let cname = self.sa.get(cid)
+            self.cur_class = cname
+
+            let fields_grp = self.la.get(cid)
+            let fcnt = self.child_count(fields_grp)
+            mut k = 0
+            while k < fcnt {
+                let fid = self.child_at(fields_grp, k)
+                let def_id = self.la.get(fid)
+                if def_id >= 0 { self.analyze_expr(def_id) }
+                k = k + 1
+            }
+
+            let ctors_grp = self.ra.get(cid)
+            let ccnt = self.child_count(ctors_grp)
+            mut j = 0
+            while j < ccnt {
+                self.analyze_fn_body(self.child_at(ctors_grp, j), cname)
+                j = j + 1
+            }
+
+            let dtor_id = self.la.get(ctors_grp)
+            if dtor_id >= 0 {
+                self.call_targets.set(dtor_id, "Arx_" + cname + "_drop")
+                self.analyze_fn_body(dtor_id, cname)
+            }
+
+            let methods_grp = self.ea.get(cid)
+            let mcnt = self.child_count(methods_grp)
+            mut m = 0
+            while m < mcnt {
+                self.analyze_fn_body(self.child_at(methods_grp, m), cname)
+                m = m + 1
+            }
+            self.cur_class = ""
+            ci = ci + 1
+        }
+
+        // Analyze extend blocks
+        mut ei = 0
+        while ei < self.ext_count {
+            let eid = self.ext_nodes.get(ei)
+            let tname = btype_norm(self.sa.get(eid))
+            let mcnt = self.child_count(eid)
+            mut m = 0
+            while m < mcnt {
+                self.analyze_fn_body(self.child_at(eid, m), tname)
+                m = m + 1
+            }
+            ei = ei + 1
+        }
+    }
+
+    priv fn analyze_fn_body(fn_nid: i64, owner_cls: str) {
+        let k = self.nk.get(fn_nid)
+        if k == NK_CEXTERN() { return }
+        let body = self.ra.get(fn_nid)
+        if body < 0 { return }
+
+        let old_cls = self.cur_class
+        let old_ret = self.cur_ret_type
+        self.cur_class = owner_cls
+        if k == NK_INIT_DEF() || k == NK_DROP_DEF() {
+            self.cur_ret_type = owner_cls
+        } else {
+            self.cur_ret_type = btype_norm(self.sb.get(fn_nid))
+        }
+        self.node_types.set(fn_nid, self.cur_ret_type)
+
+        self.scope_push()
+        if owner_cls != "" && !has_flag(self.ia.get(fn_nid), FLAG_STATIC()) {
+            self.scope_def("self", owner_cls)
+        }
+        let pg = self.la.get(fn_nid)
+        if pg >= 0 {
+            let pcnt = self.child_count(pg)
+            mut pi = 0
+            while pi < pcnt {
+                let pid = self.child_at(pg, pi)
+                let pt = btype_norm(self.sb.get(pid))
+                self.node_types.set(pid, pt)
+                self.scope_def(self.sa.get(pid), pt)
+                let pdef = self.la.get(pid)
+                if pdef >= 0 { self.analyze_expr(pdef) }
+                pi = pi + 1
+            }
+        }
+        self.analyze_block(body)
+        self.scope_pop()
+
+        self.cur_class = old_cls
+        self.cur_ret_type = old_ret
+    }
+
+    priv fn analyze_block(blk_id: i64) {
+        if blk_id < 0 { return }
+        self.scope_push()
+        let cnt = self.child_count(blk_id)
+        mut i = 0
+        while i < cnt {
+            self.analyze_stmt(self.child_at(blk_id, i))
+            i = i + 1
+        }
+        self.scope_pop()
+    }
+
+    priv fn analyze_stmt(nid: i64) {
+        if nid < 0 { return }
+        let k = self.nk.get(nid)
+        if k == NK_BLOCK() {
+            self.analyze_block(nid)
+            return
+        }
+        if k == NK_VAR_DECL() {
+            let vname = self.sa.get(nid)
+            let decl_t = self.sb.get(nid)
+            let init_id = self.la.get(nid)
+            mut res_t = "i64"
+            if decl_t != "" {
+                res_t = btype_norm(decl_t)
+                if init_id >= 0 {
+                    let it = self.analyze_expr(init_id)
+                    if it == "null" && btype_is_ptr(res_t) {
+                        self.node_types.set(init_id, res_t)
+                    }
+                }
+            } else if init_id >= 0 {
+                res_t = self.analyze_expr(init_id)
+            }
+            if res_t == "" || res_t == "void" { res_t = "i64" }
+            self.node_types.set(nid, res_t)
+            self.scope_def(vname, res_t)
+            return
+        }
+        if k == NK_TUPLE_DESTR() {
+            let init_id = self.la.get(nid)
+            let init_t = btype_norm(self.analyze_expr(init_id))
+            let ncnt = self.child_count(nid)
+            mut ni = 0
+            while ni < ncnt {
+                let id_node = self.child_at(nid, ni)
+                let nm = self.sa.get(id_node)
+                mut vt = "i64"
+                if btype_is_tuple(init_t) && ni < btype_tuple_count(init_t) {
+                    vt = btype_norm(btype_tuple_elem(init_t, ni))
+                }
+                self.ensure_generic_type(vt)
+                self.node_types.set(id_node, vt)
+                self.scope_def(nm, vt)
+                ni = ni + 1
+            }
+            return
+        }
+        if k == NK_ASSIGN() {
+            let lt = self.analyze_expr(self.la.get(nid))
+            self.analyze_expr(self.ra.get(nid))
+            self.node_types.set(nid, lt)
+            return
+        }
+        if k == NK_IF() {
+            self.analyze_expr(self.la.get(nid))
+            self.analyze_block(self.ra.get(nid))
+            let eb = self.ea.get(nid)
+            if eb >= 0 { self.analyze_block(eb) }
+            return
+        }
+        if k == NK_WHILE() {
+            self.analyze_expr(self.la.get(nid))
+            self.analyze_block(self.ra.get(nid))
+            return
+        }
+        if k == NK_LOOP() {
+            self.analyze_block(self.la.get(nid))
+            return
+        }
+        if k == NK_FOR() {
+            let iter_id = self.la.get(nid)
+            mut elem_t = "i64"
+            mut iter_kind_tag = "__range__"
+            let ik = self.nk.get(iter_id)
+            if ik == NK_RANGE() {
+                self.analyze_expr(self.la.get(iter_id))
+                self.analyze_expr(self.ra.get(iter_id))
+                self.node_types.set(iter_id, "__range__")
+                elem_t = "i64"
+                iter_kind_tag = "__range__"
+            } else {
+                mut raw_it = iter_id
+                if ik == NK_CALL() {
+                    let cal = self.la.get(iter_id)
+                    if self.nk.get(cal) == NK_IDENT() && self.sa.get(cal) == "enumerate" && self.child_count(iter_id) == 1 {
+                        raw_it = self.child_at(iter_id, 0)
+                    }
+                }
+                let it_t = self.analyze_expr(raw_it)
+                if raw_it != iter_id {
+                    self.node_types.set(iter_id, it_t)
+                }
+                if btype_is_list(it_t) || btype_is_set(it_t) {
+                    elem_t = btype_list_elem(it_t)
+                    iter_kind_tag = it_t
+                } else if btype_is_fixed_arr(it_t) {
+                    elem_t = btype_arr_elem(it_t)
+                    iter_kind_tag = it_t
+                } else if btype_is_str(it_t) {
+                    elem_t = "char"
+                    iter_kind_tag = "str"
+                } else {
+                    elem_t = "i64"
+                    iter_kind_tag = it_t
+                }
+            }
+            self.node_ext.set(nid, elem_t + "|" + iter_kind_tag)
+            self.node_types.set(nid, elem_t)
+            self.scope_push()
+            let idx_var = self.sb.get(nid)
+            if idx_var != "" {
+                self.scope_def(idx_var, "i64")
+            }
+            self.scope_def(self.sa.get(nid), elem_t)
+            self.analyze_block(self.ra.get(nid))
+            self.scope_pop()
+            return
+        }
+        if k == NK_RETURN() {
+            let val_id = self.la.get(nid)
+            if val_id >= 0 {
+                let vt = self.analyze_expr(val_id)
+                self.node_types.set(nid, vt)
+            } else {
+                self.node_types.set(nid, "void")
+            }
+            return
+        }
+        if k == NK_GUARD() {
+            self.analyze_expr(self.la.get(nid))
+            self.analyze_block(self.ra.get(nid))
+            return
+        }
+        if k == NK_DEFER() {
+            self.analyze_stmt(self.la.get(nid))
+            return
+        }
+        if k == NK_TRY_CATCH() {
+            self.analyze_block(self.la.get(nid))
+            let cb = self.ra.get(nid)
+            if cb >= 0 {
+                self.scope_push()
+                let cv = self.sa.get(nid)
+                if cv != "" { self.scope_def(cv, "str") }
+                self.analyze_block(cb)
+                self.scope_pop()
+            }
+            let fb = self.ea.get(nid)
+            if fb >= 0 { self.analyze_block(fb) }
+            return
+        }
+        if k == NK_THROW() {
+            self.analyze_expr(self.la.get(nid))
+            return
+        }
+        if k == NK_MATCH() {
+            let subj_id = self.la.get(nid)
+            let subj_t = btype_norm(self.analyze_expr(subj_id))
+            self.node_types.set(nid, subj_t)
+            let ccnt = self.child_count(nid)
+            mut ci = 0
+            while ci < ccnt {
+                let case_id = self.child_at(nid, ci)
+                let pat_id = self.la.get(case_id)
+                let guard_id = self.ea.get(case_id)
+                let body_id = self.ra.get(case_id)
+                self.scope_push()
+                self.analyze_match_pat(pat_id, subj_t)
+                if guard_id >= 0 { self.analyze_expr(guard_id) }
+                self.analyze_block(body_id)
+                self.scope_pop()
+                ci = ci + 1
+            }
+            return
+        }
+        if k == NK_EXPR_STMT() {
+            let ex = self.la.get(nid)
+            self.node_types.set(nid, self.analyze_expr(ex))
+            return
+        }
+    }
+
+    priv fn analyze_match_pat(pat_id: i64, subj_t: str) {
+        if pat_id < 0 { return }
+        let pk = self.nk.get(pat_id)
+        if pk == NK_IDENT() {
+            let name = self.sa.get(pat_id)
+            if name == "_" {
+                self.node_ext.set(pat_id, "wildcard")
+                return
+            }
+            if self.enum_idx_map.has_key(subj_t) {
+                let vkey = subj_t + "::" + name
+                if self.enum_var_tag.has_key(vkey) {
+                    self.node_ext.set(pat_id, "enum_unit::" + vkey)
+                    self.node_types.set(pat_id, subj_t)
+                    return
+                }
+            }
+            self.scope_def(name, subj_t)
+            self.node_types.set(pat_id, subj_t)
+            return
+        }
+        if pk == NK_MEMBER() {
+            let lhs = self.la.get(pat_id)
+            let mem = self.sa.get(pat_id)
+            if self.nk.get(lhs) == NK_IDENT() {
+                let ename = self.sa.get(lhs)
+                let vkey = ename + "::" + mem
+                if self.enum_var_tag.has_key(vkey) {
+                    self.node_ext.set(pat_id, "enum_unit::" + vkey)
+                    self.node_types.set(pat_id, ename)
+                    return
+                }
+            }
+        }
+        if pk == NK_CALL() {
+            let cal = self.la.get(pat_id)
+            mut ename = subj_t
+            mut vname = ""
+            if self.nk.get(cal) == NK_IDENT() {
+                vname = self.sa.get(cal)
+            } else if self.nk.get(cal) == NK_MEMBER() {
+                let lhs = self.la.get(cal)
+                if self.nk.get(lhs) == NK_IDENT() { ename = self.sa.get(lhs) }
+                vname = self.sa.get(cal)
+            }
+            let vkey = ename + "::" + vname
+            if self.enum_var_node.has_key(vkey) {
+                let vnode = self.enum_var_node.get(vkey)
+                self.node_ext.set(pat_id, "enum_payload::" + vkey)
+                self.node_types.set(pat_id, ename)
+                self.call_fn_nodes.set(pat_id, vnode)
+                let ac = self.child_count(pat_id)
+                let fc = self.child_count(vnode)
+                mut i = 0
+                while i < ac {
+                    let arg_id = self.child_at(pat_id, i)
+                    mut ft = "i64"
+                    if i < fc {
+                        ft = btype_norm(self.sb.get(self.child_at(vnode, i)))
+                    }
+                    if self.nk.get(arg_id) == NK_IDENT() {
+                        let bind_name = self.sa.get(arg_id)
+                        if bind_name != "_" {
+                            self.scope_def(bind_name, ft)
+                        }
+                    }
+                    self.node_types.set(arg_id, ft)
+                    i = i + 1
+                }
+                return
+            }
+        }
+        self.analyze_expr(pat_id)
+    }
+
+    // --- Expression Inference ---
+
+    priv fn analyze_expr(nid: i64) -> str {
+        if nid < 0 { return "void" }
+        let k = self.nk.get(nid)
+
+        if k == NK_INT_LIT() { self.node_types.set(nid, "i64"); return "i64" }
+        if k == NK_FLOAT_LIT() { self.node_types.set(nid, "f64"); return "f64" }
+        if k == NK_STR_LIT() { self.node_types.set(nid, "str"); return "str" }
+        if k == NK_CHAR_LIT() { self.node_types.set(nid, "char"); return "char" }
+        if k == NK_BOOL_LIT() { self.node_types.set(nid, "bool"); return "bool" }
+        if k == NK_NULL_LIT() { self.node_types.set(nid, "null"); return "null" }
+        if k == NK_SIZEOF() { self.node_types.set(nid, "i64"); return "i64" }
+
+        if k == NK_STR_INTERP() {
+            let pc = self.child_count(nid)
+            mut i = 0
+            while i < pc {
+                self.analyze_expr(self.child_at(nid, i))
+                i = i + 1
+            }
+            self.node_types.set(nid, "str")
+            return "str"
+        }
+
+        if k == NK_IDENT() {
+            let name = self.sa.get(nid)
+            mut t = self.scope_lookup(name)
+            if t == "" {
+                if name == "true" || name == "false" {
+                    t = "bool"
+                } else if self.cls_idx_map.has_key(name) {
+                    t = name
+                } else if self.enum_idx_map.has_key(name) {
+                    t = name
+                } else {
+                    t = "i64"
+                }
+            }
+            self.node_types.set(nid, t)
+            return t
+        }
+
+        if k == NK_UNARY_OP() {
+            let op_s = self.sa.get(nid)
+            let ot = self.analyze_expr(self.la.get(nid))
+            mut rt = ot
+            if op_s == "!" {
+                rt = "bool"
+            } else if op_s == "&" {
+                rt = ot + "*"
+            }
+            self.node_types.set(nid, rt)
+            return rt
+        }
+
+        if k == NK_BIN_OP() {
+            let op_s = self.sa.get(nid)
+            let lt = btype_norm(self.analyze_expr(self.la.get(nid)))
+            let rt = btype_norm(self.analyze_expr(self.ra.get(nid)))
+            mut res_t = lt
+            if op_s == "==" || op_s == "!=" || op_s == "<" || op_s == "<=" || op_s == ">" || op_s == ">=" || op_s == "&&" || op_s == "||" {
+                res_t = "bool"
+            } else if op_s == "+" && (btype_is_str(lt) || btype_is_str(rt)) {
+                res_t = "str"
+            } else if btype_is_float(lt) || btype_is_float(rt) {
+                res_t = "f64"
+            } else if op_s == "??" {
+                res_t = lt
+            }
+            self.node_types.set(nid, res_t)
+            return res_t
+        }
+
+        if k == NK_CAST() {
+            self.analyze_expr(self.la.get(nid))
+            let tt = btype_norm(self.sa.get(nid))
+            self.ensure_generic_type(tt)
+            self.node_types.set(nid, tt)
+            return tt
+        }
+
+        if k == NK_FIXED_ARR() {
+            let cnt = self.child_count(nid)
+            mut et = "i64"
+            mut i = 0
+            while i < cnt {
+                let t = self.analyze_expr(self.child_at(nid, i))
+                if i == 0 { et = t }
+                i = i + 1
+            }
+            let arr_t = "[" + et + ";" + (cnt as str) + "]"
+            self.node_types.set(nid, arr_t)
+            return arr_t
+        }
+
+        if k == NK_FIXED_REPEAT() {
+            let et = self.analyze_expr(self.la.get(nid))
+            let arr_t = "[" + et + ";" + self.sa.get(nid) + "]"
+            self.node_types.set(nid, arr_t)
+            return arr_t
+        }
+
+        if k == NK_TUPLE_LIT() {
+            let cnt = self.child_count(nid)
+            if cnt == 0 {
+                self.node_types.set(nid, "void")
+                return "void"
+            }
+            mut tup_s = "Tuple<"
+            mut i = 0
+            while i < cnt {
+                let et = btype_norm(self.analyze_expr(self.child_at(nid, i)))
+                if i > 0 { tup_s = tup_s + "," }
+                tup_s = tup_s + et
+                i = i + 1
+            }
+            tup_s = tup_s + ">"
+            self.ensure_generic_type(tup_s)
+            self.node_types.set(nid, tup_s)
+            return tup_s
+        }
+
+        if k == NK_INDEX() {
+            let lhs_id = self.la.get(nid)
+            let idx_id = self.ra.get(nid)
+            let obj_t = btype_norm(self.analyze_expr(lhs_id))
+            self.analyze_expr(idx_id)
+            if self.nk.get(idx_id) == NK_RANGE() {
+                if btype_is_str(obj_t) {
+                    self.node_types.set(nid, "str")
+                    return "str"
+                }
+                self.node_types.set(nid, obj_t)
+                return obj_t
+            }
+            mut et = "i64"
+            if btype_is_fixed_arr(obj_t) {
+                et = btype_arr_elem(obj_t)
+            } else if btype_is_list(obj_t) {
+                et = btype_list_elem(obj_t)
+            } else if btype_is_map(obj_t) {
+                et = btype_map_val(obj_t)
+            } else if btype_is_str(obj_t) {
+                et = "char"
+            } else if btype_is_ptr(obj_t) {
+                et = btype_ptr_inner(obj_t)
+            }
+            self.node_types.set(nid, et)
+            return et
+        }
+
+        if k == NK_RANGE() {
+            self.analyze_expr(self.la.get(nid))
+            self.analyze_expr(self.ra.get(nid))
+            self.node_types.set(nid, "__range__")
+            return "__range__"
+        }
+
+        if k == NK_PIPELINE() || k == NK_CASCADE() {
+            self.analyze_expr(self.la.get(nid))
+            let rt = self.analyze_expr(self.ra.get(nid))
+            self.node_types.set(nid, rt)
+            return rt
+        }
+
+        if k == NK_MEMBER() {
+            let lhs = self.la.get(nid)
+            let mname = self.sa.get(nid)
+            if self.nk.get(lhs) == NK_IDENT() {
+                let lname = self.sa.get(lhs)
+                if self.enum_idx_map.has_key(lname) {
+                    let vkey = lname + "::" + mname
+                    if self.enum_var_tag.has_key(vkey) {
+                        self.node_ext.set(nid, "enum_unit::" + vkey)
+                        self.node_types.set(nid, lname)
+                        return lname
+                    }
+                }
+                if !self.cls_idx_map.has_key(lname) {
+                    if !self.enum_idx_map.has_key(lname) {
+                        if self.scope_lookup(lname) == "" {
+                            let empty_args = List<str>()
+                            let msig = self.find_best_overload("fn::" + mname, empty_args, 0)
+                            if msig >= 0 {
+                                let rt = self.sig_rets.get(msig)
+                                self.node_ext.set(nid, "mod_call::" + self.sig_cnames.get(msig))
+                                self.node_types.set(nid, rt)
+                                return rt
+                            }
+                            if self.global_types.has_key(mname) {
+                                let gt = self.global_types.get(mname)
+                                self.node_ext.set(nid, "mod_global::" + mname)
+                                self.node_types.set(nid, gt)
+                                return gt
+                            }
+                        }
+                    }
+                }
+            }
+            let lt = btype_norm(self.analyze_expr(lhs))
+            mut mt = self.lookup_field_type(lt, mname)
+            if mt == "" {
+                if btype_is_tuple(lt) && mname.starts_with("f") && mname.len() > 1 {
+                    let tidx = mname.slice(1, mname.len()).to_i64()
+                    if tidx >= 0 && tidx < btype_tuple_count(lt) {
+                        mt = btype_tuple_elem(lt, tidx)
+                    } else {
+                        mt = "i64"
+                    }
+                } else if (btype_is_list(lt) || btype_is_map(lt) || btype_is_set(lt) || btype_is_stack(lt) || btype_is_queue(lt) || btype_is_deque(lt) || btype_is_str(lt) || lt == "ByteBuffer" || lt == "String") && (mname == "length" || mname == "len") {
+                    mt = "i64"
+                } else {
+                    mt = "i64"
+                }
+            }
+            self.ensure_generic_type(mt)
+            self.node_types.set(nid, mt)
+            return mt
+        }
+
+        if k == NK_GENERIC_CALL() {
+            let mangled = self.sa.get(nid)
+            let base = self.sb.get(nid)
+            let ac = self.child_count(nid)
+            mut i = 0
+            while i < ac {
+                self.analyze_call_arg(self.child_at(nid, i))
+                i = i + 1
+            }
+            mut res_t = base
+            if base == "List" || base == "Set" || base == "Stack" || base == "Queue" || base == "Deque" {
+                let elem_t = mangled.slice(base.len() + 1, mangled.len())
+                mut gi = 0
+                if base == "List" {
+                    while gi < self.gen_list_count {
+                        let cand = self.gen_list_types.get(gi)
+                        if btype_mangle(cand) == elem_t { res_t = "List<" + cand + ">" }
+                        gi = gi + 1
+                    }
+                } else if base == "Set" {
+                    while gi < self.gen_set_count {
+                        let cand = self.gen_set_types.get(gi)
+                        if btype_mangle(cand) == elem_t { res_t = "Set<" + cand + ">" }
+                        gi = gi + 1
+                    }
+                } else if base == "Stack" {
+                    while gi < self.gen_stack_count {
+                        let cand = self.gen_stack_types.get(gi)
+                        if btype_mangle(cand) == elem_t { res_t = "Stack<" + cand + ">" }
+                        gi = gi + 1
+                    }
+                } else if base == "Queue" {
+                    while gi < self.gen_queue_count {
+                        let cand = self.gen_queue_types.get(gi)
+                        if btype_mangle(cand) == elem_t { res_t = "Queue<" + cand + ">" }
+                        gi = gi + 1
+                    }
+                } else {
+                    while gi < self.gen_deque_count {
+                        let cand = self.gen_deque_types.get(gi)
+                        if btype_mangle(cand) == elem_t { res_t = "Deque<" + cand + ">" }
+                        gi = gi + 1
+                    }
+                }
+            } else if base == "Map" {
+                mut mi = 0
+                while mi < self.gen_map_count {
+                    let kt = self.gen_map_keys.get(mi)
+                    let vt = self.gen_map_vals.get(mi)
+                    if "Map_" + btype_mangle(kt) + "_" + btype_mangle(vt) == mangled {
+                        res_t = "Map<" + kt + "," + vt + ">"
+                    }
+                    mi = mi + 1
+                }
+            }
+            self.call_kinds.set(nid, CK_CTOR())
+            self.call_targets.set(nid, "Arx_" + mangled + "_init")
+            self.node_types.set(nid, res_t)
+            return res_t
+        }
+
+        if k == NK_NEW() {
+            let cname = self.sa.get(nid)
+            let arg_types = List<str>()
+            let ac = self.child_count(nid)
+            mut i = 0
+            while i < ac {
+                arg_types.push(self.analyze_call_arg(self.child_at(nid, i)))
+                i = i + 1
+            }
+            let sig_i = self.find_best_overload("ctor::" + cname, arg_types, ac)
+            if sig_i >= 0 {
+                self.call_targets.set(nid, self.sig_cnames.get(sig_i))
+                self.call_fn_nodes.set(nid, self.sig_nodes.get(sig_i))
+            } else {
+                self.call_targets.set(nid, "Arx_" + btype_mangle(cname) + "_init")
+            }
+            self.call_kinds.set(nid, CK_NEW())
+            self.node_types.set(nid, cname)
+            return cname
+        }
+
+        if k == NK_CALL() {
+            return self.analyze_call(nid)
+        }
+
+        if k == NK_NAMED_ARG() {
+            let vt = self.analyze_expr(self.la.get(nid))
+            self.node_types.set(nid, vt)
+            return vt
+        }
+
+        self.node_types.set(nid, "i64")
+        return "i64"
+    }
+
+    priv fn analyze_call_arg(arg_id: i64) -> str {
+        if self.nk.get(arg_id) == NK_NAMED_ARG() {
+            let vt = self.analyze_expr(self.la.get(arg_id))
+            self.node_types.set(arg_id, vt)
+            return vt
+        }
+        return self.analyze_expr(arg_id)
+    }
+
+    priv fn analyze_call(nid: i64) -> str {
+        let callee = self.la.get(nid)
+        let arg_types = List<str>()
+        let ac = self.child_count(nid)
+        mut i = 0
+        while i < ac {
+            arg_types.push(self.analyze_call_arg(self.child_at(nid, i)))
+            i = i + 1
+        }
+
+        let ck = self.nk.get(callee)
+        if ck == NK_IDENT() {
+            let name = self.sa.get(callee)
+            // 1. Built-in global functions
+            if name == "println" || name == "print" || name == "eprintln" || name == "panic" || name == "abort" || name == "assert" || name == "assert_eq" || name == "arx_free" {
+                self.call_kinds.set(nid, CK_BUILTIN())
+                self.call_targets.set(nid, name)
+                self.node_types.set(nid, "void")
+                return "void"
+            }
+            if name == "input" || name == "read_line" || name == "to_string" || name == "chr" {
+                self.call_kinds.set(nid, CK_BUILTIN())
+                self.call_targets.set(nid, name)
+                self.node_types.set(nid, "str")
+                return "str"
+            }
+            if name == "parse_int" || name == "ord" || name == "len" {
+                self.call_kinds.set(nid, CK_BUILTIN())
+                self.call_targets.set(nid, name)
+                self.node_types.set(nid, "i64")
+                return "i64"
+            }
+            if name == "parse_float" || name == "sqrt" || name == "sin" || name == "cos" || name == "tan" || name == "pow" || name == "floor" || name == "ceil" || name == "round" || name == "log" || name == "exp" {
+                self.call_kinds.set(nid, CK_BUILTIN())
+                self.call_targets.set(nid, name)
+                self.node_types.set(nid, "f64")
+                return "f64"
+            }
+            if name == "abs" || name == "min" || name == "max" {
+                self.call_kinds.set(nid, CK_BUILTIN())
+                self.call_targets.set(nid, name)
+                mut rt = "i64"
+                if ac > 0 {
+                    if btype_is_float(arg_types.get(0)) { rt = "f64" }
+                }
+                self.node_types.set(nid, rt)
+                return rt
+            }
+            if name == "exit" {
+                self.call_kinds.set(nid, CK_BUILTIN())
+                self.call_targets.set(nid, "exit")
+                self.node_types.set(nid, "void")
+                return "void"
+            }
+
+            // 2. Prelude class constructors
+            if name == "ByteBuffer" {
+                self.call_kinds.set(nid, CK_CTOR())
+                self.call_targets.set(nid, "Arx_ByteBuffer_init")
+                self.node_types.set(nid, "ByteBuffer")
+                return "ByteBuffer"
+            }
+            if name == "String" {
+                self.call_kinds.set(nid, CK_CTOR())
+                self.call_targets.set(nid, "Arx_String_init")
+                self.node_types.set(nid, "String")
+                return "String"
+            }
+
+            // 3. User class constructor call ClassName(args)
+            if self.cls_idx_map.has_key(name) {
+                let sig_i = self.find_best_overload("ctor::" + name, arg_types, ac)
+                self.call_kinds.set(nid, CK_CTOR())
+                if sig_i >= 0 {
+                    self.call_targets.set(nid, self.sig_cnames.get(sig_i))
+                    self.call_fn_nodes.set(nid, self.sig_nodes.get(sig_i))
+                } else {
+                    self.call_targets.set(nid, "Arx_" + name + "_init")
+                }
+                self.node_types.set(nid, name)
+                return name
+            }
+
+            // 4. User function / cextern call
+            let sig_i = self.find_best_overload("fn::" + name, arg_types, ac)
+            if sig_i >= 0 {
+                let rt = self.sig_rets.get(sig_i)
+                self.call_kinds.set(nid, CK_NORMAL())
+                self.call_targets.set(nid, self.sig_cnames.get(sig_i))
+                self.call_fn_nodes.set(nid, self.sig_nodes.get(sig_i))
+                self.node_types.set(nid, rt)
+                return rt
+            }
+
+            // Fallback direct runtime helper (e.g. arx_* inside tests/modules)
+            self.call_kinds.set(nid, CK_NORMAL())
+            self.call_targets.set(nid, name)
+            self.node_types.set(nid, "i64")
+            return "i64"
+        }
+
+        if ck == NK_MEMBER() {
+            let lhs = self.la.get(callee)
+            let mname = self.sa.get(callee)
+
+            // Enum payload constructor: EnumName.Variant(args)
+            if self.nk.get(lhs) == NK_IDENT() {
+                let lname = self.sa.get(lhs)
+                if self.enum_idx_map.has_key(lname) {
+                    let vkey = lname + "::" + mname
+                    self.call_kinds.set(nid, CK_ENUM_VAR())
+                    self.call_targets.set(nid, "Arx_" + lname + "_" + mname)
+                    if self.enum_var_node.has_key(vkey) {
+                        self.call_fn_nodes.set(nid, self.enum_var_node.get(vkey))
+                    }
+                    self.node_types.set(nid, lname)
+                    return lname
+                }
+
+                // Static prelude classes
+                if lname == "File" || lname == "Directory" || lname == "Process" || lname == "Env" {
+                    let rt = self.prelude_static_ret(lname, mname)
+                    self.ensure_generic_type(rt)
+                    self.call_kinds.set(nid, CK_STATIC())
+                    self.call_targets.set(nid, "Arx_" + lname + "_" + mname)
+                    self.node_types.set(nid, rt)
+                    return rt
+                }
+
+                // Static method on user class
+                if self.cls_idx_map.has_key(lname) {
+                    let sig_i = self.lookup_method_sig(lname, mname, arg_types, ac)
+                    if sig_i >= 0 {
+                        let rt = self.sig_rets.get(sig_i)
+                        self.call_kinds.set(nid, CK_STATIC())
+                        self.call_targets.set(nid, self.sig_cnames.get(sig_i))
+                        self.call_fn_nodes.set(nid, self.sig_nodes.get(sig_i))
+                        self.node_types.set(nid, rt)
+                        return rt
+                    }
+                }
+
+                // Module-qualified function call: Mod.func(args)
+                if lname != "String" && lname != "ByteBuffer" {
+                    if !self.cls_idx_map.has_key(lname) {
+                        if !self.enum_idx_map.has_key(lname) {
+                            if self.scope_lookup(lname) == "" {
+                                let msig = self.find_best_overload("fn::" + mname, arg_types, ac)
+                                if msig >= 0 {
+                                    let rt = self.sig_rets.get(msig)
+                                    self.call_kinds.set(nid, CK_NORMAL())
+                                    self.call_targets.set(nid, self.sig_cnames.get(msig))
+                                    self.call_fn_nodes.set(nid, self.sig_nodes.get(msig))
+                                    self.node_types.set(nid, rt)
+                                    return rt
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Instance method call: recv.method(args)
+            let recv_t = btype_norm(self.analyze_expr(lhs))
+
+            // Primitive str methods
+            if btype_is_str(recv_t) {
+                let rt = self.str_method_ret(mname)
+                self.ensure_generic_type(rt)
+                self.call_kinds.set(nid, CK_STR_METHOD())
+                self.call_targets.set(nid, mname)
+                self.node_types.set(nid, rt)
+                return rt
+            }
+
+            // Fixed array methods (.len())
+            if btype_is_fixed_arr(recv_t) {
+                self.call_kinds.set(nid, CK_ARR_METHOD())
+                self.call_targets.set(nid, mname)
+                self.node_types.set(nid, "i64")
+                return "i64"
+            }
+
+            // Builtin container / ByteBuffer / String methods
+            if recv_t == "ByteBuffer" {
+                let rt = self.bytebuf_method_ret(mname)
+                self.call_kinds.set(nid, CK_METHOD())
+                self.call_targets.set(nid, "Arx_ByteBuffer_" + mname)
+                self.node_types.set(nid, rt)
+                return rt
+            }
+            if recv_t == "String" {
+                let rt = self.string_cls_method_ret(mname)
+                self.ensure_generic_type(rt)
+                self.call_kinds.set(nid, CK_METHOD())
+                self.call_targets.set(nid, "Arx_String_" + mname)
+                self.node_types.set(nid, rt)
+                return rt
+            }
+            if btype_is_list(recv_t) {
+                let elem_t = btype_list_elem(recv_t)
+                let rt = self.list_method_ret(mname, elem_t, recv_t)
+                self.ensure_generic_type(rt)
+                self.call_kinds.set(nid, CK_METHOD())
+                self.call_targets.set(nid, "Arx_" + btype_mangle(recv_t) + "_" + mname)
+                self.node_types.set(nid, rt)
+                return rt
+            }
+            if btype_is_map(recv_t) {
+                let kt = btype_map_key(recv_t)
+                let vt = btype_map_val(recv_t)
+                let rt = self.map_method_ret(mname, kt, vt)
+                self.ensure_generic_type(rt)
+                self.call_kinds.set(nid, CK_METHOD())
+                self.call_targets.set(nid, "Arx_" + btype_mangle(recv_t) + "_" + mname)
+                self.node_types.set(nid, rt)
+                return rt
+            }
+            if btype_is_set(recv_t) {
+                let elem_t = btype_list_elem(recv_t)
+                let rt = self.set_method_ret(mname, elem_t, recv_t)
+                self.ensure_generic_type(rt)
+                self.call_kinds.set(nid, CK_METHOD())
+                self.call_targets.set(nid, "Arx_" + btype_mangle(recv_t) + "_" + mname)
+                self.node_types.set(nid, rt)
+                return rt
+            }
+            if btype_is_stack(recv_t) || btype_is_queue(recv_t) || btype_is_deque(recv_t) {
+                let elem_t = btype_sqd_elem(recv_t)
+                let rt = self.sqd_method_ret(mname, elem_t)
+                self.ensure_generic_type(rt)
+                self.call_kinds.set(nid, CK_METHOD())
+                self.call_targets.set(nid, "Arx_" + btype_mangle(recv_t) + "_" + mname)
+                self.node_types.set(nid, rt)
+                return rt
+            }
+
+            // User class / inherited / extended method
+            let sig_i = self.lookup_method_sig(recv_t, mname, arg_types, ac)
+            if sig_i >= 0 {
+                let rt = self.sig_rets.get(sig_i)
+                self.call_kinds.set(nid, CK_METHOD())
+                self.call_targets.set(nid, self.sig_cnames.get(sig_i))
+                self.call_fn_nodes.set(nid, self.sig_nodes.get(sig_i))
+                self.node_types.set(nid, rt)
+                return rt
+            }
+
+            self.call_kinds.set(nid, CK_METHOD())
+            self.call_targets.set(nid, "Arx_" + btype_mangle(recv_t) + "_" + mname)
+            self.node_types.set(nid, "i64")
+            return "i64"
+        }
+
+        self.analyze_expr(callee)
+        self.node_types.set(nid, "i64")
+        return "i64"
+    }
+
+    // --- Prelude Method Return Type Tables ---
+
+    priv fn prelude_static_ret(cls: str, mname: str) -> str {
+        if cls == "File" {
+            if mname == "read_to_string" { return "str" }
+            return "bool"
+        }
+        if cls == "Directory" {
+            if mname == "list_files" || mname == "list_dirs" { return "List<str>" }
+            return "bool"
+        }
+        if cls == "Process" {
+            if mname == "run_capture" { return "str" }
+            return "i64"
+        }
+        if cls == "Env" {
+            if mname == "get" || mname == "arg" || mname == "cwd" || mname == "os_name" { return "str" }
+            if mname == "args" { return "List<str>" }
+            if mname == "arg_count" { return "i64" }
+            if mname == "set" { return "bool" }
+            return "void"
+        }
+        return "i64"
+    }
+
+    priv fn str_method_ret(mname: str) -> str {
+        if mname == "len" || mname == "length" || mname == "byte_at" || mname == "index_of" || mname == "to_i64" { return "i64" }
+        if mname == "to_f64" { return "f64" }
+        if mname == "is_empty" || mname == "contains" || mname == "starts_with" || mname == "ends_with" { return "bool" }
+        if mname == "split" { return "List<str>" }
+        if mname == "char_at" || mname == "get" { return "char" }
+        if mname == "append" { return "void" }
+        return "str"
+    }
+
+    priv fn string_cls_method_ret(mname: str) -> str {
+        if mname == "trim" || mname == "to_upper" || mname == "to_lower" || mname == "replace" || mname == "slice" || mname == "repeat" || mname == "append" { return "String" }
+        if mname == "len" || mname == "length" || mname == "byte_at" || mname == "index_of" { return "i64" }
+        if mname == "is_empty" || mname == "contains" || mname == "starts_with" || mname == "ends_with" { return "bool" }
+        if mname == "split" { return "List<str>" }
+        if mname == "as_str" || mname == "char_at" || mname == "get" { return "str" }
+        return "String"
+    }
+
+    priv fn bytebuf_method_ret(mname: str) -> str {
+        if mname == "read_u8" || mname == "read_i32_le" || mname == "read_i32_be" || mname == "pos" || mname == "len" { return "i64" }
+        if mname == "to_str" { return "str" }
+        return "void"
+    }
+
+    priv fn list_method_ret(mname: str, elem_t: str, list_t: str) -> str {
+        if mname == "pop" || mname == "get" || mname == "swap_remove" || mname == "remove_at" { return elem_t }
+        if mname == "len" || mname == "length" || mname == "index_of" { return "i64" }
+        if mname == "is_empty" || mname == "contains" { return "bool" }
+        if mname == "slice" { return list_t }
+        return "void"
+    }
+
+    priv fn map_method_ret(mname: str, kt: str, vt: str) -> str {
+        if mname == "get" { return vt }
+        if mname == "has_key" || mname == "contains_key" || mname == "remove" || mname == "is_empty" { return "bool" }
+        if mname == "len" || mname == "length" { return "i64" }
+        if mname == "keys" { return "List<" + kt + ">" }
+        if mname == "values" { return "List<" + vt + ">" }
+        return "void"
+    }
+
+    priv fn set_method_ret(mname: str, elem_t: str, set_t: str) -> str {
+        if mname == "get" { return elem_t }
+        if mname == "add" || mname == "has" || mname == "contains" || mname == "remove" || mname == "is_empty" { return "bool" }
+        if mname == "len" || mname == "length" { return "i64" }
+        if mname == "to_list" { return "List<" + elem_t + ">" }
+        if mname == "union" || mname == "intersection" || mname == "difference" { return set_t }
+        return "void"
+    }
+
+    priv fn sqd_method_ret(mname: str, elem_t: str) -> str {
+        if mname == "pop" || mname == "peek" || mname == "dequeue" || mname == "pop_back" || mname == "pop_front" || mname == "peek_front" || mname == "peek_back" {
+            return elem_t
+        }
+        if mname == "len" || mname == "length" { return "i64" }
+        if mname == "is_empty" { return "bool" }
+        return "void"
+    }
+}

@@ -1,0 +1,1434 @@
+// Aerix Bootstrap Compiler — Recursive Descent + Pratt Parser & Module Loader
+// Builds a unified flat index-based AST across imported files and modules.
+
+import "./tokens.arx"
+import "./lexer.arx"
+import "./ast.arx"
+import "../middle/paths.arx"
+
+pub class Parser {
+    // Current token stream window
+    pub tok_kinds: List<i64>
+    pub tok_vals: List<str>
+    pub tok_lines: List<i64>
+    pub tok_cols: List<i64>
+    pub tok_count: i64
+    pub pos: i64
+    pub cur_file: str
+    pub cur_dir: str
+    pub entry_dir: str
+
+    // Flat AST arena columns
+    pub nk: List<i64>
+    pub sa: List<str>
+    pub sb: List<str>
+    pub ia: List<i64>
+    pub la: List<i64>
+    pub ra: List<i64>
+    pub ea: List<i64>
+    pub ls: List<i64>
+    pub ll: List<i64>
+    pub ln: List<i64>
+    pub ch: List<i64>
+    pub ncount: i64
+    pub chcount: i64
+
+    // Root program & module loader state
+    pub root_decls: List<i64>
+    pub root_count: i64
+    pub c_includes: List<str>
+    pub c_inc_count: i64
+    pub loaded_files: Map<str, i64>
+    pub loaded_mods: Map<str, i64>
+    pub gen_list_types: List<str>
+    pub gen_list_count: i64
+    pub gen_map_keys: List<str>
+    pub gen_map_vals: List<str>
+    pub gen_map_count: i64
+    pub gen_set_types: List<str>
+    pub gen_set_count: i64
+    pub gen_stack_types: List<str>
+    pub gen_stack_count: i64
+    pub gen_queue_types: List<str>
+    pub gen_queue_count: i64
+    pub gen_deque_types: List<str>
+    pub gen_deque_count: i64
+    pub gen_tuple_types: List<str>
+    pub gen_tuple_count: i64
+    pub seen_generics: Map<str, i64>
+
+    init(entry_file: str) {
+        self.tok_kinds = List<i64>()
+        self.tok_vals = List<str>()
+        self.tok_lines = List<i64>()
+        self.tok_cols = List<i64>()
+        self.tok_count = 0
+        self.pos = 0
+        self.cur_file = bpath_normalize(entry_file)
+        self.cur_dir = bpath_dirname(self.cur_file)
+        self.entry_dir = self.cur_dir
+
+        self.nk = List<i64>()
+        self.sa = List<str>()
+        self.sb = List<str>()
+        self.ia = List<i64>()
+        self.la = List<i64>()
+        self.ra = List<i64>()
+        self.ea = List<i64>()
+        self.ls = List<i64>()
+        self.ll = List<i64>()
+        self.ln = List<i64>()
+        self.ch = List<i64>()
+        self.ncount = 0
+        self.chcount = 0
+
+        self.root_decls = List<i64>()
+        self.root_count = 0
+        self.c_includes = List<str>()
+        self.c_inc_count = 0
+        self.loaded_files = Map<str, i64>()
+        self.loaded_mods = Map<str, i64>()
+        self.gen_list_types = List<str>()
+        self.gen_list_count = 0
+        self.gen_map_keys = List<str>()
+        self.gen_map_vals = List<str>()
+        self.gen_map_count = 0
+        self.gen_set_types = List<str>()
+        self.gen_set_count = 0
+        self.gen_stack_types = List<str>()
+        self.gen_stack_count = 0
+        self.gen_queue_types = List<str>()
+        self.gen_queue_count = 0
+        self.gen_deque_types = List<str>()
+        self.gen_deque_count = 0
+        self.gen_tuple_types = List<str>()
+        self.gen_tuple_count = 0
+        self.seen_generics = Map<str, i64>()
+    }
+
+    // --- AST Arena Allocation ---
+
+    priv fn add_node(kind: i64, s1: str, s2: str, i1: i64, l_id: i64, r_id: i64, e_id: i64, line_num: i64) -> i64 {
+        let id = self.ncount
+        self.nk.push(kind)
+        self.sa.push(s1)
+        self.sb.push(s2)
+        self.ia.push(i1)
+        self.la.push(l_id)
+        self.ra.push(r_id)
+        self.ea.push(e_id)
+        self.ls.push(0)
+        self.ll.push(0)
+        self.ln.push(line_num)
+        self.ncount = id + 1
+        return id
+    }
+
+    priv fn make_group(kind: i64, s1: str, s2: str, i1: i64, l_id: i64, r_id: i64, e_id: i64, line_num: i64, items: List<i64>, count: i64) -> i64 {
+        let start = self.chcount
+        mut i = 0
+        while i < count {
+            self.ch.push(items.get(i))
+            i = i + 1
+        }
+        self.chcount = start + count
+        let id = self.ncount
+        self.nk.push(kind)
+        self.sa.push(s1)
+        self.sb.push(s2)
+        self.ia.push(i1)
+        self.la.push(l_id)
+        self.ra.push(r_id)
+        self.ea.push(e_id)
+        self.ls.push(start)
+        self.ll.push(count)
+        self.ln.push(line_num)
+        self.ncount = id + 1
+        return id
+    }
+
+    priv fn register_generic(base: str, args: List<str>, arg_count: i64) -> str {
+        if base == "List" && arg_count == 1 {
+            let elem = args.get(0)
+            let m = "List_" + btype_mangle(elem)
+            if !self.seen_generics.has_key(m) {
+                self.seen_generics.insert(m, 1)
+                self.gen_list_types.push(elem)
+                self.gen_list_count = self.gen_list_count + 1
+            }
+            return m
+        } else if base == "Map" && arg_count == 2 {
+            let kt = args.get(0)
+            let vt = args.get(1)
+            let m = "Map_" + btype_mangle(kt) + "_" + btype_mangle(vt)
+            if !self.seen_generics.has_key(m) {
+                self.seen_generics.insert(m, 1)
+                self.gen_map_keys.push(kt)
+                self.gen_map_vals.push(vt)
+                self.gen_map_count = self.gen_map_count + 1
+            }
+            return m
+        } else if base == "Set" && arg_count == 1 {
+            let elem = args.get(0)
+            let m = "Set_" + btype_mangle(elem)
+            if !self.seen_generics.has_key(m) {
+                self.seen_generics.insert(m, 1)
+                self.gen_set_types.push(elem)
+                self.gen_set_count = self.gen_set_count + 1
+            }
+            return m
+        } else if base == "Stack" && arg_count == 1 {
+            let elem = args.get(0)
+            let m = "Stack_" + btype_mangle(elem)
+            if !self.seen_generics.has_key(m) {
+                self.seen_generics.insert(m, 1)
+                self.gen_stack_types.push(elem)
+                self.gen_stack_count = self.gen_stack_count + 1
+            }
+            return m
+        } else if base == "Queue" && arg_count == 1 {
+            let elem = args.get(0)
+            let m = "Queue_" + btype_mangle(elem)
+            if !self.seen_generics.has_key(m) {
+                self.seen_generics.insert(m, 1)
+                self.gen_queue_types.push(elem)
+                self.gen_queue_count = self.gen_queue_count + 1
+            }
+            return m
+        } else if base == "Deque" && arg_count == 1 {
+            let elem = args.get(0)
+            let m = "Deque_" + btype_mangle(elem)
+            if !self.seen_generics.has_key(m) {
+                self.seen_generics.insert(m, 1)
+                self.gen_deque_types.push(elem)
+                self.gen_deque_count = self.gen_deque_count + 1
+            }
+            return m
+        }
+        mut out = base
+        mut i = 0
+        while i < arg_count {
+            out = out + "_" + args.get(i)
+            i = i + 1
+        }
+        return out
+    }
+
+    priv fn register_tuple(tup_t: str) {
+        let key = "TUP::" + tup_t
+        if !self.seen_generics.has_key(key) {
+            self.seen_generics.insert(key, 1)
+            self.gen_tuple_types.push(tup_t)
+            self.gen_tuple_count = self.gen_tuple_count + 1
+        }
+    }
+
+    // --- Token Helpers ---
+
+    priv fn peek_kind(offset: i64) -> i64 {
+        let idx = self.pos + offset
+        if idx < self.tok_count {
+            return self.tok_kinds.get(idx)
+        }
+        return TK_EOF()
+    }
+
+    priv fn cur_kind() -> i64 {
+        return self.peek_kind(0)
+    }
+
+    priv fn cur_val() -> str {
+        if self.pos < self.tok_count {
+            return self.tok_vals.get(self.pos)
+        }
+        return ""
+    }
+
+    priv fn cur_line() -> i64 {
+        if self.pos < self.tok_count {
+            return self.tok_lines.get(self.pos)
+        }
+        return 1
+    }
+
+    priv fn adv() -> i64 {
+        let idx = self.pos
+        if idx < self.tok_count {
+            self.pos = idx + 1
+        }
+        return idx
+    }
+
+    priv fn match_k(k: i64) -> bool {
+        if self.cur_kind() == k {
+            self.pos = self.pos + 1
+            return true
+        }
+        return false
+    }
+
+    priv fn fail(msg: str) {
+        eprintln("PARSER ERROR (" + self.cur_file + ":" + self.cur_line() + "): " + msg + " [got '" + self.cur_val() + "']")
+        Env.exit(1)
+    }
+
+    priv fn expect_k(k: i64, msg: str) -> i64 {
+        if self.cur_kind() == k {
+            return self.adv()
+        }
+        self.fail(msg)
+        return self.pos
+    }
+
+    priv fn skip_newlines() {
+        while self.cur_kind() == TK_NEWLINE() {
+            self.pos = self.pos + 1
+        }
+    }
+
+    priv fn skip_stmt_end() {
+        while self.cur_kind() == TK_SEMICOLON() || self.cur_kind() == TK_NEWLINE() {
+            self.pos = self.pos + 1
+        }
+    }
+
+    // --- Module & File Loading ---
+
+    pub fn load_file(file_path: str) {
+        mut resolved = file_path
+        if !bpath_is_abs(resolved) {
+            resolved = bpath_join(self.cur_dir, file_path)
+        } else {
+            resolved = bpath_normalize(resolved)
+        }
+        if !File.exists(resolved) && !str_ends_with_arx(resolved) {
+            let with_ext = resolved + ".arx"
+            if File.exists(with_ext) {
+                resolved = with_ext
+            }
+        }
+        if self.loaded_files.has_key(resolved) {
+            return
+        }
+        if !File.exists(resolved) {
+            self.fail("Cannot find imported source file: " + resolved)
+        }
+        self.loaded_files.insert(resolved, 1)
+
+        let source = File.read_to_string(resolved)
+        self.load_source(source, resolved)
+    }
+
+    pub fn load_source(source: str, filename: str) {
+        let norm_name = bpath_normalize(filename)
+        if !self.loaded_files.has_key(norm_name) {
+            self.loaded_files.insert(norm_name, 1)
+        }
+        mut lx = Lexer(source, norm_name)
+        let ts = lx.tokenize()
+
+        // Save outer parser token stream state
+        let s_kinds = self.tok_kinds
+        let s_vals = self.tok_vals
+        let s_lines = self.tok_lines
+        let s_cols = self.tok_cols
+        let s_tcount = self.tok_count
+        let s_pos = self.pos
+        let s_file = self.cur_file
+        let s_dir = self.cur_dir
+
+        self.tok_kinds = ts.kinds
+        self.tok_vals = ts.vals
+        self.tok_lines = ts.lines
+        self.tok_cols = ts.cols
+        self.tok_count = ts.count
+        self.pos = 0
+        self.cur_file = norm_name
+        self.cur_dir = bpath_dirname(norm_name)
+
+        self.parse_program_unit()
+
+        // Restore outer state
+        self.tok_kinds = s_kinds
+        self.tok_vals = s_vals
+        self.tok_lines = s_lines
+        self.tok_cols = s_cols
+        self.tok_count = s_tcount
+        self.pos = s_pos
+        self.cur_file = s_file
+        self.cur_dir = s_dir
+    }
+
+    priv fn collect_dir_arx(dir_path: str, out_files: List<str>, count_box: List<i64>) {
+        let files = Directory.list_files(dir_path)
+        let f_count = files.len()
+        mut i = 0
+        while i < f_count {
+            let fnm = files.get(i)
+            if str_ends_with_arx(fnm) {
+                out_files.push(bpath_join(dir_path, fnm))
+                count_box.set(0, count_box.get(0) + 1)
+            }
+            i = i + 1
+        }
+        let subdirs = Directory.list_dirs(dir_path)
+        let d_count = subdirs.len()
+        mut d = 0
+        while d < d_count {
+            self.collect_dir_arx(bpath_join(dir_path, subdirs.get(d)), out_files, count_box)
+            d = d + 1
+        }
+    }
+
+    priv fn load_module(mod_name: str) {
+        if self.loaded_mods.has_key(mod_name) {
+            return
+        }
+        let mod_dir = find_module_dir(mod_name, self.entry_dir)
+        if mod_dir == "" {
+            self.fail("Inbuilt module '" + mod_name + "' not found")
+        }
+        self.loaded_mods.insert(mod_name, 1)
+
+        let arx_files = List<str>()
+        let count_box = List<i64>()
+        count_box.push(0)
+        self.collect_dir_arx(mod_dir, arx_files, count_box)
+        let total = count_box.get(0)
+        sort_str_list(arx_files, total)
+
+        mut i = 0
+        while i < total {
+            self.load_file(arx_files.get(i))
+            i = i + 1
+        }
+    }
+
+    // --- Type Parsing ---
+
+    priv fn parse_type_str() -> str {
+        if self.cur_kind() == TK_LBRACKET() {
+            self.adv()
+            let elem_t = self.parse_type_str()
+            self.expect_k(TK_SEMICOLON(), "Expected ';' in fixed array type [T; N]")
+            let sz_tok = self.expect_k(TK_INT(), "Expected integer size in fixed array type")
+            let sz_str = self.tok_vals.get(sz_tok)
+            self.expect_k(TK_RBRACKET(), "Expected ']' in fixed array type")
+            return "[" + elem_t + ";" + sz_str + "]"
+        }
+        if self.cur_kind() == TK_FN() {
+            self.adv()
+            self.expect_k(TK_LPAREN(), "Expected '(' in function type")
+            mut f_str = "Fn_"
+            mut first = true
+            while self.cur_kind() != TK_RPAREN() && self.cur_kind() != TK_EOF() {
+                let pt = self.parse_type_str()
+                if !first { f_str = f_str + "_" }
+                f_str = f_str + pt
+                first = false
+                if !self.match_k(TK_COMMA()) { break }
+            }
+            self.expect_k(TK_RPAREN(), "Expected ')' in function type")
+            mut ret_t = "void"
+            if self.match_k(TK_ARROW()) {
+                ret_t = self.parse_type_str()
+            }
+            return f_str + "_to_" + ret_t
+        }
+
+        if self.cur_kind() == TK_LPAREN() {
+            self.adv()
+            let t_elems = List<str>()
+            mut tec: i64 = 0
+            if self.cur_kind() != TK_RPAREN() {
+                while self.pos < self.tok_count {
+                    t_elems.push(self.parse_type_str())
+                    tec = tec + 1
+                    if !self.match_k(TK_COMMA()) { break }
+                }
+            }
+            self.expect_k(TK_RPAREN(), "Expected ')' after tuple type annotation")
+            if tec == 0 { return "void" }
+            if tec == 1 { return t_elems.get(0) }
+            mut tup_s = "Tuple<" + t_elems.get(0)
+            mut ti: i64 = 1
+            while ti < tec {
+                tup_s = tup_s + "," + t_elems.get(ti)
+                ti = ti + 1
+            }
+            tup_s = tup_s + ">"
+            self.register_tuple(tup_s)
+            return tup_s
+        }
+        let name_idx = self.expect_k(TK_IDENT(), "Expected type name")
+        mut base = self.tok_vals.get(name_idx)
+        if self.match_k(TK_LT()) {
+            let targs = List<str>()
+            mut acount = 0
+            while true {
+                let targ = self.parse_type_str()
+                targs.push(targ)
+                acount = acount + 1
+                if !self.match_k(TK_COMMA()) { break }
+            }
+            self.expect_k(TK_GT(), "Expected '>' after generic type arguments")
+            let mangled = self.register_generic(base, targs, acount)
+            if base == "List" && acount == 1 {
+                base = "List<" + targs.get(0) + ">"
+            } else if base == "Map" && acount == 2 {
+                base = "Map<" + targs.get(0) + "," + targs.get(1) + ">"
+            } else if base == "Set" && acount == 1 {
+                base = "Set<" + targs.get(0) + ">"
+            } else if base == "Stack" && acount == 1 {
+                base = "Stack<" + targs.get(0) + ">"
+            } else if base == "Queue" && acount == 1 {
+                base = "Queue<" + targs.get(0) + ">"
+            } else if base == "Deque" && acount == 1 {
+                base = "Deque<" + targs.get(0) + ">"
+            } else {
+                base = mangled
+            }
+        }
+        while true {
+            if self.match_k(TK_QUESTION()) {
+                base = base + "?"
+            } else if self.match_k(TK_STAR()) {
+                base = base + "*"
+            } else {
+                break
+            }
+        }
+        return base
+    }
+
+    // --- Program & Top-Level Declarations ---
+
+    priv fn parse_program_unit() {
+        self.skip_stmt_end()
+        while self.cur_kind() != TK_EOF() {
+            if self.cur_kind() == TK_IMPORT() || self.cur_kind() == TK_USE() {
+                self.parse_import_stmt()
+                self.skip_stmt_end()
+                continue
+            }
+            let decl = self.parse_top_decl()
+            if decl >= 0 {
+                self.root_decls.push(decl)
+                self.root_count = self.root_count + 1
+            }
+            self.skip_stmt_end()
+        }
+    }
+
+    priv fn parse_import_stmt() {
+        self.adv()
+        // Selective: import { a, b } from "path" / Mod
+        if self.match_k(TK_LBRACE()) {
+            while self.cur_kind() != TK_RBRACE() && self.cur_kind() != TK_EOF() {
+                self.adv()
+                if !self.match_k(TK_COMMA()) { break }
+            }
+            self.expect_k(TK_RBRACE(), "Expected closing brace in selective import")
+            self.expect_k(TK_FROM(), "Expected 'from' in selective import")
+            if self.cur_kind() == TK_STR() {
+                let t = self.adv()
+                self.load_file(self.tok_vals.get(t))
+            } else if self.cur_kind() == TK_IDENT() {
+                let t = self.adv()
+                self.load_module(self.tok_vals.get(t))
+            } else {
+                self.fail("Expected path or module name after 'from'")
+            }
+            return
+        }
+        // File path: import "./foo.arx"
+        if self.cur_kind() == TK_STR() {
+            let t = self.adv()
+            self.load_file(self.tok_vals.get(t))
+            return
+        }
+        // Module list: import Math, Random
+        while self.cur_kind() == TK_IDENT() {
+            let t = self.adv()
+            self.load_module(self.tok_vals.get(t))
+            if !self.match_k(TK_COMMA()) { break }
+        }
+    }
+
+    priv fn parse_top_decl() -> i64 {
+        mut is_packed = 0
+        while self.match_k(TK_HASH()) {
+            self.expect_k(TK_LBRACKET(), "Expected '[' after '#'")
+            while self.cur_kind() != TK_RBRACKET() && self.cur_kind() != TK_EOF() {
+                if self.cur_kind() == TK_IDENT() && self.cur_val() == "packed" {
+                    is_packed = FLAG_PACKED()
+                }
+                self.adv()
+            }
+            self.expect_k(TK_RBRACKET(), "Expected ']' after attribute")
+            self.skip_newlines()
+        }
+
+        mut flags = is_packed
+        while true {
+            if self.match_k(TK_PUB()) {
+                flags = flags + FLAG_PUB()
+            } else if self.match_k(TK_PRIV()) || self.match_k(TK_PROT()) {
+                flags = flags
+            } else if self.match_k(TK_STATIC()) {
+                flags = flags + FLAG_STATIC()
+            } else if self.match_k(TK_VIRTUAL()) || self.match_k(TK_OVERRIDE()) || self.match_k(TK_ABSTRACT()) {
+                flags = flags
+            } else {
+                break
+            }
+        }
+
+        let k = self.cur_kind()
+        if k == TK_CINCLUDE() {
+            self.adv()
+            let t = self.expect_k(TK_STR(), "Expected header string after cinclude")
+            let hdr = self.tok_vals.get(t)
+            self.c_includes.push(hdr)
+            self.c_inc_count = self.c_inc_count + 1
+            return self.add_node(NK_CINCLUDE(), hdr, "", 0, -1, -1, -1, self.cur_line())
+        }
+        if k == TK_CEXTERN() {
+            self.adv()
+            let fn_id = self.parse_fn_def(flags)
+            self.nk.set(fn_id, NK_CEXTERN())
+            return fn_id
+        }
+        if k == TK_FN() {
+            return self.parse_fn_def(flags)
+        }
+        if k == TK_CLASS() || k == TK_STRUCT() {
+            return self.parse_class_def(flags)
+        }
+        if k == TK_ENUM() {
+            return self.parse_enum_def()
+        }
+        if k == TK_EXTEND() {
+            return self.parse_extend_def()
+        }
+        if k == TK_TRAIT() {
+            return self.parse_trait_skip()
+        }
+        if k == TK_CONST() || k == TK_LET() || k == TK_MUT() {
+            let vd = self.parse_var_decl()
+            self.nk.set(vd, NK_VAR_DECL_GLOBAL())
+            return vd
+        }
+        self.fail("Unexpected top-level declaration")
+        return -1
+    }
+
+    priv fn parse_trait_skip() -> i64 {
+        self.adv()
+        self.expect_k(TK_IDENT(), "Expected trait name")
+        if self.match_k(TK_LBRACE()) {
+            mut depth = 1
+            while depth > 0 && self.cur_kind() != TK_EOF() {
+                if self.cur_kind() == TK_LBRACE() {
+                    depth = depth + 1
+                } else if self.cur_kind() == TK_RBRACE() {
+                    depth = depth - 1
+                }
+                self.adv()
+            }
+        }
+        return -1
+    }
+
+    priv fn parse_params_list() -> i64 {
+        let ln = self.cur_line()
+        self.expect_k(TK_LPAREN(), "Expected '(' before parameter list")
+        let p_ids = List<i64>()
+        mut p_count = 0
+        self.skip_newlines()
+        while self.cur_kind() != TK_RPAREN() && self.cur_kind() != TK_EOF() {
+            let p_tok = self.expect_k(TK_IDENT(), "Expected parameter name")
+            let p_name = self.tok_vals.get(p_tok)
+            mut p_type = "i64"
+            if self.match_k(TK_COLON()) {
+                p_type = self.parse_type_str()
+            }
+            mut def_id = -1
+            if self.match_k(TK_EQUALS()) {
+                def_id = self.parse_expr(0)
+            }
+            let pid = self.add_node(NK_PARAM(), p_name, p_type, 0, def_id, -1, -1, self.tok_lines.get(p_tok))
+            p_ids.push(pid)
+            p_count = p_count + 1
+            self.skip_newlines()
+            if !self.match_k(TK_COMMA()) { break }
+            self.skip_newlines()
+        }
+        self.expect_k(TK_RPAREN(), "Expected ')' after parameter list")
+        return self.make_group(NK_GROUP(), "", "", 0, -1, -1, -1, ln, p_ids, p_count)
+    }
+
+    priv fn parse_fn_def(flags: i64) -> i64 {
+        let f_tok = self.expect_k(TK_FN(), "Expected 'fn'")
+        let fn_ln = self.tok_lines.get(f_tok)
+        let n_tok = self.expect_k(TK_IDENT(), "Expected function name")
+        let fn_name = self.tok_vals.get(n_tok)
+        // Skip optional generic type parameters on fn definition
+        if self.match_k(TK_LT()) {
+            while self.cur_kind() != TK_GT() && self.cur_kind() != TK_EOF() {
+                self.adv()
+            }
+            self.expect_k(TK_GT(), "Expected '>' after generic params")
+        }
+        let params_grp = self.parse_params_list()
+        mut ret_t = "void"
+        if self.match_k(TK_ARROW()) {
+            ret_t = self.parse_type_str()
+        }
+        self.skip_newlines()
+        mut body_id = -1
+        if self.match_k(TK_FAT_ARROW()) {
+            let expr_id = self.parse_expr(0)
+            let ret_id = self.add_node(NK_RETURN(), "", "", 0, expr_id, -1, -1, fn_ln)
+            let stmts = List<i64>()
+            stmts.push(ret_id)
+            body_id = self.make_group(NK_BLOCK(), "", "", 0, -1, -1, -1, fn_ln, stmts, 1)
+        } else if self.cur_kind() == TK_LBRACE() {
+            body_id = self.parse_block()
+        }
+        return self.add_node(NK_FN_DEF(), fn_name, ret_t, flags, params_grp, body_id, -1, fn_ln)
+    }
+
+    priv fn parse_class_def(flags: i64) -> i64 {
+        let c_ln = self.cur_line()
+        self.adv()
+        let n_tok = self.expect_k(TK_IDENT(), "Expected class name")
+        let cname = self.tok_vals.get(n_tok)
+        if self.match_k(TK_LT()) {
+            while self.cur_kind() != TK_GT() && self.cur_kind() != TK_EOF() {
+                self.adv()
+            }
+            self.expect_k(TK_GT(), "Expected '>'")
+        }
+        mut base_cls = ""
+        if self.match_k(TK_EXTENDS()) {
+            let bt = self.expect_k(TK_IDENT(), "Expected base class name")
+            base_cls = self.tok_vals.get(bt)
+        }
+        if self.match_k(TK_IMPLEMENTS()) {
+            while self.cur_kind() == TK_IDENT() {
+                self.adv()
+                if !self.match_k(TK_COMMA()) { break }
+            }
+        }
+        self.skip_newlines()
+        self.expect_k(TK_LBRACE(), "Expected opening brace to open class body")
+        self.skip_stmt_end()
+
+        let fields = List<i64>()
+        mut f_count = 0
+        let ctors = List<i64>()
+        mut ctor_count = 0
+        let methods = List<i64>()
+        mut m_count = 0
+        mut dtor_id = -1
+
+        while self.cur_kind() != TK_RBRACE() && self.cur_kind() != TK_EOF() {
+            mut mflags = 0
+            while true {
+                if self.match_k(TK_PUB()) {
+                    mflags = mflags + FLAG_PUB()
+                } else if self.match_k(TK_PRIV()) || self.match_k(TK_PROT()) {
+                    mflags = mflags
+                } else if self.match_k(TK_STATIC()) {
+                    mflags = mflags + FLAG_STATIC()
+                } else if self.match_k(TK_MUT()) {
+                    mflags = mflags + FLAG_MUT()
+                } else if self.match_k(TK_VIRTUAL()) || self.match_k(TK_OVERRIDE()) || self.match_k(TK_ABSTRACT()) {
+                    mflags = mflags
+                } else {
+                    break
+                }
+            }
+
+            let mk = self.cur_kind()
+            if mk == TK_FN() {
+                methods.push(self.parse_fn_def(mflags))
+                m_count = m_count + 1
+            } else if mk == TK_INIT() {
+                let itok = self.adv()
+                let iln = self.tok_lines.get(itok)
+                let pg = self.parse_params_list()
+                self.skip_newlines()
+                let blk = self.parse_block()
+                ctors.push(self.add_node(NK_INIT_DEF(), cname, "", mflags, pg, blk, -1, iln))
+                ctor_count = ctor_count + 1
+            } else if mk == TK_DROP() {
+                let dtok = self.adv()
+                self.expect_k(TK_LPAREN(), "Expected '(' after drop")
+                self.expect_k(TK_RPAREN(), "Expected ')'")
+                self.skip_newlines()
+                let blk = self.parse_block()
+                dtor_id = self.add_node(NK_DROP_DEF(), cname, "", mflags, -1, blk, -1, self.tok_lines.get(dtok))
+            } else if mk == TK_IDENT() {
+                let ftok = self.adv()
+                let fname = self.tok_vals.get(ftok)
+                self.expect_k(TK_COLON(), "Expected ':' after field name")
+                let ftype = self.parse_type_str()
+                mut fdef = -1
+                if self.match_k(TK_EQUALS()) {
+                    fdef = self.parse_expr(0)
+                }
+                fields.push(self.add_node(NK_FIELD_DEF(), fname, ftype, mflags, fdef, -1, -1, self.tok_lines.get(ftok)))
+                f_count = f_count + 1
+            } else {
+                self.fail("Unexpected token inside class body")
+            }
+            self.skip_stmt_end()
+        }
+        self.expect_k(TK_RBRACE(), "Expected closing brace to close class body")
+
+        let fields_grp = self.make_group(NK_GROUP(), "", "", 0, -1, -1, -1, c_ln, fields, f_count)
+        let ctors_grp = self.make_group(NK_GROUP(), "", "", 0, dtor_id, -1, -1, c_ln, ctors, ctor_count)
+        let methods_grp = self.make_group(NK_GROUP(), "", "", 0, -1, -1, -1, c_ln, methods, m_count)
+        return self.add_node(NK_CLASS_DEF(), cname, base_cls, flags, fields_grp, ctors_grp, methods_grp, c_ln)
+    }
+
+    priv fn parse_enum_def() -> i64 {
+        let e_tok = self.expect_k(TK_ENUM(), "Expected 'enum'")
+        let e_ln = self.tok_lines.get(e_tok)
+        let n_tok = self.expect_k(TK_IDENT(), "Expected enum name")
+        let ename = self.tok_vals.get(n_tok)
+        self.skip_newlines()
+        self.expect_k(TK_LBRACE(), "Expected opening brace in enum")
+        self.skip_stmt_end()
+
+        let vars = List<i64>()
+        mut v_count = 0
+        while self.cur_kind() != TK_RBRACE() && self.cur_kind() != TK_EOF() {
+            let v_tok = self.expect_k(TK_IDENT(), "Expected enum variant name")
+            let vname = self.tok_vals.get(v_tok)
+            let vln = self.tok_lines.get(v_tok)
+            let vfields = List<i64>()
+            mut vf_count = 0
+            if self.match_k(TK_LPAREN()) {
+                while self.cur_kind() != TK_RPAREN() && self.cur_kind() != TK_EOF() {
+                    let ft = self.expect_k(TK_IDENT(), "Expected variant field name")
+                    self.expect_k(TK_COLON(), "Expected ':' in enum payload")
+                    let ftype = self.parse_type_str()
+                    vfields.push(self.add_node(NK_PARAM(), self.tok_vals.get(ft), ftype, 0, -1, -1, -1, vln))
+                    vf_count = vf_count + 1
+                    if !self.match_k(TK_COMMA()) { break }
+                }
+                self.expect_k(TK_RPAREN(), "Expected ')' in enum variant")
+            }
+            vars.push(self.make_group(NK_ENUM_VAR(), vname, "", v_count, -1, -1, -1, vln, vfields, vf_count))
+            v_count = v_count + 1
+            self.match_k(TK_COMMA())
+            self.skip_stmt_end()
+        }
+        self.expect_k(TK_RBRACE(), "Expected closing brace in enum")
+        return self.make_group(NK_ENUM_DEF(), ename, "", 0, -1, -1, -1, e_ln, vars, v_count)
+    }
+
+    priv fn parse_extend_def() -> i64 {
+        let e_tok = self.expect_k(TK_EXTEND(), "Expected 'extend'")
+        let tname = self.parse_type_str()
+        self.skip_newlines()
+        self.expect_k(TK_LBRACE(), "Expected opening brace in extend")
+        self.skip_stmt_end()
+        let methods = List<i64>()
+        mut mcount = 0
+        while self.cur_kind() != TK_RBRACE() && self.cur_kind() != TK_EOF() {
+            mut mflags = 0
+            while true {
+                if self.match_k(TK_PUB()) {
+                    mflags = mflags + FLAG_PUB()
+                } else if self.match_k(TK_STATIC()) {
+                    mflags = mflags + FLAG_STATIC()
+                } else if self.match_k(TK_PRIV()) {
+                    mflags = mflags
+                } else {
+                    break
+                }
+            }
+            methods.push(self.parse_fn_def(mflags))
+            mcount = mcount + 1
+            self.skip_stmt_end()
+        }
+        self.expect_k(TK_RBRACE(), "Expected closing brace in extend")
+        return self.make_group(NK_EXTEND_DEF(), tname, "", 0, -1, -1, -1, self.tok_lines.get(e_tok), methods, mcount)
+    }
+
+    // --- Statements ---
+
+    priv fn parse_block() -> i64 {
+        let b_tok = self.expect_k(TK_LBRACE(), "Expected opening brace")
+        let bln = self.tok_lines.get(b_tok)
+        self.skip_stmt_end()
+        let stmts = List<i64>()
+        mut scount = 0
+        while self.cur_kind() != TK_RBRACE() && self.cur_kind() != TK_EOF() {
+            let st = self.parse_stmt()
+            if st >= 0 {
+                stmts.push(st)
+                scount = scount + 1
+            }
+            self.skip_stmt_end()
+        }
+        self.expect_k(TK_RBRACE(), "Expected closing brace")
+        return self.make_group(NK_BLOCK(), "", "", 0, -1, -1, -1, bln, stmts, scount)
+    }
+
+    priv fn parse_stmt() -> i64 {
+        let k = self.cur_kind()
+        if k == TK_LET() || k == TK_MUT() || k == TK_CONST() {
+            return self.parse_var_decl()
+        }
+        if k == TK_IF() { return self.parse_if() }
+        if k == TK_WHILE() { return self.parse_while() }
+        if k == TK_LOOP() {
+            let lt = self.adv()
+            self.skip_newlines()
+            let blk = self.parse_block()
+            return self.add_node(NK_LOOP(), "", "", 0, blk, -1, -1, self.tok_lines.get(lt))
+        }
+        if k == TK_FOR() { return self.parse_for() }
+        if k == TK_MATCH() { return self.parse_match() }
+        if k == TK_RETURN() {
+            let rt = self.adv()
+            let rln = self.tok_lines.get(rt)
+            mut val_id = -1
+            let nk = self.cur_kind()
+            if nk != TK_NEWLINE() && nk != TK_SEMICOLON() && nk != TK_RBRACE() && nk != TK_EOF() {
+                val_id = self.parse_expr(0)
+            }
+            return self.add_node(NK_RETURN(), "", "", 0, val_id, -1, -1, rln)
+        }
+        if k == TK_BREAK() {
+            let bt = self.adv()
+            mut lbl = ""
+            if self.cur_kind() == TK_LABEL() { lbl = self.tok_vals.get(self.adv()) }
+            return self.add_node(NK_BREAK(), lbl, "", 0, -1, -1, -1, self.tok_lines.get(bt))
+        }
+        if k == TK_CONTINUE() {
+            let ct = self.adv()
+            mut lbl = ""
+            if self.cur_kind() == TK_LABEL() { lbl = self.tok_vals.get(self.adv()) }
+            return self.add_node(NK_CONTINUE(), lbl, "", 0, -1, -1, -1, self.tok_lines.get(ct))
+        }
+        if k == TK_DEFER() {
+            let dt = self.adv()
+            let st = self.parse_stmt()
+            return self.add_node(NK_DEFER(), "", "", 0, st, -1, -1, self.tok_lines.get(dt))
+        }
+        if k == TK_GUARD() {
+            let gt = self.adv()
+            let cond = self.parse_expr(0)
+            self.expect_k(TK_ELSE(), "Expected 'else' in guard")
+            self.skip_newlines()
+            let blk = self.parse_block()
+            return self.add_node(NK_GUARD(), "", "", 0, cond, blk, -1, self.tok_lines.get(gt))
+        }
+        if k == TK_TRY() { return self.parse_try_catch() }
+        if k == TK_THROW() {
+            let tt = self.adv()
+            let ex = self.parse_expr(0)
+            return self.add_node(NK_THROW(), "", "", 0, ex, -1, -1, self.tok_lines.get(tt))
+        }
+
+        // Assignment or expression statement
+        let lhs = self.parse_expr(0)
+        let ak = self.cur_kind()
+        if ak == TK_EQUALS() || ak == TK_PLUS_EQ() || ak == TK_MINUS_EQ() || ak == TK_STAR_EQ() || ak == TK_SLASH_EQ() || ak == TK_PERCENT_EQ() {
+            let op_str = self.tok_vals.get(self.adv())
+            let rhs = self.parse_expr(0)
+            return self.add_node(NK_ASSIGN(), op_str, "", 0, lhs, rhs, -1, self.ln.get(lhs))
+        }
+        return self.add_node(NK_EXPR_STMT(), "", "", 0, lhs, -1, -1, self.ln.get(lhs))
+    }
+
+    priv fn parse_var_decl() -> i64 {
+        let start_tok = self.adv()
+        let vln = self.tok_lines.get(start_tok)
+        mut is_mut = 0
+        if self.tok_kinds.get(start_tok) == TK_MUT() {
+            is_mut = FLAG_MUT()
+        } else if self.match_k(TK_MUT()) {
+            is_mut = FLAG_MUT()
+        }
+
+        // Tuple destructuring: let (a, b) = expr
+        if self.match_k(TK_LPAREN()) {
+            let names = List<i64>()
+            mut ncount = 0
+            while self.cur_kind() != TK_RPAREN() && self.cur_kind() != TK_EOF() {
+                let nt = self.expect_k(TK_IDENT(), "Expected identifier in tuple destructuring")
+                names.push(self.add_node(NK_IDENT(), self.tok_vals.get(nt), "", 0, -1, -1, -1, vln))
+                ncount = ncount + 1
+                if !self.match_k(TK_COMMA()) { break }
+            }
+            self.expect_k(TK_RPAREN(), "Expected ')'")
+            self.expect_k(TK_EQUALS(), "Expected '=' in tuple destructuring")
+            let init_expr = self.parse_expr(0)
+            return self.make_group(NK_TUPLE_DESTR(), "", "", is_mut, init_expr, -1, -1, vln, names, ncount)
+        }
+
+        let name_tok = self.expect_k(TK_IDENT(), "Expected variable name")
+        let vname = self.tok_vals.get(name_tok)
+        mut tname = ""
+        if self.match_k(TK_COLON()) {
+            tname = self.parse_type_str()
+        }
+        mut init_id = -1
+        if self.match_k(TK_EQUALS()) {
+            init_id = self.parse_expr(0)
+        }
+        return self.add_node(NK_VAR_DECL(), vname, tname, is_mut, init_id, -1, -1, vln)
+    }
+
+    priv fn parse_if() -> i64 {
+        let itok = self.expect_k(TK_IF(), "Expected 'if'")
+        let iln = self.tok_lines.get(itok)
+        let cond = self.parse_expr(0)
+        self.skip_newlines()
+        let then_blk = self.parse_block()
+        mut else_blk = -1
+        self.skip_newlines()
+        if self.match_k(TK_ELSE()) {
+            self.skip_newlines()
+            if self.cur_kind() == TK_IF() {
+                let nested_if = self.parse_if()
+                let stmts = List<i64>()
+                stmts.push(nested_if)
+                else_blk = self.make_group(NK_BLOCK(), "", "", 0, -1, -1, -1, self.ln.get(nested_if), stmts, 1)
+            } else {
+                else_blk = self.parse_block()
+            }
+        }
+        return self.add_node(NK_IF(), "", "", 0, cond, then_blk, else_blk, iln)
+    }
+
+    priv fn parse_while() -> i64 {
+        let wt = self.expect_k(TK_WHILE(), "Expected 'while'")
+        let wln = self.tok_lines.get(wt)
+        let cond = self.parse_expr(0)
+        self.skip_newlines()
+        let blk = self.parse_block()
+        return self.add_node(NK_WHILE(), "", "", 0, cond, blk, -1, wln)
+    }
+
+    priv fn parse_for() -> i64 {
+        let ft = self.expect_k(TK_FOR(), "Expected 'for'")
+        let fln = self.tok_lines.get(ft)
+        mut idx_var = ""
+        mut item_var = ""
+        if self.match_k(TK_LPAREN()) {
+            let t0 = self.expect_k(TK_IDENT(), "Expected index variable name")
+            idx_var = self.tok_vals.get(t0)
+            self.expect_k(TK_COMMA(), "Expected ',' in enumerate loop pattern")
+            let t1 = self.expect_k(TK_IDENT(), "Expected element variable name")
+            item_var = self.tok_vals.get(t1)
+            self.expect_k(TK_RPAREN(), "Expected ')'")
+        } else {
+            let t0 = self.expect_k(TK_IDENT(), "Expected loop variable name")
+            item_var = self.tok_vals.get(t0)
+        }
+        self.expect_k(TK_IN(), "Expected 'in' in for loop")
+        let iter_expr = self.parse_expr(0)
+        self.skip_newlines()
+        let blk = self.parse_block()
+        return self.add_node(NK_FOR(), item_var, idx_var, 0, iter_expr, blk, -1, fln)
+    }
+
+    priv fn parse_match() -> i64 {
+        let mt = self.expect_k(TK_MATCH(), "Expected 'match'")
+        let mln = self.tok_lines.get(mt)
+        let subj = self.parse_expr(0)
+        self.skip_newlines()
+        self.expect_k(TK_LBRACE(), "Expected opening brace in match")
+        self.skip_stmt_end()
+
+        let cases = List<i64>()
+        mut ccount = 0
+        while self.cur_kind() != TK_RBRACE() && self.cur_kind() != TK_EOF() {
+            let pat_ln = self.cur_line()
+            let pat = self.parse_expr(0)
+            mut guard_id = -1
+            if self.match_k(TK_IF()) {
+                guard_id = self.parse_expr(0)
+            }
+            self.expect_k(TK_FAT_ARROW(), "Expected '=>' in match arm")
+            self.skip_newlines()
+            mut body_id = -1
+            if self.cur_kind() == TK_LBRACE() {
+                body_id = self.parse_block()
+            } else {
+                let arm_st = self.parse_stmt()
+                let stmts = List<i64>()
+                stmts.push(arm_st)
+                body_id = self.make_group(NK_BLOCK(), "", "", 0, -1, -1, -1, pat_ln, stmts, 1)
+            }
+            cases.push(self.add_node(NK_MATCH_CASE(), "", "", 0, pat, body_id, guard_id, pat_ln))
+            ccount = ccount + 1
+            self.match_k(TK_COMMA())
+            self.skip_stmt_end()
+        }
+        self.expect_k(TK_RBRACE(), "Expected closing brace in match")
+        return self.make_group(NK_MATCH(), "", "", 0, subj, -1, -1, mln, cases, ccount)
+    }
+
+    priv fn parse_try_catch() -> i64 {
+        let tt = self.expect_k(TK_TRY(), "Expected 'try'")
+        let tln = self.tok_lines.get(tt)
+        self.skip_newlines()
+        let try_blk = self.parse_block()
+        mut catch_var = ""
+        mut catch_blk = -1
+        mut finally_blk = -1
+        self.skip_newlines()
+        if self.match_k(TK_CATCH()) {
+            if self.match_k(TK_LPAREN()) {
+                let ct = self.expect_k(TK_IDENT(), "Expected catch variable")
+                catch_var = self.tok_vals.get(ct)
+                self.expect_k(TK_RPAREN(), "Expected ')'")
+            } else if self.cur_kind() == TK_IDENT() {
+                catch_var = self.tok_vals.get(self.adv())
+            }
+            self.skip_newlines()
+            catch_blk = self.parse_block()
+        }
+        self.skip_newlines()
+        if self.match_k(TK_FINALLY()) {
+            self.skip_newlines()
+            finally_blk = self.parse_block()
+        }
+        return self.add_node(NK_TRY_CATCH(), catch_var, "", 0, try_blk, catch_blk, finally_blk, tln)
+    }
+
+    // --- Pratt Expression Parser ---
+
+    priv fn get_prec(k: i64) -> i64 {
+        if k == TK_PIPE() || k == TK_CASCADE() { return 1 }
+        if k == TK_QQ() { return 2 }
+        if k == TK_OR_OR() || k == TK_PIPE_CHAR() { return 3 }
+        if k == TK_AND_AND() { return 4 }
+        if k == TK_EQ_EQ() || k == TK_NOT_EQ() { return 5 }
+        if k == TK_LT() || k == TK_LTE() || k == TK_GT() || k == TK_GTE() { return 6 }
+        if k == TK_DOT_DOT() || k == TK_DOT_DOT_EQ() { return 7 }
+        if k == TK_PLUS() || k == TK_MINUS() { return 8 }
+        if k == TK_STAR() || k == TK_SLASH() || k == TK_PERCENT() || k == TK_LSHIFT() || k == TK_RSHIFT() || k == TK_AMP() || k == TK_CARET() { return 9 }
+        if k == TK_POWER() { return 10 }
+        if k == TK_LPAREN() || k == TK_LBRACKET() || k == TK_DOT() || k == TK_QDOT() || k == TK_AS() { return 12 }
+        return 0
+    }
+
+    priv fn is_generic_call_ahead() -> bool {
+        if self.cur_kind() != TK_LT() { return false }
+        mut off = 1
+        mut depth = 1
+        while self.pos + off < self.tok_count && depth > 0 {
+            let k = self.peek_kind(off)
+            if k == TK_LT() {
+                depth = depth + 1
+            } else if k == TK_GT() {
+                depth = depth - 1
+                if depth == 0 {
+                    return self.peek_kind(off + 1) == TK_LPAREN()
+                }
+            } else if k != TK_IDENT() && k != TK_COMMA() && k != TK_QUESTION() && k != TK_STAR() {
+                return false
+            }
+            off = off + 1
+        }
+        return false
+    }
+
+    priv fn parse_arg_list_into(out_ids: List<i64>) -> i64 {
+        self.expect_k(TK_LPAREN(), "Expected '('")
+        mut count = 0
+        self.skip_newlines()
+        while self.cur_kind() != TK_RPAREN() && self.cur_kind() != TK_EOF() {
+            mut arg_name = ""
+            mut arg_ln = self.cur_line()
+            if self.cur_kind() == TK_IDENT() && self.peek_kind(1) == TK_EQUALS() {
+                arg_name = self.tok_vals.get(self.adv())
+                self.adv()
+            }
+            let val_id = self.parse_expr(0)
+            if arg_name != "" {
+                out_ids.push(self.add_node(NK_NAMED_ARG(), arg_name, "", 0, val_id, -1, -1, arg_ln))
+            } else {
+                out_ids.push(val_id)
+            }
+            count = count + 1
+            self.skip_newlines()
+            if !self.match_k(TK_COMMA()) { break }
+            self.skip_newlines()
+        }
+        self.expect_k(TK_RPAREN(), "Expected ')'")
+        return count
+    }
+
+    priv fn parse_str_interp_node(raw: str, ln: i64) -> i64 {
+        let parts = List<i64>()
+        mut pcount = 0
+        let n = raw.len()
+        mut txt = ByteBuffer()
+        mut i = 0
+        while i < n {
+            let b0 = raw.byte_at(i)
+            mut b1 = 0
+            if i + 1 < n { b1 = raw.byte_at(i + 1) }
+            if (b0 == 92 && b1 == 123) || (b0 == 123 && b1 == 123) {
+                txt.write_u8(123)
+                i = i + 2
+            } else if (b0 == 92 && b1 == 125) || (b0 == 125 && b1 == 125) {
+                txt.write_u8(125)
+                i = i + 2
+            } else if b0 == 123 {
+                if txt.len() > 0 {
+                    parts.push(self.add_node(NK_STR_LIT(), txt.to_str(), "str", 0, -1, -1, -1, ln))
+                    pcount = pcount + 1
+                    txt.free()
+                    txt = ByteBuffer()
+                }
+                mut j = i + 1
+                mut depth = 1
+                while j < n && depth > 0 {
+                    let c = raw.byte_at(j)
+                    if c == 123 {
+                        depth = depth + 1
+                    } else if c == 125 {
+                        depth = depth - 1
+                    }
+                    j = j + 1
+                }
+                let sub_src = raw.slice(i + 1, j - 1)
+                mut sub_lx = Lexer(sub_src, self.cur_file)
+                let sub_ts = sub_lx.tokenize()
+
+                let sk = self.tok_kinds
+                let sv = self.tok_vals
+                let sl = self.tok_lines
+                let sc = self.tok_cols
+                let stc = self.tok_count
+                let sp = self.pos
+
+                self.tok_kinds = sub_ts.kinds
+                self.tok_vals = sub_ts.vals
+                self.tok_lines = sub_ts.lines
+                self.tok_cols = sub_ts.cols
+                self.tok_count = sub_ts.count
+                self.pos = 0
+                let sub_expr = self.parse_expr(0)
+
+                self.tok_kinds = sk
+                self.tok_vals = sv
+                self.tok_lines = sl
+                self.tok_cols = sc
+                self.tok_count = stc
+                self.pos = sp
+
+                parts.push(sub_expr)
+                pcount = pcount + 1
+                i = j
+            } else {
+                txt.write_u8(b0)
+                i = i + 1
+            }
+        }
+        if txt.len() > 0 {
+            parts.push(self.add_node(NK_STR_LIT(), txt.to_str(), "str", 0, -1, -1, -1, ln))
+            pcount = pcount + 1
+        }
+        txt.free()
+        return self.make_group(NK_STR_INTERP(), "", "", 0, -1, -1, -1, ln, parts, pcount)
+    }
+
+    priv fn parse_prefix() -> i64 {
+        self.skip_newlines()
+        let t_idx = self.adv()
+        let k = self.tok_kinds.get(t_idx)
+        let v = self.tok_vals.get(t_idx)
+        let ln = self.tok_lines.get(t_idx)
+
+        if k == TK_INT() {
+            return self.add_node(NK_INT_LIT(), v, "i64", 0, -1, -1, -1, ln)
+        }
+        if k == TK_FLOAT() {
+            return self.add_node(NK_FLOAT_LIT(), v, "f64", 0, -1, -1, -1, ln)
+        }
+        if k == TK_STR() {
+            return self.add_node(NK_STR_LIT(), v, "str", 0, -1, -1, -1, ln)
+        }
+        if k == TK_STR_INTERP() {
+            return self.parse_str_interp_node(v, ln)
+        }
+        if k == TK_CHAR() {
+            return self.add_node(NK_CHAR_LIT(), v, "char", 0, -1, -1, -1, ln)
+        }
+        if k == TK_BOOL() {
+            mut bval = 0
+            if v == "true" { bval = 1 }
+            return self.add_node(NK_BOOL_LIT(), v, "bool", bval, -1, -1, -1, ln)
+        }
+        if k == TK_NULL() {
+            return self.add_node(NK_NULL_LIT(), "null", "null", 0, -1, -1, -1, ln)
+        }
+        if k == TK_IDENT() || k == TK_SELF() || k == TK_SUPER() {
+            if k == TK_IDENT() && self.is_generic_call_ahead() {
+                self.adv()
+                let targs = List<str>()
+                mut tacount = 0
+                while true {
+                    targs.push(self.parse_type_str())
+                    tacount = tacount + 1
+                    if !self.match_k(TK_COMMA()) { break }
+                }
+                self.expect_k(TK_GT(), "Expected '>'")
+                let mangled = self.register_generic(v, targs, tacount)
+                let args = List<i64>()
+                let acount = self.parse_arg_list_into(args)
+                return self.make_group(NK_GENERIC_CALL(), mangled, v, 0, -1, -1, -1, ln, args, acount)
+            }
+            return self.add_node(NK_IDENT(), v, "", 0, -1, -1, -1, ln)
+        }
+        if k == TK_NEW() {
+            let ct = self.expect_k(TK_IDENT(), "Expected class name after 'new'")
+            mut cname = self.tok_vals.get(ct)
+            if self.is_generic_call_ahead() {
+                self.adv()
+                let targs = List<str>()
+                mut tacount = 0
+                while true {
+                    targs.push(self.parse_type_str())
+                    tacount = tacount + 1
+                    if !self.match_k(TK_COMMA()) { break }
+                }
+                self.expect_k(TK_GT(), "Expected '>'")
+                cname = self.register_generic(cname, targs, tacount)
+            }
+            let args = List<i64>()
+            let acount = self.parse_arg_list_into(args)
+            return self.make_group(NK_NEW(), cname, "", 0, -1, -1, -1, ln, args, acount)
+        }
+        if k == TK_MINUS() || k == TK_NOT() || k == TK_TILDE() || k == TK_AMP() {
+            let operand = self.parse_expr(11)
+            return self.add_node(NK_UNARY_OP(), v, "", 0, operand, -1, -1, ln)
+        }
+        if k == TK_SIZEOF() {
+            self.expect_k(TK_LPAREN(), "Expected '(' after sizeof")
+            let tstr = self.parse_type_str()
+            self.expect_k(TK_RPAREN(), "Expected ')' after type in sizeof")
+            return self.add_node(NK_SIZEOF(), tstr, "i64", 0, -1, -1, -1, ln)
+        }
+        if k == TK_LPAREN() {
+            let first = self.parse_expr(0)
+            if self.match_k(TK_COMMA()) {
+                let elems = List<i64>()
+                elems.push(first)
+                mut ecount = 1
+                while self.cur_kind() != TK_RPAREN() && self.cur_kind() != TK_EOF() {
+                    elems.push(self.parse_expr(0))
+                    ecount = ecount + 1
+                    if !self.match_k(TK_COMMA()) { break }
+                }
+                self.expect_k(TK_RPAREN(), "Expected ')'")
+                return self.make_group(NK_TUPLE_LIT(), "", "", 0, -1, -1, -1, ln, elems, ecount)
+            }
+            self.expect_k(TK_RPAREN(), "Expected ')'")
+            return first
+        }
+        if k == TK_LBRACKET() {
+            let elems = List<i64>()
+            mut ecount = 0
+            if self.cur_kind() != TK_RBRACKET() {
+                let first = self.parse_expr(0)
+                if self.match_k(TK_SEMICOLON()) {
+                    let rep_tok = self.expect_k(TK_INT(), "Expected repeat count in [val; N]")
+                    self.expect_k(TK_RBRACKET(), "Expected ']'")
+                    return self.add_node(NK_FIXED_REPEAT(), self.tok_vals.get(rep_tok), "", 0, first, -1, -1, ln)
+                }
+                elems.push(first)
+                ecount = 1
+                while self.match_k(TK_COMMA()) {
+                    if self.cur_kind() == TK_RBRACKET() { break }
+                    elems.push(self.parse_expr(0))
+                    ecount = ecount + 1
+                }
+            }
+            self.expect_k(TK_RBRACKET(), "Expected ']'")
+            return self.make_group(NK_FIXED_ARR(), "", "", 0, -1, -1, -1, ln, elems, ecount)
+        }
+        if k == TK_SPAWN() {
+            return self.parse_expr(0)
+        }
+
+        self.fail("Unexpected token in expression: '" + v + "'")
+        return -1
+    }
+
+    priv fn parse_infix(left: i64, prec: i64) -> i64 {
+        let op_idx = self.adv()
+        let k = self.tok_kinds.get(op_idx)
+        let op_str = self.tok_vals.get(op_idx)
+        let ln = self.tok_lines.get(op_idx)
+
+        if k == TK_LPAREN() {
+            self.pos = self.pos - 1
+            let args = List<i64>()
+            let acount = self.parse_arg_list_into(args)
+            return self.make_group(NK_CALL(), "", "", 0, left, -1, -1, ln, args, acount)
+        }
+        if k == TK_DOT() || k == TK_QDOT() {
+            if self.cur_kind() == TK_INT() {
+                let m_idx = self.adv()
+                return self.add_node(NK_MEMBER(), "f" + self.tok_vals.get(m_idx), "", 0, left, -1, -1, ln)
+            }
+            let m_tok = self.expect_k(TK_IDENT(), "Expected member name after '.'")
+            return self.add_node(NK_MEMBER(), self.tok_vals.get(m_tok), "", 0, left, -1, -1, ln)
+        }
+        if k == TK_LBRACKET() {
+            let idx_expr = self.parse_expr(0)
+            self.expect_k(TK_RBRACKET(), "Expected ']'")
+            return self.add_node(NK_INDEX(), "", "", 0, left, idx_expr, -1, ln)
+        }
+        if k == TK_AS() {
+            let tname = self.parse_type_str()
+            return self.add_node(NK_CAST(), tname, "", 0, left, -1, -1, ln)
+        }
+        if k == TK_DOT_DOT() || k == TK_DOT_DOT_EQ() {
+            mut inc = 0
+            if k == TK_DOT_DOT_EQ() { inc = FLAG_INCLUSIVE() }
+            let right = self.parse_expr(prec)
+            return self.add_node(NK_RANGE(), op_str, "", inc, left, right, -1, ln)
+        }
+        if k == TK_PIPE() {
+            let right = self.parse_expr(prec)
+            return self.add_node(NK_PIPELINE(), "", "", 0, left, right, -1, ln)
+        }
+        if k == TK_CASCADE() {
+            let right = self.parse_expr(prec)
+            return self.add_node(NK_CASCADE(), "", "", 0, left, right, -1, ln)
+        }
+        // Binary op (right-associative for POWER)
+        mut next_p = prec
+        if k == TK_POWER() { next_p = prec - 1 }
+        let right = self.parse_expr(next_p)
+        return self.add_node(NK_BIN_OP(), op_str, "", 0, left, right, -1, ln)
+    }
+
+    pub fn parse_expr(min_prec: i64) -> i64 {
+        mut left = self.parse_prefix()
+        while true {
+            let k = self.cur_kind()
+            let p = self.get_prec(k)
+            if min_prec >= p {
+                break
+            }
+            left = self.parse_infix(left, p)
+        }
+        return left
+    }
+}

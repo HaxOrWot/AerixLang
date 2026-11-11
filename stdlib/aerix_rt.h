@@ -24,6 +24,8 @@
     #include <pthread.h>
     #include <unistd.h>
     #include <time.h>
+    #include <sys/stat.h>
+    #include <dirent.h>
     typedef pthread_t arx_thread_t;
 #endif
 
@@ -2010,6 +2012,438 @@ static inline bool arx_f64x2_eq(f64x2 a, f64x2 b) {
 }
 static inline bool arx_f64x2_ne(f64x2 a, f64x2 b) {
     return !arx_f64x2_eq(a, b);
+}
+
+// ==========================================
+// Phase 27: Self-Hosting Bootstrap Runtime (OS, FS, Process & Fast String/Byte Ops)
+// ==========================================
+
+static int arx_cli_argc = 0;
+static char** arx_cli_argv = NULL;
+
+static inline void arx_init_args(int argc, char** argv) {
+    arx_cli_argc = argc;
+    arx_cli_argv = argv;
+}
+
+static inline int64_t arx_args_count(void) {
+    return (int64_t)arx_cli_argc;
+}
+
+static inline const char* arx_args_get(int64_t idx) {
+    if (!arx_cli_argv || idx < 0 || idx >= (int64_t)arx_cli_argc) return "";
+    return arx_cli_argv[idx] ? arx_cli_argv[idx] : "";
+}
+
+static inline int64_t arx_args_list(void) {
+    int64_t list_h = arx_list_new(arx_cli_argc > 4 ? arx_cli_argc : 4);
+    for (int i = 0; i < arx_cli_argc; i++) {
+        const char* arg = (arx_cli_argv && arx_cli_argv[i]) ? arx_cli_argv[i] : "";
+        arx_list_push(list_h, (int64_t)(intptr_t)arx_str_copy(arg));
+    }
+    return list_h;
+}
+
+static inline int64_t arx_str_byte_at(const char* s, int64_t idx) {
+    if (!s || idx < 0) return -1;
+    // Scan safely up to idx without calling full strlen on huge source buffers
+    for (int64_t i = 0; i <= idx; i++) {
+        if (s[i] == '\0') return -1;
+    }
+    return (int64_t)(unsigned char)s[idx];
+}
+
+static inline const char* arx_byte_to_str(int64_t b) {
+    char* buf = (char*)arx_alloc(2);
+    buf[0] = (char)(b & 0xFF);
+    buf[1] = '\0';
+    return buf;
+}
+
+static inline const char* arx_str_substr(const char* s, int64_t start, int64_t end) {
+    return arx_str_slice(s, start, end);
+}
+
+static inline int64_t arx_str_to_i64(const char* s) {
+    if (!s) return 0;
+    return (int64_t)strtoll(s, NULL, 0);
+}
+
+static inline double arx_str_to_f64(const char* s) {
+    if (!s) return 0.0;
+    return strtod(s, NULL);
+}
+
+static inline void arx_bytebuf_write_str(int64_t bh, const char* s) {
+    Arx_ByteBuf* buf = (Arx_ByteBuf*)(intptr_t)bh;
+    if (!buf || !s) return;
+    size_t slen = strlen(s);
+    if (slen == 0) return;
+    arx_bytebuf_ensure(buf, slen);
+    memcpy(buf->data + buf->len, s, slen);
+    buf->len += slen;
+}
+
+static inline const char* arx_bytebuf_to_str(int64_t bh) {
+    Arx_ByteBuf* buf = (Arx_ByteBuf*)(intptr_t)bh;
+    if (!buf || buf->len == 0) return "";
+    char* out = (char*)arx_alloc(buf->len + 1);
+    memcpy(out, buf->data, buf->len);
+    out[buf->len] = '\0';
+    return out;
+}
+
+static inline bool arx_file_exists(const char* path) {
+    if (!path || !*path) return false;
+#if defined(_WIN32) || defined(_WIN64)
+    DWORD attrs = GetFileAttributesA(path);
+    return (attrs != INVALID_FILE_ATTRIBUTES) && !(attrs & FILE_ATTRIBUTE_DIRECTORY);
+#else
+    struct stat st;
+    return stat(path, &st) == 0 && S_ISREG(st.st_mode);
+#endif
+}
+
+static inline const char* arx_file_read_to_string(const char* path) {
+    if (!path || !*path) return "";
+    FILE* f = fopen(path, "rb");
+    if (!f) return "";
+    if (fseek(f, 0, SEEK_END) != 0) {
+        fclose(f);
+        return "";
+    }
+    long sz = ftell(f);
+    if (sz < 0) {
+        fclose(f);
+        return "";
+    }
+    fseek(f, 0, SEEK_SET);
+    char* buf = (char*)arx_alloc((size_t)sz + 1);
+    size_t nread = sz > 0 ? fread(buf, 1, (size_t)sz, f) : 0;
+    buf[nread] = '\0';
+    fclose(f);
+    return buf;
+}
+
+static inline bool arx_file_write_string(const char* path, const char* content) {
+    if (!path || !*path) return false;
+    FILE* f = fopen(path, "wb");
+    if (!f) return false;
+    if (content) {
+        size_t len = strlen(content);
+        if (len > 0 && fwrite(content, 1, len, f) != len) {
+            fclose(f);
+            return false;
+        }
+    }
+    fclose(f);
+    return true;
+}
+
+static inline bool arx_file_append_string(const char* path, const char* content) {
+    if (!path || !*path) return false;
+    FILE* f = fopen(path, "ab");
+    if (!f) return false;
+    if (content) {
+        size_t len = strlen(content);
+        if (len > 0 && fwrite(content, 1, len, f) != len) {
+            fclose(f);
+            return false;
+        }
+    }
+    fclose(f);
+    return true;
+}
+
+static inline bool arx_file_remove(const char* path) {
+    if (!path || !*path) return false;
+    return remove(path) == 0;
+}
+
+static inline bool arx_file_copy(const char* src, const char* dst) {
+    if (!src || !dst) return false;
+    FILE* fs = fopen(src, "rb");
+    if (!fs) return false;
+    FILE* fd = fopen(dst, "wb");
+    if (!fd) {
+        fclose(fs);
+        return false;
+    }
+    char tmp[8192];
+    size_t n;
+    bool ok = true;
+    while ((n = fread(tmp, 1, sizeof(tmp), fs)) > 0) {
+        if (fwrite(tmp, 1, n, fd) != n) {
+            ok = false;
+            break;
+        }
+    }
+    fclose(fd);
+    fclose(fs);
+    return ok;
+}
+
+static inline bool arx_dir_exists(const char* path) {
+    if (!path || !*path) return false;
+#if defined(_WIN32) || defined(_WIN64)
+    DWORD attrs = GetFileAttributesA(path);
+    return (attrs != INVALID_FILE_ATTRIBUTES) && (attrs & FILE_ATTRIBUTE_DIRECTORY);
+#else
+    struct stat st;
+    return stat(path, &st) == 0 && S_ISDIR(st.st_mode);
+#endif
+}
+
+static inline bool arx_dir_create(const char* path) {
+    if (!path || !*path) return false;
+    if (arx_dir_exists(path)) return true;
+    size_t len = strlen(path);
+    char* tmp = (char*)arx_alloc(len + 1);
+    memcpy(tmp, path, len + 1);
+    for (size_t i = 1; i <= len; i++) {
+        if (tmp[i] == '/' || tmp[i] == '\\' || tmp[i] == '\0') {
+            char saved = tmp[i];
+            // Avoid calling CreateDirectory on bare Windows drive letter "C:"
+            if (!(i == 2 && tmp[1] == ':') && tmp[0] != '\0') {
+                tmp[i] = '\0';
+                if (!arx_dir_exists(tmp)) {
+#if defined(_WIN32) || defined(_WIN64)
+                    CreateDirectoryA(tmp, NULL);
+#else
+                    mkdir(tmp, 0755);
+#endif
+                }
+                tmp[i] = saved;
+            }
+        }
+    }
+    arx_free(tmp);
+    return arx_dir_exists(path);
+}
+
+static inline int64_t arx_dir_list_entries(const char* path, bool want_dirs) {
+    int64_t list_h = arx_list_new(8);
+    if (!path || !*path) return list_h;
+#if defined(_WIN32) || defined(_WIN64)
+    size_t plen = strlen(path);
+    char* pattern = (char*)arx_alloc(plen + 4);
+    memcpy(pattern, path, plen);
+    if (plen > 0 && path[plen - 1] != '/' && path[plen - 1] != '\\') {
+        pattern[plen] = '\\';
+        pattern[plen + 1] = '*';
+        pattern[plen + 2] = '\0';
+    } else {
+        pattern[plen] = '*';
+        pattern[plen + 1] = '\0';
+    }
+    WIN32_FIND_DATAA fdata;
+    HANDLE hFind = FindFirstFileA(pattern, &fdata);
+    arx_free(pattern);
+    if (hFind == INVALID_HANDLE_VALUE) return list_h;
+    do {
+        if (strcmp(fdata.cFileName, ".") == 0 || strcmp(fdata.cFileName, "..") == 0) continue;
+        bool is_d = (fdata.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
+        if (is_d == want_dirs) {
+            arx_list_push(list_h, (int64_t)(intptr_t)arx_str_copy(fdata.cFileName));
+        }
+    } while (FindNextFileA(hFind, &fdata));
+    FindClose(hFind);
+#else
+    DIR* dir = opendir(path);
+    if (!dir) return list_h;
+    struct dirent* ent;
+    while ((ent = readdir(dir)) != NULL) {
+        if (strcmp(ent->d_name, ".") == 0 || strcmp(ent->d_name, "..") == 0) continue;
+        size_t plen = strlen(path);
+        size_t nlen = strlen(ent->d_name);
+        char* full = (char*)arx_alloc(plen + nlen + 2);
+        memcpy(full, path, plen);
+        full[plen] = '/';
+        memcpy(full + plen + 1, ent->d_name, nlen + 1);
+        struct stat st;
+        bool is_d = (stat(full, &st) == 0 && S_ISDIR(st.st_mode));
+        arx_free(full);
+        if (is_d == want_dirs) {
+            arx_list_push(list_h, (int64_t)(intptr_t)arx_str_copy(ent->d_name));
+        }
+    }
+    closedir(dir);
+#endif
+    return list_h;
+}
+
+static inline int64_t arx_dir_list_files(const char* path) {
+    return arx_dir_list_entries(path, false);
+}
+
+static inline int64_t arx_dir_list_dirs(const char* path) {
+    return arx_dir_list_entries(path, true);
+}
+
+static inline const char* arx_path_join(const char* a, const char* b) {
+    if (!a || !*a) return b ? arx_str_copy(b) : "";
+    if (!b || !*b) return arx_str_copy(a);
+    size_t la = strlen(a);
+    size_t lb = strlen(b);
+    bool has_sep = (a[la - 1] == '/' || a[la - 1] == '\\');
+#if defined(_WIN32) || defined(_WIN64)
+    char sep = '\\';
+#else
+    char sep = '/';
+#endif
+    size_t extra = has_sep ? 0 : 1;
+    char* out = (char*)arx_alloc(la + extra + lb + 1);
+    memcpy(out, a, la);
+    if (!has_sep) out[la] = sep;
+    memcpy(out + la + extra, b, lb + 1);
+    return out;
+}
+
+static inline const char* arx_path_dirname(const char* p) {
+    if (!p || !*p) return ".";
+    size_t len = strlen(p);
+    while (len > 1 && (p[len - 1] == '/' || p[len - 1] == '\\')) len--;
+    for (size_t i = len; i > 0; i--) {
+        if (p[i - 1] == '/' || p[i - 1] == '\\') {
+            if (i == 1) return arx_str_slice(p, 0, 1);
+            return arx_str_slice(p, 0, (int64_t)(i - 1));
+        }
+    }
+    return ".";
+}
+
+static inline const char* arx_path_basename(const char* p) {
+    if (!p || !*p) return "";
+    size_t len = strlen(p);
+    while (len > 1 && (p[len - 1] == '/' || p[len - 1] == '\\')) len--;
+    for (size_t i = len; i > 0; i--) {
+        if (p[i - 1] == '/' || p[i - 1] == '\\') {
+            return arx_str_slice(p, (int64_t)i, (int64_t)len);
+        }
+    }
+    return arx_str_slice(p, 0, (int64_t)len);
+}
+
+static inline int64_t arx_proc_execute(const char* cmdline) {
+    if (!cmdline || !*cmdline) return -1;
+#if defined(_WIN32) || defined(_WIN64)
+    STARTUPINFOA si;
+    PROCESS_INFORMATION pi;
+    ZeroMemory(&si, sizeof(si));
+    si.cb = sizeof(si);
+    ZeroMemory(&pi, sizeof(pi));
+    size_t len = strlen(cmdline);
+    char* mutable_cmd = (char*)arx_alloc(len + 1);
+    memcpy(mutable_cmd, cmdline, len + 1);
+    BOOL ok = CreateProcessA(NULL, mutable_cmd, NULL, NULL, TRUE, 0, NULL, NULL, &si, &pi);
+    arx_free(mutable_cmd);
+    if (ok) {
+        WaitForSingleObject(pi.hProcess, INFINITE);
+        DWORD exit_code = 0;
+        GetExitCodeProcess(pi.hProcess, &exit_code);
+        CloseHandle(pi.hProcess);
+        CloseHandle(pi.hThread);
+        return (int64_t)exit_code;
+    }
+    return (int64_t)system(cmdline);
+#else
+    int rc = system(cmdline);
+    if (rc == -1) return -1;
+    return (int64_t)((rc >> 8) & 0xFF);
+#endif
+}
+
+static inline const char* arx_proc_run_capture(const char* cmdline) {
+    if (!cmdline || !*cmdline) return "";
+#if defined(_WIN32) || defined(_WIN64)
+    FILE* pipe = _popen(cmdline, "r");
+#else
+    extern FILE* popen(const char*, const char*);
+    extern int pclose(FILE*);
+    FILE* pipe = popen(cmdline, "r");
+#endif
+    if (!pipe) return "";
+    int64_t bh = arx_bytebuf_new(256);
+    char chunk[1024];
+    while (fgets(chunk, sizeof(chunk), pipe) != NULL) {
+        arx_bytebuf_write_str(bh, chunk);
+    }
+#if defined(_WIN32) || defined(_WIN64)
+    _pclose(pipe);
+#else
+    pclose(pipe);
+#endif
+    const char* res = arx_bytebuf_to_str(bh);
+    arx_bytebuf_free(bh);
+    return res;
+}
+
+static inline const char* arx_env_get(const char* name) {
+    if (!name || !*name) return "";
+#if defined(_WIN32) || defined(_WIN64)
+    DWORD needed = GetEnvironmentVariableA(name, NULL, 0);
+    if (needed > 0) {
+        char* buf = (char*)arx_alloc((size_t)needed + 1);
+        DWORD got = GetEnvironmentVariableA(name, buf, needed);
+        if (got > 0 && got < needed) {
+            return buf;
+        }
+        arx_free(buf);
+    }
+    const char* val = getenv(name);
+    return val ? arx_str_copy(val) : "";
+#else
+    const char* val = getenv(name);
+    return val ? arx_str_copy(val) : "";
+#endif
+}
+
+static inline bool arx_env_set(const char* name, const char* val) {
+    if (!name || !*name) return false;
+#if defined(_WIN32) || defined(_WIN64)
+    const char* v = val ? val : "";
+    bool ok = SetEnvironmentVariableA(name, v) != 0;
+    size_t nl = strlen(name);
+    size_t vl = strlen(v);
+    char* kv = (char*)malloc(nl + 1 + vl + 1);
+    if (kv) {
+        memcpy(kv, name, nl);
+        kv[nl] = '=';
+        memcpy(kv + nl + 1, v, vl + 1);
+        _putenv(kv);
+    }
+    return ok;
+#else
+    extern int setenv(const char*, const char*, int);
+    return setenv(name, val ? val : "", 1) == 0;
+#endif
+}
+
+static inline const char* arx_env_cwd(void) {
+#if defined(_WIN32) || defined(_WIN64)
+    char buf[MAX_PATH];
+    DWORD len = GetCurrentDirectoryA(MAX_PATH, buf);
+    if (len == 0 || len >= MAX_PATH) return ".";
+    return arx_str_copy(buf);
+#else
+    char buf[4096];
+    if (!getcwd(buf, sizeof(buf))) return ".";
+    return arx_str_copy(buf);
+#endif
+}
+
+static inline void arx_env_exit(int64_t code) {
+    exit((int)code);
+}
+
+static inline const char* arx_os_name(void) {
+#if defined(_WIN32) || defined(_WIN64)
+    return "windows";
+#elif defined(__APPLE__)
+    return "macos";
+#else
+    return "linux";
+#endif
 }
 
 #endif // AERIX_RT_H

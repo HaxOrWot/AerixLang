@@ -565,8 +565,11 @@ class AIRLowering:
                     self.current_class = decl.target_type
                     for m in decl.methods:
                         fn = self.lower_function(m)
-                        fn.params = ["self"] + fn.params
-                        fn.param_types = ["self"] + fn.param_types
+                        is_static = getattr(m, "is_static", False)
+                        fn.is_static = is_static
+                        if not is_static:
+                            fn.params = ["self"] + fn.params
+                            fn.param_types = ["self"] + fn.param_types
                         m_key = getattr(m, "mangled_name", None) or f"Arx_{decl.target_type}_{m.name}"
                         fn.name = m_key
                         cls.methods[m_key] = fn
@@ -655,8 +658,11 @@ class AIRLowering:
         # Methods
         for m in node.methods:
             fn = self.lower_function(m)
-            fn.params = ["self"] + fn.params
-            fn.param_types = ["self"] + fn.param_types
+            is_static = getattr(m, "is_static", False)
+            fn.is_static = is_static
+            if not is_static:
+                fn.params = ["self"] + fn.params
+                fn.param_types = ["self"] + fn.param_types
             m_key = getattr(m, "mangled_name", None) or m.name
             fn.name = m_key
             cls.methods[m_key] = fn
@@ -1625,16 +1631,46 @@ class AIRLowering:
                             self.temp_types[dest] = suffix
                         elif fn_name in ("arx_channel_new", "arx_channel_recv"):
                             self.temp_types[dest] = "i64"
-                        elif fn_name in ("arx_str_trim", "arx_str_to_upper", "arx_str_to_lower", "arx_str_replace", "arx_str_copy", "arx_str_slice", "arx_str_join", "arx_list_get_str", "arx_list_pop_str"):
+                        elif fn_name in (
+                            "arx_str_trim", "arx_str_to_upper", "arx_str_to_lower", "arx_str_replace",
+                            "arx_str_copy", "arx_str_slice", "arx_str_substr", "arx_str_join",
+                            "arx_str_char_at", "arx_str_concat", "arx_byte_to_str", "arx_bytebuf_to_str",
+                            "arx_list_get_str", "arx_list_pop_str",
+                            "arx_file_read_to_string", "arx_proc_run_capture", "arx_env_get",
+                            "arx_env_cwd", "arx_os_name", "arx_args_get",
+                            "arx_path_join", "arx_path_dirname", "arx_path_basename"
+                        ):
                             self.temp_types[dest] = "str"
-                        elif fn_name in ("arx_str_contains", "arx_str_starts_with", "arx_str_ends_with"):
+                        elif fn_name in (
+                            "arx_str_contains", "arx_str_starts_with", "arx_str_ends_with",
+                            "arx_file_exists", "arx_file_write_string", "arx_file_append_string",
+                            "arx_file_remove", "arx_file_copy", "arx_dir_exists", "arx_dir_create",
+                            "arx_env_set"
+                        ):
                             self.temp_types[dest] = "bool"
-                        elif fn_name in ("arx_list_get_f64", "arx_list_pop_f64"):
+                        elif fn_name in ("arx_list_get_f64", "arx_list_pop_f64", "arx_str_to_f64"):
                             self.temp_types[dest] = "f64"
-                        elif fn_name in ("arx_list_new", "arx_list_len", "arx_str_len", "arx_list_get", "arx_list_pop", "arx_list_get_i64", "arx_list_pop_i64", "arx_list_slice", "arx_str_split"):
+                        elif fn_name in (
+                            "arx_list_new", "arx_list_len", "arx_str_len", "arx_list_get", "arx_list_pop",
+                            "arx_list_get_i64", "arx_list_pop_i64", "arx_list_slice", "arx_str_split",
+                            "arx_str_byte_at", "arx_str_to_i64", "arx_dir_list_files", "arx_dir_list_dirs",
+                            "arx_args_list", "arx_args_count", "arx_proc_execute"
+                        ):
                             self.temp_types[dest] = "i64"
                     self.current_insns.append(AIRCall(dest, fn_name, arg_temps))
             elif isinstance(expr.callee, MemberAccessNode):
+                if getattr(expr, "is_static_call", False):
+                    cls_name = getattr(expr, "static_class_name", "") or (
+                        expr.callee.object_expr.name if isinstance(expr.callee.object_expr, IdentifierNode) else "Class"
+                    )
+                    fn_target = getattr(expr, "resolved_mangled_name", None) or f"Arx_{cls_name}_{expr.callee.member}"
+                    if dest and cls_name in self.class_method_returns:
+                        m_returns = self.class_method_returns[cls_name]
+                        ret_t = m_returns.get(fn_target, m_returns.get(expr.callee.member))
+                        if ret_t:
+                            self.temp_types[dest] = ret_t
+                    self.current_insns.append(AIRCall(dest, fn_target, arg_temps))
+                    return dest
                 obj = expr.callee.object_expr
                 if isinstance(obj, IdentifierNode):
                     inst_temp = obj.name
@@ -1675,6 +1711,26 @@ class AIRLowering:
                         dest = self.new_temp()
                         self.temp_types[dest] = "i64"
                         self.current_insns.append(AIRCall(dest, "arx_str_len", [inst_temp]))
+                        return dest
+                    elif expr.callee.member in ("slice", "substr"):
+                        dest = self.new_temp()
+                        self.temp_types[dest] = "str"
+                        self.current_insns.append(AIRCall(dest, "arx_str_slice", [inst_temp] + arg_temps))
+                        return dest
+                    elif expr.callee.member == "byte_at":
+                        dest = self.new_temp()
+                        self.temp_types[dest] = "i64"
+                        self.current_insns.append(AIRCall(dest, "arx_str_byte_at", [inst_temp] + arg_temps))
+                        return dest
+                    elif expr.callee.member == "to_i64":
+                        dest = self.new_temp()
+                        self.temp_types[dest] = "i64"
+                        self.current_insns.append(AIRCall(dest, "arx_str_to_i64", [inst_temp] + arg_temps))
+                        return dest
+                    elif expr.callee.member == "to_f64":
+                        dest = self.new_temp()
+                        self.temp_types[dest] = "f64"
+                        self.current_insns.append(AIRCall(dest, "arx_str_to_f64", [inst_temp] + arg_temps))
                         return dest
                     elif expr.callee.member == "split":
                         dest = self.new_temp()

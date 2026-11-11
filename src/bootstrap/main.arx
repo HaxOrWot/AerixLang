@@ -1,0 +1,230 @@
+// Aerix Bootstrap Compiler — Self-Hosting CLI Driver (arxc)
+// Supports: build, run, emit-c, check, version, help, and direct `<file.arx> [-o <out>]`.
+
+import "./frontend/ast.arx"
+import "./frontend/parser.arx"
+import "./middle/paths.arx"
+import "./middle/types.arx"
+import "./middle/analyzer.arx"
+import "./backend/emitter.arx"
+import "./backend/linker.arx"
+
+fn print_usage() {
+    println("Aerix Self-Hosting Bootstrap Compiler (arxc)")
+    println("Usage:")
+    println("  arxc build <file.arx> [-o <out>] [--emit-c] [-O0|-O1|-O2|-O3]")
+    println("  arxc run <file.arx> [-- <args...>]")
+    println("  arxc emit-c <file.arx> [-o <out.c>]")
+    println("  arxc check <file.arx>")
+    println("  arxc <file.arx> [-o <out>]")
+    println("  arxc version")
+}
+
+fn strip_arx_ext(p: str) -> str {
+    if p.ends_with(".arx") {
+        return p.slice(0, p.len() - 4)
+    }
+    return p
+}
+
+fn strip_exe_ext(p: str) -> str {
+    if p.ends_with(".exe") {
+        return p.slice(0, p.len() - 4)
+    }
+    return strip_arx_ext(p)
+}
+
+fn get_temp_dir() -> str {
+    let t1 = Env.get("TEMP")
+    if t1 != "" { return bpath_normalize(t1) }
+    let t2 = Env.get("TMP")
+    if t2 != "" { return bpath_normalize(t2) }
+    let t3 = Env.get("TMPDIR")
+    if t3 != "" { return bpath_normalize(t3) }
+    return "/tmp"
+}
+
+fn quote_shell_arg(s: str) -> str {
+    let q = "\""
+    return q + s + q
+}
+
+fn compile_frontend(input_file: str) -> Analyzer {
+    if !File.exists(input_file) {
+        eprintln("ERROR: Source file not found: " + input_file)
+        Env.exit(1)
+    }
+    mut parser = Parser(input_file)
+    parser.load_file(input_file)
+    mut az = Analyzer(parser)
+    az.analyze()
+    return az
+}
+
+fn emit_c_for_file(input_file: str) -> str {
+    mut az = compile_frontend(input_file)
+    mut em = Emitter(az)
+    return em.emit()
+}
+
+fn cmd_check(input_file: str) -> i64 {
+    let az = compile_frontend(input_file)
+    if az.has_errors > 0 {
+        eprintln("Check failed for: " + input_file)
+        return 1
+    }
+    println("OK: " + input_file + " (" + (az.ncount as str) + " AST nodes, " + (az.fn_count as str) + " fns, " + (az.cls_count as str) + " classes)")
+    return 0
+}
+
+fn cmd_emit_c(input_file: str, out_file: str) -> i64 {
+    mut target = out_file
+    if target == "" {
+        target = strip_arx_ext(bpath_normalize(input_file)) + ".c"
+    }
+    let dir = bpath_dirname(target)
+    if dir != "" && dir != "." {
+        Directory.create(dir)
+    }
+    let c_src = emit_c_for_file(input_file)
+    if !File.write_string(target, c_src) {
+        eprintln("ERROR: Failed to write C file: " + target)
+        return 1
+    }
+    return 0
+}
+
+fn cmd_build(input_file: str, out_file: str, opt_flag: str, keep_c: bool) -> i64 {
+    let norm_in = bpath_normalize(input_file)
+    mut exe_path = out_file
+    if exe_path == "" {
+        exe_path = strip_arx_ext(norm_in)
+    }
+    exe_path = ensure_exe_ext(bpath_normalize(exe_path))
+
+    let c_path = strip_exe_ext(exe_path) + ".c"
+    let c_src = emit_c_for_file(norm_in)
+    return link_c_to_exe_from(c_src, c_path, exe_path, opt_flag, keep_c, norm_in)
+}
+
+fn cmd_run(input_file: str, opt_flag: str, prog_args: List<str>, prog_argc: i64) -> i64 {
+    let norm_in = bpath_normalize(input_file)
+    let tmp_dir = bpath_join(get_temp_dir(), "aerix_boot_run")
+    Directory.create(tmp_dir)
+    let base = strip_arx_ext(bpath_basename(norm_in))
+    let c_path = bpath_join(tmp_dir, base + ".c")
+    let exe_path = ensure_exe_ext(bpath_join(tmp_dir, base))
+
+    let c_src = emit_c_for_file(norm_in)
+    let rc_link = link_c_to_exe_from(c_src, c_path, exe_path, opt_flag, false, norm_in)
+    if rc_link != 0 {
+        return rc_link
+    }
+
+    let bb = ByteBuffer()
+    if Env.os_name() == "windows" {
+        let win_exe = exe_path.replace("/", "\\")
+        bb.write_str(quote_shell_arg(win_exe))
+    } else {
+        bb.write_str(quote_shell_arg(exe_path))
+    }
+    mut i = 0
+    while i < prog_argc {
+        bb.write_u8(32)
+        bb.write_str(quote_shell_arg(prog_args.get(i)))
+        i = i + 1
+    }
+    let run_cmd = bb.to_str()
+    bb.free()
+
+    let rc = Process.execute(run_cmd)
+    File.remove(exe_path)
+    return rc
+}
+
+fn main() -> i64 {
+    let cli_args = Env.args()
+    let cli_argc = Env.arg_count()
+    if cli_argc <= 1 {
+        print_usage()
+        return 0
+    }
+
+    let first = cli_args.get(1)
+    if first == "version" || first == "--version" || first == "-v" {
+        println("Aerix Self-Hosting Bootstrap Compiler (arxc) v0.1.0-bootstrap")
+        return 0
+    }
+    if first == "help" || first == "--help" || first == "-h" {
+        print_usage()
+        return 0
+    }
+
+    mut mode = ""
+    mut start_i = 2
+    if first == "build" || first == "run" || first == "emit-c" || first == "check" {
+        mode = first
+    } else {
+        mode = "auto"
+        start_i = 1
+    }
+
+    mut input_file = ""
+    mut out_file = ""
+    mut opt_flag = "-O2"
+    mut keep_c = false
+    let prog_args = List<str>()
+    mut prog_argc = 0
+    mut after_dashdash = false
+
+    mut i = start_i
+    while i < cli_argc {
+        let a = cli_args.get(i)
+        if after_dashdash {
+            prog_args.push(a)
+            prog_argc = prog_argc + 1
+        } else if a == "--" {
+            after_dashdash = true
+        } else if a == "-o" || a == "--output" {
+            if i + 1 < cli_argc {
+                i = i + 1
+                out_file = cli_args.get(i)
+            }
+        } else if a == "--emit-c" {
+            keep_c = true
+        } else if a == "-O0" || a == "-O1" || a == "-O2" || a == "-O3" {
+            opt_flag = a
+        } else if input_file == "" {
+            input_file = a
+        } else {
+            prog_args.push(a)
+            prog_argc = prog_argc + 1
+        }
+        i = i + 1
+    }
+
+    if input_file == "" {
+        eprintln("ERROR: No input .arx file provided.")
+        print_usage()
+        return 1
+    }
+
+    if mode == "check" {
+        return cmd_check(input_file)
+    }
+    if mode == "emit-c" {
+        return cmd_emit_c(input_file, out_file)
+    }
+    if mode == "build" {
+        return cmd_build(input_file, out_file, opt_flag, keep_c)
+    }
+    if mode == "run" {
+        return cmd_run(input_file, opt_flag, prog_args, prog_argc)
+    }
+
+    // "auto" mode: if -o specified, build executable; otherwise compile & run
+    if out_file != "" {
+        return cmd_build(input_file, out_file, opt_flag, keep_c)
+    }
+    return cmd_run(input_file, opt_flag, prog_args, prog_argc)
+}

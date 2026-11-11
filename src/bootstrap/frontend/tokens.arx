@@ -1,0 +1,210 @@
+// Aerix Bootstrap Compiler — Token Definitions & Stream
+// Uses integer constants and flat TokenStream arrays for O(1) zero-copy indexing.
+
+pub fn TK_EOF() -> i64 { return 0 }
+pub fn TK_NEWLINE() -> i64 { return 1 }
+pub fn TK_INT() -> i64 { return 2 }
+pub fn TK_FLOAT() -> i64 { return 3 }
+pub fn TK_STR() -> i64 { return 4 }
+pub fn TK_STR_INTERP() -> i64 { return 5 }
+pub fn TK_CHAR() -> i64 { return 6 }
+pub fn TK_BOOL() -> i64 { return 7 }
+pub fn TK_NULL() -> i64 { return 8 }
+pub fn TK_IDENT() -> i64 { return 9 }
+pub fn TK_LABEL() -> i64 { return 10 }
+
+// Keywords (20..69)
+pub fn TK_FN() -> i64 { return 20 }
+pub fn TK_LET() -> i64 { return 21 }
+pub fn TK_MUT() -> i64 { return 22 }
+pub fn TK_CONST() -> i64 { return 23 }
+pub fn TK_CLASS() -> i64 { return 24 }
+pub fn TK_STRUCT() -> i64 { return 25 }
+pub fn TK_ENUM() -> i64 { return 26 }
+pub fn TK_TRAIT() -> i64 { return 27 }
+pub fn TK_TYPE() -> i64 { return 28 }
+pub fn TK_INIT() -> i64 { return 29 }
+pub fn TK_DROP() -> i64 { return 30 }
+pub fn TK_IF() -> i64 { return 31 }
+pub fn TK_ELSE() -> i64 { return 32 }
+pub fn TK_MATCH() -> i64 { return 33 }
+pub fn TK_FOR() -> i64 { return 34 }
+pub fn TK_IN() -> i64 { return 35 }
+pub fn TK_WHILE() -> i64 { return 36 }
+pub fn TK_LOOP() -> i64 { return 37 }
+pub fn TK_BREAK() -> i64 { return 38 }
+pub fn TK_CONTINUE() -> i64 { return 39 }
+pub fn TK_RETURN() -> i64 { return 40 }
+pub fn TK_SPAWN() -> i64 { return 41 }
+pub fn TK_TRY() -> i64 { return 42 }
+pub fn TK_CATCH() -> i64 { return 43 }
+pub fn TK_FINALLY() -> i64 { return 44 }
+pub fn TK_THROW() -> i64 { return 45 }
+pub fn TK_SELF() -> i64 { return 46 }
+pub fn TK_SUPER() -> i64 { return 47 }
+pub fn TK_PUB() -> i64 { return 48 }
+pub fn TK_PRIV() -> i64 { return 49 }
+pub fn TK_PROT() -> i64 { return 50 }
+pub fn TK_STATIC() -> i64 { return 51 }
+pub fn TK_VIRTUAL() -> i64 { return 52 }
+pub fn TK_OVERRIDE() -> i64 { return 53 }
+pub fn TK_ABSTRACT() -> i64 { return 54 }
+pub fn TK_NEW() -> i64 { return 55 }
+pub fn TK_DELETE() -> i64 { return 56 }
+pub fn TK_EXTENDS() -> i64 { return 57 }
+pub fn TK_IMPLEMENTS() -> i64 { return 58 }
+pub fn TK_PROP() -> i64 { return 59 }
+pub fn TK_OP() -> i64 { return 60 }
+pub fn TK_EXTEND() -> i64 { return 61 }
+pub fn TK_GUARD() -> i64 { return 62 }
+pub fn TK_DEFER() -> i64 { return 63 }
+pub fn TK_UNSAFE() -> i64 { return 64 }
+pub fn TK_SIZEOF() -> i64 { return 65 }
+pub fn TK_AS() -> i64 { return 66 }
+pub fn TK_USE() -> i64 { return 67 }
+pub fn TK_IMPORT() -> i64 { return 68 }
+pub fn TK_FROM() -> i64 { return 69 }
+pub fn TK_CINCLUDE() -> i64 { return 70 }
+pub fn TK_CEXTERN() -> i64 { return 71 }
+
+// Operators & Delimiters (80..135)
+pub fn TK_PLUS() -> i64 { return 80 }
+pub fn TK_MINUS() -> i64 { return 81 }
+pub fn TK_STAR() -> i64 { return 82 }
+pub fn TK_SLASH() -> i64 { return 83 }
+pub fn TK_PERCENT() -> i64 { return 84 }
+pub fn TK_POWER() -> i64 { return 85 }
+pub fn TK_EQ_EQ() -> i64 { return 86 }
+pub fn TK_NOT_EQ() -> i64 { return 87 }
+pub fn TK_LT() -> i64 { return 88 }
+pub fn TK_LTE() -> i64 { return 89 }
+pub fn TK_GT() -> i64 { return 90 }
+pub fn TK_GTE() -> i64 { return 91 }
+pub fn TK_AND_AND() -> i64 { return 92 }
+pub fn TK_OR_OR() -> i64 { return 93 }
+pub fn TK_NOT() -> i64 { return 94 }
+pub fn TK_AMP() -> i64 { return 95 }
+pub fn TK_PIPE_CHAR() -> i64 { return 96 }
+pub fn TK_CARET() -> i64 { return 97 }
+pub fn TK_TILDE() -> i64 { return 98 }
+pub fn TK_LSHIFT() -> i64 { return 99 }
+pub fn TK_RSHIFT() -> i64 { return 100 }
+pub fn TK_EQUALS() -> i64 { return 101 }
+pub fn TK_PLUS_EQ() -> i64 { return 102 }
+pub fn TK_MINUS_EQ() -> i64 { return 103 }
+pub fn TK_STAR_EQ() -> i64 { return 104 }
+pub fn TK_SLASH_EQ() -> i64 { return 105 }
+pub fn TK_PERCENT_EQ() -> i64 { return 106 }
+pub fn TK_PIPE() -> i64 { return 107 }
+pub fn TK_CASCADE() -> i64 { return 108 }
+pub fn TK_ARROW() -> i64 { return 109 }
+pub fn TK_FAT_ARROW() -> i64 { return 110 }
+pub fn TK_DOT_DOT() -> i64 { return 111 }
+pub fn TK_DOT_DOT_EQ() -> i64 { return 112 }
+pub fn TK_QUESTION() -> i64 { return 113 }
+pub fn TK_QQ() -> i64 { return 114 }
+pub fn TK_QDOT() -> i64 { return 115 }
+pub fn TK_DOT() -> i64 { return 116 }
+pub fn TK_LPAREN() -> i64 { return 117 }
+pub fn TK_RPAREN() -> i64 { return 118 }
+pub fn TK_LBRACE() -> i64 { return 119 }
+pub fn TK_RBRACE() -> i64 { return 120 }
+pub fn TK_LBRACKET() -> i64 { return 121 }
+pub fn TK_RBRACKET() -> i64 { return 122 }
+pub fn TK_COMMA() -> i64 { return 123 }
+pub fn TK_COLON() -> i64 { return 124 }
+pub fn TK_SEMICOLON() -> i64 { return 125 }
+pub fn TK_HASH() -> i64 { return 126 }
+
+pub fn is_alpha_byte(b: i64) -> bool {
+    if b >= 65 && b <= 90 { return true }
+    if b >= 97 && b <= 122 { return true }
+    if b == 95 { return true }
+    return false
+}
+
+pub fn is_digit_byte(b: i64) -> bool {
+    return b >= 48 && b <= 57
+}
+
+pub fn is_hex_byte(b: i64) -> bool {
+    if b >= 48 && b <= 57 { return true }
+    if b >= 65 && b <= 70 { return true }
+    if b >= 97 && b <= 102 { return true }
+    return false
+}
+
+pub fn is_alnum_byte(b: i64) -> bool {
+    return is_alpha_byte(b) || is_digit_byte(b)
+}
+
+pub fn lookup_keyword(word: str) -> i64 {
+    match word {
+        "fn" => { return TK_FN() }
+        "let" => { return TK_LET() }
+        "mut" => { return TK_MUT() }
+        "const" => { return TK_CONST() }
+        "class" => { return TK_CLASS() }
+        "struct" => { return TK_STRUCT() }
+        "enum" => { return TK_ENUM() }
+        "trait" => { return TK_TRAIT() }
+        "type" => { return TK_TYPE() }
+        "init" => { return TK_INIT() }
+        "drop" => { return TK_DROP() }
+        "if" => { return TK_IF() }
+        "else" => { return TK_ELSE() }
+        "match" => { return TK_MATCH() }
+        "for" => { return TK_FOR() }
+        "in" => { return TK_IN() }
+        "while" => { return TK_WHILE() }
+        "loop" => { return TK_LOOP() }
+        "break" => { return TK_BREAK() }
+        "continue" => { return TK_CONTINUE() }
+        "return" => { return TK_RETURN() }
+        "spawn" => { return TK_SPAWN() }
+        "try" => { return TK_TRY() }
+        "catch" => { return TK_CATCH() }
+        "finally" => { return TK_FINALLY() }
+        "throw" => { return TK_THROW() }
+        "self" => { return TK_SELF() }
+        "super" => { return TK_SUPER() }
+        "pub" => { return TK_PUB() }
+        "priv" => { return TK_PRIV() }
+        "prot" => { return TK_PROT() }
+        "static" => { return TK_STATIC() }
+        "virtual" => { return TK_VIRTUAL() }
+        "override" => { return TK_OVERRIDE() }
+        "abstract" => { return TK_ABSTRACT() }
+        "new" => { return TK_NEW() }
+        "delete" => { return TK_DELETE() }
+        "extends" => { return TK_EXTENDS() }
+        "implements" => { return TK_IMPLEMENTS() }
+        "prop" => { return TK_PROP() }
+        "op" => { return TK_OP() }
+        "extend" => { return TK_EXTEND() }
+        "guard" => { return TK_GUARD() }
+        "defer" => { return TK_DEFER() }
+        "unsafe" => { return TK_UNSAFE() }
+        "sizeof" => { return TK_SIZEOF() }
+        "as" => { return TK_AS() }
+        "use" => { return TK_USE() }
+        "import" => { return TK_IMPORT() }
+        "from" => { return TK_FROM() }
+        "cinclude" => { return TK_CINCLUDE() }
+        "cextern" => { return TK_CEXTERN() }
+        "true" => { return TK_BOOL() }
+        "false" => { return TK_BOOL() }
+        "null" => { return TK_NULL() }
+        _ => { return TK_IDENT() }
+    }
+    return TK_IDENT()
+}
+
+pub fn can_terminate_stmt(kind: i64) -> bool {
+    if kind == TK_IDENT() || kind == TK_INT() || kind == TK_FLOAT() { return true }
+    if kind == TK_STR() || kind == TK_STR_INTERP() || kind == TK_CHAR() { return true }
+    if kind == TK_BOOL() || kind == TK_NULL() || kind == TK_SELF() || kind == TK_SUPER() { return true }
+    if kind == TK_BREAK() || kind == TK_CONTINUE() || kind == TK_RETURN() { return true }
+    if kind == TK_RPAREN() || kind == TK_RBRACE() || kind == TK_RBRACKET() { return true }
+    return false
+}
