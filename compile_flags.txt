@@ -4,3 +4,4 @@
 -Wno-unused-function
 -Wno-unused-parameter
 -Wno-unused-variable
+-Wno-parentheses-equality
