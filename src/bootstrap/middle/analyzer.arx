@@ -1002,6 +1002,9 @@ pub class Analyzer {
                 } else if btype_is_fixed_arr(it_t) {
                     elem_t = btype_arr_elem(it_t)
                     iter_kind_tag = it_t
+                } else if btype_is_slice(it_t) {
+                    elem_t = btype_slice_elem(it_t)
+                    iter_kind_tag = it_t
                 } else if btype_is_str(it_t) {
                     elem_t = "char"
                     iter_kind_tag = "str"
@@ -1294,12 +1297,19 @@ pub class Analyzer {
                     self.node_types.set(nid, "str")
                     return "str"
                 }
+                if btype_is_fixed_arr(obj_t) {
+                    let st = "Slice_" + btype_arr_elem(obj_t)
+                    self.node_types.set(nid, st)
+                    return st
+                }
                 self.node_types.set(nid, obj_t)
                 return obj_t
             }
             mut et = "i64"
             if btype_is_fixed_arr(obj_t) {
                 et = btype_arr_elem(obj_t)
+            } else if btype_is_slice(obj_t) {
+                et = btype_slice_elem(obj_t)
             } else if btype_is_list(obj_t) {
                 et = btype_list_elem(obj_t)
             } else if btype_is_map(obj_t) {
@@ -1371,7 +1381,7 @@ pub class Analyzer {
                     } else {
                         mt = "i64"
                     }
-                } else if (btype_is_list(lt) || btype_is_map(lt) || btype_is_set(lt) || btype_is_stack(lt) || btype_is_queue(lt) || btype_is_deque(lt) || btype_is_str(lt) || lt == "ByteBuffer" || lt == "String") && (mname == "length" || mname == "len") {
+                } else if (btype_is_list(lt) || btype_is_map(lt) || btype_is_set(lt) || btype_is_stack(lt) || btype_is_queue(lt) || btype_is_deque(lt) || btype_is_slice(lt) || btype_is_str(lt) || lt == "ByteBuffer" || lt == "String") && (mname == "length" || mname == "len") {
                     mt = "i64"
                 } else {
                     mt = "i64"
@@ -1540,6 +1550,24 @@ pub class Analyzer {
                 self.call_targets.set(nid, "exit")
                 self.node_types.set(nid, "void")
                 return "void"
+            }
+            if name == "arx_prng_seed" || name == "arx_prng_set_state" {
+                self.call_kinds.set(nid, CK_NORMAL())
+                self.call_targets.set(nid, name)
+                self.node_types.set(nid, "void")
+                return "void"
+            }
+            if name == "arx_prng_next_f64" || name == "arx_time_now" {
+                self.call_kinds.set(nid, CK_NORMAL())
+                self.call_targets.set(nid, name)
+                self.node_types.set(nid, "f64")
+                return "f64"
+            }
+            if name == "arx_prng_get_state" || name == "arx_prng_next_i64" {
+                self.call_kinds.set(nid, CK_NORMAL())
+                self.call_targets.set(nid, name)
+                self.node_types.set(nid, "i64")
+                return "i64"
             }
 
             // 2. Prelude class constructors

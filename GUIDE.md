@@ -15,7 +15,7 @@
 [![Version](https://img.shields.io/badge/version-1.0.91--pre-00DCFF.svg?style=for-the-badge&logo=visualstudiocode)](#)
 [![Backend](https://img.shields.io/badge/backend-ANSI%20C99%20%2F%20GCC-1E90FF.svg?style=for-the-badge&logo=c)](#)
 [![Performance](https://img.shields.io/badge/performance-100%25%20C%20Native-00E676.svg?style=for-the-badge&logo=speedtest)](#)
-[![Test Suite](https://img.shields.io/badge/test%20suite-197%2F197%20PASS%20(100%25)-00E5FF.svg?style=for-the-badge)](#)
+[![Test Suite](https://img.shields.io/badge/test%20suite-198%2F198%20PASS%20(100%25)-00E5FF.svg?style=for-the-badge)](#)
 [![Examples](https://img.shields.io/badge/examples-41%20files-FF9100.svg?style=for-the-badge)](#)
 [![IDE Support](https://img.shields.io/badge/IDE-Antigravity%20%26%20VS%20Code-7C4DFF.svg?style=for-the-badge)](#)
 
@@ -151,7 +151,7 @@ The Aerix toolchain is delivered as a turnkey executable suite. It includes the 
 
 > **Repository Branches:**
 > * **`main` *(default)*:** Minimal self-hosting Aerix compiler (`src/bootstrap/` + `src/bootstrap/seed/arxc.c`, `stdlib/`, `modules/`, docs). Needs only `gcc` or `clang` — no Python required.
-> * **`pre`:** Full developer repository containing the Stage 0 Python toolchain (`arx`), `install.ps1` / `install.sh`, `197` pytest tests, `41` example files, and VS Code / Antigravity extension.
+> * **`pre`:** Full developer repository containing the Stage 0 Python toolchain (`arx`), `install.ps1` / `install.sh`, `198` pytest tests, `41` example files, and VS Code / Antigravity extension.
 > * **`stable`:** Previous Python-hosted release snapshot prior to the self-hosting bootstrap.
 
 #### Option A: Self-Hosting Native Compiler (`arxc` — Zero Python Required, `main` & `pre`)
@@ -3298,7 +3298,7 @@ As a compact integer tag followed by an aligned union payload.
 Yes. GCC lowers vector primitives to ARM NEON instructions on ARM64 platforms.
 
 #### Q50: How do I run the compiler test suite?
-On the `pre` branch, run `python -m pytest src/tests/ -q --tb=short` from the repository root (`197` automated tests).
+On the `pre` branch, run `python -m pytest src/tests/ -q --tb=short` from the repository root (`198` automated tests).
 
 #### Q51: How does Aerix handle integer overflow?
 In debug builds, integer overflow triggers a diagnostic trap. In `-O3` release builds, arithmetic wraps using two's complement semantics for maximum CPU speed.

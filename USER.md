@@ -15,7 +15,7 @@
 [![Version](https://img.shields.io/badge/version-1.0.91--pre-00DCFF.svg?style=for-the-badge)](#)
 [![Standard](https://img.shields.io/badge/standard-ANSI%20C99%20%2F%20C11-1E90FF.svg?style=for-the-badge)](#)
 [![Architecture](https://img.shields.io/badge/architecture-x86__64%20%2F%20ARM64-00E676.svg?style=for-the-badge)](#)
-[![Test Suite](https://img.shields.io/badge/tests-197%2F197%20PASS%20(100%25)-00E5FF.svg?style=for-the-badge)](#)
+[![Test Suite](https://img.shields.io/badge/tests-198%2F198%20PASS%20(100%25)-00E5FF.svg?style=for-the-badge)](#)
 
 [Architecture](#1-architectural-specification--compilation-pipeline) • [CLI Reference](#2-cli-toolchain-reference-manual-arx) • [Type System](#3-the-complete-type-system) • [Memory Layout](#4-memory-model--physical-layout) • [Precedence](#6-expressions-operators--precedence) • [OOP System](#9-object-oriented-programming-oop) • [Concurrency](#11-concurrency-native-threads--typed-channels) • [Runtime API](#12-standard-library--runtime-api-aerix_rth) • [Collections](#17-standard-collections--data-structures-architecture) • [EBNF Grammar](#16-formal-language-grammar-ebnf)
 
@@ -96,7 +96,7 @@ Aerix operates as an ahead-of-time (AOT) transpiling systems compiler that produ
 
 Aerix ships two complementary compiler implementations synchronized across repository branches:
 * **`main` (Self-Hosting Core):** Minimal tree containing `src/bootstrap/` (`main.arx`, `frontend/{tokens,lexer,ast,parser}.arx`, `middle/{types,analyzer,paths}.arx`, `backend/{emitter,linker}.arx`), the verified ANSI C99 bootstrap seed (`src/bootstrap/seed/arxc.c`), `stdlib/`, `modules/`, and documentation. Requires only a C99 compiler (`gcc`/`clang`) — zero Python dependency.
-* **`pre` (Full Toolchain & Test Suite):** Full development tree containing the Stage 0 Python compiler (`src/`), bootstrap compiler (`src/bootstrap/`), `197` pytest tests (`src/tests/`), `41` example files (`examples/`), `benchmarks/`, `docs/`, `editors/`, and installers (`install.ps1`, `install.sh`).
+* **`pre` (Full Toolchain & Test Suite):** Full development tree containing the Stage 0 Python compiler (`src/`), bootstrap compiler (`src/bootstrap/`), `198` pytest tests (`src/tests/`), `41` example files (`examples/`), `benchmarks/`, `docs/`, `editors/`, and installers (`install.ps1`, `install.sh`).
 * **`stable`:** Snapshot of the Python-hosted compiler prior to the self-hosting bootstrap release.
 
 `arxc` compiles its own source (`src/bootstrap/main.arx`) cleanly through a 3-stage bootstrap with an exact byte-for-byte fixed point between Stage 2 and Stage 3 C outputs.
@@ -207,7 +207,7 @@ arx [COMMAND] [OPTIONS] [FILE]
 | `wasm <file>` | Compiles program to WebAssembly (`.wasm`) with optional HTML5 runner. | `-o <out.wasm>`, `--wat`, `--html`, `--serve` |
 | `doctor` | Diagnostics tool checking GCC compiler and toolchain health. | `--fix` |
 | `setup-tools` | Automated setup wizard installing MinGW-w64 or Clang. | `--backend=gcc` |
-| `test` | Runs the full automated pytest regression suite (`197` tests via `python -m pytest src/tests/`). | `-q`, `--tb=short` |
+| `test` | Runs the full automated pytest regression suite (`198` tests via `python -m pytest src/tests/`). | `-q`, `--tb=short` |
 | `new <name>` | Scaffolds a new Aerix systems project with standard structure. | `--template=cli` |
 
 ---

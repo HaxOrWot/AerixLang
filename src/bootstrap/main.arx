@@ -55,7 +55,7 @@ fn compile_frontend(input_file: str) -> Analyzer {
         Env.exit(1)
     }
     mut parser = Parser(input_file)
-    parser.load_file(input_file)
+    parser.load_resolved_file(input_file)
     mut az = Analyzer(parser)
     az.analyze()
     return az

@@ -60,6 +60,21 @@ pub fn btype_ptr_inner(t: str) -> str {
     return "void"
 }
 
+pub fn btype_is_slice(t: str) -> bool {
+    return btype_norm(t).starts_with("Slice_")
+}
+
+pub fn btype_slice_elem(t: str) -> str {
+    let nt = btype_norm(t)
+    if nt.starts_with("Slice_mut_") {
+        return btype_norm(nt.slice(10, nt.len()))
+    }
+    if nt.starts_with("Slice_") {
+        return btype_norm(nt.slice(6, nt.len()))
+    }
+    return "i64"
+}
+
 pub fn btype_is_fixed_arr(t: str) -> bool {
     let nt = btype_norm(t)
     let n = nt.len()
@@ -297,6 +312,7 @@ pub fn btype_to_c(raw_t: str) -> str {
     if btype_is_ptr(t) {
         return btype_to_c(btype_ptr_inner(t)) + "*"
     }
+    if btype_is_slice(t) { return "Arx_Slice" }
     if btype_is_list(t) || btype_is_map(t) || btype_is_set(t) {
         return "Arx_" + btype_mangle(t)
     }

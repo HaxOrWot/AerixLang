@@ -15,7 +15,7 @@
 [![Version](https://img.shields.io/badge/version-1.0.91--pre-00DCFF.svg?style=for-the-badge&logo=visualstudiocode)](#)
 [![Backend](https://img.shields.io/badge/backend-ANSI%20C99%20%2F%20GCC-1E90FF.svg?style=for-the-badge&logo=c)](#)
 [![Performance](https://img.shields.io/badge/performance-100%25%20C%20Native-00E676.svg?style=for-the-badge&logo=speedtest)](#)
-[![Tests](https://img.shields.io/badge/test%20suite-197%2F197%20PASS%20(100%25)-00E5FF.svg?style=for-the-badge)](#)
+[![Tests](https://img.shields.io/badge/test%20suite-198%2F198%20PASS%20(100%25)-00E5FF.svg?style=for-the-badge)](#)
 [![Examples](https://img.shields.io/badge/examples-41%20files-FF9100.svg?style=for-the-badge)](#)
 [![IDE Support](https://img.shields.io/badge/IDE-Antigravity%20%26%20VS%20Code-7C4DFF.svg?style=for-the-badge)](#)
 
@@ -61,7 +61,7 @@ fn main() {
 
 > **Repository Branches:**
 > * **`main`** *(default)* — Minimal self-hosting Aerix compiler tree (`src/bootstrap/` + C bootstrap seed `src/bootstrap/seed/arxc.c`, `stdlib/`, `modules/`, and docs). Builds natively with GCC/Clang alone — **no Python required**.
-> * **`pre`** — Full pre-release repository including the Stage 0 Python compiler (`src/`), bootstrap source (`src/bootstrap/`), automated test suite (`197` tests in `src/tests/`), `41` example files (`examples/`), VS Code / Antigravity extension (`editors/`), installer scripts (`install.ps1` / `install.sh`), LSP, formatter, linter, REPL, and WASM backend.
+> * **`pre`** — Full pre-release repository including the Stage 0 Python compiler (`src/`), bootstrap source (`src/bootstrap/`), automated test suite (`198` tests in `src/tests/`), `41` example files (`examples/`), VS Code / Antigravity extension (`editors/`), installer scripts (`install.ps1` / `install.sh`), LSP, formatter, linter, REPL, and WASM backend.
 > * **`stable`** — Snapshot of the Python-hosted compiler (`main` prior to self-hosting bootstrap).
 
 <details open>
@@ -417,7 +417,7 @@ arx emit-c program.arx
 
 ## 🚦 Project Roadmap & Implementation Status
 
-Aerix is backed by a production-grade automated test suite (**197/197 tests passing**, 100% pass rate on the `pre` branch) across 28 implementation phases, culminating in a self-hosting Aerix compiler (`arxc` in `src/bootstrap/`):
+Aerix is backed by a production-grade automated test suite (**198/198 tests passing**, 100% pass rate on the `pre` branch) across 28 implementation phases, culminating in a self-hosting Aerix compiler (`arxc` in `src/bootstrap/`):
 
 <details open>
 <summary><b>📋 Implementation Status Matrix (28/28 Completed Phases)</b></summary>

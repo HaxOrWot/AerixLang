@@ -65,8 +65,8 @@ pub class Parser {
         self.tok_count = 0
         self.pos = 0
         self.cur_file = bpath_normalize(entry_file)
-        self.cur_dir = bpath_dirname(self.cur_file)
-        self.entry_dir = self.cur_dir
+        self.entry_dir = bpath_dirname(self.cur_file)
+        self.cur_dir = "."
 
         self.nk = List<i64>()
         self.sa = List<str>()
@@ -294,13 +294,8 @@ pub class Parser {
 
     // --- Module & File Loading ---
 
-    pub fn load_file(file_path: str) {
-        mut resolved = file_path
-        if !bpath_is_abs(resolved) {
-            resolved = bpath_join(self.cur_dir, file_path)
-        } else {
-            resolved = bpath_normalize(resolved)
-        }
+    pub fn load_resolved_file(file_path: str) {
+        mut resolved = bpath_normalize(file_path)
         if !File.exists(resolved) && !str_ends_with_arx(resolved) {
             let with_ext = resolved + ".arx"
             if File.exists(with_ext) {
@@ -317,6 +312,14 @@ pub class Parser {
 
         let source = File.read_to_string(resolved)
         self.load_source(source, resolved)
+    }
+
+    pub fn load_file(file_path: str) {
+        mut resolved = file_path
+        if !bpath_is_abs(resolved) {
+            resolved = bpath_join(self.cur_dir, file_path)
+        }
+        self.load_resolved_file(resolved)
     }
 
     pub fn load_source(source: str, filename: str) {
@@ -399,7 +402,7 @@ pub class Parser {
 
         mut i = 0
         while i < total {
-            self.load_file(arx_files.get(i))
+            self.load_resolved_file(arx_files.get(i))
             i = i + 1
         }
     }
@@ -407,9 +410,22 @@ pub class Parser {
     // --- Type Parsing ---
 
     priv fn parse_type_str() -> str {
+        if self.match_k(TK_AMP()) {
+            mut mut_pfx = ""
+            if self.match_k(TK_MUT()) {
+                mut_pfx = "mut_"
+            }
+            self.expect_k(TK_LBRACKET(), "Expected '[' in slice type '&[T]'")
+            let elem_t = self.parse_type_str()
+            self.expect_k(TK_RBRACKET(), "Expected ']' in slice type '&[T]'")
+            return "Slice_" + mut_pfx + elem_t
+        }
         if self.cur_kind() == TK_LBRACKET() {
             self.adv()
             let elem_t = self.parse_type_str()
+            if self.match_k(TK_RBRACKET()) {
+                return "Slice_" + elem_t
+            }
             self.expect_k(TK_SEMICOLON(), "Expected ';' in fixed array type [T; N]")
             let sz_tok = self.expect_k(TK_INT(), "Expected integer size in fixed array type")
             let sz_str = self.tok_vals.get(sz_tok)

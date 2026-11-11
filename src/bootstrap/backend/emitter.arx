@@ -1919,6 +1919,16 @@ pub class Emitter {
             self.w_nl()
             self.indent = self.indent + 1
             self.wl(btype_to_c(et) + " " + item_v + " = " + ivar + "[" + iv_name + "];")
+        } else if btype_is_slice(it_t) {
+            let et = btype_slice_elem(it_t)
+            let ec = btype_to_c(et)
+            self.wl("Arx_Slice " + ctmp + " = " + ivar + "; int64_t " + len_v + " = (int64_t)" + ctmp + ".len;")
+            self.w_ind()
+            self.w("for (int64_t " + iv_name + " = 0; " + iv_name + " < " + len_v + "; " + iv_name + "++) ")
+            self.w_lbrace()
+            self.w_nl()
+            self.indent = self.indent + 1
+            self.wl(ec + " " + item_v + " = ((" + ec + "*)(" + ctmp + ".data))[" + iv_name + "];")
         } else if btype_is_list(it_t) {
             let et = btype_list_elem(it_t)
             let sn = "Arx_" + btype_mangle(it_t)
@@ -2103,8 +2113,14 @@ pub class Emitter {
             return obj + "." + mem
         }
         if k == NK_INDEX() {
-            let arr = self.gen_expr(self.la.get(nid))
+            let col_id = self.la.get(nid)
+            let col_t = btype_norm(self.node_types.get(col_id))
+            let arr = self.gen_expr(col_id)
             let idx = self.gen_expr(self.ra.get(nid))
+            if btype_is_slice(col_t) {
+                let elem_c = btype_to_c(btype_slice_elem(col_t))
+                return "((" + elem_c + "*)((" + arr + ").data))[" + idx + "]"
+            }
             return arr + "[" + idx + "]"
         }
         return self.gen_expr(nid)
@@ -2247,6 +2263,9 @@ pub class Emitter {
                 let addr = self.emit_lvalue_addr(lhs, lt)
                 return "Arx_" + btype_mangle(lt) + "_len(" + addr + ")"
             }
+            if btype_is_slice(lt) && (mem == "length" || mem == "len") {
+                return "((int64_t)(" + self.gen_expr(lhs) + ").len)"
+            }
             if btype_is_str(lt) && (mem == "length" || mem == "len") {
                 return "arx_str_len(" + self.gen_expr(lhs) + ")"
             }
@@ -2262,9 +2281,12 @@ pub class Emitter {
             let idx_id = self.ra.get(nid)
             if self.nk.get(idx_id) == NK_RANGE() {
                 let s_expr = self.gen_expr(self.la.get(idx_id))
-                mut e_expr = self.gen_expr(self.ra.get(idx_id))
+                let e_raw = self.gen_expr(self.ra.get(idx_id))
+                mut e_expr = e_raw
+                mut inc_s = "false"
                 if has_flag(self.ia.get(idx_id), FLAG_INCLUSIVE()) {
-                    e_expr = "((" + e_expr + ") + 1)"
+                    e_expr = "((" + e_raw + ") + 1)"
+                    inc_s = "true"
                 }
                 if btype_is_list(lt) {
                     let addr = self.emit_lvalue_addr(lhs, lt)
@@ -2272,6 +2294,14 @@ pub class Emitter {
                 }
                 if btype_is_str(lt) {
                     return "__arx_bstr_slice(" + self.gen_expr(lhs) + ", " + s_expr + ", " + e_expr + ")"
+                }
+                if btype_is_fixed_arr(lt) {
+                    let elem_c = btype_to_c(btype_arr_elem(lt))
+                    return "arx_slice_create(" + self.gen_expr(lhs) + ", " + s_expr + ", " + e_raw + ", sizeof(" + elem_c + "), " + inc_s + ")"
+                }
+                if btype_is_slice(lt) {
+                    let elem_c = btype_to_c(btype_slice_elem(lt))
+                    return "arx_slice_sub(" + self.gen_expr(lhs) + ", " + s_expr + ", " + e_raw + ", sizeof(" + elem_c + "), " + inc_s + ")"
                 }
             }
             let idx = self.gen_expr(idx_id)
@@ -2282,6 +2312,11 @@ pub class Emitter {
             if btype_is_map(lt) {
                 let addr = self.emit_lvalue_addr(lhs, lt)
                 return "Arx_" + btype_mangle(lt) + "_get(" + addr + ", " + idx + ")"
+            }
+            if btype_is_slice(lt) {
+                let elem_c = btype_to_c(btype_slice_elem(lt))
+                let obj = self.gen_expr(lhs)
+                return "((" + elem_c + "*)((" + obj + ").data))[" + idx + "]"
             }
             let obj = self.gen_expr(lhs)
             return "(" + obj + ")[" + idx + "]"
@@ -2623,6 +2658,7 @@ pub class Emitter {
             let at = btype_norm(self.node_types.get(a0))
             if btype_is_str(at) { return "arx_str_len(" + self.gen_expr(a0) + ")" }
             if btype_is_fixed_arr(at) { return "((int64_t)" + (btype_arr_len(at) as str) + "LL)" }
+            if btype_is_slice(at) { return "((int64_t)(" + self.gen_expr(a0) + ").len)" }
             let addr = self.emit_lvalue_addr(a0, at)
             return "Arx_" + btype_mangle(at) + "_len(" + addr + ")"
         }

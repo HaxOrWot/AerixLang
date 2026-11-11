@@ -197,3 +197,48 @@ class TestPhase28SelfHostingBootstrap(unittest.TestCase):
             run = subprocess.run([exe], capture_output=True, text=True, env=self.env)
             self.assertEqual(run.returncode, 0, f"Run failed for {name}:\n{run.stderr}")
 
+    def test_stage3_relative_paths_and_modules(self):
+        """Stage 3 handles relative entry paths in subdirectories and module imports."""
+        rel_check = subprocess.run(
+            [self.stage3_exe, "check", "src/bootstrap/main.arx"],
+            cwd=self.repo_root,
+            capture_output=True,
+            text=True,
+            env=self.env,
+        )
+        self.assertEqual(
+            rel_check.returncode,
+            0,
+            f"Relative check failed:\n{rel_check.stdout}\n{rel_check.stderr}",
+        )
+
+        sub_dir = os.path.join(self.tmpdir, "nested", "app")
+        os.makedirs(sub_dir, exist_ok=True)
+        src_path = os.path.join(sub_dir, "demo.arx")
+        with open(src_path, "w", encoding="utf-8") as f:
+            f.write(
+                'import Math, Random\n'
+                'fn main() {\n'
+                '    Random.seed(7)\n'
+                '    let r = Random.randint(1, 1)\n'
+                '    mut arr: [i64; 3] = [10, 20, 30]\n'
+                '    let picked = Random.choice(arr[0..2])\n'
+                '    Random.shuffle(arr[0..3])\n'
+                '    println(Math.abs_i64(-5) + r)\n'
+                '    println(picked >= 10 && picked <= 20)\n'
+                '}\n'
+            )
+
+        mod_env = os.environ.copy()
+        mod_env["AERIX_STDLIB"] = os.path.join(self.repo_root, "stdlib")
+        mod_env["AERIX_MODULE_PATH"] = os.path.join(self.repo_root, "modules")
+        res = subprocess.run(
+            [self.stage3_exe, "run", os.path.join("nested", "app", "demo.arx")],
+            cwd=self.tmpdir,
+            capture_output=True,
+            text=True,
+            env=mod_env,
+        )
+        self.assertEqual(res.returncode, 0, f"Nested run failed:\n{res.stdout}\n{res.stderr}")
+        self.assertEqual(res.stdout.strip().splitlines(), ["6", "true"])
+
