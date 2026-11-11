@@ -2335,7 +2335,7 @@ static inline int64_t arx_proc_execute(const char* cmdline) {
     size_t len = strlen(cmdline);
     char* mutable_cmd = (char*)arx_alloc(len + 1);
     memcpy(mutable_cmd, cmdline, len + 1);
-    BOOL ok = CreateProcessA(NULL, mutable_cmd, NULL, NULL, TRUE, 0, NULL, NULL, &si, &pi);
+    bool ok = CreateProcessA(NULL, mutable_cmd, NULL, NULL, TRUE, 0, NULL, NULL, &si, &pi) != 0;
     arx_free(mutable_cmd);
     if (ok) {
         WaitForSingleObject(pi.hProcess, INFINITE);

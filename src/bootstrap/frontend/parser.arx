@@ -5,6 +5,7 @@ import "./tokens.arx"
 import "./lexer.arx"
 import "./ast.arx"
 import "../middle/paths.arx"
+import "../middle/types.arx"
 
 pub class Parser {
     // Current token stream window

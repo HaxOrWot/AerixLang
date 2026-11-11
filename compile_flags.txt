@@ -1,0 +1,6 @@
+-xc
+-std=c99
+-Istdlib
+-Wno-unused-function
+-Wno-unused-parameter
+-Wno-unused-variable
