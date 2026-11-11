@@ -10,12 +10,12 @@
 ```
 
 ### **The Definitive A-to-Z Technical Reference Manual**
-*Official System Specification for the Aerix Native Programming Language (Version 1.0.89-alpha)*
+*Official System Specification for the Aerix Native Programming Language (Version 1.0.91-pre)*
 
-[![Version](https://img.shields.io/badge/version-1.0.89--alpha-00DCFF.svg?style=for-the-badge)](#)
+[![Version](https://img.shields.io/badge/version-1.0.91--pre-00DCFF.svg?style=for-the-badge)](#)
 [![Standard](https://img.shields.io/badge/standard-ANSI%20C99%20%2F%20C11-1E90FF.svg?style=for-the-badge)](#)
 [![Architecture](https://img.shields.io/badge/architecture-x86__64%20%2F%20ARM64-00E676.svg?style=for-the-badge)](#)
-[![Test Suite](https://img.shields.io/badge/tests-132%2F132%20PASS%20(100%25)-00E5FF.svg?style=for-the-badge)](#)
+[![Test Suite](https://img.shields.io/badge/tests-197%2F197%20PASS%20(100%25)-00E5FF.svg?style=for-the-badge)](#)
 
 [Architecture](#1-architectural-specification--compilation-pipeline) • [CLI Reference](#2-cli-toolchain-reference-manual-arx) • [Type System](#3-the-complete-type-system) • [Memory Layout](#4-memory-model--physical-layout) • [Precedence](#6-expressions-operators--precedence) • [OOP System](#9-object-oriented-programming-oop) • [Concurrency](#11-concurrency-native-threads--typed-channels) • [Runtime API](#12-standard-library--runtime-api-aerix_rth) • [Collections](#17-standard-collections--data-structures-architecture) • [EBNF Grammar](#16-formal-language-grammar-ebnf)
 
@@ -67,7 +67,7 @@
 12. [Standard Library & Runtime API (`aerix_rt.h`)](#12-standard-library--runtime-api-aerix_rth)
 13. [C Interoperability & Foreign Function Interface (FFI)](#13-c-interoperability--foreign-function-interface-ffi)
 14. [Developer Ecosystem & IDE Tooling](#14-developer-ecosystem--ide-tooling)
-15. [Production Examples Catalog (27 Programs)](#15-production-examples-catalog-26-programs)
+15. [Production Examples Catalog (41 Files)](#15-production-examples-catalog-41-files)
 16. [Formal Language Grammar (EBNF)](#16-formal-language-grammar-ebnf)
 17. [Standard Collections & Data Structures Architecture](#17-standard-collections--data-structures-architecture)
 
@@ -91,6 +91,15 @@ Aerix operates as an ahead-of-time (AOT) transpiling systems compiler that produ
 │ Stage 8: Native │ GCC (-O3 -flto) ──> Standalone Machine Binary (.exe / elf) │
 └─────────────────┴───────────────────────────────────────────────────────────┘
 ```
+
+### 1.1 Self-Hosting Bootstrap Architecture (`arxc`) & Repository Branches
+
+Aerix ships two complementary compiler implementations synchronized across repository branches:
+* **`main` (Self-Hosting Core):** Minimal tree containing `src/bootstrap/` (`main.arx`, `frontend/{tokens,lexer,ast,parser}.arx`, `middle/{types,analyzer,paths}.arx`, `backend/{emitter,linker}.arx`), the verified ANSI C99 bootstrap seed (`src/bootstrap/seed/arxc.c`), `stdlib/`, `modules/`, and documentation. Requires only a C99 compiler (`gcc`/`clang`) — zero Python dependency.
+* **`pre` (Full Toolchain & Test Suite):** Full development tree containing the Stage 0 Python compiler (`src/`), bootstrap compiler (`src/bootstrap/`), `197` pytest tests (`src/tests/`), `41` example files (`examples/`), `benchmarks/`, `docs/`, `editors/`, and installers (`install.ps1`, `install.sh`).
+* **`stable`:** Snapshot of the Python-hosted compiler prior to the self-hosting bootstrap release.
+
+`arxc` compiles its own source (`src/bootstrap/main.arx`) cleanly through a 3-stage bootstrap with an exact byte-for-byte fixed point between Stage 2 and Stage 3 C outputs.
 
 <details>
 <summary><b>🔬 Click to inspect compiler intermediate representations (AST -> AIR -> C99)</b></summary>
@@ -136,9 +145,46 @@ int64_t arx_square(int64_t x) {
 
 ---
 
-## 2. CLI Toolchain Reference Manual (`arx`)
+## 2. CLI Toolchain Reference Manual (`arx` & `arxc`)
 
-The `arx` toolchain is a unified command-line executable distributed as a standalone binary or Python package.
+Aerix provides both the **self-hosting native compiler (`arxc`)** in `src/bootstrap/` (`main` & `pre` branches) and the **Stage 0 full developer CLI (`arx`)** in Python (`pre` branch).
+
+### 2.1 Self-Hosting Native Compiler (`arxc`)
+
+Build `arxc` from the C seed using GCC/Clang alone (no Python required):
+```powershell
+# Windows (MinGW / UCRT64 GCC)
+gcc -std=c99 -O2 -Wno-unused-function -I stdlib src/bootstrap/seed/arxc.c -o arxc.exe -lm
+```
+```bash
+# Linux / macOS
+cc -std=c99 -O2 -Wno-unused-function -I stdlib src/bootstrap/seed/arxc.c -o arxc -lm -lpthread
+```
+
+Self-rebuild `arxc` directly from its Aerix source:
+```bash
+./arxc build src/bootstrap/main.arx -o arxc_self
+```
+
+**`arxc` CLI Usage & Subcommands (`src/bootstrap/main.arx`):**
+```text
+arxc build <file.arx> [-o <out>] [--emit-c] [-O0|-O1|-O2|-O3]
+arxc run <file.arx> [-- <args...>]
+arxc emit-c <file.arx> [-o <out.c>]
+arxc check <file.arx>
+arxc <file.arx> [-o <out>]
+arxc version          # supports version | --version | -v
+arxc help             # supports help | --help | -h
+```
+
+**`arxc` Environment Variables (`paths.arx`, `linker.arx`):**
+* `AERIX_STDLIB` / `AERIX_HOME` / `AERIX_STDLIB_PATH` — Override automatic discovery of `stdlib/aerix_rt.h`.
+* `AERIX_MODULE_PATH` — Override automatic discovery of `modules/` (e.g., `Math`, `Random`).
+* `AERIX_CC` / `CC` — Override the C99 compiler executable (defaults to `gcc`).
+
+### 2.2 Stage 0 Developer CLI (`arx` — `pre` branch)
+
+The `arx` toolchain is a unified command-line executable on the `pre` branch (`python arx.py` / `.\arx.bat`).
 
 ### Synopsis
 ```bash
@@ -150,7 +196,7 @@ arx [COMMAND] [OPTIONS] [FILE]
 | Subcommand | Description | Common Flags |
 | :--- | :--- | :--- |
 | `run <file>` | Compiles and executes an Aerix program in-memory. | `--emit-c`, `-v` (verbose) |
-| `build <file>` | Compiles program into a standalone native binary executable. | `-o <output>`, `-O3`, `-g`, `--emit-c` |
+| `build <file>` | Compiles program into a standalone native binary executable. | `-o <output>`, `-O3`, `-g`, `--emit-c`, `--freestanding` |
 | `emit-c <file>` | Transpiles Aerix source code directly to formatted C99. | `-o <output.c>` |
 | `check <file>` | Runs sub-millisecond syntax and type checking without compiling. | `--json` |
 | `repl` | Launches the interactive Aerix Read-Eval-Print-Loop. | `--history` |
@@ -161,7 +207,7 @@ arx [COMMAND] [OPTIONS] [FILE]
 | `wasm <file>` | Compiles program to WebAssembly (`.wasm`) with optional HTML5 runner. | `-o <out.wasm>`, `--wat`, `--html`, `--serve` |
 | `doctor` | Diagnostics tool checking GCC compiler and toolchain health. | `--fix` |
 | `setup-tools` | Automated setup wizard installing MinGW-w64 or Clang. | `--backend=gcc` |
-| `test` | Runs the full automated regression test suite (87 tests). | `-v`, `--fast` |
+| `test` | Runs the full automated pytest regression suite (`197` tests via `python -m pytest src/tests/`). | `-q`, `--tb=short` |
 | `new <name>` | Scaffolds a new Aerix systems project with standard structure. | `--template=cli` |
 
 ---
@@ -856,9 +902,9 @@ Aerix provides high-performance standard library modules written 100% in pure `.
 
 ---
 
-## 15. Production Examples Catalog (40 Programs)
+## 15. Production Examples Catalog (41 Files)
 
-The repository provides 40 runnable programs in [`examples/`](file:///z:/VSCode/AerixLang/examples/):
+The `pre` branch provides 41 example files (40 runnable programs + module helper) in [`examples/`](examples/) (also viewable on GitHub at [HaxOrWot/AerixLang/tree/pre/examples](https://github.com/HaxOrWot/AerixLang/tree/pre/examples)):
 
 | File | Topic & Concept |
 | :--- | :--- |

@@ -15,8 +15,8 @@
 [![Version](https://img.shields.io/badge/version-1.0.91--pre-00DCFF.svg?style=for-the-badge&logo=visualstudiocode)](#)
 [![Backend](https://img.shields.io/badge/backend-ANSI%20C99%20%2F%20GCC-1E90FF.svg?style=for-the-badge&logo=c)](#)
 [![Performance](https://img.shields.io/badge/performance-100%25%20C%20Native-00E676.svg?style=for-the-badge&logo=speedtest)](#)
-[![Test Suite](https://img.shields.io/badge/test%20suite-183%2F183%20PASS%20(100%25)-00E5FF.svg?style=for-the-badge)](#)
-[![Examples](https://img.shields.io/badge/examples-40%20runnable-FF9100.svg?style=for-the-badge)](#)
+[![Test Suite](https://img.shields.io/badge/test%20suite-197%2F197%20PASS%20(100%25)-00E5FF.svg?style=for-the-badge)](#)
+[![Examples](https://img.shields.io/badge/examples-41%20files-FF9100.svg?style=for-the-badge)](#)
 [![IDE Support](https://img.shields.io/badge/IDE-Antigravity%20%26%20VS%20Code-7C4DFF.svg?style=for-the-badge)](#)
 
 [Quickstart](#chapter-2-installation-diagnostics--toolchain-setup) • [Keyword Encyclopedia](#chapter-4-the-complete-aerix-keyword-encyclopedia-a-to-z) • [Type System](#chapter-7-the-complete-16-primitive-types--hardware-memory-layout) • [Pipelines](#chapter-12-the-functional-pipeline-operator-) • [Guards](#chapter-15-anti-pyramid-fail-fast-guards-guard--else) • [OOP](#chapter-19-object-oriented-programming-classes-fields--init) • [Generics](#chapter-28-compile-time-generics--static-monomorphization) • [Concurrency](#chapter-30-native-multi-core-concurrency--typed-channels) • [WebAssembly](#chapter-32-the-complete-developer-toolchain-reference-arx-cli) • [FAQ](#chapter-33-the-massive-aerix-faq-65-in-depth-questions) • [Cheat Sheet](#chapter-34-the-comprehensive-1-page-aerix-syntax-cheat-sheet)
@@ -149,33 +149,54 @@ The Aerix toolchain is delivered as a turnkey executable suite. It includes the 
 
 ### 2.2 HOW: Step-by-Step Installation
 
-#### Option A: Windows Automated Installation (PowerShell One-Liner)
-Open PowerShell (5.1 or 7+) as Administrator or current user and execute the official one-liner:
+> **Repository Branches:**
+> * **`main` *(default)*:** Minimal self-hosting Aerix compiler (`src/bootstrap/` + `src/bootstrap/seed/arxc.c`, `stdlib/`, `modules/`, docs). Needs only `gcc` or `clang` — no Python required.
+> * **`pre`:** Full developer repository containing the Stage 0 Python toolchain (`arx`), `install.ps1` / `install.sh`, `197` pytest tests, `41` example files, and VS Code / Antigravity extension.
+> * **`stable`:** Previous Python-hosted release snapshot prior to the self-hosting bootstrap.
+
+#### Option A: Self-Hosting Native Compiler (`arxc` — Zero Python Required, `main` & `pre`)
+If you only have a C99 compiler (`gcc` or `clang`), compile the checked-in bootstrap C seed directly:
 ```powershell
-iwr -useb https://raw.githubusercontent.com/HaxOrWot/AerixLang/main/install.ps1 | iex
+# Windows (MinGW / UCRT64 GCC)
+gcc -std=c99 -O2 -Wno-unused-function -I stdlib src/bootstrap/seed/arxc.c -o arxc.exe -lm
+```
+```bash
+# Linux / macOS
+cc -std=c99 -O2 -Wno-unused-function -I stdlib src/bootstrap/seed/arxc.c -o arxc -lm -lpthread
+```
+Then rebuild `arxc` directly from its own Aerix source and run programs:
+```bash
+./arxc build src/bootstrap/main.arx -o arxc_self
+./arxc_self version
+```
+
+#### Option B: Windows Automated Installation (`pre` branch — Full Stage 0 Toolchain)
+Open PowerShell (5.1 or 7+) as Administrator or current user and execute the official one-liner from the `pre` branch:
+```powershell
+iwr -useb https://raw.githubusercontent.com/HaxOrWot/AerixLang/pre/install.ps1 | iex
 ```
 *Or using the concise `irm` alias:*
 ```powershell
-irm https://raw.githubusercontent.com/HaxOrWot/AerixLang/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/HaxOrWot/AerixLang/pre/install.ps1 | iex
 ```
-*(Or run locally from repository root: `powershell -ExecutionPolicy Bypass -File .\install.ps1`)*
+*(Or run locally from a `pre` checkout: `powershell -ExecutionPolicy Bypass -File .\install.ps1`)*
 
 The installer performs the following operations automatically:
 1. Detects local GCC installations (MinGW-w64, TDM-GCC, or MSYS2 ucrt64).
-2. Compiles or extracts the native `arx` binary to `~/.aerix/bin`.
+2. Installs/configures the Stage 0 `arx` launcher in `~/.aerix`.
 3. Adds `~/.aerix/bin` to your persistent Windows User `PATH` environment variable.
-4. Automatically packages and installs the official `aerix-1.0.89.vsix` extension into standard **VS Code** and the **Antigravity IDE**.
+4. Installs the Aerix extension into **VS Code** and **Antigravity IDE** when available.
 
-#### Option B: Linux & macOS Automated Installation (POSIX Shell One-Liner)
-Open terminal (Bash, Zsh, or Dash) and execute the official one-liner:
+#### Option C: Linux & macOS Automated Installation (`pre` branch — Full Stage 0 Toolchain)
+Open terminal (Bash, Zsh, or Dash) and execute the official one-liner from the `pre` branch:
 ```bash
-curl -fsSL https://raw.githubusercontent.com/HaxOrWot/AerixLang/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/HaxOrWot/AerixLang/pre/install.sh | bash
 ```
 *Or using `wget`:*
 ```bash
-wget -qO- https://raw.githubusercontent.com/HaxOrWot/AerixLang/main/install.sh | bash
+wget -qO- https://raw.githubusercontent.com/HaxOrWot/AerixLang/pre/install.sh | bash
 ```
-*(Or run locally from repository root: `chmod +x ./install.sh && ./install.sh`)*
+*(Or run locally from a `pre` checkout: `chmod +x ./install.sh && ./install.sh`)*
 
 #### Verifying Toolchain Health: `arx doctor`
 After installation, run the diagnostic doctor command:
@@ -3092,6 +3113,32 @@ gdb ./game.exe
 ```
 You can step through `.arx` source lines directly in GDB!
 
+### 32.4.5 Self-Hosting Bootstrap Compiler (`arxc`)
+The self-hosting compiler (`src/bootstrap/main.arx`, bootstrapped from `src/bootstrap/seed/arxc.c`) compiles Aerix programs natively with zero Python dependency:
+
+```bash
+# Bootstrap `arxc` from the C99 seed (Windows / Linux / macOS)
+gcc -std=c99 -O2 -Wno-unused-function -I stdlib src/bootstrap/seed/arxc.c -o arxc.exe -lm   # Windows
+cc  -std=c99 -O2 -Wno-unused-function -I stdlib src/bootstrap/seed/arxc.c -o arxc -lm -lpthread  # Linux/macOS
+
+# Self-compile `arxc` from its own Aerix source
+./arxc build src/bootstrap/main.arx -o arxc_self
+
+# Supported subcommands and options
+arxc build <file.arx> [-o <out>] [--emit-c] [-O0|-O1|-O2|-O3]
+arxc run <file.arx> [-- <args...>]
+arxc emit-c <file.arx> [-o <out.c>]
+arxc check <file.arx>
+arxc <file.arx> [-o <out>]
+arxc version   # or --version / -v
+arxc help      # or --help / -h
+```
+
+**Environment Overrides for `arxc`:**
+* `AERIX_STDLIB`, `AERIX_HOME`, or `AERIX_STDLIB_PATH` — override `stdlib/` discovery (`aerix_rt.h`).
+* `AERIX_MODULE_PATH` — override `modules/` discovery (`Math`, `Random`, etc.).
+* `AERIX_CC` or `CC` — override the backend C99 compiler (defaults to `gcc`).
+
 ### 32.5 Interactive Self-Check Quiz
 <details>
 <summary><b>Question 1: How do you inspect the C99 code generated by the Aerix compiler?</b></summary>
@@ -3251,7 +3298,7 @@ As a compact integer tag followed by an aligned union payload.
 Yes. GCC lowers vector primitives to ARM NEON instructions on ARM64 platforms.
 
 #### Q50: How do I run the compiler test suite?
-Run `python -m unittest discover -s src/tests` from the repository root.
+On the `pre` branch, run `python -m pytest src/tests/ -q --tb=short` from the repository root (`197` automated tests).
 
 #### Q51: How does Aerix handle integer overflow?
 In debug builds, integer overflow triggers a diagnostic trap. In `-O3` release builds, arithmetic wraps using two's complement semantics for maximum CPU speed.
@@ -3290,7 +3337,7 @@ Zero. Both lower to conditional jump instructions in C99 machine code. `guard` i
 String literals are placed in the read-only `.rodata` data section of the binary and shared across all references.
 
 #### Q63: Can I define default parameter values?
-Currently, parameter overloading is used to provide default parameter behavior.
+Yes — default parameter values and named arguments are supported in the Stage 0 `arx` compiler (verified in `src/tests/test_feature6_default_named_args.py`), alongside static function and method overloading.
 
 #### Q64: How does Aerix handle recursion?
 Aerix supports direct and mutual recursion. Tail-recursive functions are optimized into loops by GCC's tail-call elimination pass under `-O2`/`-O3`.

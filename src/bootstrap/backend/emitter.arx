@@ -1,0 +1,2707 @@
+// Aerix Bootstrap Compiler — Deterministic ANSI C99 Code Generator
+// Emits self-contained C99 targeting stdlib/aerix_rt.h in fixed topological order.
+
+import "../frontend/ast.arx"
+import "../middle/types.arx"
+import "../middle/analyzer.arx"
+
+pub class Emitter {
+    // Frozen AST & semantic info from Analyzer
+    pub nk: List<i64>
+    pub sa: List<str>
+    pub sb: List<str>
+    pub ia: List<i64>
+    pub la: List<i64>
+    pub ra: List<i64>
+    pub ea: List<i64>
+    pub ls: List<i64>
+    pub ll: List<i64>
+    pub ln: List<i64>
+    pub ch: List<i64>
+    pub ncount: i64
+    pub c_includes: List<str>
+    pub c_inc_count: i64
+
+    pub gen_list_types: List<str>
+    pub gen_list_count: i64
+    pub gen_map_keys: List<str>
+    pub gen_map_vals: List<str>
+    pub gen_map_count: i64
+    pub gen_set_types: List<str>
+    pub gen_set_count: i64
+    pub gen_stack_types: List<str>
+    pub gen_stack_count: i64
+    pub gen_queue_types: List<str>
+    pub gen_queue_count: i64
+    pub gen_deque_types: List<str>
+    pub gen_deque_count: i64
+    pub gen_tuple_types: List<str>
+    pub gen_tuple_count: i64
+    pub seen_generics: Map<str, i64>
+
+    pub cls_names: List<str>
+    pub cls_nodes: List<i64>
+    pub cls_count: i64
+    pub cls_idx_map: Map<str, i64>
+    pub cls_order: List<i64>
+    pub cls_order_count: i64
+    pub cls_base_map: Map<str, str>
+    pub cls_field_types: Map<str, str>
+
+    pub enum_names: List<str>
+    pub enum_nodes: List<i64>
+    pub enum_count: i64
+    pub enum_idx_map: Map<str, i64>
+    pub enum_var_tag: Map<str, i64>
+    pub enum_var_node: Map<str, i64>
+
+    pub global_nodes: List<i64>
+    pub global_count: i64
+    pub fn_nodes: List<i64>
+    pub fn_count: i64
+    pub ext_nodes: List<i64>
+    pub ext_count: i64
+
+    pub node_types: List<str>
+    pub call_targets: List<str>
+    pub call_kinds: List<i64>
+    pub call_fn_nodes: List<i64>
+    pub node_ext: List<str>
+
+    // Output stream & generation state
+    pub out: ByteBuffer
+    pub indent: i64
+    pub tmp_id: i64
+    pub lbl_id: i64
+    pub cur_class: str
+    pub cur_ret_type: str
+    pub has_main_fn: bool
+    pub main_returns_i64: bool
+
+    // Defer statement stack per lexical block
+    pub defer_nodes: List<i64>
+    pub defer_count: i64
+    pub defer_marks: List<i64>
+    pub defer_depth: i64
+
+    init(az: Analyzer) {
+        self.nk = az.nk
+        self.sa = az.sa
+        self.sb = az.sb
+        self.ia = az.ia
+        self.la = az.la
+        self.ra = az.ra
+        self.ea = az.ea
+        self.ls = az.ls
+        self.ll = az.ll
+        self.ln = az.ln
+        self.ch = az.ch
+        self.ncount = az.ncount
+        self.c_includes = az.c_includes
+        self.c_inc_count = az.c_inc_count
+
+        self.gen_list_types = az.gen_list_types
+        self.gen_list_count = az.gen_list_count
+        self.gen_map_keys = az.gen_map_keys
+        self.gen_map_vals = az.gen_map_vals
+        self.gen_map_count = az.gen_map_count
+        self.gen_set_types = az.gen_set_types
+        self.gen_set_count = az.gen_set_count
+        self.gen_stack_types = az.gen_stack_types
+        self.gen_stack_count = az.gen_stack_count
+        self.gen_queue_types = az.gen_queue_types
+        self.gen_queue_count = az.gen_queue_count
+        self.gen_deque_types = az.gen_deque_types
+        self.gen_deque_count = az.gen_deque_count
+        self.gen_tuple_types = az.gen_tuple_types
+        self.gen_tuple_count = az.gen_tuple_count
+        self.seen_generics = az.seen_generics
+
+        self.cls_names = az.cls_names
+        self.cls_nodes = az.cls_nodes
+        self.cls_count = az.cls_count
+        self.cls_idx_map = az.cls_idx_map
+        self.cls_order = az.cls_order
+        self.cls_order_count = az.cls_order_count
+        self.cls_base_map = az.cls_base_map
+        self.cls_field_types = az.cls_field_types
+
+        self.enum_names = az.enum_names
+        self.enum_nodes = az.enum_nodes
+        self.enum_count = az.enum_count
+        self.enum_idx_map = az.enum_idx_map
+        self.enum_var_tag = az.enum_var_tag
+        self.enum_var_node = az.enum_var_node
+
+        self.global_nodes = az.global_nodes
+        self.global_count = az.global_count
+        self.fn_nodes = az.fn_nodes
+        self.fn_count = az.fn_count
+        self.ext_nodes = az.ext_nodes
+        self.ext_count = az.ext_count
+
+        self.node_types = az.node_types
+        self.call_targets = az.call_targets
+        self.call_kinds = az.call_kinds
+        self.call_fn_nodes = az.call_fn_nodes
+        self.node_ext = az.node_ext
+
+        self.out = ByteBuffer()
+        self.indent = 0
+        self.tmp_id = 0
+        self.lbl_id = 0
+        self.cur_class = ""
+        self.cur_ret_type = "void"
+        self.has_main_fn = false
+        self.main_returns_i64 = false
+
+        self.defer_nodes = List<i64>()
+        self.defer_count = 0
+        self.defer_marks = List<i64>()
+        self.defer_depth = 0
+    }
+
+    // --- Low-level Output & Formatting Helpers ---
+
+    priv fn w(s: str) {
+        self.out.write_str(s)
+    }
+
+    priv fn w_byte(b: i64) {
+        self.out.write_u8(b)
+    }
+
+    priv fn w_nl() {
+        self.out.write_u8(10)
+    }
+
+    priv fn w_ind() {
+        mut i = 0
+        while i < self.indent {
+            self.out.write_str("    ")
+            i = i + 1
+        }
+    }
+
+    priv fn wl(s: str) {
+        self.w_ind()
+        self.out.write_str(s)
+        self.out.write_u8(10)
+    }
+
+    priv fn wc(s: str) {
+        let n = s.len()
+        mut i = 0
+        while i < n {
+            let b = s.byte_at(i)
+            if b == 64 {
+                self.out.write_u8(123)
+            } else if b == 96 {
+                self.out.write_u8(125)
+            } else {
+                self.out.write_u8(b)
+            }
+            i = i + 1
+        }
+    }
+
+    priv fn wcl(s: str) {
+        self.w_ind()
+        self.wc(s)
+        self.out.write_u8(10)
+    }
+
+    priv fn w_lbrace() { self.out.write_u8(123) }
+    priv fn w_rbrace() { self.out.write_u8(125) }
+    priv fn w_quote() { self.out.write_u8(34) }
+
+    priv fn open_blk() {
+        self.w_ind()
+        self.w_lbrace()
+        self.w_nl()
+        self.indent = self.indent + 1
+    }
+
+    priv fn close_blk() {
+        self.indent = self.indent - 1
+        self.w_ind()
+        self.w_rbrace()
+        self.w_nl()
+    }
+
+    priv fn next_tmp() -> str {
+        let nm = "__t" + (self.tmp_id as str)
+        self.tmp_id = self.tmp_id + 1
+        return nm
+    }
+
+    priv fn next_lbl() -> str {
+        let nm = "__lbl" + (self.lbl_id as str)
+        self.lbl_id = self.lbl_id + 1
+        return nm
+    }
+
+    priv fn child_at(nid: i64, idx: i64) -> i64 {
+        return self.ch.get(self.ls.get(nid) + idx)
+    }
+
+    priv fn child_count(nid: i64) -> i64 {
+        return self.ll.get(nid)
+    }
+
+    priv fn has_list_type(elem_t: str) -> bool {
+        return self.seen_generics.has_key("L::" + btype_norm(elem_t))
+    }
+
+    priv fn write_c_str_lit(raw: str) {
+        self.w_quote()
+        let n = raw.len()
+        mut i = 0
+        while i < n {
+            let b = raw.byte_at(i)
+            if b == 10 {
+                self.w_byte(92)
+                self.w_byte(110)
+            } else if b == 9 {
+                self.w_byte(92)
+                self.w_byte(116)
+            } else if b == 13 {
+                self.w_byte(92)
+                self.w_byte(114)
+            } else if b == 92 {
+                self.w_byte(92)
+                self.w_byte(92)
+            } else if b == 34 {
+                self.w_byte(92)
+                self.w_byte(34)
+            } else {
+                self.w_byte(b)
+            }
+            i = i + 1
+        }
+        self.w_quote()
+    }
+
+    priv fn emit_box_expr(raw_t: str, expr: str) -> str {
+        let t = btype_norm(raw_t)
+        if btype_is_str(t) || btype_is_ptr(t) || t == "null" {
+            return "((int64_t)(intptr_t)(" + expr + "))"
+        }
+        if btype_is_int(t) || t == "bool" || t == "char" {
+            return "((int64_t)(" + expr + "))"
+        }
+        if t == "f64" {
+            let tmp = self.next_tmp()
+            self.wcl("union @ double f; int64_t i; ` " + tmp + "; " + tmp + ".f = (double)(" + expr + ");")
+            return tmp + ".i"
+        }
+        if t == "f32" {
+            let tmp = self.next_tmp()
+            self.wcl("union @ double f; int64_t i; ` " + tmp + "; " + tmp + ".f = (double)(" + expr + ");")
+            return tmp + ".i"
+        }
+        // Struct or Enum by value: allocate copy on heap and store handle
+        let ct = btype_to_c(t)
+        let tmp = self.next_tmp()
+        self.wl(ct + "* " + tmp + " = (" + ct + "*)arx_alloc(sizeof(" + ct + ")); *" + tmp + " = (" + expr + ");")
+        return "((int64_t)(intptr_t)" + tmp + ")"
+    }
+
+    priv fn emit_unbox_expr(raw_t: str, raw_expr: str) -> str {
+        let t = btype_norm(raw_t)
+        if btype_is_str(t) {
+            return "((const char*)(intptr_t)(" + raw_expr + "))"
+        }
+        if btype_is_ptr(t) {
+            return "((" + btype_to_c(t) + ")(intptr_t)(" + raw_expr + "))"
+        }
+        if t == "bool" {
+            return "((" + raw_expr + ") != 0)"
+        }
+        if btype_is_int(t) || t == "char" {
+            return "((" + btype_to_c(t) + ")(" + raw_expr + "))"
+        }
+        if t == "f64" || t == "f32" {
+            let tmp = self.next_tmp()
+            self.wcl("union @ double f; int64_t i; ` " + tmp + "; " + tmp + ".i = (" + raw_expr + ");")
+            if t == "f32" { return "((float)" + tmp + ".f)" }
+            return tmp + ".f"
+        }
+        let ct = btype_to_c(t)
+        return "(*(" + ct + "*)(intptr_t)(" + raw_expr + "))"
+    }
+
+    priv fn emit_cast_to_str(raw_t: str, expr: str) -> str {
+        let t = btype_norm(raw_t)
+        if btype_is_str(t) { return expr }
+        if t == "bool" { return "arx_cast_bool_to_str(" + expr + ")" }
+        if t == "char" { return "arx_cast_char_to_str(" + expr + ")" }
+        if btype_is_float(t) { return "arx_cast_f64_to_str((double)(" + expr + "))" }
+        if t == "u64" || t == "u32" || t == "u16" || t == "u8" {
+            return "arx_cast_u64_to_str((uint64_t)(" + expr + "))"
+        }
+        if btype_is_int(t) {
+            return "arx_cast_i64_to_str((int64_t)(" + expr + "))"
+        }
+        return "arx_cast_i64_to_str((int64_t)(intptr_t)(" + expr + "))"
+    }
+
+    // --- Main Entry ---
+
+    pub fn emit() -> str {
+        self.emit_preamble()
+        self.emit_prelude_core()
+        self.emit_generic_structs()
+        self.emit_tuple_structs(0)
+        self.emit_enums()
+        self.emit_tuple_structs(1)
+        self.emit_classes()
+        self.emit_tuple_structs(2)
+        self.emit_generics()
+        self.emit_prelude_post_list()
+        self.emit_globals()
+        self.emit_forward_decls()
+        self.emit_all_functions()
+        self.emit_entry_point()
+        let result = self.out.to_str()
+        self.out.free()
+        return result
+    }
+
+    priv fn emit_preamble() {
+        self.wl("/* Generated by Aerix Bootstrap Compiler */")
+        self.wl("#include <setjmp.h>")
+        self.w("#include ")
+        self.w_quote()
+        self.w("aerix_rt.h")
+        self.w_quote()
+        self.w_nl()
+        mut i = 0
+        while i < self.c_inc_count {
+            let hdr = self.c_includes.get(i)
+            self.w("#include ")
+            if hdr.starts_with("<") {
+                self.w(hdr)
+            } else {
+                self.w_quote()
+                self.w(hdr)
+                self.w_quote()
+            }
+            self.w_nl()
+            i = i + 1
+        }
+        self.w_nl()
+        self.wl("static jmp_buf __arx_jmp_stack[64];")
+        self.wl("static int __arx_jmp_depth = 0;")
+        self.wl("static const char* __arx_exc_msg = \"\";")
+        self.w_nl()
+        self.wcl("static inline const char* __arx_bstr_slice(const char* s, int64_t start, int64_t end) @")
+        self.indent = self.indent + 1
+        self.wl("if (!s) return \"\";")
+        self.wl("int64_t n = (int64_t)strlen(s);")
+        self.wl("if (start < 0) start = n + start;")
+        self.wl("if (end < 0) end = n + end;")
+        self.wl("if (start < 0) start = 0;")
+        self.wl("if (end > n) end = n;")
+        self.wl("if (end <= start) return \"\";")
+        self.wl("int64_t len = end - start;")
+        self.wl("char* buf = (char*)arx_alloc((size_t)len + 1);")
+        self.wl("memcpy(buf, s + start, (size_t)len);")
+        self.wl("buf[len] = 0;")
+        self.wl("return buf;")
+        self.close_blk()
+        self.wcl("static inline const char* __arx_byte_chr(int64_t code) @")
+        self.indent = self.indent + 1
+        self.wl("char* b = (char*)arx_alloc(2); b[0] = (char)code; b[1] = 0; return b;")
+        self.close_blk()
+        self.w_nl()
+    }
+
+    priv fn emit_prelude_core() {
+        // Arx_ByteBuffer
+        self.wcl("typedef struct Arx_ByteBuffer @ int64_t buf_handle; ` Arx_ByteBuffer;")
+        self.wcl("static inline Arx_ByteBuffer Arx_ByteBuffer_init(void) @ Arx_ByteBuffer b; b.buf_handle = arx_bytebuf_new(256); return b; `")
+        self.wcl("static inline void Arx_ByteBuffer_write_u8(Arx_ByteBuffer* s, int64_t v) @ arx_bytebuf_write_u8(s->buf_handle, v); `")
+        self.wcl("static inline int64_t Arx_ByteBuffer_read_u8(Arx_ByteBuffer* s) @ return arx_bytebuf_read_u8(s->buf_handle); `")
+        self.wcl("static inline void Arx_ByteBuffer_write_i32_le(Arx_ByteBuffer* s, int64_t v) @ arx_bytebuf_write_i32_le(s->buf_handle, v); `")
+        self.wcl("static inline int64_t Arx_ByteBuffer_read_i32_le(Arx_ByteBuffer* s) @ return arx_bytebuf_read_i32_le(s->buf_handle); `")
+        self.wcl("static inline void Arx_ByteBuffer_write_i32_be(Arx_ByteBuffer* s, int64_t v) @ arx_bytebuf_write_i32_be(s->buf_handle, v); `")
+        self.wcl("static inline int64_t Arx_ByteBuffer_read_i32_be(Arx_ByteBuffer* s) @ return arx_bytebuf_read_i32_be(s->buf_handle); `")
+        self.wcl("static inline void Arx_ByteBuffer_write_f64_le(Arx_ByteBuffer* s, double v) @ union @ double f; int64_t i; ` u; u.f = v; arx_bytebuf_write_f64_le(s->buf_handle, u.i); `")
+        self.wcl("static inline void Arx_ByteBuffer_write_str(Arx_ByteBuffer* s, const char* v) @ arx_bytebuf_write_str(s->buf_handle, v); `")
+        self.wcl("static inline const char* Arx_ByteBuffer_to_str(Arx_ByteBuffer* s) @ return arx_bytebuf_to_str(s->buf_handle); `")
+        self.wcl("static inline void Arx_ByteBuffer_seek(Arx_ByteBuffer* s, int64_t off) @ arx_bytebuf_seek(s->buf_handle, off); `")
+        self.wcl("static inline int64_t Arx_ByteBuffer_pos(Arx_ByteBuffer* s) @ return arx_bytebuf_pos(s->buf_handle); `")
+        self.wcl("static inline int64_t Arx_ByteBuffer_len(Arx_ByteBuffer* s) @ return arx_bytebuf_len(s->buf_handle); `")
+        self.wcl("static inline void Arx_ByteBuffer_reset(Arx_ByteBuffer* s) @ arx_bytebuf_reset(s->buf_handle); `")
+        self.wcl("static inline void Arx_ByteBuffer_free(Arx_ByteBuffer* s) @ arx_bytebuf_free(s->buf_handle); `")
+        self.w_nl()
+
+        // Arx_File & Arx_Process static helpers
+        self.wcl("typedef struct Arx_File @ int64_t _dummy; ` Arx_File;")
+        self.wcl("static inline bool Arx_File_exists(const char* p) @ return arx_file_exists(p); `")
+        self.wcl("static inline const char* Arx_File_read_to_string(const char* p) @ return arx_file_read_to_string(p); `")
+        self.wcl("static inline bool Arx_File_write_string(const char* p, const char* c) @ return arx_file_write_string(p, c); `")
+        self.wcl("static inline bool Arx_File_append_string(const char* p, const char* c) @ return arx_file_append_string(p, c); `")
+        self.wcl("static inline bool Arx_File_remove(const char* p) @ return arx_file_remove(p); `")
+        self.wcl("static inline bool Arx_File_copy(const char* a, const char* b) @ return arx_file_copy(a, b); `")
+        self.w_nl()
+        self.wcl("typedef struct Arx_Process @ int64_t _dummy; ` Arx_Process;")
+        self.wcl("static inline int64_t Arx_Process_execute(const char* cmd) @ return arx_proc_execute(cmd); `")
+        self.wcl("static inline const char* Arx_Process_run_capture(const char* cmd) @ return arx_proc_run_capture(cmd); `")
+        self.w_nl()
+    }
+
+    priv fn emit_enums() {
+        mut i = 0
+        while i < self.enum_count {
+            let eid = self.enum_nodes.get(i)
+            let ename = self.sa.get(eid)
+            let vcnt = self.child_count(eid)
+
+            // Tag enum
+            self.w("typedef enum ")
+            self.w_lbrace()
+            self.w_nl()
+            self.indent = self.indent + 1
+            mut vi = 0
+            while vi < vcnt {
+                let vid = self.child_at(eid, vi)
+                let vname = self.sa.get(vid)
+                self.w_ind()
+                self.w("Arx_" + ename + "_Tag_" + vname + " = " + (vi as str))
+                if vi + 1 < vcnt { self.w(",") }
+                self.w_nl()
+                vi = vi + 1
+            }
+            self.indent = self.indent - 1
+            self.wcl("` Arx_" + ename + "_Tag;")
+
+            // Struct with tag + optional union data
+            mut has_payload = false
+            vi = 0
+            while vi < vcnt {
+                if self.child_count(self.child_at(eid, vi)) > 0 {
+                    has_payload = true
+                }
+                vi = vi + 1
+            }
+            self.w("typedef struct Arx_" + ename + " ")
+            self.w_lbrace()
+            self.w_nl()
+            self.indent = self.indent + 1
+            self.wl("Arx_" + ename + "_Tag tag;")
+            if has_payload {
+                self.w_ind()
+                self.w("union ")
+                self.w_lbrace()
+                self.w_nl()
+                self.indent = self.indent + 1
+                vi = 0
+                while vi < vcnt {
+                    let vid = self.child_at(eid, vi)
+                    let fcnt = self.child_count(vid)
+                    if fcnt > 0 {
+                        let vname = self.sa.get(vid)
+                        self.w_ind()
+                        self.w("struct ")
+                        self.w_lbrace()
+                        self.w_nl()
+                        self.indent = self.indent + 1
+                        mut fi = 0
+                        while fi < fcnt {
+                            let pid = self.child_at(vid, fi)
+                            self.wl(btype_to_c(self.sb.get(pid)) + " " + self.sa.get(pid) + ";")
+                            fi = fi + 1
+                        }
+                        self.close_blk()
+                        self.wl(" " + vname + ";")
+                    }
+                    vi = vi + 1
+                }
+                self.indent = self.indent - 1
+                self.wcl("` data;")
+            }
+            self.indent = self.indent - 1
+            self.wcl("` Arx_" + ename + ";")
+
+            // Variant constructor helpers
+            vi = 0
+            while vi < vcnt {
+                let vid = self.child_at(eid, vi)
+                let vname = self.sa.get(vid)
+                let fcnt = self.child_count(vid)
+                self.w("static inline Arx_" + ename + " Arx_" + ename + "_" + vname + "(")
+                if fcnt == 0 {
+                    self.w("void")
+                } else {
+                    mut fi = 0
+                    while fi < fcnt {
+                        let pid = self.child_at(vid, fi)
+                        if fi > 0 { self.w(", ") }
+                        self.w(btype_to_c(self.sb.get(pid)) + " " + self.sa.get(pid))
+                        fi = fi + 1
+                    }
+                }
+                self.w(") ")
+                self.w_lbrace()
+                self.w_nl()
+                self.indent = self.indent + 1
+                self.wl("Arx_" + ename + " _v;")
+                self.wl("memset(&_v, 0, sizeof(_v));")
+                self.wl("_v.tag = Arx_" + ename + "_Tag_" + vname + ";")
+                mut fi = 0
+                while fi < fcnt {
+                    let pid = self.child_at(vid, fi)
+                    let fnm = self.sa.get(pid)
+                    self.wl("_v.data." + vname + "." + fnm + " = " + fnm + ";")
+                    fi = fi + 1
+                }
+                self.wl("return _v;")
+                self.close_blk()
+                vi = vi + 1
+            }
+            self.w_nl()
+            i = i + 1
+        }
+    }
+
+    priv fn emit_classes() {
+        // Forward typedefs for all classes (allows mutual pointer references)
+        mut i = 0
+        while i < self.cls_count {
+            let cname = self.cls_names.get(i)
+            self.wl("typedef struct Arx_" + cname + " Arx_" + cname + ";")
+            i = i + 1
+        }
+        self.w_nl()
+
+        // Emit complete struct definitions in topological order
+        mut oi = 0
+        while oi < self.cls_order_count {
+            let ci = self.cls_order.get(oi)
+            let cid = self.cls_nodes.get(ci)
+            let cname = self.sa.get(cid)
+            let is_packed = has_flag(self.ia.get(cid), FLAG_PACKED())
+
+            self.w("struct ")
+            if is_packed { self.w("__attribute__((packed)) ") }
+            self.w("Arx_" + cname + " ")
+            self.w_lbrace()
+            self.w_nl()
+            self.indent = self.indent + 1
+
+            let lineage = self.collect_class_lineage(cname)
+            let lcnt = lineage.len()
+            mut total_fields = 0
+            mut li = 0
+            while li < lcnt {
+                let lc_nid = self.cls_nodes.get(self.cls_idx_map.get(lineage.get(li)))
+                let fgrp = self.la.get(lc_nid)
+                let fcnt = self.child_count(fgrp)
+                mut fi = 0
+                while fi < fcnt {
+                    let fid = self.child_at(fgrp, fi)
+                    let fname = self.sa.get(fid)
+                    let ftype = btype_norm(self.sb.get(fid))
+                    if btype_is_fixed_arr(ftype) {
+                        self.wl(btype_to_c(btype_arr_elem(ftype)) + " " + fname + "[" + (btype_arr_len(ftype) as str) + "];")
+                    } else {
+                        self.wl(btype_to_c(ftype) + " " + fname + ";")
+                    }
+                    total_fields = total_fields + 1
+                    fi = fi + 1
+                }
+                li = li + 1
+            }
+            if total_fields == 0 {
+                self.wl("int64_t _empty;")
+            }
+
+            self.indent = self.indent - 1
+            self.wcl("`;")
+            self.w_nl()
+            oi = oi + 1
+        }
+    }
+
+    priv fn collect_class_lineage(cname: str) -> List<str> {
+        let rev = List<str>()
+        mut cur = cname
+        mut guard_cnt = 0
+        while cur != "" && self.cls_idx_map.has_key(cur) && guard_cnt < 32 {
+            rev.push(cur)
+            if self.cls_base_map.has_key(cur) {
+                cur = self.cls_base_map.get(cur)
+            } else {
+                cur = ""
+            }
+            guard_cnt = guard_cnt + 1
+        }
+        let ordered = List<str>()
+        mut i = rev.len() - 1
+        while i >= 0 {
+            ordered.push(rev.get(i))
+            i = i - 1
+        }
+        return ordered
+    }
+
+    priv fn emit_generic_structs() {
+        mut gi = 0
+        while gi < self.gen_list_count {
+            let et = btype_norm(self.gen_list_types.get(gi))
+            let sn = "Arx_List_" + btype_mangle(et)
+            self.wcl("typedef struct " + sn + " @ int64_t data_handle; int64_t length; ` " + sn + ";")
+            gi = gi + 1
+        }
+        mut si = 0
+        while si < self.gen_set_count {
+            let et = btype_norm(self.gen_set_types.get(si))
+            let sn = "Arx_Set_" + btype_mangle(et)
+            self.wcl("typedef struct " + sn + " @ int64_t set_handle; int64_t length; ` " + sn + ";")
+            si = si + 1
+        }
+        mut mi = 0
+        while mi < self.gen_map_count {
+            let kt = btype_norm(self.gen_map_keys.get(mi))
+            let vt = btype_norm(self.gen_map_vals.get(mi))
+            let sn = "Arx_Map_" + btype_mangle(kt) + "_" + btype_mangle(vt)
+            self.wcl("typedef struct " + sn + " @ int64_t map_handle; int64_t length; ` " + sn + ";")
+            mi = mi + 1
+        }
+        self.emit_sqd_structs("Stack", "stack_handle", self.gen_stack_types, self.gen_stack_count)
+        self.emit_sqd_structs("Queue", "queue_handle", self.gen_queue_types, self.gen_queue_count)
+        self.emit_sqd_structs("Deque", "deque_handle", self.gen_deque_types, self.gen_deque_count)
+    }
+
+    priv fn emit_sqd_structs(pfx: str, hfield: str, types: List<str>, count: i64) {
+        mut i = 0
+        while i < count {
+            let et = btype_norm(types.get(i))
+            let sn = "Arx_" + pfx + "_" + btype_mangle(et)
+            self.wcl("typedef struct " + sn + " @ int64_t " + hfield + "; int64_t length; ` " + sn + ";")
+            i = i + 1
+        }
+    }
+
+    priv fn tuple_tier(raw_t: str) -> i64 {
+        let nt = btype_norm(raw_t)
+        if btype_is_ptr(nt) { return 0 }
+        if self.cls_idx_map.has_key(nt) { return 2 }
+        if self.enum_idx_map.has_key(nt) { return 1 }
+        if btype_is_tuple(nt) {
+            mut mx: i64 = 0
+            let cnt = btype_tuple_count(nt)
+            mut i = 0
+            while i < cnt {
+                let st = self.tuple_tier(btype_tuple_elem(nt, i))
+                if st > mx { mx = st }
+                i = i + 1
+            }
+            return mx
+        }
+        return 0
+    }
+
+    priv fn emit_tuple_structs(target_tier: i64) {
+        mut ti = 0
+        while ti < self.gen_tuple_count {
+            let tt = btype_norm(self.gen_tuple_types.get(ti))
+            if self.tuple_tier(tt) == target_tier {
+                let sn = "Arx_" + btype_mangle(tt)
+                self.wcl("typedef struct " + sn + " @")
+                self.indent = self.indent + 1
+                let cnt = btype_tuple_count(tt)
+                mut i = 0
+                while i < cnt {
+                    let et = btype_tuple_elem(tt, i)
+                    self.wl(btype_to_c(et) + " f" + (i as str) + ";")
+                    i = i + 1
+                }
+                self.indent = self.indent - 1
+                self.wcl("` " + sn + ";")
+            }
+            ti = ti + 1
+        }
+    }
+
+    priv fn emit_generics() {
+        // List<T>
+        mut gi = 0
+        while gi < self.gen_list_count {
+            let elem_t = self.gen_list_types.get(gi)
+            self.emit_list_inst(elem_t)
+            gi = gi + 1
+        }
+        // Set<T>
+        mut si = 0
+        while si < self.gen_set_count {
+            let elem_t = self.gen_set_types.get(si)
+            self.emit_set_inst(elem_t)
+            si = si + 1
+        }
+        // Map<K, V>
+        mut mi = 0
+        while mi < self.gen_map_count {
+            let kt = self.gen_map_keys.get(mi)
+            let vt = self.gen_map_vals.get(mi)
+            self.emit_map_inst(kt, vt)
+            mi = mi + 1
+        }
+        // Stack<T>, Queue<T>, Deque<T>
+        mut stki = 0
+        while stki < self.gen_stack_count {
+            self.emit_stack_inst(self.gen_stack_types.get(stki))
+            stki = stki + 1
+        }
+        mut quei = 0
+        while quei < self.gen_queue_count {
+            self.emit_queue_inst(self.gen_queue_types.get(quei))
+            quei = quei + 1
+        }
+        mut deqi = 0
+        while deqi < self.gen_deque_count {
+            self.emit_deque_inst(self.gen_deque_types.get(deqi))
+            deqi = deqi + 1
+        }
+        // Tuple<...>
+        mut tupi = 0
+        while tupi < self.gen_tuple_count {
+            self.emit_tuple_helper(self.gen_tuple_types.get(tupi))
+            tupi = tupi + 1
+        }
+    }
+
+    priv fn emit_tuple_helper(raw_t: str) {
+        let tt = btype_norm(raw_t)
+        let tm = btype_mangle(tt)
+        let sn = "Arx_" + tm
+        let cnt = btype_tuple_count(tt)
+        mut ps = ""
+        mut i = 0
+        while i < cnt {
+            if i > 0 { ps = ps + ", " }
+            ps = ps + btype_to_c(btype_tuple_elem(tt, i)) + " f" + (i as str)
+            i = i + 1
+        }
+        if cnt == 0 { ps = "void" }
+        self.wcl("static inline " + sn + " arx_make_" + tm + "(" + ps + ") @")
+        self.indent = self.indent + 1
+        self.wl(sn + " t;")
+        self.wl("memset(&t, 0, sizeof(" + sn + "));")
+        mut fi = 0
+        while fi < cnt {
+            let fnm = "f" + (fi as str)
+            self.wl("t." + fnm + " = " + fnm + ";")
+            fi = fi + 1
+        }
+        self.wl("return t;")
+        self.indent = self.indent - 1
+        self.wcl("`")
+    }
+
+    priv fn emit_sqd_common(sn: str, hfield: str, rtpfx: str) {
+        self.wcl("static inline " + sn + " " + sn + "_init(void) @ " + sn + " s; s." + hfield + " = " + rtpfx + "_new(); s.length = 0; return s; `")
+        self.wcl("static inline int64_t " + sn + "_len(" + sn + "* s) @ return " + rtpfx + "_len(s->" + hfield + "); `")
+        self.wcl("static inline int64_t " + sn + "_length(" + sn + "* s) @ return " + rtpfx + "_len(s->" + hfield + "); `")
+        self.wcl("static inline bool " + sn + "_is_empty(" + sn + "* s) @ return " + rtpfx + "_is_empty(s->" + hfield + ") != 0; `")
+        self.wcl("static inline void " + sn + "_clear(" + sn + "* s) @ " + rtpfx + "_clear(s->" + hfield + "); s->length = 0; `")
+        self.wcl("static inline void " + sn + "_free(" + sn + "* s) @ " + rtpfx + "_free(s->" + hfield + "); s->" + hfield + " = 0; s->length = 0; `")
+    }
+
+    priv fn emit_sqd_push_fn(sn: str, mname: str, hfield: str, rtfn: str, rtlen: str, ct: str, box_e: str) {
+        self.wcl("static inline void " + sn + "_" + mname + "(" + sn + "* s, " + ct + " v) @ " + rtfn + "(s->" + hfield + ", " + box_e + "); s->length = " + rtlen + "(s->" + hfield + "); `")
+    }
+
+    priv fn emit_sqd_pop_fn(sn: str, mname: str, hfield: str, rtfn: str, rtlen: str, upd_len: bool, ct: str, unbox_e: str) {
+        mut upd = ""
+        if upd_len { upd = " s->length = " + rtlen + "(s->" + hfield + ");" }
+        self.wcl("static inline " + ct + " " + sn + "_" + mname + "(" + sn + "* s) @ int64_t r = " + rtfn + "(s->" + hfield + ");" + upd + " return " + unbox_e + "; `")
+    }
+
+    priv fn emit_stack_inst(raw_elem: str) {
+        let et = btype_norm(raw_elem)
+        let sn = "Arx_Stack_" + btype_mangle(et)
+        let ct = btype_to_c(et)
+        let bx = self.emit_box_expr(et, "v")
+        let ub = self.emit_unbox_expr(et, "r")
+        self.emit_sqd_common(sn, "stack_handle", "arx_stack")
+        self.emit_sqd_push_fn(sn, "push", "stack_handle", "arx_stack_push", "arx_stack_len", ct, bx)
+        self.emit_sqd_pop_fn(sn, "pop", "stack_handle", "arx_stack_pop", "arx_stack_len", true, ct, ub)
+        self.emit_sqd_pop_fn(sn, "peek", "stack_handle", "arx_stack_peek", "arx_stack_len", false, ct, ub)
+    }
+
+    priv fn emit_queue_inst(raw_elem: str) {
+        let et = btype_norm(raw_elem)
+        let sn = "Arx_Queue_" + btype_mangle(et)
+        let ct = btype_to_c(et)
+        let bx = self.emit_box_expr(et, "v")
+        let ub = self.emit_unbox_expr(et, "r")
+        self.emit_sqd_common(sn, "queue_handle", "arx_queue")
+        self.emit_sqd_push_fn(sn, "enqueue", "queue_handle", "arx_queue_enqueue", "arx_queue_len", ct, bx)
+        self.emit_sqd_pop_fn(sn, "dequeue", "queue_handle", "arx_queue_dequeue", "arx_queue_len", true, ct, ub)
+        self.emit_sqd_pop_fn(sn, "peek", "queue_handle", "arx_queue_peek_front", "arx_queue_len", false, ct, ub)
+    }
+
+    priv fn emit_deque_inst(raw_elem: str) {
+        let et = btype_norm(raw_elem)
+        let sn = "Arx_Deque_" + btype_mangle(et)
+        let ct = btype_to_c(et)
+        let bx = self.emit_box_expr(et, "v")
+        let ub = self.emit_unbox_expr(et, "r")
+        self.emit_sqd_common(sn, "deque_handle", "arx_deque")
+        self.emit_sqd_push_fn(sn, "push_back", "deque_handle", "arx_deque_push_back", "arx_deque_len", ct, bx)
+        self.emit_sqd_push_fn(sn, "push_front", "deque_handle", "arx_deque_push_front", "arx_deque_len", ct, bx)
+        self.emit_sqd_pop_fn(sn, "pop_back", "deque_handle", "arx_deque_pop_back", "arx_deque_len", true, ct, ub)
+        self.emit_sqd_pop_fn(sn, "pop_front", "deque_handle", "arx_deque_pop_front", "arx_deque_len", true, ct, ub)
+        self.emit_sqd_pop_fn(sn, "peek_front", "deque_handle", "arx_deque_peek_front", "arx_deque_len", false, ct, ub)
+        self.emit_sqd_pop_fn(sn, "peek_back", "deque_handle", "arx_deque_peek_back", "arx_deque_len", false, ct, ub)
+    }
+
+    priv fn emit_list_inst(raw_elem: str) {
+        let et = btype_norm(raw_elem)
+        let em = btype_mangle(et)
+        let sn = "Arx_List_" + em
+        let ct = btype_to_c(et)
+
+        self.wcl("static inline " + sn + " " + sn + "_init(void) @ " + sn + " l; l.data_handle = arx_list_new(16); l.length = 0; return l; `")
+
+        // push
+        self.w_ind()
+        self.w("static inline void " + sn + "_push(" + sn + "* self, " + ct + " v) ")
+        self.w_lbrace()
+        self.w_nl()
+        self.indent = self.indent + 1
+        let bx = self.emit_box_expr(et, "v")
+        self.wl("arx_list_push(self->data_handle, " + bx + "); self->length = arx_list_len(self->data_handle);")
+        self.close_blk()
+
+        // pop
+        self.w_ind()
+        self.w("static inline " + ct + " " + sn + "_pop(" + sn + "* self) ")
+        self.w_lbrace()
+        self.w_nl()
+        self.indent = self.indent + 1
+        self.wl("int64_t _r = arx_list_pop(self->data_handle); self->length = arx_list_len(self->data_handle);")
+        let uPop = self.emit_unbox_expr(et, "_r")
+        self.wl("return " + uPop + ";")
+        self.close_blk()
+
+        // get
+        self.w_ind()
+        self.w("static inline " + ct + " " + sn + "_get(" + sn + "* self, int64_t idx) ")
+        self.w_lbrace()
+        self.w_nl()
+        self.indent = self.indent + 1
+        self.wl("int64_t _r = arx_list_get(self->data_handle, idx);")
+        let uGet = self.emit_unbox_expr(et, "_r")
+        self.wl("return " + uGet + ";")
+        self.close_blk()
+
+        // set
+        self.w_ind()
+        self.w("static inline void " + sn + "_set(" + sn + "* self, int64_t idx, " + ct + " v) ")
+        self.w_lbrace()
+        self.w_nl()
+        self.indent = self.indent + 1
+        let bx2 = self.emit_box_expr(et, "v")
+        self.wl("arx_list_set(self->data_handle, idx, " + bx2 + ");")
+        self.close_blk()
+
+        self.wcl("static inline int64_t " + sn + "_len(" + sn + "* self) @ return arx_list_len(self->data_handle); `")
+        self.wcl("static inline int64_t " + sn + "_length(" + sn + "* self) @ return arx_list_len(self->data_handle); `")
+        self.wcl("static inline bool " + sn + "_is_empty(" + sn + "* self) @ return arx_list_len(self->data_handle) == 0; `")
+        self.wcl("static inline void " + sn + "_clear(" + sn + "* self) @ arx_list_clear(self->data_handle); self->length = 0; `")
+        self.wcl("static inline " + sn + " " + sn + "_slice(" + sn + "* self, int64_t a, int64_t b) @ " + sn + " r; r.data_handle = arx_list_slice(self->data_handle, a, b); r.length = arx_list_len(r.data_handle); return r; `")
+        self.wcl("static inline void " + sn + "_reverse(" + sn + "* self) @ arx_list_reverse(self->data_handle); `")
+        self.wcl("static inline void " + sn + "_sort(" + sn + "* self) @ arx_list_sort(self->data_handle); `")
+        self.wcl("static inline void " + sn + "_free(" + sn + "* self) @ arx_list_free(self->data_handle); self->length = 0; `")
+
+        // contains & index_of
+        if btype_is_str(et) {
+            self.wcl("static inline bool " + sn + "_contains(" + sn + "* self, " + ct + " v) @ return arx_list_contains_str(self->data_handle, v); `")
+            self.wcl("static inline int64_t " + sn + "_index_of(" + sn + "* self, " + ct + " v) @ return arx_list_index_of_str(self->data_handle, v); `")
+        } else {
+            self.w_ind()
+            self.w("static inline bool " + sn + "_contains(" + sn + "* self, " + ct + " v) ")
+            self.w_lbrace()
+            self.w_nl()
+            self.indent = self.indent + 1
+            let bxc = self.emit_box_expr(et, "v")
+            self.wl("return arx_list_contains(self->data_handle, " + bxc + ");")
+            self.close_blk()
+            self.w_ind()
+            self.w("static inline int64_t " + sn + "_index_of(" + sn + "* self, " + ct + " v) ")
+            self.w_lbrace()
+            self.w_nl()
+            self.indent = self.indent + 1
+            let bxi = self.emit_box_expr(et, "v")
+            self.wl("return arx_list_index_of(self->data_handle, " + bxi + ");")
+            self.close_blk()
+        }
+
+        // insert, swap_remove, remove_at
+        self.w_ind()
+        self.w("static inline void " + sn + "_insert(" + sn + "* self, int64_t idx, " + ct + " v) ")
+        self.w_lbrace()
+        self.w_nl()
+        self.indent = self.indent + 1
+        let bxIns = self.emit_box_expr(et, "v")
+        self.wl("arx_list_insert(self->data_handle, idx, " + bxIns + "); self->length = arx_list_len(self->data_handle);")
+        self.close_blk()
+
+        self.w_ind()
+        self.w("static inline " + ct + " " + sn + "_swap_remove(" + sn + "* self, int64_t idx) ")
+        self.w_lbrace()
+        self.w_nl()
+        self.indent = self.indent + 1
+        self.wl("int64_t _r = arx_list_swap_remove(self->data_handle, idx); self->length = arx_list_len(self->data_handle);")
+        let uSr = self.emit_unbox_expr(et, "_r")
+        self.wl("return " + uSr + ";")
+        self.close_blk()
+
+        self.w_ind()
+        self.w("static inline " + ct + " " + sn + "_remove_at(" + sn + "* self, int64_t idx) ")
+        self.w_lbrace()
+        self.w_nl()
+        self.indent = self.indent + 1
+        self.wl("int64_t _r = arx_list_remove_at(self->data_handle, idx); self->length = arx_list_len(self->data_handle);")
+        let uRa = self.emit_unbox_expr(et, "_r")
+        self.wl("return " + uRa + ";")
+        self.close_blk()
+        self.w_nl()
+    }
+
+    priv fn emit_set_inst(raw_elem: str) {
+        let et = btype_norm(raw_elem)
+        let em = btype_mangle(et)
+        let sn = "Arx_Set_" + em
+        let ct = btype_to_c(et)
+        mut kstr = "0"
+        if btype_is_str(et) { kstr = "1" }
+
+        self.wcl("static inline " + sn + " " + sn + "_init(void) @ " + sn + " s; s.set_handle = arx_set_new(" + kstr + "); s.length = 0; return s; `")
+
+        self.w_ind()
+        self.w("static inline bool " + sn + "_add(" + sn + "* self, " + ct + " v) ")
+        self.w_lbrace()
+        self.w_nl()
+        self.indent = self.indent + 1
+        let bxa = self.emit_box_expr(et, "v")
+        self.wl("bool _ok = arx_set_add(self->set_handle, " + bxa + "); self->length = arx_set_len(self->set_handle); return _ok;")
+        self.close_blk()
+
+        self.w_ind()
+        self.w("static inline bool " + sn + "_has(" + sn + "* self, " + ct + " v) ")
+        self.w_lbrace()
+        self.w_nl()
+        self.indent = self.indent + 1
+        let bxh = self.emit_box_expr(et, "v")
+        self.wl("return arx_set_has(self->set_handle, " + bxh + ");")
+        self.close_blk()
+        self.wcl("static inline bool " + sn + "_contains(" + sn + "* self, " + ct + " v) @ return " + sn + "_has(self, v); `")
+
+        self.w_ind()
+        self.w("static inline bool " + sn + "_remove(" + sn + "* self, " + ct + " v) ")
+        self.w_lbrace()
+        self.w_nl()
+        self.indent = self.indent + 1
+        let bxr = self.emit_box_expr(et, "v")
+        self.wl("bool _ok = arx_set_remove(self->set_handle, " + bxr + "); self->length = arx_set_len(self->set_handle); return _ok;")
+        self.close_blk()
+
+        self.wcl("static inline int64_t " + sn + "_len(" + sn + "* self) @ return arx_set_len(self->set_handle); `")
+        self.wcl("static inline int64_t " + sn + "_length(" + sn + "* self) @ return arx_set_len(self->set_handle); `")
+        self.wcl("static inline bool " + sn + "_is_empty(" + sn + "* self) @ return arx_set_len(self->set_handle) == 0; `")
+        self.wcl("static inline void " + sn + "_clear(" + sn + "* self) @ arx_set_clear(self->set_handle); self->length = 0; `")
+        self.wcl("static inline void " + sn + "_free(" + sn + "* self) @ arx_set_free(self->set_handle); self->length = 0; `")
+
+        self.w_ind()
+        self.w("static inline " + ct + " " + sn + "_get(" + sn + "* self, int64_t idx) ")
+        self.w_lbrace()
+        self.w_nl()
+        self.indent = self.indent + 1
+        self.wl("int64_t _r = arx_set_get(self->set_handle, idx);")
+        let uSg = self.emit_unbox_expr(et, "_r")
+        self.wl("return " + uSg + ";")
+        self.close_blk()
+
+        if self.has_list_type(et) {
+            let ln = "Arx_List_" + em
+            self.wcl("static inline " + ln + " " + sn + "_to_list(" + sn + "* self) @ " + ln + " r; r.data_handle = arx_set_to_list(self->set_handle); r.length = arx_list_len(r.data_handle); return r; `")
+        }
+        self.wcl("static inline " + sn + " " + sn + "_union(" + sn + "* self, " + sn + " o) @ " + sn + " r; r.set_handle = arx_set_union(self->set_handle, o.set_handle); r.length = arx_set_len(r.set_handle); return r; `")
+        self.wcl("static inline " + sn + " " + sn + "_intersection(" + sn + "* self, " + sn + " o) @ " + sn + " r; r.set_handle = arx_set_intersection(self->set_handle, o.set_handle); r.length = arx_set_len(r.set_handle); return r; `")
+        self.wcl("static inline " + sn + " " + sn + "_difference(" + sn + "* self, " + sn + " o) @ " + sn + " r; r.set_handle = arx_set_difference(self->set_handle, o.set_handle); r.length = arx_set_len(r.set_handle); return r; `")
+        self.w_nl()
+    }
+
+    priv fn emit_map_inst(raw_k: str, raw_v: str) {
+        let kt = btype_norm(raw_k)
+        let vt = btype_norm(raw_v)
+        let km = btype_mangle(kt)
+        let vm = btype_mangle(vt)
+        let sn = "Arx_Map_" + km + "_" + vm
+        let ck = btype_to_c(kt)
+        let cv = btype_to_c(vt)
+        mut kstr = "0"
+        if btype_is_str(kt) { kstr = "1" }
+
+        self.wcl("static inline " + sn + " " + sn + "_init(void) @ " + sn + " m; m.map_handle = arx_map_new(" + kstr + "); m.length = 0; return m; `")
+
+        // insert & set
+        self.w_ind()
+        self.w("static inline void " + sn + "_insert(" + sn + "* self, " + ck + " k, " + cv + " v) ")
+        self.w_lbrace()
+        self.w_nl()
+        self.indent = self.indent + 1
+        let bk = self.emit_box_expr(kt, "k")
+        let bv = self.emit_box_expr(vt, "v")
+        self.wl("arx_map_insert(self->map_handle, " + bk + ", " + bv + "); self->length = arx_map_len(self->map_handle);")
+        self.close_blk()
+        self.wcl("static inline void " + sn + "_set(" + sn + "* self, " + ck + " k, " + cv + " v) @ " + sn + "_insert(self, k, v); `")
+
+        // get
+        self.w_ind()
+        self.w("static inline " + cv + " " + sn + "_get(" + sn + "* self, " + ck + " k) ")
+        self.w_lbrace()
+        self.w_nl()
+        self.indent = self.indent + 1
+        let bkg = self.emit_box_expr(kt, "k")
+        self.wl("int64_t _r = arx_map_get(self->map_handle, " + bkg + ");")
+        let uMg = self.emit_unbox_expr(vt, "_r")
+        self.wl("return " + uMg + ";")
+        self.close_blk()
+
+        // has_key, contains_key, remove
+        self.w_ind()
+        self.w("static inline bool " + sn + "_has_key(" + sn + "* self, " + ck + " k) ")
+        self.w_lbrace()
+        self.w_nl()
+        self.indent = self.indent + 1
+        let bkh = self.emit_box_expr(kt, "k")
+        self.wl("return arx_map_has(self->map_handle, " + bkh + ");")
+        self.close_blk()
+        self.wcl("static inline bool " + sn + "_contains_key(" + sn + "* self, " + ck + " k) @ return " + sn + "_has_key(self, k); `")
+
+        self.w_ind()
+        self.w("static inline bool " + sn + "_remove(" + sn + "* self, " + ck + " k) ")
+        self.w_lbrace()
+        self.w_nl()
+        self.indent = self.indent + 1
+        let bkr = self.emit_box_expr(kt, "k")
+        self.wl("int64_t _kh = " + bkr + "; bool _had = arx_map_has(self->map_handle, _kh); arx_map_remove(self->map_handle, _kh); self->length = arx_map_len(self->map_handle); return _had;")
+        self.close_blk()
+
+        self.wcl("static inline int64_t " + sn + "_len(" + sn + "* self) @ return arx_map_len(self->map_handle); `")
+        self.wcl("static inline int64_t " + sn + "_length(" + sn + "* self) @ return arx_map_len(self->map_handle); `")
+        self.wcl("static inline bool " + sn + "_is_empty(" + sn + "* self) @ return arx_map_len(self->map_handle) == 0; `")
+        self.wcl("static inline void " + sn + "_clear(" + sn + "* self) @ arx_map_clear(self->map_handle); self->length = 0; `")
+        self.wcl("static inline void " + sn + "_free(" + sn + "* self) @ arx_map_free(self->map_handle); self->length = 0; `")
+
+        if self.has_list_type(kt) {
+            let kl = "Arx_List_" + km
+            self.wcl("static inline " + kl + " " + sn + "_keys(" + sn + "* self) @ " + kl + " r; r.data_handle = arx_map_keys(self->map_handle); r.length = arx_list_len(r.data_handle); return r; `")
+        }
+        if self.has_list_type(vt) {
+            let vl = "Arx_List_" + vm
+            self.wcl("static inline " + vl + " " + sn + "_values(" + sn + "* self) @ " + vl + " r; r.data_handle = arx_map_values(self->map_handle); r.length = arx_list_len(r.data_handle); return r; `")
+        }
+        self.w_nl()
+    }
+
+    priv fn emit_prelude_post_list() {
+        // Requires Arx_List_str to already exist (guaranteed by Analyzer.analyze)
+        self.wcl("static inline Arx_List_str __arx_bstr_split(const char* s, const char* delim) @ Arx_List_str r; r.data_handle = arx_str_split(s, delim); r.length = arx_list_len(r.data_handle); return r; `")
+        self.w_nl()
+        self.wcl("typedef struct Arx_Directory @ int64_t _dummy; ` Arx_Directory;")
+        self.wcl("static inline bool Arx_Directory_exists(const char* p) @ return arx_dir_exists(p); `")
+        self.wcl("static inline bool Arx_Directory_create(const char* p) @ return arx_dir_create(p); `")
+        self.wcl("static inline Arx_List_str Arx_Directory_list_files(const char* p) @ Arx_List_str r; r.data_handle = arx_dir_list_files(p); r.length = arx_list_len(r.data_handle); return r; `")
+        self.wcl("static inline Arx_List_str Arx_Directory_list_dirs(const char* p) @ Arx_List_str r; r.data_handle = arx_dir_list_dirs(p); r.length = arx_list_len(r.data_handle); return r; `")
+        self.w_nl()
+        self.wcl("typedef struct Arx_Env @ int64_t _dummy; ` Arx_Env;")
+        self.wcl("static inline const char* Arx_Env_get(const char* k) @ return arx_env_get(k); `")
+        self.wcl("static inline bool Arx_Env_set(const char* k, const char* v) @ return arx_env_set(k, v); `")
+        self.wcl("static inline Arx_List_str Arx_Env_args(void) @ Arx_List_str r; r.data_handle = arx_args_list(); r.length = arx_list_len(r.data_handle); return r; `")
+        self.wcl("static inline int64_t Arx_Env_arg_count(void) @ return arx_args_count(); `")
+        self.wcl("static inline const char* Arx_Env_arg(int64_t i) @ return arx_args_get(i); `")
+        self.wcl("static inline const char* Arx_Env_cwd(void) @ return arx_env_cwd(); `")
+        self.wcl("static inline void Arx_Env_exit(int64_t c) @ arx_env_exit(c); `")
+        self.wcl("static inline const char* Arx_Env_os_name(void) @ return arx_os_name(); `")
+        self.w_nl()
+        self.wcl("typedef struct Arx_String @ const char* data; int64_t len; ` Arx_String;")
+        self.wcl("static inline Arx_String Arx_String_init(const char* s) @ Arx_String st; st.data = s ? s : \"\"; st.len = arx_str_len(st.data); return st; `")
+        self.wcl("static inline const char* Arx_String_as_str(Arx_String* self) @ return self->data; `")
+        self.wcl("static inline int64_t Arx_String_length(Arx_String* self) @ return arx_str_len(self->data); `")
+        self.wcl("static inline int64_t Arx_String_len(Arx_String* self) @ return arx_str_len(self->data); `")
+        self.wcl("static inline bool Arx_String_is_empty(Arx_String* self) @ return arx_str_len(self->data) == 0; `")
+        self.wcl("static inline Arx_String Arx_String_append(Arx_String* self, const char* s) @ return Arx_String_init(arx_str_concat(self->data, s)); `")
+        self.wcl("static inline int64_t Arx_String_byte_at(Arx_String* self, int64_t i) @ return arx_str_byte_at(self->data, i); `")
+        self.wcl("static inline const char* Arx_String_char_at(Arx_String* self, int64_t i) @ return __arx_byte_chr(arx_str_byte_at(self->data, i)); `")
+        self.wcl("static inline const char* Arx_String_get(Arx_String* self, int64_t i) @ return __arx_byte_chr(arx_str_byte_at(self->data, i)); `")
+        self.wcl("static inline bool Arx_String_contains(Arx_String* self, const char* s) @ return arx_str_contains(self->data, s); `")
+        self.wcl("static inline bool Arx_String_starts_with(Arx_String* self, const char* s) @ return arx_str_starts_with(self->data, s); `")
+        self.wcl("static inline bool Arx_String_ends_with(Arx_String* self, const char* s) @ return arx_str_ends_with(self->data, s); `")
+        self.wcl("static inline int64_t Arx_String_index_of(Arx_String* self, const char* s) @ return arx_str_find(self->data, s); `")
+        self.wcl("static inline Arx_String Arx_String_slice(Arx_String* self, int64_t a, int64_t b) @ return Arx_String_init(__arx_bstr_slice(self->data, a, b)); `")
+        self.wcl("static inline Arx_List_str Arx_String_split(Arx_String* self, const char* d) @ return __arx_bstr_split(self->data, d); `")
+        self.wcl("static inline Arx_String Arx_String_trim(Arx_String* self) @ return Arx_String_init(arx_str_trim(self->data)); `")
+        self.wcl("static inline Arx_String Arx_String_to_upper(Arx_String* self) @ return Arx_String_init(arx_str_to_upper(self->data)); `")
+        self.wcl("static inline Arx_String Arx_String_to_lower(Arx_String* self) @ return Arx_String_init(arx_str_to_lower(self->data)); `")
+        self.wcl("static inline Arx_String Arx_String_replace(Arx_String* self, const char* o, const char* n) @ return Arx_String_init(arx_str_replace(self->data, o, n)); `")
+        self.wcl("static inline Arx_String Arx_String_repeat(Arx_String* self, int64_t n) @ return Arx_String_init(arx_str_repeat(self->data, n)); `")
+        self.w_nl()
+    }
+
+    priv fn emit_globals() {
+        mut i = 0
+        while i < self.global_count {
+            let gid = self.global_nodes.get(i)
+            let nm = self.sa.get(gid)
+            let vt = btype_norm(self.node_types.get(gid))
+            let init_id = self.la.get(gid)
+            self.w_ind()
+            if btype_is_fixed_arr(vt) {
+                self.w("static " + btype_to_c(btype_arr_elem(vt)) + " " + nm + "[" + (btype_arr_len(vt) as str) + "]")
+            } else {
+                self.w("static " + btype_to_c(vt) + " " + nm)
+            }
+            if init_id >= 0 && self.is_const_init(init_id) {
+                self.w(" = ")
+                self.w(self.gen_expr(init_id))
+            } else {
+                self.w(" = " + btype_default_c_val(vt))
+            }
+            self.w(";")
+            self.w_nl()
+            i = i + 1
+        }
+        if self.global_count > 0 { self.w_nl() }
+    }
+
+    priv fn is_const_init(nid: i64) -> bool {
+        let k = self.nk.get(nid)
+        return k == NK_INT_LIT() || k == NK_FLOAT_LIT() || k == NK_STR_LIT() || k == NK_BOOL_LIT() || k == NK_NULL_LIT() || k == NK_CHAR_LIT()
+    }
+
+    // --- Forward Declarations ---
+
+    priv fn emit_param_sig_c(params_grp: i64, self_cls: str, is_static: bool) {
+        self.w("(")
+        mut printed = 0
+        if self_cls != "" && !is_static {
+            self.w(btype_to_c(self_cls) + "* self")
+            printed = 1
+        }
+        if params_grp >= 0 {
+            let pcnt = self.child_count(params_grp)
+            mut i = 0
+            while i < pcnt {
+                let pid = self.child_at(params_grp, i)
+                let pn = self.sa.get(pid)
+                let pt = btype_norm(self.sb.get(pid))
+                if printed > 0 { self.w(", ") }
+                self.w(btype_to_c(pt) + " " + pn)
+                printed = printed + 1
+                i = i + 1
+            }
+        }
+        if printed == 0 {
+            self.w("void")
+        }
+        self.w(")")
+    }
+
+    priv fn emit_forward_decls() {
+        // Class constructors, destructors, methods
+        mut ci = 0
+        while ci < self.cls_order_count {
+            let cid = self.cls_nodes.get(self.cls_order.get(ci))
+            let cname = self.sa.get(cid)
+            let ct = "Arx_" + cname
+            let ctors_grp = self.ra.get(cid)
+            let ccnt = self.child_count(ctors_grp)
+            if ccnt == 0 {
+                self.wl(ct + " " + ct + "_init(void);")
+            } else {
+                mut j = 0
+                while j < ccnt {
+                    let ctor_id = self.child_at(ctors_grp, j)
+                    let fnm = self.call_targets.get(ctor_id)
+                    self.w_ind()
+                    self.w(ct + " " + fnm)
+                    self.emit_param_sig_c(self.la.get(ctor_id), "", true)
+                    self.w(";")
+                    self.w_nl()
+                    j = j + 1
+                }
+            }
+            let dtor_id = self.la.get(ctors_grp)
+            if dtor_id >= 0 {
+                self.wl("void " + self.call_targets.get(dtor_id) + "(" + ct + "* self);")
+            }
+            let methods_grp = self.ea.get(cid)
+            let mcnt = self.child_count(methods_grp)
+            mut m = 0
+            while m < mcnt {
+                let mid = self.child_at(methods_grp, m)
+                let is_st = has_flag(self.ia.get(mid), FLAG_STATIC())
+                let rt = btype_norm(self.sb.get(mid))
+                let fnm = self.call_targets.get(mid)
+                self.w_ind()
+                self.w(btype_to_c(rt) + " " + fnm)
+                self.emit_param_sig_c(self.la.get(mid), cname, is_st)
+                self.w(";")
+                self.w_nl()
+                m = m + 1
+            }
+            ci = ci + 1
+        }
+
+        // Extend methods
+        mut ei = 0
+        while ei < self.ext_count {
+            let eid = self.ext_nodes.get(ei)
+            let tname = btype_norm(self.sa.get(eid))
+            let mcnt = self.child_count(eid)
+            mut m = 0
+            while m < mcnt {
+                let mid = self.child_at(eid, m)
+                let is_st = has_flag(self.ia.get(mid), FLAG_STATIC())
+                let rt = btype_norm(self.sb.get(mid))
+                let fnm = self.call_targets.get(mid)
+                self.w_ind()
+                self.w(btype_to_c(rt) + " " + fnm)
+                self.emit_param_sig_c(self.la.get(mid), tname, is_st)
+                self.w(";")
+                self.w_nl()
+                m = m + 1
+            }
+            ei = ei + 1
+        }
+
+        // User functions & cextern
+        mut fi = 0
+        while fi < self.fn_count {
+            let fid = self.fn_nodes.get(fi)
+            let fk = self.nk.get(fid)
+            let raw_name = self.sa.get(fid)
+            let cname = self.call_targets.get(fid)
+            let rt = btype_norm(self.sb.get(fid))
+            if raw_name == "main" {
+                self.has_main_fn = true
+                if btype_is_int(rt) { self.main_returns_i64 = true }
+            }
+            self.w_ind()
+            if fk == NK_CEXTERN() { self.w("extern ") }
+            self.w(btype_to_c(rt) + " " + cname)
+            self.emit_param_sig_c(self.la.get(fid), "", true)
+            self.w(";")
+            self.w_nl()
+            fi = fi + 1
+        }
+        self.w_nl()
+    }
+
+    // --- Function & Method Bodies ---
+
+    priv fn emit_all_functions() {
+        // Class constructors, dtors, methods
+        mut ci = 0
+        while ci < self.cls_order_count {
+            let cid = self.cls_nodes.get(self.cls_order.get(ci))
+            let cname = self.sa.get(cid)
+            let ct = "Arx_" + cname
+            let ctors_grp = self.ra.get(cid)
+            let ccnt = self.child_count(ctors_grp)
+            if ccnt == 0 {
+                self.w(ct + " " + ct + "_init(void) ")
+                self.w_lbrace()
+                self.w_nl()
+                self.indent = self.indent + 1
+                self.wl(ct + " self;")
+                self.wl("memset(&self, 0, sizeof(self));")
+                self.emit_class_field_defaults(cname)
+                self.wl("return self;")
+                self.close_blk()
+                self.w_nl()
+            } else {
+                mut j = 0
+                while j < ccnt {
+                    let ctor_id = self.child_at(ctors_grp, j)
+                    self.emit_ctor_body(cname, ctor_id)
+                    j = j + 1
+                }
+            }
+            let dtor_id = self.la.get(ctors_grp)
+            if dtor_id >= 0 {
+                self.emit_method_body(cname, dtor_id, true)
+            }
+            let methods_grp = self.ea.get(cid)
+            let mcnt = self.child_count(methods_grp)
+            mut m = 0
+            while m < mcnt {
+                self.emit_method_body(cname, self.child_at(methods_grp, m), false)
+                m = m + 1
+            }
+            ci = ci + 1
+        }
+
+        // Extend methods
+        mut ei = 0
+        while ei < self.ext_count {
+            let eid = self.ext_nodes.get(ei)
+            let tname = btype_norm(self.sa.get(eid))
+            let mcnt = self.child_count(eid)
+            mut m = 0
+            while m < mcnt {
+                self.emit_method_body(tname, self.child_at(eid, m), false)
+                m = m + 1
+            }
+            ei = ei + 1
+        }
+
+        // Top-level functions
+        mut fi = 0
+        while fi < self.fn_count {
+            let fid = self.fn_nodes.get(fi)
+            if self.nk.get(fid) == NK_FN_DEF() {
+                if self.ra.get(fid) >= 0 {
+                    let cname = self.call_targets.get(fid)
+                let rt = btype_norm(self.sb.get(fid))
+                self.cur_class = ""
+                self.cur_ret_type = rt
+                self.w(btype_to_c(rt) + " " + cname)
+                self.emit_param_sig_c(self.la.get(fid), "", true)
+                self.w(" ")
+                self.w_lbrace()
+                self.w_nl()
+                self.indent = self.indent + 1
+                if self.sa.get(fid) == "main" {
+                    self.emit_nonconst_global_inits()
+                }
+                self.defer_push_scope()
+                self.emit_block_stmts(self.ra.get(fid))
+                self.defer_emit_unwind()
+                self.defer_pop_scope()
+                self.close_blk()
+                self.w_nl()
+                }
+            }
+            fi = fi + 1
+        }
+    }
+
+    priv fn emit_nonconst_global_inits() {
+        mut i = 0
+        while i < self.global_count {
+            let gid = self.global_nodes.get(i)
+            let init_id = self.la.get(gid)
+            if init_id >= 0 && !self.is_const_init(init_id) {
+                let nm = self.sa.get(gid)
+                let val = self.gen_expr(init_id)
+                self.wl(nm + " = " + val + ";")
+            }
+            i = i + 1
+        }
+    }
+
+    priv fn emit_class_field_defaults(cname: str) {
+        let lineage = self.collect_class_lineage(cname)
+        let lcnt = lineage.len()
+        mut li = 0
+        while li < lcnt {
+            let lc_nid = self.cls_nodes.get(self.cls_idx_map.get(lineage.get(li)))
+            let fgrp = self.la.get(lc_nid)
+            let fcnt = self.child_count(fgrp)
+            mut fi = 0
+            while fi < fcnt {
+                let fid = self.child_at(fgrp, fi)
+                let def_id = self.la.get(fid)
+                if def_id >= 0 {
+                    let val = self.gen_expr(def_id)
+                    self.wl("self." + self.sa.get(fid) + " = " + val + ";")
+                }
+                fi = fi + 1
+            }
+            li = li + 1
+        }
+    }
+
+    priv fn emit_ctor_body(cname: str, ctor_id: i64) {
+        let ct = "Arx_" + cname
+        let fnm = self.call_targets.get(ctor_id)
+        self.cur_class = cname
+        self.cur_ret_type = cname
+        self.w(ct + " " + fnm)
+        self.emit_param_sig_c(self.la.get(ctor_id), "", true)
+        self.w(" ")
+        self.w_lbrace()
+        self.w_nl()
+        self.indent = self.indent + 1
+        self.wl(ct + " _obj;")
+        self.wl("memset(&_obj, 0, sizeof(_obj));")
+        self.wl(ct + "* self = &_obj;")
+        // Initialize default field expressions onto *self
+        let lineage = self.collect_class_lineage(cname)
+        let lcnt = lineage.len()
+        mut li = 0
+        while li < lcnt {
+            let lc_nid = self.cls_nodes.get(self.cls_idx_map.get(lineage.get(li)))
+            let fgrp = self.la.get(lc_nid)
+            let fcnt = self.child_count(fgrp)
+            mut fi = 0
+            while fi < fcnt {
+                let fid = self.child_at(fgrp, fi)
+                let def_id = self.la.get(fid)
+                if def_id >= 0 {
+                    let val = self.gen_expr(def_id)
+                    self.wl("self->" + self.sa.get(fid) + " = " + val + ";")
+                }
+                fi = fi + 1
+            }
+            li = li + 1
+        }
+        self.defer_push_scope()
+        self.emit_block_stmts(self.ra.get(ctor_id))
+        self.defer_emit_unwind()
+        self.defer_pop_scope()
+        self.wl("return _obj;")
+        self.close_blk()
+        self.w_nl()
+        self.cur_class = ""
+    }
+
+    priv fn emit_method_body(cname: str, mid: i64, is_dtor: bool) {
+        let body = self.ra.get(mid)
+        if body < 0 { return }
+        let is_st = has_flag(self.ia.get(mid), FLAG_STATIC())
+        mut rt = "void"
+        if !is_dtor { rt = btype_norm(self.sb.get(mid)) }
+        let fnm = self.call_targets.get(mid)
+        self.cur_class = cname
+        self.cur_ret_type = rt
+        self.w(btype_to_c(rt) + " " + fnm)
+        if is_dtor {
+            self.w("(" + btype_to_c(cname) + "* self)")
+        } else {
+            self.emit_param_sig_c(self.la.get(mid), cname, is_st)
+        }
+        self.w(" ")
+        self.w_lbrace()
+        self.w_nl()
+        self.indent = self.indent + 1
+        self.defer_push_scope()
+        self.emit_block_stmts(body)
+        self.defer_emit_unwind()
+        self.defer_pop_scope()
+        self.close_blk()
+        self.w_nl()
+        self.cur_class = ""
+    }
+
+    priv fn emit_entry_point() {
+        self.w("int main(int argc, char** argv) ")
+        self.w_lbrace()
+        self.w_nl()
+        self.indent = self.indent + 1
+        self.wl("arx_init_args(argc, argv);")
+        if self.has_main_fn {
+            if self.main_returns_i64 {
+                self.wl("return (int)arx_main();")
+            } else {
+                self.wl("arx_main();")
+                self.wl("return 0;")
+            }
+        } else {
+            self.emit_nonconst_global_inits()
+            self.wl("return 0;")
+        }
+        self.close_blk()
+    }
+
+    // --- Defer Scope Stack ---
+
+    priv fn defer_push_scope() {
+        self.defer_marks.push(self.defer_count)
+        self.defer_depth = self.defer_depth + 1
+    }
+
+    priv fn defer_emit_unwind() {
+        if self.defer_depth <= 0 { return }
+        let mark = self.defer_marks.get(self.defer_depth - 1)
+        mut i = self.defer_count - 1
+        while i >= mark {
+            self.gen_stmt(self.defer_nodes.get(i))
+            i = i - 1
+        }
+    }
+
+    priv fn defer_pop_scope() {
+        if self.defer_depth <= 0 { return }
+        self.defer_depth = self.defer_depth - 1
+        let mark = self.defer_marks.pop()
+        while self.defer_count > mark {
+            self.defer_nodes.pop()
+            self.defer_count = self.defer_count - 1
+        }
+    }
+
+    // --- Statements ---
+
+    priv fn emit_block(blk_id: i64) {
+        self.open_blk()
+        self.defer_push_scope()
+        self.emit_block_stmts(blk_id)
+        self.defer_emit_unwind()
+        self.defer_pop_scope()
+        self.close_blk()
+    }
+
+    priv fn emit_block_stmts(blk_id: i64) {
+        if blk_id < 0 { return }
+        let cnt = self.child_count(blk_id)
+        mut i = 0
+        while i < cnt {
+            self.gen_stmt(self.child_at(blk_id, i))
+            i = i + 1
+        }
+    }
+
+    priv fn gen_stmt(nid: i64) {
+        if nid < 0 { return }
+        let k = self.nk.get(nid)
+
+        if k == NK_BLOCK() {
+            self.emit_block(nid)
+            return
+        }
+
+        if k == NK_VAR_DECL() {
+            let nm = self.sa.get(nid)
+            let vt = btype_norm(self.node_types.get(nid))
+            let init_id = self.la.get(nid)
+            if btype_is_fixed_arr(vt) {
+                let et = btype_arr_elem(vt)
+                let alen = btype_arr_len(vt)
+                let cet = btype_to_c(et)
+                if init_id >= 0 && self.nk.get(init_id) == NK_FIXED_ARR() {
+                    let ecnt = self.child_count(init_id)
+                    let vals = List<str>()
+                    mut i = 0
+                    while i < ecnt {
+                        vals.push(self.gen_expr(self.child_at(init_id, i)))
+                        i = i + 1
+                    }
+                    self.w_ind()
+                    self.w(cet + " " + nm + "[" + (alen as str) + "] = ")
+                    self.w_lbrace()
+                    i = 0
+                    while i < ecnt {
+                        if i > 0 { self.w(", ") }
+                        self.w(vals.get(i))
+                        i = i + 1
+                    }
+                    if ecnt == 0 { self.w("0") }
+                    self.w_rbrace()
+                    self.w(";")
+                    self.w_nl()
+                } else if init_id >= 0 && self.nk.get(init_id) == NK_FIXED_REPEAT() {
+                    let vexpr = self.gen_expr(self.la.get(init_id))
+                    let idx_n = self.next_tmp()
+                    self.wl(cet + " " + nm + "[" + (alen as str) + "];")
+                    self.wcl("for (int64_t " + idx_n + " = 0; " + idx_n + " < " + (alen as str) + "; " + idx_n + "++) @ " + nm + "[" + idx_n + "] = " + vexpr + "; `")
+                } else if init_id >= 0 {
+                    let rhs = self.gen_expr(init_id)
+                    self.wl(cet + " " + nm + "[" + (alen as str) + "]; memcpy(" + nm + ", " + rhs + ", sizeof(" + nm + "));")
+                } else {
+                    self.wcl(cet + " " + nm + "[" + (alen as str) + "] = @0`;")
+                }
+                return
+            }
+            mut rhs = btype_default_c_val(vt)
+            if init_id >= 0 {
+                rhs = self.gen_expr(init_id)
+            }
+            self.wl(btype_to_c(vt) + " " + nm + " = " + rhs + ";")
+            return
+        }
+
+        if k == NK_TUPLE_DESTR() {
+            let init_id = self.la.get(nid)
+            let rhs = self.gen_expr(init_id)
+            let init_t = btype_norm(self.node_types.get(init_id))
+            let init_ct = btype_to_c(init_t)
+            let tmp = self.next_tmp()
+            self.wl(init_ct + " " + tmp + " = " + rhs + ";")
+            let ncnt = self.child_count(nid)
+            mut ni = 0
+            while ni < ncnt {
+                let cid = self.child_at(nid, ni)
+                let vname = self.sa.get(cid)
+                let vt = btype_norm(self.node_types.get(cid))
+                let vct = btype_to_c(vt)
+                if vname != "_" {
+                    self.wl(vct + " " + vname + " = " + tmp + ".f" + (ni as str) + ";")
+                }
+                ni = ni + 1
+            }
+            return
+        }
+        if k == NK_ASSIGN() {
+            let op_s = self.sa.get(nid)
+            let lhs_id = self.la.get(nid)
+            let rhs_id = self.ra.get(nid)
+            if self.nk.get(lhs_id) == NK_INDEX() {
+                let col_id = self.la.get(lhs_id)
+                let col_t = btype_norm(self.node_types.get(col_id))
+                if btype_is_list(col_t) || btype_is_map(col_t) {
+                    let addr = self.emit_lvalue_addr(col_id, col_t)
+                    let idx_v = self.gen_expr(self.ra.get(lhs_id))
+                    let rval = self.gen_expr(rhs_id)
+                    let sn = "Arx_" + btype_mangle(col_t)
+                    if op_s == "=" {
+                        self.wl(sn + "_set(" + addr + ", " + idx_v + ", " + rval + ");")
+                    } else {
+                        let base_op = op_s.slice(0, op_s.len() - 1)
+                        let cur_v = self.next_tmp()
+                        let elem_c = btype_to_c(btype_norm(self.node_types.get(lhs_id)))
+                        self.wl(elem_c + " " + cur_v + " = " + sn + "_get(" + addr + ", " + idx_v + ");")
+                        self.wl(sn + "_set(" + addr + ", " + idx_v + ", (" + cur_v + ") " + base_op + " (" + rval + "));")
+                    }
+                    return
+                }
+            }
+            let lval = self.emit_lvalue(lhs_id)
+            let rval = self.gen_expr(rhs_id)
+            if op_s == "+=" && btype_is_str(self.node_types.get(lhs_id)) {
+                self.wl(lval + " = arx_str_concat(" + lval + ", " + self.emit_cast_to_str(self.node_types.get(rhs_id), rval) + ");")
+            } else {
+                self.wl(lval + " " + op_s + " " + rval + ";")
+            }
+            return
+        }
+
+        if k == NK_IF() {
+            let cond = self.gen_expr(self.la.get(nid))
+            self.w_ind()
+            self.w("if (" + cond + ") ")
+            self.w_lbrace()
+            self.w_nl()
+            self.indent = self.indent + 1
+            self.defer_push_scope()
+            self.emit_block_stmts(self.ra.get(nid))
+            self.defer_emit_unwind()
+            self.defer_pop_scope()
+            self.indent = self.indent - 1
+            let eb = self.ea.get(nid)
+            if eb >= 0 {
+                self.w_ind()
+                self.w_rbrace()
+                self.w(" else ")
+                self.w_lbrace()
+                self.w_nl()
+                self.indent = self.indent + 1
+                self.defer_push_scope()
+                self.emit_block_stmts(eb)
+                self.defer_emit_unwind()
+                self.defer_pop_scope()
+                self.close_blk()
+            } else {
+                self.w_ind()
+                self.w_rbrace()
+                self.w_nl()
+            }
+            return
+        }
+
+        if k == NK_WHILE() {
+            self.w_ind()
+            self.w("while (1) ")
+            self.w_lbrace()
+            self.w_nl()
+            self.indent = self.indent + 1
+            let cond = self.gen_expr(self.la.get(nid))
+            self.wl("if (!(" + cond + ")) break;")
+            self.defer_push_scope()
+            self.emit_block_stmts(self.ra.get(nid))
+            self.defer_emit_unwind()
+            self.defer_pop_scope()
+            self.close_blk()
+            return
+        }
+
+        if k == NK_LOOP() {
+            self.w_ind()
+            self.w("while (1) ")
+            self.w_lbrace()
+            self.w_nl()
+            self.indent = self.indent + 1
+            self.defer_push_scope()
+            self.emit_block_stmts(self.la.get(nid))
+            self.defer_emit_unwind()
+            self.defer_pop_scope()
+            self.close_blk()
+            return
+        }
+
+        if k == NK_FOR() {
+            self.emit_for_stmt(nid)
+            return
+        }
+
+        if k == NK_BREAK() {
+            self.wl("break;")
+            return
+        }
+
+        if k == NK_CONTINUE() {
+            self.wl("continue;")
+            return
+        }
+
+        if k == NK_RETURN() {
+            let val_id = self.la.get(nid)
+            if self.cur_class != "" && self.cur_ret_type == self.cur_class {
+                // Inside constructor (`init`) returning `_obj` early!
+                self.defer_emit_unwind()
+                self.wl("return _obj;")
+                return
+            }
+            if val_id >= 0 && self.cur_ret_type != "void" {
+                let rv = self.gen_expr(val_id)
+                let rtmp = self.next_tmp()
+                self.wl(btype_to_c(self.cur_ret_type) + " " + rtmp + " = " + rv + ";")
+                self.defer_emit_unwind()
+                self.wl("return " + rtmp + ";")
+            } else {
+                self.defer_emit_unwind()
+                self.wl("return;")
+            }
+            return
+        }
+
+        if k == NK_GUARD() {
+            let cond = self.gen_expr(self.la.get(nid))
+            self.w_ind()
+            self.w("if (!(" + cond + ")) ")
+            self.w_lbrace()
+            self.w_nl()
+            self.indent = self.indent + 1
+            self.defer_push_scope()
+            self.emit_block_stmts(self.ra.get(nid))
+            self.defer_emit_unwind()
+            self.defer_pop_scope()
+            self.close_blk()
+            return
+        }
+
+        if k == NK_DEFER() {
+            self.defer_nodes.push(self.la.get(nid))
+            self.defer_count = self.defer_count + 1
+            return
+        }
+
+        if k == NK_TRY_CATCH() {
+            let try_blk = self.la.get(nid)
+            let catch_blk = self.ra.get(nid)
+            let finally_blk = self.ea.get(nid)
+            let cvar = self.sa.get(nid)
+            let exc_v = self.next_tmp()
+            self.open_blk()
+            self.wl("int " + exc_v + " = setjmp(__arx_jmp_stack[__arx_jmp_depth++]);")
+            self.w_ind()
+            self.w("if (" + exc_v + " == 0) ")
+            self.w_lbrace()
+            self.w_nl()
+            self.indent = self.indent + 1
+            self.emit_block_stmts(try_blk)
+            self.wl("__arx_jmp_depth--;")
+            self.indent = self.indent - 1
+            self.w_ind()
+            self.w_rbrace()
+            self.w(" else ")
+            self.w_lbrace()
+            self.w_nl()
+            self.indent = self.indent + 1
+            if cvar != "" {
+                self.wl("const char* " + cvar + " = __arx_exc_msg;")
+            }
+            if catch_blk >= 0 {
+                self.emit_block_stmts(catch_blk)
+            }
+            self.close_blk()
+            if finally_blk >= 0 {
+                self.emit_block_stmts(finally_blk)
+            }
+            self.close_blk()
+            return
+        }
+
+        if k == NK_THROW() {
+            let ex = self.la.get(nid)
+            let msg = self.emit_cast_to_str(self.node_types.get(ex), self.gen_expr(ex))
+            self.wl("__arx_exc_msg = " + msg + ";")
+            self.wcl("if (__arx_jmp_depth > 0) @ longjmp(__arx_jmp_stack[--__arx_jmp_depth], 1); ` else @ fprintf(stderr, \"Uncaught error: %s\\n\", __arx_exc_msg); exit(1); `")
+            return
+        }
+
+        if k == NK_MATCH() {
+            self.emit_match_stmt(nid)
+            return
+        }
+
+        if k == NK_EXPR_STMT() {
+            let ex = self.la.get(nid)
+            let ek = self.nk.get(ex)
+            let val = self.gen_expr(ex)
+            // Void builtins & void calls already emit their statement; skip emitting bare dummy "0;"
+            if ek == NK_CALL() && self.node_types.get(ex) == "void" {
+                return
+            }
+            if val != "0" {
+                self.wl("(void)(" + val + ");")
+            }
+            return
+        }
+    }
+
+    priv fn emit_for_stmt(nid: i64) {
+        let item_v = self.sa.get(nid)
+        let idx_v = self.sb.get(nid)
+        let iter_id = self.la.get(nid)
+        let body_id = self.ra.get(nid)
+        let ik = self.nk.get(iter_id)
+
+        if ik == NK_RANGE() {
+            let sv = self.gen_expr(self.la.get(iter_id))
+            let ev = self.gen_expr(self.ra.get(iter_id))
+            let stmp = self.next_tmp()
+            let etmp = self.next_tmp()
+            self.wl("int64_t " + stmp + " = (int64_t)(" + sv + "); int64_t " + etmp + " = (int64_t)(" + ev + ");")
+            mut cmp_op = " < "
+            if has_flag(self.ia.get(iter_id), FLAG_INCLUSIVE()) { cmp_op = " <= " }
+            self.w_ind()
+            self.w("for (int64_t " + item_v + " = " + stmp + "; " + item_v + cmp_op + etmp + "; " + item_v + "++) ")
+            self.w_lbrace()
+            self.w_nl()
+            self.indent = self.indent + 1
+            self.defer_push_scope()
+            self.emit_block_stmts(body_id)
+            self.defer_emit_unwind()
+            self.defer_pop_scope()
+            self.close_blk()
+            return
+        }
+
+        mut raw_it = iter_id
+        if ik == NK_CALL() {
+            let cal = self.la.get(iter_id)
+            if self.nk.get(cal) == NK_IDENT() && self.sa.get(cal) == "enumerate" && self.child_count(iter_id) == 1 {
+                raw_it = self.child_at(iter_id, 0)
+            }
+        }
+        let it_t = btype_norm(self.node_types.get(raw_it))
+        let ivar = self.gen_expr(raw_it)
+        let ctmp = self.next_tmp()
+        let len_v = self.next_tmp()
+        mut iv_name = idx_v
+        if iv_name == "" { iv_name = self.next_tmp() }
+
+        if btype_is_fixed_arr(it_t) {
+            let et = btype_arr_elem(it_t)
+            let alen = btype_arr_len(it_t)
+            self.w_ind()
+            self.w("for (int64_t " + iv_name + " = 0; " + iv_name + " < " + (alen as str) + "; " + iv_name + "++) ")
+            self.w_lbrace()
+            self.w_nl()
+            self.indent = self.indent + 1
+            self.wl(btype_to_c(et) + " " + item_v + " = " + ivar + "[" + iv_name + "];")
+        } else if btype_is_list(it_t) {
+            let et = btype_list_elem(it_t)
+            let sn = "Arx_" + btype_mangle(it_t)
+            self.wl(sn + " " + ctmp + " = " + ivar + "; int64_t " + len_v + " = arx_list_len(" + ctmp + ".data_handle);")
+            self.w_ind()
+            self.w("for (int64_t " + iv_name + " = 0; " + iv_name + " < " + len_v + "; " + iv_name + "++) ")
+            self.w_lbrace()
+            self.w_nl()
+            self.indent = self.indent + 1
+            self.wl(btype_to_c(et) + " " + item_v + " = " + sn + "_get(&" + ctmp + ", " + iv_name + ");")
+        } else if btype_is_set(it_t) {
+            let et = btype_list_elem(it_t)
+            let sn = "Arx_" + btype_mangle(it_t)
+            self.wl(sn + " " + ctmp + " = " + ivar + "; int64_t " + len_v + " = arx_set_len(" + ctmp + ".set_handle);")
+            self.w_ind()
+            self.w("for (int64_t " + iv_name + " = 0; " + iv_name + " < " + len_v + "; " + iv_name + "++) ")
+            self.w_lbrace()
+            self.w_nl()
+            self.indent = self.indent + 1
+            self.wl(btype_to_c(et) + " " + item_v + " = " + sn + "_get(&" + ctmp + ", " + iv_name + ");")
+        } else {
+            self.wl("const char* " + ctmp + " = " + ivar + "; int64_t " + len_v + " = arx_str_len(" + ctmp + ");")
+            self.w_ind()
+            self.w("for (int64_t " + iv_name + " = 0; " + iv_name + " < " + len_v + "; " + iv_name + "++) ")
+            self.w_lbrace()
+            self.w_nl()
+            self.indent = self.indent + 1
+            self.wl("char " + item_v + " = " + ctmp + "[" + iv_name + "];")
+        }
+
+        self.defer_push_scope()
+        self.emit_block_stmts(body_id)
+        self.defer_emit_unwind()
+        self.defer_pop_scope()
+        self.close_blk()
+    }
+
+    priv fn emit_match_stmt(nid: i64) {
+        let subj_id = self.la.get(nid)
+        let subj_t = btype_norm(self.node_types.get(nid))
+        let sval = self.gen_expr(subj_id)
+        let stmp = self.next_tmp()
+        self.wl(btype_to_c(subj_t) + " " + stmp + " = " + sval + ";")
+
+        let ccnt = self.child_count(nid)
+        mut ci = 0
+        mut open_elses = 0
+        while ci < ccnt {
+            let case_id = self.child_at(nid, ci)
+            let pat_id = self.la.get(case_id)
+            let body_id = self.ra.get(case_id)
+            let guard_id = self.ea.get(case_id)
+            let ext = self.node_ext.get(pat_id)
+
+            if ci > 0 {
+                self.w_ind()
+                self.w_rbrace()
+                self.w(" else ")
+                self.w_lbrace()
+                self.w_nl()
+                self.indent = self.indent + 1
+                open_elses = open_elses + 1
+            }
+
+            if ext == "wildcard" {
+                self.w_ind()
+                self.w("if (1) ")
+                self.w_lbrace()
+                self.w_nl()
+                self.indent = self.indent + 1
+                self.defer_push_scope()
+                self.emit_block_stmts(body_id)
+                self.defer_emit_unwind()
+                self.defer_pop_scope()
+                self.indent = self.indent - 1
+            } else if ext.starts_with("enum_unit::") {
+                let rest = ext.slice(11, ext.len())
+                let ep = rest.split("::")
+                let ename = ep.get(0)
+                let vname = ep.get(1)
+                self.w_ind()
+                self.w("if (" + stmp + ".tag == Arx_" + ename + "_Tag_" + vname + ") ")
+                self.w_lbrace()
+                self.w_nl()
+                self.indent = self.indent + 1
+                self.emit_guarded_arm(guard_id, body_id)
+                self.indent = self.indent - 1
+            } else if ext.starts_with("enum_payload::") {
+                let rest = ext.slice(14, ext.len())
+                let ep = rest.split("::")
+                let ename = ep.get(0)
+                let vname = ep.get(1)
+                let vnode = self.call_fn_nodes.get(pat_id)
+                self.w_ind()
+                self.w("if (" + stmp + ".tag == Arx_" + ename + "_Tag_" + vname + ") ")
+                self.w_lbrace()
+                self.w_nl()
+                self.indent = self.indent + 1
+                let ac = self.child_count(pat_id)
+                mut ai = 0
+                while ai < ac {
+                    let arg_id = self.child_at(pat_id, ai)
+                    if self.nk.get(arg_id) == NK_IDENT() {
+                        let bnm = self.sa.get(arg_id)
+                        if bnm != "_" {
+                            let fid = self.child_at(vnode, ai)
+                            let fnm = self.sa.get(fid)
+                            let ft = btype_norm(self.sb.get(fid))
+                            self.wl(btype_to_c(ft) + " " + bnm + " = " + stmp + ".data." + vname + "." + fnm + ";")
+                        }
+                    }
+                    ai = ai + 1
+                }
+                self.emit_guarded_arm(guard_id, body_id)
+                self.indent = self.indent - 1
+            } else {
+                let pv = self.gen_expr(pat_id)
+                mut cond = stmp + " == (" + pv + ")"
+                if btype_is_str(subj_t) {
+                    cond = "(arx_str_compare(" + stmp + ", " + pv + ") == 0)"
+                }
+                self.w_ind()
+                self.w("if (" + cond + ") ")
+                self.w_lbrace()
+                self.w_nl()
+                self.indent = self.indent + 1
+                self.emit_guarded_arm(guard_id, body_id)
+                self.indent = self.indent - 1
+            }
+            ci = ci + 1
+        }
+        if ccnt > 0 {
+            self.w_ind()
+            self.w_rbrace()
+            self.w_nl()
+            while open_elses > 0 {
+                self.close_blk()
+                open_elses = open_elses - 1
+            }
+        }
+    }
+
+    priv fn emit_guarded_arm(guard_id: i64, body_id: i64) {
+        if guard_id >= 0 {
+            let gval = self.gen_expr(guard_id)
+            self.w_ind()
+            self.w("if (" + gval + ") ")
+            self.w_lbrace()
+            self.w_nl()
+            self.indent = self.indent + 1
+            self.defer_push_scope()
+            self.emit_block_stmts(body_id)
+            self.defer_emit_unwind()
+            self.defer_pop_scope()
+            self.close_blk()
+        } else {
+            self.defer_push_scope()
+            self.emit_block_stmts(body_id)
+            self.defer_emit_unwind()
+            self.defer_pop_scope()
+        }
+    }
+
+    // --- LValues & Address Resolution ---
+
+    priv fn emit_lvalue(nid: i64) -> str {
+        let k = self.nk.get(nid)
+        if k == NK_IDENT() {
+            return self.sa.get(nid)
+        }
+        if k == NK_MEMBER() {
+            let lhs = self.la.get(nid)
+            let mem = self.sa.get(nid)
+            if self.nk.get(lhs) == NK_IDENT() && self.sa.get(lhs) == "self" && self.cur_class != "" {
+                return "self->" + mem
+            }
+            let obj = self.emit_lvalue(lhs)
+            let lt = btype_norm(self.node_types.get(lhs))
+            if btype_is_ptr(lt) {
+                return obj + "->" + mem
+            }
+            return obj + "." + mem
+        }
+        if k == NK_INDEX() {
+            let arr = self.gen_expr(self.la.get(nid))
+            let idx = self.gen_expr(self.ra.get(nid))
+            return arr + "[" + idx + "]"
+        }
+        return self.gen_expr(nid)
+    }
+
+    priv fn is_addressable(nid: i64) -> bool {
+        let k = self.nk.get(nid)
+        if k == NK_IDENT() || k == NK_INDEX() { return true }
+        if k == NK_MEMBER() { return self.is_addressable(self.la.get(nid)) }
+        return false
+    }
+
+    priv fn emit_lvalue_addr(nid: i64, recv_t: str) -> str {
+        if self.nk.get(nid) == NK_IDENT() && self.sa.get(nid) == "self" && self.cur_class != "" {
+            return "self"
+        }
+        if btype_is_ptr(recv_t) {
+            return self.gen_expr(nid)
+        }
+        if self.is_addressable(nid) {
+            let lv = self.emit_lvalue(nid)
+            return "(&(" + lv + "))"
+        }
+        let val = self.gen_expr(nid)
+        let tmp = self.next_tmp()
+        self.wl(btype_to_c(recv_t) + " " + tmp + " = " + val + ";")
+        return "(&" + tmp + ")"
+    }
+
+    // --- Expressions ---
+
+    priv fn gen_expr(nid: i64) -> str {
+        if nid < 0 { return "0" }
+        let k = self.nk.get(nid)
+
+        if k == NK_INT_LIT() {
+            let v = self.sa.get(nid)
+            return "((int64_t)" + v + "LL)"
+        }
+        if k == NK_FLOAT_LIT() {
+            return "((double)" + self.sa.get(nid) + ")"
+        }
+        if k == NK_BOOL_LIT() {
+            if self.ia.get(nid) != 0 { return "true" }
+            return "false"
+        }
+        if k == NK_NULL_LIT() { return "NULL" }
+        if k == NK_CHAR_LIT() {
+            let s = self.sa.get(nid)
+            mut chv = 0
+            if s.len() > 0 { chv = s.byte_at(0) }
+            return "((char)" + (chv as str) + ")"
+        }
+        if k == NK_STR_LIT() {
+            let tmp = self.next_tmp()
+            self.w_ind()
+            self.w("const char* " + tmp + " = ")
+            self.write_c_str_lit(self.sa.get(nid))
+            self.w(";")
+            self.w_nl()
+            return tmp
+        }
+        if k == NK_STR_INTERP() {
+            let pc = self.child_count(nid)
+            if pc == 0 { return "\"\"" }
+            mut acc = ""
+            mut i = 0
+            while i < pc {
+                let pid = self.child_at(nid, i)
+                let pv = self.gen_expr(pid)
+                let pstr = self.emit_cast_to_str(self.node_types.get(pid), pv)
+                if i == 0 {
+                    acc = pstr
+                } else {
+                    let tacc = self.next_tmp()
+                    self.wl("const char* " + tacc + " = arx_str_concat(" + acc + ", " + pstr + ");")
+                    acc = tacc
+                }
+                i = i + 1
+            }
+            return acc
+        }
+        if k == NK_IDENT() {
+            return self.sa.get(nid)
+        }
+        if k == NK_SIZEOF() {
+            return "((int64_t)sizeof(" + btype_to_c(self.sa.get(nid)) + "))"
+        }
+        if k == NK_CAST() {
+            let tt = btype_norm(self.sa.get(nid))
+            let ex = self.la.get(nid)
+            let st = btype_norm(self.node_types.get(ex))
+            let val = self.gen_expr(ex)
+            if btype_is_str(tt) {
+                return self.emit_cast_to_str(st, val)
+            }
+            if btype_is_str(st) {
+                if btype_is_float(tt) { return "((" + btype_to_c(tt) + ")arx_cast_to_f64(" + val + "))" }
+                if tt == "bool" { return "arx_cast_to_bool(" + val + ")" }
+                return "((" + btype_to_c(tt) + ")arx_cast_to_i64(" + val + "))"
+            }
+            return "((" + btype_to_c(tt) + ")(" + val + "))"
+        }
+        if k == NK_UNARY_OP() {
+            let op_s = self.sa.get(nid)
+            let ex = self.la.get(nid)
+            if op_s == "&" {
+                return self.emit_lvalue_addr(ex, self.node_types.get(ex))
+            }
+            let ov = self.gen_expr(ex)
+            return "(" + op_s + "(" + ov + "))"
+        }
+        if k == NK_BIN_OP() {
+            return self.gen_bin_op(nid)
+        }
+        if k == NK_MEMBER() {
+            let ext = self.node_ext.get(nid)
+            if ext.starts_with("enum_unit::") {
+                let rest = ext.slice(11, ext.len())
+                let ep = rest.split("::")
+                let ename = ep.get(0)
+                let vname = ep.get(1)
+                return "Arx_" + ename + "_" + vname + "()"
+            }
+            if ext.starts_with("mod_call::") {
+                return ext.slice(10, ext.len()) + "()"
+            }
+            if ext.starts_with("mod_global::") {
+                return ext.slice(12, ext.len())
+            }
+            let lhs = self.la.get(nid)
+            let mem = self.sa.get(nid)
+            if self.nk.get(lhs) == NK_IDENT() {
+                if self.sa.get(lhs) == "self" && self.cur_class != "" {
+                    return "self->" + mem
+                }
+            }
+            let lt = btype_norm(self.node_types.get(lhs))
+            if (btype_is_list(lt) || btype_is_map(lt) || btype_is_set(lt) || btype_is_stack(lt) || btype_is_queue(lt) || btype_is_deque(lt)) && (mem == "length" || mem == "len") {
+                let addr = self.emit_lvalue_addr(lhs, lt)
+                return "Arx_" + btype_mangle(lt) + "_len(" + addr + ")"
+            }
+            if btype_is_str(lt) && (mem == "length" || mem == "len") {
+                return "arx_str_len(" + self.gen_expr(lhs) + ")"
+            }
+            let obj = self.gen_expr(lhs)
+            if btype_is_ptr(lt) {
+                return obj + "->" + mem
+            }
+            return obj + "." + mem
+        }
+        if k == NK_INDEX() {
+            let lhs = self.la.get(nid)
+            let lt = btype_norm(self.node_types.get(lhs))
+            let idx_id = self.ra.get(nid)
+            if self.nk.get(idx_id) == NK_RANGE() {
+                let s_expr = self.gen_expr(self.la.get(idx_id))
+                mut e_expr = self.gen_expr(self.ra.get(idx_id))
+                if has_flag(self.ia.get(idx_id), FLAG_INCLUSIVE()) {
+                    e_expr = "((" + e_expr + ") + 1)"
+                }
+                if btype_is_list(lt) {
+                    let addr = self.emit_lvalue_addr(lhs, lt)
+                    return "Arx_" + btype_mangle(lt) + "_slice(" + addr + ", " + s_expr + ", " + e_expr + ")"
+                }
+                if btype_is_str(lt) {
+                    return "__arx_bstr_slice(" + self.gen_expr(lhs) + ", " + s_expr + ", " + e_expr + ")"
+                }
+            }
+            let idx = self.gen_expr(idx_id)
+            if btype_is_list(lt) {
+                let addr = self.emit_lvalue_addr(lhs, lt)
+                return "Arx_" + btype_mangle(lt) + "_get(" + addr + ", " + idx + ")"
+            }
+            if btype_is_map(lt) {
+                let addr = self.emit_lvalue_addr(lhs, lt)
+                return "Arx_" + btype_mangle(lt) + "_get(" + addr + ", " + idx + ")"
+            }
+            let obj = self.gen_expr(lhs)
+            return "(" + obj + ")[" + idx + "]"
+        }
+        if k == NK_CALL() || k == NK_NEW() || k == NK_GENERIC_CALL() {
+            return self.gen_call(nid)
+        }
+        if k == NK_NAMED_ARG() {
+            return self.gen_expr(self.la.get(nid))
+        }
+        if k == NK_TUPLE_LIT() {
+            let tup_t = btype_norm(self.node_types.get(nid))
+            let tup_m = btype_mangle(tup_t)
+            let cc = self.child_count(nid)
+            mut args_s = ""
+            mut ci = 0
+            while ci < cc {
+                let ev = self.gen_expr(self.child_at(nid, ci))
+                if ci > 0 { args_s = args_s + ", " }
+                args_s = args_s + ev
+                ci = ci + 1
+            }
+            let tmp = self.next_tmp()
+            self.wl("Arx_" + tup_m + " " + tmp + " = arx_make_" + tup_m + "(" + args_s + ");")
+            return tmp
+        }
+        if k == NK_PIPELINE() || k == NK_CASCADE() {
+            self.gen_expr(self.la.get(nid))
+            return self.gen_expr(self.ra.get(nid))
+        }
+        return "0"
+    }
+
+    priv fn gen_bin_op(nid: i64) -> str {
+        let op_s = self.sa.get(nid)
+        let lid = self.la.get(nid)
+        let rid = self.ra.get(nid)
+        let lt = btype_norm(self.node_types.get(lid))
+        let rt = btype_norm(self.node_types.get(rid))
+
+        // Short-circuit && and ||
+        if op_s == "&&" {
+            let lv = self.gen_expr(lid)
+            let tmp = self.next_tmp()
+            self.wl("bool " + tmp + " = false;")
+            self.w_ind()
+            self.w("if (" + lv + ") ")
+            self.w_lbrace()
+            self.w_nl()
+            self.indent = self.indent + 1
+            let rv = self.gen_expr(rid)
+            self.wl(tmp + " = (" + rv + ");")
+            self.close_blk()
+            return tmp
+        }
+        if op_s == "||" {
+            let lv = self.gen_expr(lid)
+            let tmp = self.next_tmp()
+            self.wl("bool " + tmp + " = true;")
+            self.w_ind()
+            self.w("if (!(" + lv + ")) ")
+            self.w_lbrace()
+            self.w_nl()
+            self.indent = self.indent + 1
+            let rv = self.gen_expr(rid)
+            self.wl(tmp + " = (" + rv + ");")
+            self.close_blk()
+            return tmp
+        }
+
+        let lv = self.gen_expr(lid)
+        let rv = self.gen_expr(rid)
+
+        if op_s == "+" && (btype_is_str(lt) || btype_is_str(rt)) {
+            let ls = self.emit_cast_to_str(lt, lv)
+            let rs = self.emit_cast_to_str(rt, rv)
+            let tmp = self.next_tmp()
+            self.wl("const char* " + tmp + " = arx_str_concat(" + ls + ", " + rs + ");")
+            return tmp
+        }
+
+        if btype_is_str(lt) && btype_is_str(rt) {
+            if op_s == "==" || op_s == "!=" || op_s == "<" || op_s == "<=" || op_s == ">" || op_s == ">=" {
+                return "(arx_str_compare(" + lv + ", " + rv + ") " + op_s + " 0)"
+            }
+        }
+
+        if op_s == "**" {
+            if btype_is_float(lt) || btype_is_float(rt) {
+                return "pow((double)(" + lv + "), (double)(" + rv + "))"
+            }
+            return "((int64_t)pow((double)(" + lv + "), (double)(" + rv + ")))"
+        }
+
+        return "((" + lv + ") " + op_s + " (" + rv + "))"
+    }
+
+    priv fn emit_resolved_args(call_nid: i64, fn_nid: i64) -> List<str> {
+        let out_args = List<str>()
+        let ac = self.child_count(call_nid)
+        if fn_nid < 0 {
+            mut i = 0
+            while i < ac {
+                out_args.push(self.gen_expr(self.child_at(call_nid, i)))
+                i = i + 1
+            }
+            return out_args
+        }
+        if self.nk.get(fn_nid) == NK_ENUM_VAR() {
+            mut i = 0
+            while i < ac {
+                out_args.push(self.gen_expr(self.child_at(call_nid, i)))
+                i = i + 1
+            }
+            return out_args
+        }
+        let pg = self.la.get(fn_nid)
+        if pg < 0 {
+            mut i = 0
+            while i < ac {
+                out_args.push(self.gen_expr(self.child_at(call_nid, i)))
+                i = i + 1
+            }
+            return out_args
+        }
+        let pcnt = self.child_count(pg)
+        if pcnt == 0 {
+            return out_args
+        }
+        let slots = List<str>()
+        let filled = List<i64>()
+        mut pi = 0
+        while pi < pcnt {
+            slots.push("")
+            filled.push(0)
+            pi = pi + 1
+        }
+        mut ai = 0
+        mut pos_idx = 0
+        while ai < ac {
+            let aid = self.child_at(call_nid, ai)
+            if self.nk.get(aid) == NK_NAMED_ARG() {
+                let pname = self.sa.get(aid)
+                let pval = self.gen_expr(self.la.get(aid))
+                mut j = 0
+                while j < pcnt {
+                    if self.sa.get(self.child_at(pg, j)) == pname {
+                        slots.set(j, pval)
+                        filled.set(j, 1)
+                        break
+                    }
+                    j = j + 1
+                }
+            } else if pos_idx < pcnt {
+                slots.set(pos_idx, self.gen_expr(aid))
+                filled.set(pos_idx, 1)
+                pos_idx = pos_idx + 1
+            }
+            ai = ai + 1
+        }
+        pi = 0
+        while pi < pcnt {
+            if filled.get(pi) == 0 {
+                let def_id = self.la.get(self.child_at(pg, pi))
+                if def_id >= 0 {
+                    slots.set(pi, self.gen_expr(def_id))
+                } else {
+                    slots.set(pi, btype_default_c_val(self.sb.get(self.child_at(pg, pi))))
+                }
+            }
+            out_args.push(slots.get(pi))
+            pi = pi + 1
+        }
+        return out_args
+    }
+
+    priv fn gen_call(nid: i64) -> str {
+        let ckind = self.call_kinds.get(nid)
+        let target = self.call_targets.get(nid)
+        let ret_t = btype_norm(self.node_types.get(nid))
+        let fn_nid = self.call_fn_nodes.get(nid)
+
+        if ckind == CK_BUILTIN() {
+            return self.gen_builtin_call(nid, target)
+        }
+
+        if ckind == CK_STR_METHOD() {
+            let callee = self.la.get(nid)
+            let recv_s = self.gen_expr(self.la.get(callee))
+            return self.gen_str_method_call(nid, target, recv_s, ret_t)
+        }
+
+        if ckind == CK_ARR_METHOD() {
+            let callee = self.la.get(nid)
+            let arr_t = btype_norm(self.node_types.get(self.la.get(callee)))
+            if target == "len" || target == "length" {
+                return "((int64_t)" + (btype_arr_len(arr_t) as str) + "LL)"
+            }
+            return "0"
+        }
+
+        let eval_args = self.emit_resolved_args(nid, fn_nid)
+        let argc = eval_args.len()
+
+        let call_bb = ByteBuffer()
+        call_bb.write_str(target)
+        call_bb.write_u8(40)
+        mut arg_started = 0
+        if ckind == CK_METHOD() {
+            let callee = self.la.get(nid)
+            let recv_id = self.la.get(callee)
+            let recv_t = btype_norm(self.node_types.get(recv_id))
+            let addr = self.emit_lvalue_addr(recv_id, recv_t)
+            call_bb.write_str(addr)
+            arg_started = 1
+        }
+        mut i = 0
+        while i < argc {
+            if arg_started > 0 { call_bb.write_str(", ") }
+            call_bb.write_str(eval_args.get(i))
+            arg_started = 1
+            i = i + 1
+        }
+        call_bb.write_u8(41)
+        let expr_s = call_bb.to_str()
+        call_bb.free()
+
+        if ret_t == "void" {
+            self.wl(expr_s + ";")
+            return "0"
+        }
+        let tmp = self.next_tmp()
+        self.wl(btype_to_c(ret_t) + " " + tmp + " = " + expr_s + ";")
+        return tmp
+    }
+
+    priv fn gen_builtin_call(nid: i64, name: str) -> str {
+        let ac = self.child_count(nid)
+        if name == "println" || name == "print" || name == "eprintln" {
+            if ac == 0 {
+                if name == "println" {
+                    self.wl("puts(\"\");")
+                } else if name == "eprintln" {
+                    self.wl("fprintf(stderr, \"\\n\");")
+                }
+                return "0"
+            }
+            let a0 = self.child_at(nid, 0)
+            let at = btype_norm(self.node_types.get(a0))
+            let av = self.gen_expr(a0)
+            if name == "eprintln" {
+                let sv = self.emit_cast_to_str(at, av)
+                self.wl("fprintf(stderr, \"%s\\n\", " + sv + ");")
+                return "0"
+            }
+            mut pfx = "arx_print_"
+            if name == "println" { pfx = "arx_println_" }
+            if btype_is_str(at) {
+                self.wl(pfx + "str(" + av + ");")
+            } else if at == "bool" {
+                self.wl(pfx + "bool(" + av + ");")
+            } else if btype_is_float(at) {
+                self.wl(pfx + "f64((double)(" + av + "));")
+            } else if at == "char" {
+                if name == "println" {
+                    self.wl("printf(\"%c\\n\", " + av + ");")
+                } else {
+                    self.wl("printf(\"%c\", " + av + ");")
+                }
+            } else {
+                self.wl(pfx + "i64((int64_t)(" + av + "));")
+            }
+            return "0"
+        }
+        if name == "panic" || name == "abort" {
+            if ac > 0 {
+                let a0 = self.child_at(nid, 0)
+                let av = self.emit_cast_to_str(self.node_types.get(a0), self.gen_expr(a0))
+                self.wl("fprintf(stderr, \"PANIC: %s\\n\", " + av + ");")
+            }
+            self.wl("exit(1);")
+            return "0"
+        }
+        if name == "exit" {
+            mut code = "0"
+            if ac > 0 { code = "(int)(" + self.gen_expr(self.child_at(nid, 0)) + ")" }
+            self.wl("exit(" + code + ");")
+            return "0"
+        }
+        if name == "assert" && ac >= 1 {
+            let cond = self.gen_expr(self.child_at(nid, 0))
+            self.wcl("if (!(" + cond + ")) @ fprintf(stderr, \"Assertion failed!\\n\"); exit(1); `")
+            return "0"
+        }
+        if name == "assert_eq" && ac >= 2 {
+            let a0 = self.child_at(nid, 0)
+            let a1 = self.child_at(nid, 1)
+            let lval = self.gen_expr(a0)
+            let rval = self.gen_expr(a1)
+            if btype_is_str(self.node_types.get(a0)) {
+                self.wcl("if (arx_str_compare(" + lval + ", " + rval + ") != 0) @ fprintf(stderr, \"assert_eq failed\\n\"); exit(1); `")
+            } else {
+                self.wcl("if ((" + lval + ") != (" + rval + ")) @ fprintf(stderr, \"assert_eq failed\\n\"); exit(1); `")
+            }
+            return "0"
+        }
+        if name == "read_line" || name == "input" {
+            let tmp = self.next_tmp()
+            if ac > 0 {
+                let pv = self.gen_expr(self.child_at(nid, 0))
+                self.wl("const char* " + tmp + " = arx_input(" + pv + ");")
+            } else {
+                self.wl("const char* " + tmp + " = arx_readln();")
+            }
+            return tmp
+        }
+        if name == "to_string" && ac >= 1 {
+            let a0 = self.child_at(nid, 0)
+            return self.emit_cast_to_str(self.node_types.get(a0), self.gen_expr(a0))
+        }
+        if name == "parse_int" && ac >= 1 {
+            let av = self.gen_expr(self.child_at(nid, 0))
+            return "arx_str_to_i64(" + av + ")"
+        }
+        if name == "parse_float" && ac >= 1 {
+            let av = self.gen_expr(self.child_at(nid, 0))
+            return "arx_str_to_f64(" + av + ")"
+        }
+        if name == "chr" && ac >= 1 {
+            let av = self.gen_expr(self.child_at(nid, 0))
+            return "__arx_byte_chr(" + av + ")"
+        }
+        if name == "ord" && ac >= 1 {
+            let av = self.gen_expr(self.child_at(nid, 0))
+            return "((int64_t)(unsigned char)(" + av + "))"
+        }
+        if name == "len" && ac >= 1 {
+            let a0 = self.child_at(nid, 0)
+            let at = btype_norm(self.node_types.get(a0))
+            if btype_is_str(at) { return "arx_str_len(" + self.gen_expr(a0) + ")" }
+            if btype_is_fixed_arr(at) { return "((int64_t)" + (btype_arr_len(at) as str) + "LL)" }
+            let addr = self.emit_lvalue_addr(a0, at)
+            return "Arx_" + btype_mangle(at) + "_len(" + addr + ")"
+        }
+        if name == "arx_free" && ac >= 1 {
+            self.wl("arx_free((void*)(" + self.gen_expr(self.child_at(nid, 0)) + "));")
+            return "0"
+        }
+        if name == "abs" && ac >= 1 {
+            let a0 = self.child_at(nid, 0)
+            let av = self.gen_expr(a0)
+            if btype_is_float(self.node_types.get(a0)) { return "fabs((double)(" + av + "))" }
+            return "((int64_t)llabs((long long)(" + av + ")))"
+        }
+        if (name == "min" || name == "max") && ac >= 2 {
+            let t0 = self.next_tmp()
+            let t1 = self.next_tmp()
+            let a0 = self.child_at(nid, 0)
+            let vt = btype_norm(self.node_types.get(a0))
+            let ct = btype_to_c(vt)
+            let v0 = self.gen_expr(a0)
+            let v1 = self.gen_expr(self.child_at(nid, 1))
+            self.wl(ct + " " + t0 + " = " + v0 + "; " + ct + " " + t1 + " = " + v1 + ";")
+            if name == "min" { return "((" + t0 + " < " + t1 + ") ? " + t0 + " : " + t1 + ")" }
+            return "((" + t0 + " > " + t1 + ") ? " + t0 + " : " + t1 + ")"
+        }
+        if ac >= 1 {
+            // Math funcs: sqrt, sin, cos, tan, floor, ceil, round, log, exp, pow
+            let v0 = self.gen_expr(self.child_at(nid, 0))
+            if name == "pow" && ac >= 2 {
+                let v1 = self.gen_expr(self.child_at(nid, 1))
+                return "pow((double)(" + v0 + "), (double)(" + v1 + "))"
+            }
+            return name + "((double)(" + v0 + "))"
+        }
+        return "0"
+    }
+
+    priv fn gen_str_method_call(nid: i64, mname: str, recv: str, ret_t: str) -> str {
+        let ac = self.child_count(nid)
+        if mname == "len" || mname == "length" { return "arx_str_len(" + recv + ")" }
+        if mname == "is_empty" { return "(arx_str_len(" + recv + ") == 0)" }
+        if mname == "to_i64" { return "arx_str_to_i64(" + recv + ")" }
+        if mname == "to_f64" { return "arx_str_to_f64(" + recv + ")" }
+        if mname == "trim" { return "arx_str_trim(" + recv + ")" }
+        if mname == "to_upper" { return "arx_str_to_upper(" + recv + ")" }
+        if mname == "to_lower" { return "arx_str_to_lower(" + recv + ")" }
+        if mname == "byte_at" && ac >= 1 {
+            return "arx_str_byte_at(" + recv + ", " + self.gen_expr(self.child_at(nid, 0)) + ")"
+        }
+        if (mname == "char_at" || mname == "get") && ac >= 1 {
+            return "((char)arx_str_byte_at(" + recv + ", " + self.gen_expr(self.child_at(nid, 0)) + "))"
+        }
+        if (mname == "slice" || mname == "substr") && ac >= 2 {
+            let a = self.gen_expr(self.child_at(nid, 0))
+            let b = self.gen_expr(self.child_at(nid, 1))
+            let tmp = self.next_tmp()
+            self.wl("const char* " + tmp + " = __arx_bstr_slice(" + recv + ", " + a + ", " + b + ");")
+            return tmp
+        }
+        if mname == "contains" { if ac >= 1 { return "arx_str_contains(" + recv + ", " + self.gen_expr(self.child_at(nid, 0)) + ")" } }
+        if mname == "starts_with" { if ac >= 1 { return "arx_str_starts_with(" + recv + ", " + self.gen_expr(self.child_at(nid, 0)) + ")" } }
+        if mname == "ends_with" { if ac >= 1 { return "arx_str_ends_with(" + recv + ", " + self.gen_expr(self.child_at(nid, 0)) + ")" } }
+        if mname == "index_of" { if ac >= 1 { return "arx_str_find(" + recv + ", " + self.gen_expr(self.child_at(nid, 0)) + ")" } }
+        if mname == "replace" && ac >= 2 {
+            let o = self.gen_expr(self.child_at(nid, 0))
+            let n = self.gen_expr(self.child_at(nid, 1))
+            let tmp = self.next_tmp()
+            self.wl("const char* " + tmp + " = arx_str_replace(" + recv + ", " + o + ", " + n + ");")
+            return tmp
+        }
+        if mname == "repeat" && ac >= 1 {
+            return "arx_str_repeat(" + recv + ", " + self.gen_expr(self.child_at(nid, 0)) + ")"
+        }
+        if mname == "split" && ac >= 1 {
+            let d = self.gen_expr(self.child_at(nid, 0))
+            let tmp = self.next_tmp()
+            self.wl("Arx_List_str " + tmp + " = __arx_bstr_split(" + recv + ", " + d + ");")
+            return tmp
+        }
+        return "0"
+    }
+}

@@ -689,7 +689,8 @@ class SemanticAnalyzer:
         # Analyze methods
         for method in node.methods:
             method_scope = Scope(parent=self.current_scope, kind="method")
-            method_scope.define(Symbol("self", cls_type, True, method))
+            if not getattr(method, "is_static", False):
+                method_scope.define(Symbol("self", cls_type, True, method))
             prev_scope = self.current_scope
             self.current_scope = method_scope
             self.visit_function_def(method)
@@ -1114,9 +1115,11 @@ class SemanticAnalyzer:
 
         # Arithmetic
         if node.op in ("+", "-", "*", "/", "%", "**"):
-            if self.freestanding and node.op == "+" and (left_type == TYPE_STR or right_type == TYPE_STR):
-                self.error("Dynamic string concatenation is prohibited in freestanding bare-metal mode because it requires heap allocation.", node)
-            if left_type == TYPE_F64 or right_type == TYPE_F64:
+            if node.op == "+" and (left_type == TYPE_STR or right_type == TYPE_STR):
+                if self.freestanding:
+                    self.error("Dynamic string concatenation is prohibited in freestanding bare-metal mode because it requires heap allocation.", node)
+                res_type = TYPE_STR
+            elif left_type == TYPE_F64 or right_type == TYPE_F64:
                 res_type = TYPE_F64
             elif left_type == TYPE_F32 or right_type == TYPE_F32:
                 res_type = TYPE_F32
@@ -1259,28 +1262,39 @@ class SemanticAnalyzer:
             if (name.startswith("arx_list_") or name.startswith("arx_str_") or 
                 name.startswith("arx_map_") or name.startswith("arx_set_") or 
                 name.startswith("arx_stack_") or name.startswith("arx_queue_") or 
-                name.startswith("arx_deque_") or name.startswith("arx_bytebuf_")):
+                name.startswith("arx_deque_") or name.startswith("arx_bytebuf_") or
+                name.startswith("arx_file_") or name.startswith("arx_dir_") or
+                name.startswith("arx_proc_") or name.startswith("arx_env_") or
+                name.startswith("arx_args_") or name.startswith("arx_path_") or
+                name.startswith("arx_byte_") or name.startswith("arx_os_")):
                 for arg in node.args:
                     self.analyze_node(arg)
                 if name in (
                     "arx_str_trim", "arx_str_to_upper", "arx_str_to_lower", "arx_str_replace",
-                    "arx_str_copy", "arx_str_slice", "arx_str_join", "arx_str_repeat",
-                    "arx_str_concat", "arx_str_char_at", "arx_list_get_str", "arx_list_pop_str",
+                    "arx_str_copy", "arx_str_slice", "arx_str_substr", "arx_str_join", "arx_str_repeat",
+                    "arx_str_concat", "arx_str_char_at", "arx_byte_to_str", "arx_bytebuf_to_str",
+                    "arx_list_get_str", "arx_list_pop_str",
                     "arx_list_swap_remove_str", "arx_list_remove_at_str",
-                    "arx_map_get_str_str", "arx_map_get_i64_str", "arx_set_get_str"
+                    "arx_map_get_str_str", "arx_map_get_i64_str", "arx_set_get_str",
+                    "arx_file_read_to_string", "arx_proc_run_capture", "arx_env_get",
+                    "arx_env_cwd", "arx_os_name", "arx_args_get",
+                    "arx_path_join", "arx_path_dirname", "arx_path_basename"
                 ):
                     return TYPE_STR
                 elif name in (
                     "arx_str_contains", "arx_str_starts_with", "arx_str_ends_with",
                     "arx_list_contains", "arx_list_contains_str", "arx_map_has", "arx_map_has_str",
                     "arx_set_add", "arx_set_has", "arx_set_remove",
-                    "arx_set_add_str", "arx_set_has_str", "arx_set_remove_str"
+                    "arx_set_add_str", "arx_set_has_str", "arx_set_remove_str",
+                    "arx_file_exists", "arx_file_write_string", "arx_file_append_string",
+                    "arx_file_remove", "arx_file_copy", "arx_dir_exists", "arx_dir_create",
+                    "arx_env_set"
                 ):
                     return TYPE_BOOL
                 elif name in (
                     "arx_list_get_f64", "arx_list_pop_f64",
                     "arx_list_swap_remove_f64", "arx_list_remove_at_f64",
-                    "arx_bytebuf_read_f32", "arx_bytebuf_read_f64"
+                    "arx_bytebuf_read_f32", "arx_bytebuf_read_f64", "arx_str_to_f64"
                 ):
                     return TYPE_F64
                 elif name in (
@@ -1297,7 +1311,8 @@ class SemanticAnalyzer:
                     "arx_deque_push_back", "arx_deque_push_front", "arx_deque_clear", "arx_deque_free",
                     "arx_bytebuf_write_u8", "arx_bytebuf_write_i16_le", "arx_bytebuf_write_i32_le",
                     "arx_bytebuf_write_i64_le", "arx_bytebuf_write_f32_le", "arx_bytebuf_write_f64_le",
-                    "arx_bytebuf_clear", "arx_bytebuf_free"
+                    "arx_bytebuf_write_str", "arx_bytebuf_clear", "arx_bytebuf_free",
+                    "arx_env_exit"
                 ):
                     return TYPE_VOID
                 return TYPE_I64
@@ -1352,6 +1367,28 @@ class SemanticAnalyzer:
                     return e_type
                 else:
                     self.error(f"Enum '{e_name}' has no variant '{v_name}'", node)
+
+            if isinstance(node.callee.object_expr, IdentifierNode) and node.callee.object_expr.name in self.classes:
+                c_name = node.callee.object_expr.name
+                c_type = self.classes[c_name]
+                m_name = node.callee.member
+                arg_types = [self.analyze_node(arg) for arg in node.args]
+                res = c_type.resolve_method(m_name, arg_types)
+                if res:
+                    fn_type, is_pub, mangled_name, method_node = res
+                    if not getattr(method_node, "is_static", False):
+                        self.error(f"Cannot call instance method '{c_name}.{m_name}' statically", node)
+                    if not is_pub and (not self.current_class or self.current_class.name != c_name):
+                        self.error(f"Cannot access private static method '{m_name}' on class '{c_name}'", node)
+                    node.is_static_call = True
+                    node.static_class_name = c_name
+                    node.resolved_mangled_name = mangled_name or f"Arx_{c_name}_{m_name}"
+                    self.node_types[id(node)] = fn_type.return_type
+                    return fn_type.return_type
+                if m_name in c_type.method_overloads or m_name in c_type.methods:
+                    args_str = ", ".join(t.name for t in arg_types)
+                    self.error(f"No matching overload for static method '{c_name}.{m_name}({args_str})'", node)
+                self.error(f"Class '{c_name}' has no static method '{m_name}'", node)
 
             obj_type = self.analyze_node(node.callee.object_expr)
             # Phase 25: SIMD Methods (dot, cross, length, normalize, min, max)
@@ -1474,12 +1511,24 @@ class SemanticAnalyzer:
                 if member in ("trim", "to_upper", "to_lower", "replace"):
                     node.resolved_mangled_name = f"arx_str_{member}"
                     return TYPE_STR
+                elif member in ("slice", "substr"):
+                    node.resolved_mangled_name = "arx_str_slice"
+                    return TYPE_STR
                 elif member in ("contains", "starts_with", "ends_with"):
                     node.resolved_mangled_name = f"arx_str_{member}"
                     return TYPE_BOOL
                 elif member in ("len", "length"):
                     node.resolved_mangled_name = "arx_str_len"
                     return TYPE_I64
+                elif member == "byte_at":
+                    node.resolved_mangled_name = "arx_str_byte_at"
+                    return TYPE_I64
+                elif member == "to_i64":
+                    node.resolved_mangled_name = "arx_str_to_i64"
+                    return TYPE_I64
+                elif member == "to_f64":
+                    node.resolved_mangled_name = "arx_str_to_f64"
+                    return TYPE_F64
                 elif member == "split":
                     node.resolved_mangled_name = "arx_str_split"
                     list_str = self.classes.get("List_str")

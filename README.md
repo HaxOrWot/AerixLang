@@ -15,8 +15,8 @@
 [![Version](https://img.shields.io/badge/version-1.0.91--pre-00DCFF.svg?style=for-the-badge&logo=visualstudiocode)](#)
 [![Backend](https://img.shields.io/badge/backend-ANSI%20C99%20%2F%20GCC-1E90FF.svg?style=for-the-badge&logo=c)](#)
 [![Performance](https://img.shields.io/badge/performance-100%25%20C%20Native-00E676.svg?style=for-the-badge&logo=speedtest)](#)
-[![Tests](https://img.shields.io/badge/test%20suite-183%2F183%20PASS%20(100%25)-00E5FF.svg?style=for-the-badge)](#)
-[![Examples](https://img.shields.io/badge/examples-40%20runnable-FF9100.svg?style=for-the-badge)](#)
+[![Tests](https://img.shields.io/badge/test%20suite-197%2F197%20PASS%20(100%25)-00E5FF.svg?style=for-the-badge)](#)
+[![Examples](https://img.shields.io/badge/examples-41%20files-FF9100.svg?style=for-the-badge)](#)
 [![IDE Support](https://img.shields.io/badge/IDE-Antigravity%20%26%20VS%20Code-7C4DFF.svg?style=for-the-badge)](#)
 
 [Quickstart](#-30-second-interactive-quickstart) • [Interactive Showcase](#-interactive-code-showcase) • [Architecture](#-compiler-architecture) • [Benchmarks](#-scientific-benchmarks) • [Features](#-language-features-at-a-glance) • [Roadmap](#-project-roadmap--implementation-status) • [User Manual (USER.md)](USER.md) • [Master Guide (GUIDE.md)](GUIDE.md)
@@ -57,24 +57,74 @@ fn main() {
 
 ---
 
-## 🚀 30-Second Interactive Quickstart
+## 🚀 30-Second Quickstart
+
+> **Repository Branches:**
+> * **`main`** *(default)* — Minimal self-hosting Aerix compiler tree (`src/bootstrap/` + C bootstrap seed `src/bootstrap/seed/arxc.c`, `stdlib/`, `modules/`, and docs). Builds natively with GCC/Clang alone — **no Python required**.
+> * **`pre`** — Full pre-release repository including the Stage 0 Python compiler (`src/`), bootstrap source (`src/bootstrap/`), automated test suite (`197` tests in `src/tests/`), `41` example files (`examples/`), VS Code / Antigravity extension (`editors/`), installer scripts (`install.ps1` / `install.sh`), LSP, formatter, linter, REPL, and WASM backend.
+> * **`stable`** — Snapshot of the Python-hosted compiler (`main` prior to self-hosting bootstrap).
 
 <details open>
-<summary><b>📥 Option A: Automated One-Line Installer (Recommended)</b></summary>
+<summary><b>🧬 Option A: Self-Hosting Native Compiler (<code>arxc</code> — Zero Python Required, <code>main</code> &amp; <code>pre</code>)</b></summary>
 
 <br>
 
+Only a C99 compiler (`gcc` or `clang`) is needed to bootstrap `arxc` directly from the checked-in C seed (`src/bootstrap/seed/arxc.c`):
+
+**1. Compile the bootstrap seed (`arxc`):**
+```powershell
+# Windows (MinGW / UCRT64 GCC)
+gcc -std=c99 -O2 -Wno-unused-function -I stdlib src/bootstrap/seed/arxc.c -o arxc.exe -lm
+```
+```bash
+# Linux / macOS
+cc -std=c99 -O2 -Wno-unused-function -I stdlib src/bootstrap/seed/arxc.c -o arxc -lm -lpthread
+```
+
+**2. Rebuild the compiler from its own Aerix source (`src/bootstrap/main.arx`):**
+```powershell
+.\arxc.exe build src/bootstrap/main.arx -o arxc_self.exe
+.\arxc_self.exe version
+# Output: Aerix Self-Hosting Bootstrap Compiler (arxc) v0.1.0-bootstrap
+```
+
+**3. Use `arxc` to check, transpile, build, or run Aerix programs:**
+```bash
+arxc run hello.arx                          # Compile and execute immediately (use `-- <args...>` to forward args)
+arxc build hello.arx -o hello               # Build standalone native binary (`-O0`..`-O3`, `--emit-c` keeps C source)
+arxc emit-c hello.arx -o hello.c            # Transpile Aerix source to ANSI C99 without invoking GCC
+arxc check hello.arx                        # Run frontend & semantic analysis only
+arxc hello.arx -o hello                     # Shorthand for `arxc build`
+arxc version                                # Print compiler version
+```
+
+**4. Architecture & Environment Overrides:**
+* `src/bootstrap/` contains the entire self-hosting compiler: `main.arx`, `frontend/` (`tokens.arx`, `lexer.arx`, `ast.arx`, `parser.arx`), `middle/` (`types.arx`, `analyzer.arx`, `paths.arx`), `backend/` (`emitter.arx`, `linker.arx`), and `seed/arxc.c`.
+* `arxc` automatically locates `stdlib/aerix_rt.h` and `modules/` relative to the entry file, current working directory, or executable path. To run `arxc` from outside the repo, optionally set:
+  * `AERIX_STDLIB` (or `AERIX_HOME` / `AERIX_STDLIB_PATH`) — path to `stdlib/`
+  * `AERIX_MODULE_PATH` — path to `modules/` (default libraries like `Math`, `Random`)
+  * `AERIX_CC` (or `CC`) — override the C99 compiler command (defaults to `gcc`)
+
+</details>
+
+<details>
+<summary><b>📥 Option B: Full Toolchain Installer (Stage 0 + Tools — <code>pre</code> branch)</b></summary>
+
+<br>
+
+The full developer toolchain (`arx`, LSP, REPL, formatter, linter, WASM target, examples, and VS Code extension) lives on the [`pre`](https://github.com/HaxOrWot/AerixLang/tree/pre) branch:
+
 **Windows (PowerShell One-Liner):**
 ```powershell
-iwr -useb https://raw.githubusercontent.com/HaxOrWot/AerixLang/main/install.ps1 | iex
+iwr -useb https://raw.githubusercontent.com/HaxOrWot/AerixLang/pre/install.ps1 | iex
 ```
-*(Or run locally: `powershell -ExecutionPolicy Bypass -File .\install.ps1`)*
+*(Or locally on `pre`: `powershell -ExecutionPolicy Bypass -File .\install.ps1`)*
 
 **Linux / macOS (Terminal One-Liner):**
 ```bash
-curl -fsSL https://raw.githubusercontent.com/HaxOrWot/AerixLang/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/HaxOrWot/AerixLang/pre/install.sh | bash
 ```
-*(Or run locally: `chmod +x ./install.sh && ./install.sh`)*
+*(Or locally on `pre`: `chmod +x ./install.sh && ./install.sh`)*
 
 Verify your environment immediately:
 ```bash
@@ -84,11 +134,11 @@ arx doctor
 </details>
 
 <details>
-<summary><b>⚡ Option B: Run Without Installing (Direct CLI)</b></summary>
+<summary><b>⚡ Option C: Run Without Installing (Direct Python CLI — <code>pre</code> branch)</b></summary>
 
 <br>
 
-You can invoke the CLI compiler directly via Python or batch wrapper from the repository root:
+From a checkout of the `pre` branch, invoke the Stage 0 Python CLI directly:
 ```bash
 # Windows
 .\arx.bat run examples\01_hello_world.arx
@@ -100,25 +150,27 @@ python arx.py run examples\01_hello_world.arx
 </details>
 
 <details open>
-<summary><b>🛠️ Option C: Create & Run Your First Program</b></summary>
+<summary><b>🛠️ Option D: Create & Run Your First Program</b></summary>
 
 <br>
 
 1. Create `hello.arx`:
 ```aerix
+import Math, Random
+
 fn main() {
-    println("Hello, World from Aerix Systems Language!")
+    println("Hello, World from Aerix! sqrt(49) = {Math.sqrt(49.0)}")
 }
 ```
 
-2. Compile and run in one step:
+2. Compile and run in one step (using `arxc` on `main`/`pre`, or `arx` on `pre`):
 ```bash
-arx run hello.arx
+./arxc run hello.arx
 ```
 
 3. Build a standalone optimized release binary:
 ```bash
-arx build hello.arx -o hello.exe
+./arxc build hello.arx -O3 -o hello
 ```
 
 </details>
@@ -365,10 +417,10 @@ arx emit-c program.arx
 
 ## 🚦 Project Roadmap & Implementation Status
 
-Aerix is backed by a production-grade automated test suite (**168/168 tests passing**, 100% pass rate) across 25 master implementation phases:
+Aerix is backed by a production-grade automated test suite (**197/197 tests passing**, 100% pass rate on the `pre` branch) across 28 implementation phases, culminating in a self-hosting Aerix compiler (`arxc` in `src/bootstrap/`):
 
 <details open>
-<summary><b>📋 Implementation Status Matrix (23/25 Completed Phases)</b></summary>
+<summary><b>📋 Implementation Status Matrix (28/28 Completed Phases)</b></summary>
 
 <br>
 
@@ -381,7 +433,7 @@ Phase 05: AIR Lowering & Custom Optimizer         ✅ COMPLETE (22/22 tests pass
 Phase 06: C99 Machine Codegen & Linker Orchestr. ✅ COMPLETE (25/25 tests passed)
 Phase 07: Unified Developer CLI (`arx`, `arxc`)  ✅ COMPLETE (Turnkey CLI toolchain)
 Phase 08: Benchmarks & Standard Performance       ✅ COMPLETE (Fibonacci 100.2% C-speed)
-Phase 09: Packaging & VS Code Extension           ✅ COMPLETE (v1.0.90 published)
+Phase 09: Packaging & VS Code Extension           ✅ COMPLETE (v1.0.91-pre VSIX)
 Phase 10: Method & Constructor Overloading        ✅ COMPLETE (Type & arity mangling)
 Phase 11: Reactive Properties & Operator Overload ✅ COMPLETE (prop & op keywords)
 Phase 12: Modern Flow Control & Type Extensions   ✅ COMPLETE (guard, extend, ~>)
@@ -398,6 +450,9 @@ Phase 22: Complete Data Structures Suite          ✅ COMPLETE (Map, Set, Tuples
 Phase 23: Resilient Systems Error Handling       ✅ COMPLETE (try, catch, optional finally, throw)
 Phase 24: Language Ergonomics & Expressions       ✅ COMPLETE (Labeled loops, slices, lambdas, named args)
 Phase 25: Multi-File Modules & Package Integration ✅ COMPLETE (import, multi-module comma imports, from-import syntax, case-sensitive modules, folder bundling, Math & Random stdlib)
+Phase 26: Freestanding Bare-Metal Mode           ✅ COMPLETE (--freestanding bare-metal C99, MMIO, setup/loop)
+Phase 27: Bootstrap Stage 0 Prerequisites        ✅ COMPLETE (OS/FS/Process/CLI args, str ops, ByteBuffer helpers)
+Phase 28: Self-Hosting Bootstrap Compiler (`arxc`)✅ COMPLETE (Stage 2 == Stage 3 byte-for-byte fixed point in src/bootstrap/)
 ```
 
 </details>
@@ -418,6 +473,8 @@ Aerix provides first-class tooling across both **Visual Studio Code** and the **
 
 <br>
 
+*(Available on the [`pre`](https://github.com/HaxOrWot/AerixLang/tree/pre) branch:)*
+
 **Install into Visual Studio Code:**
 ```powershell
 code --install-extension editors/vscode-aerix/aerix-1.0.91-pre.vsix --force
@@ -434,9 +491,9 @@ antigravity --install-extension editors/vscode-aerix/aerix-1.0.91-pre.vsix --for
 
 ## 📚 Documentation & Deep Dive Resources
 
-* 📖 **[USER.md — The Engineering Manual & Full Technical Specification](USER.md)**: Deep architectural reference covering the entire type system, grammar, memory layout, CLI flags, and A-to-Z technical details.
-* 🎓 **[GUIDE.md — The Master Learning Tutorial & Book](GUIDE.md)**: A progressive, beginner-to-advanced 25-chapter walkthrough explaining *Why this? How this?*, common pitfalls, and an exhaustive FAQ.
-* 📂 **[Educational Examples Catalog](examples/)**: 26 runnable programs demonstrating every single feature of Aerix in isolation.
+* 📖 **[USER.md — The Engineering Manual & Full Technical Specification](USER.md)**: Deep architectural reference covering the entire type system, grammar, memory layout, `arx`/`arxc` CLI flags, and A-to-Z technical details.
+* 🎓 **[GUIDE.md — The Master Learning Tutorial & Book](GUIDE.md)**: A progressive, beginner-to-advanced 34-chapter walkthrough explaining *Why this? How this?*, common pitfalls, and an exhaustive FAQ.
+* 📂 **[Educational Examples Catalog (pre branch)](https://github.com/HaxOrWot/AerixLang/tree/pre/examples)**: 41 example files demonstrating Aerix language features and multi-file modules.
 
 ---
 

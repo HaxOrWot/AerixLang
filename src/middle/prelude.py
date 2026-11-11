@@ -172,6 +172,10 @@ class String {
         return arx_str_char_at(self.buf, idx)
     }
 
+    pub fn byte_at(idx: i64) -> i64 {
+        return arx_str_byte_at(self.buf, idx)
+    }
+
     pub fn is_empty() -> bool => self.len == 0
     pub fn as_str() -> str => self.buf
     pub fn length() -> i64 => self.len
@@ -509,9 +513,117 @@ class ByteBuffer {
         return arx_bytebuf_pos(self.buf_handle)
     }
 
+    pub fn write_str(s: str) {
+        arx_bytebuf_write_str(self.buf_handle, s)
+    }
+
+    pub fn to_str() -> str {
+        return arx_bytebuf_to_str(self.buf_handle)
+    }
+
     pub fn free() {
         arx_bytebuf_free(self.buf_handle)
         self.buf_handle = 0
+    }
+}
+
+class File {
+    pub static fn read_to_string(path: str) -> str {
+        return arx_file_read_to_string(path)
+    }
+
+    pub static fn write_string(path: str, content: str) -> bool {
+        return arx_file_write_string(path, content)
+    }
+
+    pub static fn append_string(path: str, content: str) -> bool {
+        return arx_file_append_string(path, content)
+    }
+
+    pub static fn exists(path: str) -> bool {
+        return arx_file_exists(path)
+    }
+
+    pub static fn remove(path: str) -> bool {
+        return arx_file_remove(path)
+    }
+
+    pub static fn copy(src: str, dst: str) -> bool {
+        return arx_file_copy(src, dst)
+    }
+}
+
+class Directory {
+    pub static fn exists(path: str) -> bool {
+        return arx_dir_exists(path)
+    }
+
+    pub static fn create(path: str) -> bool {
+        return arx_dir_create(path)
+    }
+
+    pub static fn list_files(path: str) -> List<str> {
+        let handle = arx_dir_list_files(path)
+        mut list = List<str>()
+        list.data_handle = handle
+        list.length = arx_list_len(handle)
+        return list
+    }
+
+    pub static fn list_dirs(path: str) -> List<str> {
+        let handle = arx_dir_list_dirs(path)
+        mut list = List<str>()
+        list.data_handle = handle
+        list.length = arx_list_len(handle)
+        return list
+    }
+}
+
+class Process {
+    pub static fn execute(cmdline: str) -> i64 {
+        return arx_proc_execute(cmdline)
+    }
+
+    pub static fn run_capture(cmdline: str) -> str {
+        return arx_proc_run_capture(cmdline)
+    }
+}
+
+class Env {
+    pub static fn args() -> List<str> {
+        let handle = arx_args_list()
+        mut list = List<str>()
+        list.data_handle = handle
+        list.length = arx_list_len(handle)
+        return list
+    }
+
+    pub static fn arg_count() -> i64 {
+        return arx_args_count()
+    }
+
+    pub static fn arg(idx: i64) -> str {
+        return arx_args_get(idx)
+    }
+
+    pub static fn get(name: str) -> str {
+        return arx_env_get(name)
+    }
+
+    pub static fn set(name: str, val: str) -> bool {
+        return arx_env_set(name, val)
+    }
+
+    pub static fn cwd() -> str {
+        return arx_env_cwd()
+    }
+
+    pub static fn exit(code: i64) {
+        arx_env_exit(code)
+    }
+
+    pub static fn os_name() -> str {
+        return arx_os_name()
     }
 }
 """

@@ -1,0 +1,133 @@
+// Aerix Bootstrap Compiler — Native C99 Linker & Driver
+// Invokes GCC to compile emitted C99 code against stdlib/aerix_rt.h into native executables.
+
+import "../middle/paths.arx"
+
+pub fn detect_cc() -> str {
+    let env_arx = Env.get("AERIX_CC")
+    if env_arx != "" { return env_arx }
+    let env_cc = Env.get("CC")
+    if env_cc != "" { return env_cc }
+    return "gcc"
+}
+
+pub fn ensure_exe_ext(out_path: str) -> str {
+    if Env.os_name() == "windows" && !out_path.ends_with(".exe") {
+        return out_path + ".exe"
+    }
+    return out_path
+}
+
+pub fn find_stdlib_from(entry_file: str) -> str {
+    let env_std = Env.get("AERIX_STDLIB")
+    if env_std != "" {
+        let p = bpath_normalize(env_std)
+        if File.exists(bpath_join(p, "aerix_rt.h")) { return p }
+    }
+    let env_home = Env.get("AERIX_HOME")
+    if env_home != "" {
+        let p = bpath_join(bpath_normalize(env_home), "stdlib")
+        if File.exists(bpath_join(p, "aerix_rt.h")) { return p }
+    }
+    let d0 = find_stdlib_dir()
+    if File.exists(bpath_join(d0, "aerix_rt.h")) { return d0 }
+    if entry_file != "" {
+        mut cur = bpath_dirname(bpath_normalize(entry_file))
+        mut steps = 0
+        while steps < 10 && cur != "" {
+            let cand1 = bpath_join(cur, "stdlib")
+            if File.exists(bpath_join(cand1, "aerix_rt.h")) { return cand1 }
+            if File.exists(bpath_join(cur, "aerix_rt.h")) { return cur }
+            let par = bpath_dirname(cur)
+            if par == cur { break }
+            cur = par
+            steps = steps + 1
+        }
+    }
+    mut cwd_cur = bpath_normalize(Env.cwd())
+    mut steps2 = 0
+    while steps2 < 10 && cwd_cur != "" {
+        let cand2 = bpath_join(cwd_cur, "stdlib")
+        if File.exists(bpath_join(cand2, "aerix_rt.h")) { return cand2 }
+        let par2 = bpath_dirname(cwd_cur)
+        if par2 == cwd_cur { break }
+        cwd_cur = par2
+        steps2 = steps2 + 1
+    }
+    return d0
+}
+
+pub fn link_c_to_exe(c_source: str, c_path: str, exe_path: str, opt_flag: str, keep_c: bool) -> i64 {
+    return link_c_to_exe_from(c_source, c_path, exe_path, opt_flag, keep_c, "")
+}
+
+pub fn link_c_to_exe_from(c_source: str, c_path: str, exe_path: str, opt_flag: str, keep_c: bool, entry_file: str) -> i64 {
+    let c_dir = bpath_dirname(c_path)
+    if c_dir != "" && c_dir != "." {
+        Directory.create(c_dir)
+    }
+    let exe_dir = bpath_dirname(exe_path)
+    if exe_dir != "" && exe_dir != "." {
+        Directory.create(exe_dir)
+    }
+
+    if !File.write_string(c_path, c_source) {
+        eprintln("LINKER ERROR: Failed to write generated C file: " + c_path)
+        return 1
+    }
+
+    let stdlib_dir = find_stdlib_from(entry_file)
+    let rt_src = bpath_join(stdlib_dir, "aerix_rt.h")
+    let rt_dst = bpath_join(c_dir, "aerix_rt.h")
+    mut copied_rt = false
+    if rt_src != rt_dst && File.exists(rt_src) {
+        if File.copy(rt_src, rt_dst) {
+            copied_rt = true
+        }
+    }
+
+    let cc = detect_cc()
+    let q = "\""
+    mut libs = " -lm"
+    if Env.os_name() != "windows" {
+        libs = " -lm -lpthread"
+    }
+
+    let bb = ByteBuffer()
+    bb.write_str(cc)
+    bb.write_str(" -std=c99 ")
+    bb.write_str(opt_flag)
+    bb.write_str(" -Wno-unused-function -I")
+    bb.write_str(q)
+    bb.write_str(c_dir)
+    bb.write_str(q)
+    bb.write_str(" -I")
+    bb.write_str(q)
+    bb.write_str(stdlib_dir)
+    bb.write_str(q)
+    bb.write_str(" ")
+    bb.write_str(q)
+    bb.write_str(c_path)
+    bb.write_str(q)
+    bb.write_str(" -o ")
+    bb.write_str(q)
+    bb.write_str(exe_path)
+    bb.write_str(q)
+    bb.write_str(libs)
+    let cmd = bb.to_str()
+    bb.free()
+
+    let rc = Process.execute(cmd)
+
+    if copied_rt {
+        File.remove(rt_dst)
+    }
+    if !keep_c {
+        File.remove(c_path)
+    }
+    if rc != 0 {
+        eprintln("LINKER ERROR: C compiler failed with exit code " + (rc as str))
+        return rc
+    }
+    return 0
+}

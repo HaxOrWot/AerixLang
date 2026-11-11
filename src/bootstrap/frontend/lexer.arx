@@ -1,0 +1,410 @@
+// Aerix Bootstrap Compiler — Lexical Scanner
+// Scans Aerix source into a TokenStream with coordinate tracking and ASI newlines.
+
+import "./tokens.arx"
+
+pub class TokenStream {
+    pub kinds: List<i64>
+    pub vals: List<str>
+    pub lines: List<i64>
+    pub cols: List<i64>
+    pub count: i64
+
+    init() {
+        self.kinds = List<i64>()
+        self.vals = List<str>()
+        self.lines = List<i64>()
+        self.cols = List<i64>()
+        self.count = 0
+    }
+}
+
+pub class Lexer {
+    pub src: str
+    pub filename: str
+    pub length: i64
+    pub pos: i64
+    pub line: i64
+    pub col: i64
+    pub kinds: List<i64>
+    pub vals: List<str>
+    pub lines: List<i64>
+    pub cols: List<i64>
+    pub count: i64
+
+    init(source: str, filename: str) {
+        self.src = source
+        self.filename = filename
+        self.length = source.len()
+        self.pos = 0
+        self.line = 1
+        self.col = 1
+        self.kinds = List<i64>()
+        self.vals = List<str>()
+        self.lines = List<i64>()
+        self.cols = List<i64>()
+        self.count = 0
+    }
+
+    priv fn push_tok(kind: i64, val: str, ln: i64, cl: i64) {
+        self.kinds.push(kind)
+        self.vals.push(val)
+        self.lines.push(ln)
+        self.cols.push(cl)
+        self.count = self.count + 1
+    }
+
+    priv fn peek_at(offset: i64) -> i64 {
+        let idx = self.pos + offset
+        if idx < self.length {
+            return self.src.byte_at(idx)
+        }
+        return 0
+    }
+
+    priv fn advance_byte() -> i64 {
+        if self.pos >= self.length { return 0 }
+        let b = self.src.byte_at(self.pos)
+        self.pos = self.pos + 1
+        if b == 10 {
+            self.line = self.line + 1
+            self.col = 1
+        } else {
+            self.col = self.col + 1
+        }
+        return b
+    }
+
+    priv fn match_byte(expected: i64) -> bool {
+        if self.pos >= self.length { return false }
+        if self.src.byte_at(self.pos) != expected { return false }
+        self.advance_byte()
+        return true
+    }
+
+    priv fn last_kind() -> i64 {
+        if self.count == 0 { return TK_EOF() }
+        return self.kinds.get(self.count - 1)
+    }
+
+    priv fn skip_block_comment(start_line: i64, start_col: i64) {
+        self.advance_byte()
+        mut depth = 1
+        while depth > 0 {
+            if self.pos >= self.length {
+                eprintln("LEXER ERROR: Unterminated block comment")
+                Env.exit(1)
+            }
+            let b0 = self.peek_at(0)
+            let b1 = self.peek_at(1)
+            if b0 == 47 && b1 == 42 {
+                self.advance_byte()
+                self.advance_byte()
+                depth = depth + 1
+            } else if b0 == 42 && b1 == 47 {
+                self.advance_byte()
+                self.advance_byte()
+                depth = depth - 1
+            } else {
+                self.advance_byte()
+            }
+        }
+    }
+
+    priv fn scan_identifier(start_pos: i64, start_line: i64, start_col: i64) {
+        while self.pos < self.length && is_alnum_byte(self.src.byte_at(self.pos)) {
+            self.advance_byte()
+        }
+        let word = self.src.slice(start_pos, self.pos)
+        let kind = lookup_keyword(word)
+        self.push_tok(kind, word, start_line, start_col)
+    }
+
+    priv fn scan_number(first_b: i64, start_pos: i64, start_line: i64, start_col: i64) {
+        // Hex / Binary / Octal
+        if first_b == 48 && self.pos < self.length {
+            let p = self.peek_at(0)
+            if p == 120 || p == 88 {
+                self.advance_byte()
+                mut acc: i64 = 0
+                while self.pos < self.length {
+                    let d = self.peek_at(0)
+                    if d >= 48 && d <= 57 {
+                        acc = acc * 16 + (d - 48)
+                        self.advance_byte()
+                    } else if d >= 65 && d <= 70 {
+                        acc = acc * 16 + (d - 55)
+                        self.advance_byte()
+                    } else if d >= 97 && d <= 102 {
+                        acc = acc * 16 + (d - 87)
+                        self.advance_byte()
+                    } else if d == 95 {
+                        self.advance_byte()
+                    } else {
+                        break
+                    }
+                }
+                self.push_tok(TK_INT(), "" + acc, start_line, start_col)
+                return
+            } else if p == 98 || p == 66 {
+                self.advance_byte()
+                mut acc: i64 = 0
+                while self.pos < self.length {
+                    let d = self.peek_at(0)
+                    if d == 48 || d == 49 {
+                        acc = acc * 2 + (d - 48)
+                        self.advance_byte()
+                    } else if d == 95 {
+                        self.advance_byte()
+                    } else {
+                        break
+                    }
+                }
+                self.push_tok(TK_INT(), "" + acc, start_line, start_col)
+                return
+            } else if p == 111 || p == 79 {
+                self.advance_byte()
+                mut acc: i64 = 0
+                while self.pos < self.length {
+                    let d = self.peek_at(0)
+                    if d >= 48 && d <= 55 {
+                        acc = acc * 8 + (d - 48)
+                        self.advance_byte()
+                    } else if d == 95 {
+                        self.advance_byte()
+                    } else {
+                        break
+                    }
+                }
+                self.push_tok(TK_INT(), "" + acc, start_line, start_col)
+                return
+            }
+        }
+
+        // Decimal int or float
+        while self.pos < self.length && (is_digit_byte(self.peek_at(0)) || self.peek_at(0) == 95) {
+            self.advance_byte()
+        }
+        if self.peek_at(0) == 46 && self.peek_at(1) != 46 {
+            self.advance_byte()
+            while self.pos < self.length && (is_digit_byte(self.peek_at(0)) || self.peek_at(0) == 95) {
+                self.advance_byte()
+            }
+            if self.peek_at(0) == 101 || self.peek_at(0) == 69 {
+                self.advance_byte()
+                if self.peek_at(0) == 43 || self.peek_at(0) == 45 {
+                    self.advance_byte()
+                }
+                while self.pos < self.length && is_digit_byte(self.peek_at(0)) {
+                    self.advance_byte()
+                }
+            }
+            let raw_f = self.src.slice(start_pos, self.pos).replace("_", "")
+            self.push_tok(TK_FLOAT(), raw_f, start_line, start_col)
+        } else {
+            let raw_i = self.src.slice(start_pos, self.pos).replace("_", "")
+            self.push_tok(TK_INT(), raw_i, start_line, start_col)
+        }
+    }
+
+    priv fn scan_string(start_line: i64, start_col: i64) {
+        let bb = ByteBuffer()
+        mut has_interp = false
+        while true {
+            if self.pos >= self.length || self.peek_at(0) == 10 {
+                eprintln("LEXER ERROR: Unterminated string literal")
+                Env.exit(1)
+            }
+            let ch = self.advance_byte()
+            if ch == 34 {
+                break
+            }
+            if ch == 92 {
+                let esc = self.advance_byte()
+                if esc == 110 {
+                    bb.write_u8(10)
+                } else if esc == 116 {
+                    bb.write_u8(9)
+                } else if esc == 114 {
+                    bb.write_u8(13)
+                } else if esc == 92 {
+                    bb.write_u8(92)
+                } else if esc == 34 {
+                    bb.write_u8(34)
+                } else if esc == 123 {
+                    bb.write_u8(92)
+                    bb.write_u8(123)
+                } else if esc == 125 {
+                    bb.write_u8(92)
+                    bb.write_u8(125)
+                } else {
+                    bb.write_u8(esc)
+                }
+            } else {
+                if ch == 123 {
+                    has_interp = true
+                }
+                bb.write_u8(ch)
+            }
+        }
+        let s = bb.to_str()
+        bb.free()
+        if has_interp {
+            self.push_tok(TK_STR_INTERP(), s, start_line, start_col)
+        } else {
+            self.push_tok(TK_STR(), s, start_line, start_col)
+        }
+    }
+
+    priv fn scan_char(start_line: i64, start_col: i64) {
+        if self.pos >= self.length || self.peek_at(0) == 10 {
+            eprintln("LEXER ERROR: Unterminated char literal")
+            Env.exit(1)
+        }
+        // Check lifetime/loop label: 'ident (not followed by ')
+        if is_alpha_byte(self.peek_at(0)) && self.peek_at(1) != 39 {
+            let lbl_start = self.pos - 1
+            while self.pos < self.length && is_alnum_byte(self.peek_at(0)) {
+                self.advance_byte()
+            }
+            let lbl = self.src.slice(lbl_start, self.pos)
+            self.push_tok(TK_LABEL(), lbl, start_line, start_col)
+            return
+        }
+        mut ch = self.advance_byte()
+        if ch == 92 {
+            let esc = self.advance_byte()
+            if esc == 110 { ch = 10 } else if esc == 116 { ch = 9 } else if esc == 114 { ch = 13 } else { ch = esc }
+        }
+        if !self.match_byte(39) {
+            eprintln("LEXER ERROR: Unterminated char literal")
+            Env.exit(1)
+        }
+        let bb = ByteBuffer()
+        bb.write_u8(ch)
+        let s = bb.to_str()
+        bb.free()
+        self.push_tok(TK_CHAR(), s, start_line, start_col)
+    }
+
+    pub fn tokenize() -> TokenStream {
+        while self.pos < self.length {
+            let sl = self.line
+            let sc = self.col
+            let sp = self.pos
+            let ch = self.advance_byte()
+
+            if ch == 32 || ch == 9 || ch == 13 {
+                continue
+            }
+            if ch == 10 {
+                if self.count > 0 && can_terminate_stmt(self.last_kind()) {
+                    self.push_tok(TK_NEWLINE(), "\n", sl, sc)
+                }
+                continue
+            }
+            if ch == 47 {
+                if self.peek_at(0) == 47 {
+                    while self.pos < self.length && self.peek_at(0) != 10 {
+                        self.advance_byte()
+                    }
+                    continue
+                } else if self.peek_at(0) == 42 {
+                    self.skip_block_comment(sl, sc)
+                    continue
+                } else if self.match_byte(61) {
+                    self.push_tok(TK_SLASH_EQ(), "/=", sl, sc)
+                    continue
+                } else {
+                    self.push_tok(TK_SLASH(), "/", sl, sc)
+                    continue
+                }
+            }
+            if is_alpha_byte(ch) {
+                self.scan_identifier(sp, sl, sc)
+                continue
+            }
+            if is_digit_byte(ch) {
+                self.scan_number(ch, sp, sl, sc)
+                continue
+            }
+            if ch == 34 {
+                self.scan_string(sl, sc)
+                continue
+            }
+            if ch == 39 {
+                self.scan_char(sl, sc)
+                continue
+            }
+
+            if ch == 45 {
+                if self.match_byte(62) { self.push_tok(TK_ARROW(), "->", sl, sc) } else if self.match_byte(61) { self.push_tok(TK_MINUS_EQ(), "-=", sl, sc) } else { self.push_tok(TK_MINUS(), "-", sl, sc) }
+            } else if ch == 61 {
+                if self.match_byte(61) { self.push_tok(TK_EQ_EQ(), "==", sl, sc) } else if self.match_byte(62) { self.push_tok(TK_FAT_ARROW(), "=>", sl, sc) } else { self.push_tok(TK_EQUALS(), "=", sl, sc) }
+            } else if ch == 124 {
+                if self.match_byte(62) { self.push_tok(TK_PIPE(), "|>", sl, sc) } else if self.match_byte(124) { self.push_tok(TK_OR_OR(), "||", sl, sc) } else { self.push_tok(TK_PIPE_CHAR(), "|", sl, sc) }
+            } else if ch == 33 {
+                if self.match_byte(61) { self.push_tok(TK_NOT_EQ(), "!=", sl, sc) } else { self.push_tok(TK_NOT(), "!", sl, sc) }
+            } else if ch == 60 {
+                if self.match_byte(61) { self.push_tok(TK_LTE(), "<=", sl, sc) } else if self.match_byte(60) { self.push_tok(TK_LSHIFT(), "<<", sl, sc) } else { self.push_tok(TK_LT(), "<", sl, sc) }
+            } else if ch == 62 {
+                if self.match_byte(61) { self.push_tok(TK_GTE(), ">=", sl, sc) } else if self.match_byte(62) { self.push_tok(TK_RSHIFT(), ">>", sl, sc) } else { self.push_tok(TK_GT(), ">", sl, sc) }
+            } else if ch == 43 {
+                if self.match_byte(61) { self.push_tok(TK_PLUS_EQ(), "+=", sl, sc) } else { self.push_tok(TK_PLUS(), "+", sl, sc) }
+            } else if ch == 42 {
+                if self.match_byte(42) { self.push_tok(TK_POWER(), "**", sl, sc) } else if self.match_byte(61) { self.push_tok(TK_STAR_EQ(), "*=", sl, sc) } else { self.push_tok(TK_STAR(), "*", sl, sc) }
+            } else if ch == 37 {
+                if self.match_byte(61) { self.push_tok(TK_PERCENT_EQ(), "%=", sl, sc) } else { self.push_tok(TK_PERCENT(), "%", sl, sc) }
+            } else if ch == 38 {
+                if self.match_byte(38) { self.push_tok(TK_AND_AND(), "&&", sl, sc) } else { self.push_tok(TK_AMP(), "&", sl, sc) }
+            } else if ch == 94 {
+                self.push_tok(TK_CARET(), "^", sl, sc)
+            } else if ch == 126 {
+                if self.match_byte(62) { self.push_tok(TK_CASCADE(), "~>", sl, sc) } else { self.push_tok(TK_TILDE(), "~", sl, sc) }
+            } else if ch == 46 {
+                if self.match_byte(46) {
+                    if self.match_byte(61) { self.push_tok(TK_DOT_DOT_EQ(), "..=", sl, sc) } else { self.push_tok(TK_DOT_DOT(), "..", sl, sc) }
+                } else {
+                    self.push_tok(TK_DOT(), ".", sl, sc)
+                }
+            } else if ch == 63 {
+                if self.match_byte(63) { self.push_tok(TK_QQ(), "??", sl, sc) } else if self.match_byte(46) { self.push_tok(TK_QDOT(), "?.", sl, sc) } else { self.push_tok(TK_QUESTION(), "?", sl, sc) }
+            } else if ch == 40 {
+                self.push_tok(TK_LPAREN(), "(", sl, sc)
+            } else if ch == 41 {
+                self.push_tok(TK_RPAREN(), ")", sl, sc)
+            } else if ch == 123 {
+                let bb_lb = ByteBuffer()
+                bb_lb.write_u8(123)
+                self.push_tok(TK_LBRACE(), bb_lb.to_str(), sl, sc)
+                bb_lb.free()
+            } else if ch == 125 {
+                let bb_rb = ByteBuffer()
+                bb_rb.write_u8(125)
+                self.push_tok(TK_RBRACE(), bb_rb.to_str(), sl, sc)
+                bb_rb.free()
+            } else if ch == 91 {
+                self.push_tok(TK_LBRACKET(), "[", sl, sc)
+            } else if ch == 93 {
+                self.push_tok(TK_RBRACKET(), "]", sl, sc)
+            } else if ch == 44 {
+                self.push_tok(TK_COMMA(), ",", sl, sc)
+            } else if ch == 58 {
+                self.push_tok(TK_COLON(), ":", sl, sc)
+            } else if ch == 59 {
+                self.push_tok(TK_SEMICOLON(), ";", sl, sc)
+            } else if ch == 35 {
+                self.push_tok(TK_HASH(), "#", sl, sc)
+            }
+        }
+
+        self.push_tok(TK_EOF(), "", self.line, self.col)
+        let mut ts = TokenStream()
+        ts.kinds = self.kinds
+        ts.vals = self.vals
+        ts.lines = self.lines
+        ts.cols = self.cols
+        ts.count = self.count
+        return ts
+    }
+}

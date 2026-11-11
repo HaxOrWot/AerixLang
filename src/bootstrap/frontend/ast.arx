@@ -1,0 +1,75 @@
+// Aerix Bootstrap Compiler — Flat AST Node Definitions
+// Every AST node lives in parallel index-based arena arrays inside Parser.
+
+// Declarations (1..19)
+pub fn NK_GROUP() -> i64 { return 1 }
+pub fn NK_FN_DEF() -> i64 { return 2 }
+pub fn NK_PARAM() -> i64 { return 3 }
+pub fn NK_CLASS_DEF() -> i64 { return 4 }
+pub fn NK_FIELD_DEF() -> i64 { return 5 }
+pub fn NK_INIT_DEF() -> i64 { return 6 }
+pub fn NK_DROP_DEF() -> i64 { return 7 }
+pub fn NK_ENUM_DEF() -> i64 { return 8 }
+pub fn NK_ENUM_VAR() -> i64 { return 9 }
+pub fn NK_EXTEND_DEF() -> i64 { return 10 }
+pub fn NK_CINCLUDE() -> i64 { return 11 }
+pub fn NK_CEXTERN() -> i64 { return 12 }
+pub fn NK_VAR_DECL_GLOBAL() -> i64 { return 13 }
+
+// Statements (20..49)
+pub fn NK_BLOCK() -> i64 { return 20 }
+pub fn NK_VAR_DECL() -> i64 { return 21 }
+pub fn NK_ASSIGN() -> i64 { return 22 }
+pub fn NK_IF() -> i64 { return 23 }
+pub fn NK_WHILE() -> i64 { return 24 }
+pub fn NK_FOR() -> i64 { return 25 }
+pub fn NK_LOOP() -> i64 { return 26 }
+pub fn NK_BREAK() -> i64 { return 27 }
+pub fn NK_CONTINUE() -> i64 { return 28 }
+pub fn NK_RETURN() -> i64 { return 29 }
+pub fn NK_MATCH() -> i64 { return 30 }
+pub fn NK_MATCH_CASE() -> i64 { return 31 }
+pub fn NK_DEFER() -> i64 { return 32 }
+pub fn NK_GUARD() -> i64 { return 33 }
+pub fn NK_TRY_CATCH() -> i64 { return 34 }
+pub fn NK_THROW() -> i64 { return 35 }
+pub fn NK_EXPR_STMT() -> i64 { return 36 }
+pub fn NK_TUPLE_DESTR() -> i64 { return 37 }
+
+// Expressions (50..89)
+pub fn NK_INT_LIT() -> i64 { return 50 }
+pub fn NK_FLOAT_LIT() -> i64 { return 51 }
+pub fn NK_STR_LIT() -> i64 { return 52 }
+pub fn NK_STR_INTERP() -> i64 { return 53 }
+pub fn NK_CHAR_LIT() -> i64 { return 54 }
+pub fn NK_BOOL_LIT() -> i64 { return 55 }
+pub fn NK_NULL_LIT() -> i64 { return 56 }
+pub fn NK_IDENT() -> i64 { return 57 }
+pub fn NK_BIN_OP() -> i64 { return 58 }
+pub fn NK_UNARY_OP() -> i64 { return 59 }
+pub fn NK_CALL() -> i64 { return 60 }
+pub fn NK_MEMBER() -> i64 { return 61 }
+pub fn NK_INDEX() -> i64 { return 62 }
+pub fn NK_RANGE() -> i64 { return 63 }
+pub fn NK_CAST() -> i64 { return 64 }
+pub fn NK_SIZEOF() -> i64 { return 65 }
+pub fn NK_FIXED_ARR() -> i64 { return 66 }
+pub fn NK_FIXED_REPEAT() -> i64 { return 67 }
+pub fn NK_TUPLE_LIT() -> i64 { return 68 }
+pub fn NK_PIPELINE() -> i64 { return 69 }
+pub fn NK_CASCADE() -> i64 { return 70 }
+pub fn NK_NEW() -> i64 { return 71 }
+pub fn NK_GENERIC_CALL() -> i64 { return 72 }
+pub fn NK_NAMED_ARG() -> i64 { return 73 }
+
+// Modifier / Flag bitmasks encoded in int_a
+pub fn FLAG_PUB() -> i64 { return 1 }
+pub fn FLAG_STATIC() -> i64 { return 2 }
+pub fn FLAG_MUT() -> i64 { return 4 }
+pub fn FLAG_INCLUSIVE() -> i64 { return 8 }
+pub fn FLAG_PACKED() -> i64 { return 16 }
+
+pub fn has_flag(flags: i64, bit: i64) -> bool {
+    if bit <= 0 { return false }
+    return (flags / bit) % 2 == 1
+}
