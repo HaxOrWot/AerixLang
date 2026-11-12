@@ -84,7 +84,29 @@ pub class JsonBuf {
     pub fn colon() { self.bb.write_u8(58) }
     pub fn raw(s: str) { self.bb.write_str(s) }
     pub fn str_val(s: str) { json_quote_into(self.bb, s) }
-    pub fn int_val(v: i64) { self.bb.write_str("" + v) }
+    priv fn write_pos_i64(val: i64) {
+        if val >= 10 {
+            self.write_pos_i64(val / 10)
+        }
+        self.bb.write_u8(48 + (val % 10))
+    }
+
+    pub fn int_val(v: i64) {
+        if v >= 0 && v < 10 {
+            self.bb.write_u8(48 + v)
+            return
+        }
+        if v < 0 {
+            self.bb.write_u8(45)
+            if v < -9223372036854775807 {
+                self.bb.write_str("9223372036854775808")
+                return
+            }
+            self.write_pos_i64(-v)
+            return
+        }
+        self.write_pos_i64(v)
+    }
 
     pub fn bool_val(v: bool) {
         if v {
