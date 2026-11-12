@@ -1,0 +1,137 @@
+{
+  "name": "aerix",
+  "displayName": "Aerix Language & IntelliSense Support",
+  "description": "Official language support, IntelliSense completions, hover documentation, syntax highlighting, and X file icon for Aerix (.arx).",
+  "version": "1.1.0-stable",
+  "publisher": "aerix-lang",
+  "icon": "./icons/aerix-icon.png",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/aerix-lang/aerix"
+  },
+  "main": "./extension.js",
+  "activationEvents": [
+    "workspaceContains:**/*.arx"
+  ],
+  "categories": [
+    "Programming Languages",
+    "Snippets"
+  ],
+  "keywords": [
+    "aerix",
+    "arx",
+    "systems",
+    "compiler",
+    "c",
+    "performance",
+    "intellisense"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "aerix",
+        "aliases": [
+          "Aerix",
+          "arx"
+        ],
+        "extensions": [
+          ".arx"
+        ],
+        "configuration": "./language-configuration.json",
+        "icon": {
+          "light": "./icons/aerix-icon.svg",
+          "dark": "./icons/aerix-icon.svg"
+        }
+      }
+    ],
+    "configuration": {
+      "title": "Aerix",
+      "properties": {
+        "aerix.executablePath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to the Aerix compiler/LSP binary (arx / arxc). Leave empty to auto-detect on PATH or in ~/.aerix/bin."
+        }
+      }
+    },
+    "snippets": [
+      {
+        "language": "aerix",
+        "path": "./snippets/aerix.json"
+      }
+    ],
+    "iconThemes": [
+      {
+        "id": "aerix-icons",
+        "label": "Aerix File Icons (X Symbol)",
+        "path": "./icons/aerix-icons.json"
+      }
+    ],
+    "commands": [
+      {
+        "command": "aerix.runFile",
+        "title": "Run Aerix Program",
+        "category": "Aerix",
+        "icon": "$(play)"
+      },
+      {
+        "command": "aerix.checkFile",
+        "title": "Check Syntax & Types",
+        "category": "Aerix",
+        "icon": "$(pass)"
+      },
+      {
+        "command": "aerix.buildWasm",
+        "title": "Compile to WebAssembly (WASM)",
+        "category": "Aerix",
+        "icon": "$(globe)"
+      },
+      {
+        "command": "aerix.serveWasm",
+        "title": "Run WebAssembly in Browser (Live)",
+        "category": "Aerix",
+        "icon": "$(browser)"
+      }
+    ],
+    "menus": {
+      "editor/title/run": [
+        {
+          "command": "aerix.runFile",
+          "when": "resourceExtname == .arx",
+          "group": "navigation@1"
+        },
+        {
+          "command": "aerix.buildWasm",
+          "when": "resourceExtname == .arx",
+          "group": "navigation@2"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "aerix.runFile",
+          "when": "resourceExtname == .arx",
+          "group": "aerix@1"
+        },
+        {
+          "command": "aerix.checkFile",
+          "when": "resourceExtname == .arx",
+          "group": "aerix@2"
+        },
+        {
+          "command": "aerix.buildWasm",
+          "when": "resourceExtname == .arx",
+          "group": "aerix@3"
+        },
+        {
+          "command": "aerix.serveWasm",
+          "when": "resourceExtname == .arx",
+          "group": "aerix@4"
+        }
+      ]
+    }
+  }
+}
+

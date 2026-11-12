@@ -8,6 +8,7 @@ pub class TokenStream {
     pub vals: List<str>
     pub lines: List<i64>
     pub cols: List<i64>
+    pub lens: List<i64>
     pub count: i64
 
     init() {
@@ -15,6 +16,7 @@ pub class TokenStream {
         self.vals = List<str>()
         self.lines = List<i64>()
         self.cols = List<i64>()
+        self.lens = List<i64>()
         self.count = 0
     }
 }
@@ -30,7 +32,18 @@ pub class Lexer {
     pub vals: List<str>
     pub lines: List<i64>
     pub cols: List<i64>
+    pub lens: List<i64>
     pub count: i64
+    pub recover_mode: bool
+    pub collect_trivia: bool
+    pub com_lines: List<i64>
+    pub com_cols: List<i64>
+    pub com_lens: List<i64>
+    pub com_count: i64
+    pub err_lines: List<i64>
+    pub err_cols: List<i64>
+    pub err_msgs: List<str>
+    pub err_count: i64
 
     init(source: str, filename: str) {
         self.src = source
@@ -43,7 +56,18 @@ pub class Lexer {
         self.vals = List<str>()
         self.lines = List<i64>()
         self.cols = List<i64>()
+        self.lens = List<i64>()
         self.count = 0
+        self.recover_mode = false
+        self.collect_trivia = false
+        self.com_lines = List<i64>()
+        self.com_cols = List<i64>()
+        self.com_lens = List<i64>()
+        self.com_count = 0
+        self.err_lines = List<i64>()
+        self.err_cols = List<i64>()
+        self.err_msgs = List<str>()
+        self.err_count = 0
     }
 
     priv fn push_tok(kind: i64, val: str, ln: i64, cl: i64) {
@@ -51,7 +75,26 @@ pub class Lexer {
         self.vals.push(val)
         self.lines.push(ln)
         self.cols.push(cl)
+        mut tlen = self.col - cl
+        if tlen < 1 { tlen = val.len() }
+        if tlen < 1 { tlen = 1 }
+        self.lens.push(tlen)
         self.count = self.count + 1
+    }
+
+    priv fn push_comment(ln: i64, cl: i64, tlen: i64) {
+        if !self.collect_trivia || tlen <= 0 { return }
+        self.com_lines.push(ln)
+        self.com_cols.push(cl)
+        self.com_lens.push(tlen)
+        self.com_count = self.com_count + 1
+    }
+
+    priv fn record_lex_err(ln: i64, cl: i64, msg: str) {
+        self.err_lines.push(ln)
+        self.err_cols.push(cl)
+        self.err_msgs.push(msg)
+        self.err_count = self.err_count + 1
     }
 
     priv fn peek_at(offset: i64) -> i64 {
@@ -69,7 +112,11 @@ pub class Lexer {
         if b == 10 {
             self.line = self.line + 1
             self.col = 1
-        } else {
+        } else if b < 128 {
+            self.col = self.col + 1
+        } else if b >= 240 {
+            self.col = self.col + 2
+        } else if b >= 192 {
             self.col = self.col + 1
         }
         return b
@@ -89,15 +136,27 @@ pub class Lexer {
 
     priv fn skip_block_comment(start_line: i64, start_col: i64) {
         self.advance_byte()
+        mut seg_line = start_line
+        mut seg_col = start_col
         mut depth = 1
         while depth > 0 {
             if self.pos >= self.length {
+                self.push_comment(seg_line, seg_col, self.col - seg_col)
+                if self.recover_mode {
+                    self.record_lex_err(start_line, start_col, "Unterminated block comment")
+                    return
+                }
                 eprintln("LEXER ERROR: Unterminated block comment")
                 Env.exit(1)
             }
             let b0 = self.peek_at(0)
             let b1 = self.peek_at(1)
-            if b0 == 47 && b1 == 42 {
+            if b0 == 10 {
+                self.push_comment(seg_line, seg_col, self.col - seg_col)
+                self.advance_byte()
+                seg_line = self.line
+                seg_col = self.col
+            } else if b0 == 47 && b1 == 42 {
                 self.advance_byte()
                 self.advance_byte()
                 depth = depth + 1
@@ -109,6 +168,7 @@ pub class Lexer {
                 self.advance_byte()
             }
         }
+        self.push_comment(seg_line, seg_col, self.col - seg_col)
     }
 
     priv fn scan_identifier(start_pos: i64, start_line: i64, start_col: i64) {
@@ -212,6 +272,10 @@ pub class Lexer {
         mut has_interp = false
         while true {
             if self.pos >= self.length || self.peek_at(0) == 10 {
+                if self.recover_mode {
+                    self.record_lex_err(start_line, start_col, "Unterminated string literal")
+                    break
+                }
                 eprintln("LEXER ERROR: Unterminated string literal")
                 Env.exit(1)
             }
@@ -258,6 +322,10 @@ pub class Lexer {
 
     priv fn scan_char(start_line: i64, start_col: i64) {
         if self.pos >= self.length || self.peek_at(0) == 10 {
+            if self.recover_mode {
+                self.record_lex_err(start_line, start_col, "Unterminated char literal")
+                return
+            }
             eprintln("LEXER ERROR: Unterminated char literal")
             Env.exit(1)
         }
@@ -277,6 +345,10 @@ pub class Lexer {
             if esc == 110 { ch = 10 } else if esc == 116 { ch = 9 } else if esc == 114 { ch = 13 } else { ch = esc }
         }
         if !self.match_byte(39) {
+            if self.recover_mode {
+                self.record_lex_err(start_line, start_col, "Unterminated char literal")
+                return
+            }
             eprintln("LEXER ERROR: Unterminated char literal")
             Env.exit(1)
         }
@@ -308,6 +380,7 @@ pub class Lexer {
                     while self.pos < self.length && self.peek_at(0) != 10 {
                         self.advance_byte()
                     }
+                    self.push_comment(sl, sc, self.col - sc)
                     continue
                 } else if self.peek_at(0) == 42 {
                     self.skip_block_comment(sl, sc)
@@ -404,6 +477,7 @@ pub class Lexer {
         ts.vals = self.vals
         ts.lines = self.lines
         ts.cols = self.cols
+        ts.lens = self.lens
         ts.count = self.count
         return ts
     }

@@ -8,14 +8,17 @@ import "./middle/types.arx"
 import "./middle/analyzer.arx"
 import "./backend/emitter.arx"
 import "./backend/linker.arx"
+import "./backend/native/codegen.arx"
+import "./lsp/server.arx"
 
 fn print_usage() {
     println("Aerix Self-Hosting Bootstrap Compiler (arxc)")
     println("Usage:")
-    println("  arxc build <file.arx> [-o <out>] [--emit-c] [-O0|-O1|-O2|-O3]")
-    println("  arxc run <file.arx> [-- <args...>]")
+    println("  arxc build <file.arx> [-o <out>] [--emit-c] [--backend=native|c] [-O0|-O1|-O2|-O3]")
+    println("  arxc run <file.arx> [--backend=native|c] [-- <args...>]")
     println("  arxc emit-c <file.arx> [-o <out.c>]")
     println("  arxc check <file.arx>")
+    println("  arxc lsp")
     println("  arxc <file.arx> [-o <out>]")
     println("  arxc version")
 }
@@ -94,7 +97,24 @@ fn cmd_emit_c(input_file: str, out_file: str) -> i64 {
     return 0
 }
 
-fn cmd_build(input_file: str, out_file: str, opt_flag: str, keep_c: bool) -> i64 {
+fn emit_native_exe(input_file: str, exe_path: str) -> i64 {
+    let dir = bpath_dirname(exe_path)
+    if dir != "" && dir != "." {
+        Directory.create(dir)
+    }
+    mut az = compile_frontend(input_file)
+    if az.has_errors > 0 {
+        return 1
+    }
+    mut ncg = NativeCodegen(az)
+    if !ncg.compile(exe_path) {
+        eprintln("ERROR: Failed to emit native PE32+ executable: " + exe_path)
+        return 1
+    }
+    return 0
+}
+
+fn cmd_build(input_file: str, out_file: str, opt_flag: str, keep_c: bool, backend: str) -> i64 {
     let norm_in = bpath_normalize(input_file)
     mut exe_path = out_file
     if exe_path == "" {
@@ -102,12 +122,29 @@ fn cmd_build(input_file: str, out_file: str, opt_flag: str, keep_c: bool) -> i64
     }
     exe_path = ensure_exe_ext(bpath_normalize(exe_path))
 
+    mut use_native = false
+    if backend == "native" {
+        use_native = true
+    } else if backend == "c" || keep_c {
+        use_native = false
+    } else if Env.os_name() == "windows" {
+        use_native = true
+    }
+
+    if use_native {
+        let rc = emit_native_exe(norm_in, exe_path)
+        if rc == 0 {
+            println("Built " + exe_path)
+        }
+        return rc
+    }
+
     let c_path = strip_exe_ext(exe_path) + ".c"
     let c_src = emit_c_for_file(norm_in)
     return link_c_to_exe_from(c_src, c_path, exe_path, opt_flag, keep_c, norm_in)
 }
 
-fn cmd_run(input_file: str, opt_flag: str, prog_args: List<str>, prog_argc: i64) -> i64 {
+fn cmd_run(input_file: str, opt_flag: str, backend: str, prog_args: List<str>, prog_argc: i64) -> i64 {
     let norm_in = bpath_normalize(input_file)
     let tmp_dir = bpath_join(get_temp_dir(), "aerix_boot_run")
     Directory.create(tmp_dir)
@@ -115,8 +152,22 @@ fn cmd_run(input_file: str, opt_flag: str, prog_args: List<str>, prog_argc: i64)
     let c_path = bpath_join(tmp_dir, base + ".c")
     let exe_path = ensure_exe_ext(bpath_join(tmp_dir, base))
 
-    let c_src = emit_c_for_file(norm_in)
-    let rc_link = link_c_to_exe_from(c_src, c_path, exe_path, opt_flag, false, norm_in)
+    mut use_native = false
+    if backend == "native" {
+        use_native = true
+    } else if backend == "c" {
+        use_native = false
+    } else if Env.os_name() == "windows" {
+        use_native = true
+    }
+
+    mut rc_link = 0
+    if use_native {
+        rc_link = emit_native_exe(norm_in, exe_path)
+    } else {
+        let c_src = emit_c_for_file(norm_in)
+        rc_link = link_c_to_exe_from(c_src, c_path, exe_path, opt_flag, false, norm_in)
+    }
     if rc_link != 0 {
         return rc_link
     }
@@ -159,6 +210,9 @@ fn main() -> i64 {
         print_usage()
         return 0
     }
+    if first == "lsp" {
+        return run_lsp_server()
+    }
 
     mut mode = ""
     mut start_i = 2
@@ -173,6 +227,7 @@ fn main() -> i64 {
     mut out_file = ""
     mut opt_flag = "-O2"
     mut keep_c = false
+    mut backend = "auto"
     let prog_args = List<str>()
     mut prog_argc = 0
     mut after_dashdash = false
@@ -192,6 +247,10 @@ fn main() -> i64 {
             }
         } else if a == "--emit-c" {
             keep_c = true
+        } else if a == "--backend=c" {
+            backend = "c"
+        } else if a == "--backend=native" {
+            backend = "native"
         } else if a == "-O0" || a == "-O1" || a == "-O2" || a == "-O3" {
             opt_flag = a
         } else if input_file == "" {
@@ -216,15 +275,15 @@ fn main() -> i64 {
         return cmd_emit_c(input_file, out_file)
     }
     if mode == "build" {
-        return cmd_build(input_file, out_file, opt_flag, keep_c)
+        return cmd_build(input_file, out_file, opt_flag, keep_c, backend)
     }
     if mode == "run" {
-        return cmd_run(input_file, opt_flag, prog_args, prog_argc)
+        return cmd_run(input_file, opt_flag, backend, prog_args, prog_argc)
     }
 
     // "auto" mode: if -o specified, build executable; otherwise compile & run
     if out_file != "" {
-        return cmd_build(input_file, out_file, opt_flag, keep_c)
+        return cmd_build(input_file, out_file, opt_flag, keep_c, backend)
     }
-    return cmd_run(input_file, opt_flag, prog_args, prog_argc)
+    return cmd_run(input_file, opt_flag, backend, prog_args, prog_argc)
 }

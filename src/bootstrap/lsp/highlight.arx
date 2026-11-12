@@ -1,0 +1,629 @@
+// Aerix Native LSP — Compiler-Driven Semantic Token Highlighter
+// Replaces static TextMate regexes with exact Lexer + Parser + Analyzer semantic classification.
+
+import "../frontend/tokens.arx"
+import "../frontend/lexer.arx"
+import "../frontend/ast.arx"
+import "../middle/analyzer.arx"
+import "./docs.arx"
+
+// Semantic Token Type indices (must match initialize legend and VS Code client)
+pub fn ST_COMMENT() -> i64 { return 0 }
+pub fn ST_KEYWORD() -> i64 { return 1 }
+pub fn ST_STRING() -> i64 { return 2 }
+pub fn ST_NUMBER() -> i64 { return 3 }
+pub fn ST_OPERATOR() -> i64 { return 4 }
+pub fn ST_TYPE() -> i64 { return 5 }
+pub fn ST_CLASS() -> i64 { return 6 }
+pub fn ST_ENUM() -> i64 { return 7 }
+pub fn ST_ENUM_MEMBER() -> i64 { return 8 }
+pub fn ST_FUNCTION() -> i64 { return 9 }
+pub fn ST_METHOD() -> i64 { return 10 }
+pub fn ST_PROPERTY() -> i64 { return 11 }
+pub fn ST_PARAMETER() -> i64 { return 12 }
+pub fn ST_VARIABLE() -> i64 { return 13 }
+pub fn ST_NAMESPACE() -> i64 { return 14 }
+pub fn ST_MACRO() -> i64 { return 15 }
+
+// Semantic Token Modifier bitmasks
+pub fn SM_DECL() -> i64 { return 1 }
+pub fn SM_DEF() -> i64 { return 2 }
+pub fn SM_READONLY() -> i64 { return 4 }
+pub fn SM_STATIC() -> i64 { return 8 }
+pub fn SM_DEFAULT_LIB() -> i64 { return 16 }
+
+fn is_keyword_token_kind(k: i64) -> bool {
+    if k == TK_BOOL() || k == TK_NULL() { return true }
+    return k >= 20 && k <= 71
+}
+
+fn is_operator_token_kind(k: i64) -> bool {
+    return k >= 80 && k <= 116
+}
+
+fn next_sig_kind(ts: TokenStream, idx: i64) -> i64 {
+    mut j = idx + 1
+    while j < ts.count {
+        let k = ts.kinds.get(j)
+        if k != TK_NEWLINE() { return k }
+        j = j + 1
+    }
+    return TK_EOF()
+}
+
+fn next_nonnl_idx(ts: TokenStream, idx: i64) -> i64 {
+    mut j = idx + 1
+    while j < ts.count {
+        if ts.kinds.get(j) != TK_NEWLINE() { return j }
+        j = j + 1
+    }
+    return ts.count
+}
+
+fn is_generic_call_tok(ts: TokenStream, idx: i64) -> bool {
+    let nxt = next_nonnl_idx(ts, idx)
+    if nxt >= ts.count || ts.kinds.get(nxt) != TK_LT() { return false }
+    mut j = nxt + 1
+    mut depth = 1
+    while j < ts.count && depth > 0 {
+        let k = ts.kinds.get(j)
+        if k == TK_LT() {
+            depth = depth + 1
+        } else if k == TK_GT() {
+            depth = depth - 1
+            if depth == 0 {
+                return next_sig_kind(ts, j) == TK_LPAREN()
+            }
+        } else if k != TK_IDENT() && k != TK_COMMA() && k != TK_QUESTION() && k != TK_STAR() {
+            return false
+        }
+        j = j + 1
+    }
+    return false
+}
+
+fn push_sem_span(lines: List<i64>, cols: List<i64>, lens: List<i64>, types: List<i64>, mods: List<i64>,
+                 ln1: i64, col1: i64, tlen: i64, stype: i64, smod: i64) {
+    if ln1 <= 0 || col1 <= 0 || tlen <= 0 { return }
+    lines.push(ln1 - 1)
+    cols.push(col1 - 1)
+    lens.push(tlen)
+    types.push(stype)
+    mods.push(smod)
+}
+
+fn split_str_interp_spans(src: str, ln1: i64, col1: i64, tlen: i64,
+                          class_set: Map<str, i64>, enum_set: Map<str, i64>,
+                          fn_set: Map<str, i64>, cur_params: Map<str, i64>,
+                          readonly_vars: Map<str, i64>,
+                          lines: List<i64>, cols: List<i64>, lens: List<i64>,
+                          types: List<i64>, mods: List<i64>) {
+    // Locate 1-based line in source to extract exact raw slice
+    mut cur_ln = 1
+    mut off = 0
+    let total = src.len()
+    while cur_ln < ln1 && off < total {
+        if src.byte_at(off) == 10 { cur_ln = cur_ln + 1 }
+        off = off + 1
+    }
+    mut line_end = off
+    while line_end < total && src.byte_at(line_end) != 10 && src.byte_at(line_end) != 13 {
+        line_end = line_end + 1
+    }
+    let start_pos = off + (col1 - 1)
+    mut end_pos = start_pos + tlen
+    if start_pos < 0 || start_pos >= total || end_pos > line_end + 1 {
+        push_sem_span(lines, cols, lens, types, mods, ln1, col1, tlen, ST_STRING(), 0)
+        return
+    }
+    if end_pos > total { end_pos = total }
+
+    mut seg_start = start_pos
+    mut p = start_pos
+    while p < end_pos {
+        let b = src.byte_at(p)
+        if b == 92 && p + 1 < end_pos {
+            p = p + 2
+            continue
+        }
+        if b == 123 {
+            // Literal prefix up to '{'
+            if p > seg_start {
+                push_sem_span(lines, cols, lens, types, mods, ln1, col1 + (seg_start - start_pos), p - seg_start, ST_STRING(), 0)
+            }
+            // Brace '{'
+            push_sem_span(lines, cols, lens, types, mods, ln1, col1 + (p - start_pos), 1, ST_OPERATOR(), 0)
+            mut q = p + 1
+            mut depth = 1
+            while q < end_pos && depth > 0 {
+                let qb = src.byte_at(q)
+                if qb == 123 { depth = depth + 1 } else if qb == 125 { depth = depth - 1 }
+                if depth > 0 { q = q + 1 }
+            }
+            if q > p + 1 {
+                let inner = src.slice(p + 1, q)
+                let inner_col = col1 + (p + 1 - start_pos)
+                mut ilx = Lexer(inner, "<interp>")
+                ilx.recover_mode = true
+                let its = ilx.tokenize()
+                mut ii = 0
+                while ii < its.count {
+                    let ik = its.kinds.get(ii)
+                    let iv = its.vals.get(ii)
+                    let ic = its.cols.get(ii)
+                    let il = its.lens.get(ii)
+                    if ik == TK_EOF() || ik == TK_NEWLINE() {
+                        ii = ii + 1
+                        continue
+                    }
+                    let c_abs = inner_col + (ic - 1)
+                    if ik == TK_INT() || ik == TK_FLOAT() {
+                        push_sem_span(lines, cols, lens, types, mods, ln1, c_abs, il, ST_NUMBER(), 0)
+                    } else if is_keyword_token_kind(ik) {
+                        push_sem_span(lines, cols, lens, types, mods, ln1, c_abs, il, ST_KEYWORD(), 0)
+                    } else if is_operator_token_kind(ik) {
+                        push_sem_span(lines, cols, lens, types, mods, ln1, c_abs, il, ST_OPERATOR(), 0)
+                    } else if ik == TK_IDENT() {
+                        if ii > 0 && (its.kinds.get(ii - 1) == TK_DOT() || its.kinds.get(ii - 1) == TK_QDOT()) {
+                            if next_sig_kind(its, ii) == TK_LPAREN() {
+                                push_sem_span(lines, cols, lens, types, mods, ln1, c_abs, il, ST_METHOD(), 0)
+                            } else {
+                                push_sem_span(lines, cols, lens, types, mods, ln1, c_abs, il, ST_PROPERTY(), 0)
+                            }
+                        } else if cur_params.has_key(iv) {
+                            push_sem_span(lines, cols, lens, types, mods, ln1, c_abs, il, ST_PARAMETER(), 0)
+                        } else if next_sig_kind(its, ii) == TK_LPAREN() {
+                            push_sem_span(lines, cols, lens, types, mods, ln1, c_abs, il, ST_FUNCTION(), 0)
+                        } else if class_set.has_key(iv) {
+                            push_sem_span(lines, cols, lens, types, mods, ln1, c_abs, il, ST_CLASS(), 0)
+                        } else if enum_set.has_key(iv) {
+                            push_sem_span(lines, cols, lens, types, mods, ln1, c_abs, il, ST_ENUM(), 0)
+                        } else if fn_set.has_key(iv) || lsp_is_builtin_fn(iv) {
+                            push_sem_span(lines, cols, lens, types, mods, ln1, c_abs, il, ST_FUNCTION(), 0)
+                        } else if readonly_vars.has_key(iv) {
+                            push_sem_span(lines, cols, lens, types, mods, ln1, c_abs, il, ST_VARIABLE(), SM_READONLY())
+                        } else {
+                            push_sem_span(lines, cols, lens, types, mods, ln1, c_abs, il, ST_VARIABLE(), 0)
+                        }
+                    }
+                    ii = ii + 1
+                }
+            }
+            if q < end_pos && src.byte_at(q) == 125 {
+                push_sem_span(lines, cols, lens, types, mods, ln1, col1 + (q - start_pos), 1, ST_OPERATOR(), 0)
+                seg_start = q + 1
+                p = q + 1
+                continue
+            }
+            seg_start = q
+            p = q
+            continue
+        }
+        p = p + 1
+    }
+    if end_pos > seg_start {
+        push_sem_span(lines, cols, lens, types, mods, ln1, col1 + (seg_start - start_pos), end_pos - seg_start, ST_STRING(), 0)
+    }
+}
+
+pub fn lsp_compute_semantic_tokens(source: str, az: Analyzer, doc_path: str) -> List<i64> {
+    mut lx = Lexer(source, doc_path)
+    lx.recover_mode = true
+    lx.collect_trivia = true
+    let ts = lx.tokenize()
+
+    // Collect symbol tables from Analyzer
+    let class_set = Map<str, i64>()
+    let enum_set = Map<str, i64>()
+    let fn_set = Map<str, i64>()
+    let enum_var_set = Map<str, i64>()
+
+    mut ci = 0
+    while ci < az.cls_count {
+        class_set.insert(az.cls_names.get(ci), 1)
+        ci = ci + 1
+    }
+    mut ei = 0
+    while ei < az.enum_count {
+        let ename = az.enum_names.get(ei)
+        enum_set.insert(ename, 1)
+        let enode = az.enum_nodes.get(ei)
+        let vc = az.ll.get(enode)
+        mut vi = 0
+        while vi < vc {
+            let vnode = az.ch.get(az.ls.get(enode) + vi)
+            enum_var_set.insert(az.sa.get(vnode), 1)
+            vi = vi + 1
+        }
+        ei = ei + 1
+    }
+    mut fi = 0
+    while fi < az.fn_count {
+        let fid = az.fn_nodes.get(fi)
+        fn_set.insert(az.sa.get(fid), 1)
+        fi = fi + 1
+    }
+
+    let tok_lines = List<i64>()
+    let tok_cols = List<i64>()
+    let tok_lens = List<i64>()
+    let tok_types = List<i64>()
+    let tok_mods = List<i64>()
+
+    // Track contextual state during single linear pass
+    mut cur_params = Map<str, i64>()
+    mut readonly_vars = Map<str, i64>()
+    mut mut_vars = Map<str, i64>()
+    mut brace_depth = 0
+    mut cls_depth = -1
+    mut enum_depth = -1
+    mut fn_depth = -1
+    mut in_fn_sig = false
+    mut fn_sig_paren_depth = 0
+    mut pending_fn_body = false
+    mut in_enum_body = false
+    mut in_attr = false
+    mut in_import_line = false
+    mut expect_type_depth = 0
+
+    mut prev_kind = TK_EOF()
+    mut i = 0
+    while i < ts.count {
+        let k = ts.kinds.get(i)
+        let v = ts.vals.get(i)
+        let ln = ts.lines.get(i)
+        let cl = ts.cols.get(i)
+        let tl = ts.lens.get(i)
+
+        if k == TK_EOF() { break }
+        if k == TK_NEWLINE() {
+            in_import_line = false
+            if pending_fn_body && prev_kind != TK_FAT_ARROW() && prev_kind != TK_ARROW() {
+                // e.g. declaration-only or signature
+                if expect_type_depth <= 0 {
+                    // Wait until LBRACE or next stmt
+                }
+            }
+            if expect_type_depth <= 0 && !in_fn_sig && !pending_fn_body {
+                // Keep fn params until '}' if in body
+            }
+            i = i + 1
+            continue
+        }
+
+        // Handle attributes #[...]
+        if k == TK_HASH() && next_sig_kind(ts, i) == TK_LBRACKET() {
+            in_attr = true
+            push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, ST_MACRO(), 0)
+            prev_kind = k; i = i + 1; continue
+        }
+        if in_attr {
+            push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, ST_MACRO(), 0)
+            if k == TK_RBRACKET() { in_attr = false }
+            prev_kind = k; i = i + 1; continue
+        }
+
+        // Update brace / paren state
+        if k == TK_LBRACE() {
+            brace_depth = brace_depth + 1
+            if pending_fn_body {
+                pending_fn_body = false
+                fn_depth = brace_depth
+            }
+            expect_type_depth = 0
+            in_import_line = false
+            prev_kind = k; i = i + 1; continue
+        }
+        if k == TK_RBRACE() {
+            if fn_depth == brace_depth {
+                cur_params = Map<str, i64>()
+                fn_depth = -1
+            }
+            if cls_depth == brace_depth { cls_depth = -1 }
+            if enum_depth == brace_depth { enum_depth = -1; in_enum_body = false }
+            brace_depth = brace_depth - 1
+            if brace_depth < 0 { brace_depth = 0 }
+            expect_type_depth = 0
+            prev_kind = k; i = i + 1; continue
+        }
+        if k == TK_LPAREN() {
+            if in_fn_sig {
+                fn_sig_paren_depth = fn_sig_paren_depth + 1
+            }
+            prev_kind = k; i = i + 1; continue
+        }
+        if k == TK_RPAREN() {
+            if in_fn_sig {
+                fn_sig_paren_depth = fn_sig_paren_depth - 1
+                if fn_sig_paren_depth <= 0 {
+                    in_fn_sig = false
+                    pending_fn_body = true
+                    expect_type_depth = 0
+                }
+            }
+            prev_kind = k; i = i + 1; continue
+        }
+        if k == TK_SEMICOLON() {
+            if pending_fn_body && prev_kind != TK_FAT_ARROW() {
+                pending_fn_body = false
+                cur_params = Map<str, i64>()
+            }
+            expect_type_depth = 0
+            in_import_line = false
+            prev_kind = k; i = i + 1; continue
+        }
+
+        // Literal & trivia token categories
+        if k == TK_INT() || k == TK_FLOAT() {
+            push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, ST_NUMBER(), 0)
+            prev_kind = k; i = i + 1; continue
+        }
+        if k == TK_STR() || k == TK_CHAR() {
+            push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, ST_STRING(), 0)
+            prev_kind = k; i = i + 1; continue
+        }
+        if k == TK_STR_INTERP() {
+            split_str_interp_spans(source, ln, cl, tl, class_set, enum_set, fn_set, cur_params, readonly_vars,
+                                   tok_lines, tok_cols, tok_lens, tok_types, tok_mods)
+            prev_kind = k; i = i + 1; continue
+        }
+        if k == TK_LABEL() {
+            push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, ST_MACRO(), 0)
+            prev_kind = k; i = i + 1; continue
+        }
+        if k == TK_IMPORT() || k == TK_USE() {
+            in_import_line = true
+            push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, ST_KEYWORD(), 0)
+            prev_kind = k; i = i + 1; continue
+        }
+        if is_keyword_token_kind(k) {
+            if k == TK_FN() {
+                cur_params = Map<str, i64>()
+                in_fn_sig = true
+                fn_sig_paren_depth = 0
+                pending_fn_body = false
+            } else if k == TK_INIT() {
+                cur_params = Map<str, i64>()
+                in_fn_sig = true
+                fn_sig_paren_depth = 0
+                pending_fn_body = false
+            } else if k == TK_ARROW() || k == TK_AS() {
+                expect_type_depth = 1
+            } else if k == TK_COLON() {
+                expect_type_depth = 1
+            } else if k == TK_EXTENDS() || k == TK_IMPLEMENTS() || k == TK_EXTEND() {
+                expect_type_depth = 1
+            }
+            if k == TK_SELF() || k == TK_SUPER() {
+                push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, ST_KEYWORD(), 0)
+            } else {
+                push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, ST_KEYWORD(), 0)
+            }
+            prev_kind = k; i = i + 1; continue
+        }
+        if k == TK_COLON() {
+            expect_type_depth = 1
+            prev_kind = k; i = i + 1; continue
+        }
+        if k == TK_ARROW() {
+            expect_type_depth = 1
+            push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, ST_OPERATOR(), 0)
+            prev_kind = k; i = i + 1; continue
+        }
+        if k == TK_EQUALS() || k == TK_FAT_ARROW() || k == TK_COMMA() {
+            if k == TK_EQUALS() || k == TK_FAT_ARROW() { expect_type_depth = 0 }
+            if k == TK_COMMA() && in_fn_sig { expect_type_depth = 0 }
+            push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, ST_OPERATOR(), 0)
+            prev_kind = k; i = i + 1; continue
+        }
+        if is_operator_token_kind(k) {
+            if k == TK_LT() && expect_type_depth > 0 {
+                expect_type_depth = expect_type_depth + 1
+            } else if k == TK_GT() && expect_type_depth > 1 {
+                expect_type_depth = expect_type_depth - 1
+            }
+            push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, ST_OPERATOR(), 0)
+            prev_kind = k; i = i + 1; continue
+        }
+
+        // Identifier classification
+        if k == TK_IDENT() {
+            let nxt = next_sig_kind(ts, i)
+
+            // 1. Declaration sites
+            if prev_kind == TK_FN() {
+                if cls_depth > 0 && brace_depth >= cls_depth {
+                    push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, ST_METHOD(), SM_DECL())
+                } else {
+                    push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, ST_FUNCTION(), SM_DECL())
+                }
+                prev_kind = k; i = i + 1; continue
+            }
+            if prev_kind == TK_CLASS() || prev_kind == TK_STRUCT() {
+                cls_depth = brace_depth + 1
+                push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, ST_CLASS(), SM_DECL())
+                prev_kind = k; i = i + 1; continue
+            }
+            if prev_kind == TK_ENUM() {
+                enum_depth = brace_depth + 1
+                in_enum_body = true
+                push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, ST_ENUM(), SM_DECL())
+                prev_kind = k; i = i + 1; continue
+            }
+            if in_enum_body && brace_depth == enum_depth && fn_sig_paren_depth == 0 {
+                if nxt == TK_LPAREN() || nxt == TK_COMMA() || nxt == TK_RBRACE() {
+                    push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, ST_ENUM_MEMBER(), SM_DECL())
+                    prev_kind = k; i = i + 1; continue
+                }
+            }
+            if in_import_line {
+                push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, ST_NAMESPACE(), 0)
+                prev_kind = k; i = i + 1; continue
+            }
+            if prev_kind == TK_LET() || prev_kind == TK_CONST() {
+                readonly_vars.insert(v, 1)
+                push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, ST_VARIABLE(), SM_DECL() + SM_READONLY())
+                prev_kind = k; i = i + 1; continue
+            }
+            if prev_kind == TK_MUT() && (!in_fn_sig) {
+                mut_vars.insert(v, 1)
+                push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, ST_VARIABLE(), SM_DECL())
+                prev_kind = k; i = i + 1; continue
+            }
+            if prev_kind == TK_CATCH() || prev_kind == TK_FOR() {
+                readonly_vars.insert(v, 1)
+                push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, ST_VARIABLE(), SM_DECL() + SM_READONLY())
+                prev_kind = k; i = i + 1; continue
+            }
+
+            // Parameter declaration inside fn(...) or init(...)
+            if in_fn_sig && fn_sig_paren_depth > 0 && expect_type_depth == 0 {
+                cur_params.insert(v, 1)
+                push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, ST_PARAMETER(), SM_DECL())
+                prev_kind = k; i = i + 1; continue
+            }
+
+            // Field / prop declaration inside class body (outside methods)
+            if cls_depth > 0 && brace_depth == cls_depth && expect_type_depth == 0 && nxt == TK_COLON() {
+                push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, ST_PROPERTY(), SM_DECL())
+                prev_kind = k; i = i + 1; continue
+            }
+
+            // 2. Member access (.member or ?.member)
+            if prev_kind == TK_DOT() || prev_kind == TK_QDOT() {
+                if enum_var_set.has_key(v) && (nxt != TK_LPAREN()) {
+                    // Check if previous identifier before '.' was an enum
+                    if i >= 2 && enum_set.has_key(ts.vals.get(i - 2)) {
+                        push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, ST_ENUM_MEMBER(), 0)
+                        prev_kind = k; i = i + 1; continue
+                    }
+                }
+                if nxt == TK_LPAREN() {
+                    push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, ST_METHOD(), 0)
+                } else {
+                    push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, ST_PROPERTY(), 0)
+                }
+                prev_kind = k; i = i + 1; continue
+            }
+
+            // 3. Type position or known symbol types
+            if lsp_is_primitive_type(v) || lsp_is_container_type(v) {
+                push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, ST_TYPE(), SM_DEFAULT_LIB())
+                prev_kind = k; i = i + 1; continue
+            }
+            if class_set.has_key(v) {
+                push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, ST_CLASS(), 0)
+                prev_kind = k; i = i + 1; continue
+            }
+            if enum_set.has_key(v) {
+                push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, ST_ENUM(), 0)
+                prev_kind = k; i = i + 1; continue
+            }
+            if lsp_is_static_runtime(v) {
+                push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, ST_NAMESPACE(), SM_DEFAULT_LIB())
+                prev_kind = k; i = i + 1; continue
+            }
+            if expect_type_depth > 0 {
+                push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, ST_TYPE(), 0)
+                prev_kind = k; i = i + 1; continue
+            }
+
+            // 4. Function calls & references
+            if lsp_is_builtin_fn(v) {
+                push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, ST_FUNCTION(), SM_DEFAULT_LIB())
+                prev_kind = k; i = i + 1; continue
+            }
+            if nxt == TK_LPAREN() || is_generic_call_tok(ts, i) {
+                if enum_var_set.has_key(v) {
+                    push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, ST_ENUM_MEMBER(), 0)
+                } else {
+                    push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, ST_FUNCTION(), 0)
+                }
+                prev_kind = k; i = i + 1; continue
+            }
+            if cur_params.has_key(v) {
+                push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, ST_PARAMETER(), 0)
+                prev_kind = k; i = i + 1; continue
+            }
+            if enum_var_set.has_key(v) {
+                push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, ST_ENUM_MEMBER(), 0)
+                prev_kind = k; i = i + 1; continue
+            }
+            if fn_set.has_key(v) {
+                push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, ST_FUNCTION(), 0)
+                prev_kind = k; i = i + 1; continue
+            }
+            if readonly_vars.has_key(v) && !mut_vars.has_key(v) {
+                push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, ST_VARIABLE(), SM_READONLY())
+                prev_kind = k; i = i + 1; continue
+            }
+            push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, ST_VARIABLE(), 0)
+        }
+
+        prev_kind = k
+        i = i + 1
+    }
+
+    // Merge token spans (already ordered by line/col) with comment spans in strict source order
+    let data = List<i64>()
+    let t_total = tok_lines.len()
+    let c_total = lx.com_count
+    mut ti = 0
+    mut ci2 = 0
+    mut last_line = 0
+    mut last_col = 0
+
+    while ti < t_total || ci2 < c_total {
+        mut pick_comment = false
+        if ti >= t_total {
+            pick_comment = true
+        } else if ci2 < c_total {
+            let cln0 = lx.com_lines.get(ci2) - 1
+            let ccl0 = lx.com_cols.get(ci2) - 1
+            let tln0 = tok_lines.get(ti)
+            let tcl0 = tok_cols.get(ti)
+            if cln0 < tln0 || (cln0 == tln0 && ccl0 <= tcl0) {
+                pick_comment = true
+            }
+        }
+
+        mut eln = 0
+        mut ecl = 0
+        mut elen = 0
+        mut etyp = 0
+        mut emod = 0
+        if pick_comment {
+            eln = lx.com_lines.get(ci2) - 1
+            ecl = lx.com_cols.get(ci2) - 1
+            elen = lx.com_lens.get(ci2)
+            etyp = ST_COMMENT()
+            emod = 0
+            ci2 = ci2 + 1
+        } else {
+            eln = tok_lines.get(ti)
+            ecl = tok_cols.get(ti)
+            elen = tok_lens.get(ti)
+            etyp = tok_types.get(ti)
+            emod = tok_mods.get(ti)
+            ti = ti + 1
+        }
+
+        if eln < 0 || ecl < 0 || elen <= 0 { continue }
+        if eln < last_line || (eln == last_line && ecl < last_col) { continue }
+
+        let d_line = eln - last_line
+        mut d_col = ecl
+        if d_line == 0 {
+            d_col = ecl - last_col
+        }
+        data.push(d_line)
+        data.push(d_col)
+        data.push(elen)
+        data.push(etyp)
+        data.push(emod)
+        last_line = eln
+        last_col = ecl
+    }
+
+    return data
+}

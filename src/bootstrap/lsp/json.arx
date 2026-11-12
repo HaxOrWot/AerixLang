@@ -1,0 +1,402 @@
+// Aerix Native LSP — JSON Builder & Lightweight Recursive-Descent Parser
+
+pub fn J_NULL() -> i64 { return 0 }
+pub fn J_BOOL() -> i64 { return 1 }
+pub fn J_NUM() -> i64 { return 2 }
+pub fn J_STR() -> i64 { return 3 }
+pub fn J_ARR() -> i64 { return 4 }
+pub fn J_OBJ() -> i64 { return 5 }
+
+pub fn json_hex_digit(v: i64) -> i64 {
+    if v < 10 { return 48 + v }
+    return 97 + (v - 10)
+}
+
+pub fn json_hex_val(b: i64) -> i64 {
+    if b >= 48 && b <= 57 { return b - 48 }
+    if b >= 65 && b <= 70 { return b - 55 }
+    if b >= 97 && b <= 102 { return b - 87 }
+    return -1
+}
+
+pub fn json_quote_into(bb: ByteBuffer, s: str) {
+    bb.write_u8(34)
+    let n = s.len()
+    mut i = 0
+    while i < n {
+        let b = s.byte_at(i)
+        if b == 34 {
+            bb.write_u8(92)
+            bb.write_u8(34)
+        } else if b == 92 {
+            bb.write_u8(92)
+            bb.write_u8(92)
+        } else if b == 10 {
+            bb.write_u8(92)
+            bb.write_u8(110)
+        } else if b == 13 {
+            bb.write_u8(92)
+            bb.write_u8(114)
+        } else if b == 9 {
+            bb.write_u8(92)
+            bb.write_u8(116)
+        } else if b == 8 {
+            bb.write_u8(92)
+            bb.write_u8(98)
+        } else if b == 12 {
+            bb.write_u8(92)
+            bb.write_u8(102)
+        } else if b < 32 {
+            bb.write_u8(92)
+            bb.write_u8(117)
+            bb.write_u8(48)
+            bb.write_u8(48)
+            bb.write_u8(json_hex_digit((b / 16) % 16))
+            bb.write_u8(json_hex_digit(b % 16))
+        } else {
+            bb.write_u8(b)
+        }
+        i = i + 1
+    }
+    bb.write_u8(34)
+}
+
+pub fn json_quote(s: str) -> str {
+    let bb = ByteBuffer()
+    json_quote_into(bb, s)
+    let out = bb.to_str()
+    bb.free()
+    return out
+}
+
+pub class JsonBuf {
+    pub bb: ByteBuffer
+
+    init() {
+        self.bb = ByteBuffer()
+    }
+
+    pub fn lbrace() { self.bb.write_u8(123) }
+    pub fn rbrace() { self.bb.write_u8(125) }
+    pub fn lbrack() { self.bb.write_u8(91) }
+    pub fn rbrack() { self.bb.write_u8(93) }
+    pub fn comma() { self.bb.write_u8(44) }
+    pub fn colon() { self.bb.write_u8(58) }
+    pub fn raw(s: str) { self.bb.write_str(s) }
+    pub fn str_val(s: str) { json_quote_into(self.bb, s) }
+    pub fn int_val(v: i64) { self.bb.write_str("" + v) }
+
+    pub fn bool_val(v: bool) {
+        if v {
+            self.bb.write_str("true")
+        } else {
+            self.bb.write_str("false")
+        }
+    }
+
+    pub fn key(k: str) {
+        json_quote_into(self.bb, k)
+        self.bb.write_u8(58)
+    }
+
+    pub fn kv_str(k: str, v: str, first: bool) {
+        if !first { self.comma() }
+        self.key(k)
+        self.str_val(v)
+    }
+
+    pub fn kv_int(k: str, v: i64, first: bool) {
+        if !first { self.comma() }
+        self.key(k)
+        self.int_val(v)
+    }
+
+    pub fn kv_bool(k: str, v: bool, first: bool) {
+        if !first { self.comma() }
+        self.key(k)
+        self.bool_val(v)
+    }
+
+    pub fn kv_raw(k: str, raw_json: str, first: bool) {
+        if !first { self.comma() }
+        self.key(k)
+        self.raw(raw_json)
+    }
+
+    pub fn finish() -> str {
+        let out = self.bb.to_str()
+        self.bb.free()
+        return out
+    }
+}
+
+pub class JsonDoc {
+    pub src: str
+    pub length: i64
+    pub pos: i64
+
+    pub kinds: List<i64>
+    pub svals: List<str>
+    pub ivals: List<i64>
+    pub cstart: List<i64>
+    pub ccount: List<i64>
+    pub ncount: i64
+
+    pub entry_keys: List<str>
+    pub entry_vals: List<i64>
+    pub ecount: i64
+
+    init(source: str) {
+        self.src = source
+        self.length = source.len()
+        self.pos = 0
+        self.kinds = List<i64>()
+        self.svals = List<str>()
+        self.ivals = List<i64>()
+        self.cstart = List<i64>()
+        self.ccount = List<i64>()
+        self.ncount = 0
+        self.entry_keys = List<str>()
+        self.entry_vals = List<i64>()
+        self.ecount = 0
+    }
+
+    priv fn add_jnode(k: i64, sv: str, iv: i64, cs: i64, cc: i64) -> i64 {
+        let id = self.ncount
+        self.kinds.push(k)
+        self.svals.push(sv)
+        self.ivals.push(iv)
+        self.cstart.push(cs)
+        self.ccount.push(cc)
+        self.ncount = id + 1
+        return id
+    }
+
+    priv fn skip_ws() {
+        while self.pos < self.length {
+            let b = self.src.byte_at(self.pos)
+            if b == 32 || b == 9 || b == 10 || b == 13 {
+                self.pos = self.pos + 1
+            } else {
+                break
+            }
+        }
+    }
+
+    priv fn parse_str_raw() -> str {
+        if self.pos >= self.length || self.src.byte_at(self.pos) != 34 {
+            return ""
+        }
+        self.pos = self.pos + 1
+        let bb = ByteBuffer()
+        while self.pos < self.length {
+            let b = self.src.byte_at(self.pos)
+            self.pos = self.pos + 1
+            if b == 34 {
+                break
+            }
+            if b == 92 && self.pos < self.length {
+                let esc = self.src.byte_at(self.pos)
+                self.pos = self.pos + 1
+                if esc == 34 || esc == 92 || esc == 47 {
+                    bb.write_u8(esc)
+                } else if esc == 110 {
+                    bb.write_u8(10)
+                } else if esc == 114 {
+                    bb.write_u8(13)
+                } else if esc == 116 {
+                    bb.write_u8(9)
+                } else if esc == 98 {
+                    bb.write_u8(8)
+                } else if esc == 102 {
+                    bb.write_u8(12)
+                } else if esc == 117 && self.pos + 4 <= self.length {
+                    let h0 = json_hex_val(self.src.byte_at(self.pos))
+                    let h1 = json_hex_val(self.src.byte_at(self.pos + 1))
+                    let h2 = json_hex_val(self.src.byte_at(self.pos + 2))
+                    let h3 = json_hex_val(self.src.byte_at(self.pos + 3))
+                    self.pos = self.pos + 4
+                    if h0 >= 0 && h1 >= 0 && h2 >= 0 && h3 >= 0 {
+                        let cp = h0 * 4096 + h1 * 256 + h2 * 16 + h3
+                        if cp < 128 {
+                            bb.write_u8(cp)
+                        } else if cp < 2048 {
+                            bb.write_u8(192 + (cp / 64))
+                            bb.write_u8(128 + (cp % 64))
+                        } else {
+                            bb.write_u8(224 + (cp / 4096))
+                            bb.write_u8(128 + ((cp / 64) % 64))
+                            bb.write_u8(128 + (cp % 64))
+                        }
+                    }
+                } else {
+                    bb.write_u8(esc)
+                }
+            } else {
+                bb.write_u8(b)
+            }
+        }
+        let s = bb.to_str()
+        bb.free()
+        return s
+    }
+
+    pub fn parse_value() -> i64 {
+        self.skip_ws()
+        if self.pos >= self.length { return -1 }
+        let b = self.src.byte_at(self.pos)
+        if b == 34 {
+            let s = self.parse_str_raw()
+            return self.add_jnode(J_STR(), s, 0, 0, 0)
+        }
+        if b == 123 {
+            self.pos = self.pos + 1
+            let keys = List<str>()
+            let vals = List<i64>()
+            mut cnt = 0
+            self.skip_ws()
+            while self.pos < self.length && self.src.byte_at(self.pos) != 125 {
+                let lp = self.pos
+                self.skip_ws()
+                if self.pos >= self.length || self.src.byte_at(self.pos) != 34 {
+                    self.pos = self.pos + 1
+                    continue
+                }
+                let k = self.parse_str_raw()
+                self.skip_ws()
+                if self.pos < self.length && self.src.byte_at(self.pos) == 58 {
+                    self.pos = self.pos + 1
+                }
+                let v = self.parse_value()
+                keys.push(k)
+                vals.push(v)
+                cnt = cnt + 1
+                self.skip_ws()
+                if self.pos < self.length && self.src.byte_at(self.pos) == 44 {
+                    self.pos = self.pos + 1
+                }
+                self.skip_ws()
+                if self.pos == lp { self.pos = self.pos + 1 }
+            }
+            if self.pos < self.length && self.src.byte_at(self.pos) == 125 {
+                self.pos = self.pos + 1
+            }
+            let start = self.ecount
+            mut i = 0
+            while i < cnt {
+                self.entry_keys.push(keys.get(i))
+                self.entry_vals.push(vals.get(i))
+                i = i + 1
+            }
+            self.ecount = start + cnt
+            return self.add_jnode(J_OBJ(), "", 0, start, cnt)
+        }
+        if b == 91 {
+            self.pos = self.pos + 1
+            let vals = List<i64>()
+            mut cnt = 0
+            self.skip_ws()
+            while self.pos < self.length && self.src.byte_at(self.pos) != 93 {
+                let lp = self.pos
+                let v = self.parse_value()
+                vals.push(v)
+                cnt = cnt + 1
+                self.skip_ws()
+                if self.pos < self.length && self.src.byte_at(self.pos) == 44 {
+                    self.pos = self.pos + 1
+                }
+                self.skip_ws()
+                if self.pos == lp { self.pos = self.pos + 1 }
+            }
+            if self.pos < self.length && self.src.byte_at(self.pos) == 93 {
+                self.pos = self.pos + 1
+            }
+            let start = self.ecount
+            mut i = 0
+            while i < cnt {
+                self.entry_keys.push("")
+                self.entry_vals.push(vals.get(i))
+                i = i + 1
+            }
+            self.ecount = start + cnt
+            return self.add_jnode(J_ARR(), "", 0, start, cnt)
+        }
+        if b == 116 && self.pos + 4 <= self.length {
+            self.pos = self.pos + 4
+            return self.add_jnode(J_BOOL(), "true", 1, 0, 0)
+        }
+        if b == 102 && self.pos + 5 <= self.length {
+            self.pos = self.pos + 5
+            return self.add_jnode(J_BOOL(), "false", 0, 0, 0)
+        }
+        if b == 110 && self.pos + 4 <= self.length {
+            self.pos = self.pos + 4
+            return self.add_jnode(J_NULL(), "null", 0, 0, 0)
+        }
+        // Number
+        let sp = self.pos
+        while self.pos < self.length {
+            let nb = self.src.byte_at(self.pos)
+            if (nb >= 48 && nb <= 57) || nb == 45 || nb == 43 || nb == 46 || nb == 101 || nb == 69 {
+                self.pos = self.pos + 1
+            } else {
+                break
+            }
+        }
+        if self.pos > sp {
+            let num_s = self.src.slice(sp, self.pos)
+            return self.add_jnode(J_NUM(), num_s, num_s.to_i64(), 0, 0)
+        }
+        self.pos = self.pos + 1
+        return -1
+    }
+
+    pub fn get(obj_id: i64, key: str) -> i64 {
+        if obj_id < 0 || obj_id >= self.ncount { return -1 }
+        if self.kinds.get(obj_id) != J_OBJ() { return -1 }
+        let st = self.cstart.get(obj_id)
+        let cnt = self.ccount.get(obj_id)
+        mut i = 0
+        while i < cnt {
+            if self.entry_keys.get(st + i) == key {
+                return self.entry_vals.get(st + i)
+            }
+            i = i + 1
+        }
+        return -1
+    }
+
+    pub fn get_str(obj_id: i64, key: str) -> str {
+        let vid = self.get(obj_id, key)
+        if vid < 0 { return "" }
+        return self.svals.get(vid)
+    }
+
+    pub fn get_int(obj_id: i64, key: str, fallback: i64) -> i64 {
+        let vid = self.get(obj_id, key)
+        if vid < 0 { return fallback }
+        return self.ivals.get(vid)
+    }
+
+    pub fn raw_repr(nid: i64) -> str {
+        if nid < 0 || nid >= self.ncount { return "null" }
+        let k = self.kinds.get(nid)
+        if k == J_STR() { return json_quote(self.svals.get(nid)) }
+        if k == J_NUM() || k == J_BOOL() { return self.svals.get(nid) }
+        return "null"
+    }
+
+    pub fn arr_len(arr_id: i64) -> i64 {
+        if arr_id < 0 || arr_id >= self.ncount { return 0 }
+        if self.kinds.get(arr_id) != J_ARR() { return 0 }
+        return self.ccount.get(arr_id)
+    }
+
+    pub fn arr_get(arr_id: i64, idx: i64) -> i64 {
+        if arr_id < 0 || arr_id >= self.ncount { return -1 }
+        let st = self.cstart.get(arr_id)
+        let cnt = self.ccount.get(arr_id)
+        if idx < 0 || idx >= cnt { return -1 }
+        return self.entry_vals.get(st + idx)
+    }
+}

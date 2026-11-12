@@ -1,0 +1,414 @@
+// Aerix Native Windows PE32+ (AMD64 Executable) Builder
+
+import "./x64.arx"
+
+fn pe_align_up(val: i64, align: i64) -> i64 {
+    let rem = val % align
+    if rem == 0 { return val }
+    return val + (align - rem)
+}
+
+fn pe_push_u16(buf: List<i64>, v: i64) {
+    buf.push(v & 255)
+    buf.push((v >> 8) & 255)
+}
+
+fn pe_push_u32(buf: List<i64>, v: i64) {
+    buf.push(v & 255)
+    buf.push((v >> 8) & 255)
+    buf.push((v >> 16) & 255)
+    buf.push((v >> 24) & 255)
+}
+
+fn pe_push_u64(buf: List<i64>, v: i64) {
+    pe_push_u32(buf, v & 0xFFFFFFFF)
+    pe_push_u32(buf, (v >> 32) & 0xFFFFFFFF)
+}
+
+fn pe_patch_u64(buf: List<i64>, at: i64, v: i64) {
+    let lo = v & 0xFFFFFFFF
+    let hi = (v >> 32) & 0xFFFFFFFF
+    buf.set(at, lo & 255)
+    buf.set(at + 1, (lo >> 8) & 255)
+    buf.set(at + 2, (lo >> 16) & 255)
+    buf.set(at + 3, (lo >> 24) & 255)
+    buf.set(at + 4, hi & 255)
+    buf.set(at + 5, (hi >> 8) & 255)
+    buf.set(at + 6, (hi >> 16) & 255)
+    buf.set(at + 7, (hi >> 24) & 255)
+}
+
+fn pe_push_str_fixed8(buf: List<i64>, s: str) {
+    let n = s.len()
+    mut i = 0
+    while i < 8 {
+        if i < n { buf.push(s.byte_at(i)) } else { buf.push(0) }
+        i = i + 1
+    }
+}
+
+pub class PeBuilder {
+    pub rdata: List<i64>
+    pub data: List<i64>
+    pub str_cache: Map<str, i64>
+
+    pub imp_dlls: List<str>
+    pub imp_syms: List<str>
+    pub imp_map: Map<str, i64>
+    pub imp_iat_offs: List<i64>
+
+    init() {
+        self.rdata = List<i64>()
+        self.data = List<i64>()
+        self.str_cache = Map<str, i64>()
+        self.imp_dlls = List<str>()
+        self.imp_syms = List<str>()
+        self.imp_map = Map<str, i64>()
+        self.imp_iat_offs = List<i64>()
+    }
+
+    pub fn add_rdata_cstr(s: str) -> i64 {
+        if self.str_cache.has_key(s) {
+            return self.str_cache.get(s)
+        }
+        let off = self.rdata.len()
+        let n = s.len()
+        mut i = 0
+        while i < n {
+            self.rdata.push(s.byte_at(i))
+            i = i + 1
+        }
+        self.rdata.push(0)
+        self.str_cache.insert(s, off)
+        return off
+    }
+
+    pub fn add_rdata_bytes(bs: List<i64>) -> i64 {
+        while (self.rdata.len() % 8) != 0 { self.rdata.push(0) }
+        let off = self.rdata.len()
+        mut i = 0
+        while i < bs.len() {
+            self.rdata.push(bs.get(i))
+            i = i + 1
+        }
+        return off
+    }
+
+    pub fn add_rdata_f64(val: f64) -> i64 {
+        while (self.rdata.len() % 8) != 0 { self.rdata.push(0) }
+        let off = self.rdata.len()
+        let bb = ByteBuffer()
+        bb.write_f64_le(val)
+        bb.seek(0)
+        mut i = 0
+        while i < 8 {
+            self.rdata.push(bb.read_u8())
+            i = i + 1
+        }
+        bb.free()
+        return off
+    }
+
+    pub fn alloc_data_qword(init_val: i64) -> i64 {
+        while (self.data.len() % 8) != 0 { self.data.push(0) }
+        let off = self.data.len()
+        pe_push_u64(self.data, init_val)
+        return off
+    }
+
+    pub fn alloc_data_bytes(count: i64) -> i64 {
+        while (self.data.len() % 8) != 0 { self.data.push(0) }
+        let off = self.data.len()
+        mut i = 0
+        while i < count {
+            self.data.push(0)
+            i = i + 1
+        }
+        return off
+    }
+
+    pub fn add_import(dll: str, sym: str) -> i64 {
+        let k = dll + "!" + sym
+        if self.imp_map.has_key(k) {
+            return self.imp_map.get(k)
+        }
+        let idx = self.imp_syms.len()
+        self.imp_dlls.push(dll)
+        self.imp_syms.push(sym)
+        self.imp_iat_offs.push(0)
+        self.imp_map.insert(k, idx)
+        return idx
+    }
+
+    priv fn push_cstr_rdata(s: str) -> i64 {
+        let off = self.rdata.len()
+        mut i = 0
+        while i < s.len() {
+            self.rdata.push(s.byte_at(i))
+            i = i + 1
+        }
+        self.rdata.push(0)
+        return off
+    }
+
+    pub fn build_and_write(asm: X64Asm, out_path: str) -> bool {
+        asm.patch_labels()
+        let text_len = asm.code.len()
+        let text_rva = 0x1000
+        let text_virt = text_len
+        if text_virt == 0 {
+            asm.ret()
+        }
+        let rdata_rva = pe_align_up(text_rva + asm.code.len(), 0x1000)
+
+        // Group imports by unique DLL order
+        let dll_names = List<str>()
+        let dll_idx_map = Map<str, i64>()
+        mut ii = 0
+        while ii < self.imp_syms.len() {
+            let d = self.imp_dlls.get(ii)
+            if !dll_idx_map.has_key(d) {
+                let di = dll_names.len()
+                dll_names.push(d)
+                dll_idx_map.insert(d, di)
+            }
+            ii = ii + 1
+        }
+
+        // Align rdata to 8 bytes before import structures
+        while (self.rdata.len() % 8) != 0 { self.rdata.push(0) }
+
+        // 1. Emit Hint/Name entries and DLL strings
+        let hn_offs = List<i64>()
+        mut si = 0
+        while si < self.imp_syms.len() {
+            while (self.rdata.len() % 2) != 0 { self.rdata.push(0) }
+            hn_offs.push(self.rdata.len())
+            pe_push_u16(self.rdata, 0)
+            let sym = self.imp_syms.get(si)
+            mut k = 0
+            while k < sym.len() {
+                self.rdata.push(sym.byte_at(k))
+                k = k + 1
+            }
+            self.rdata.push(0)
+            si = si + 1
+        }
+
+        let dll_name_offs = List<i64>()
+        mut di = 0
+        while di < dll_names.len() {
+            dll_name_offs.push(self.push_cstr_rdata(dll_names.get(di)))
+            di = di + 1
+        }
+
+        // 2. Reserve ILT and IAT tables (8-byte aligned)
+        while (self.rdata.len() % 8) != 0 { self.rdata.push(0) }
+        let ilt_dll_offs = List<i64>()
+        di = 0
+        while di < dll_names.len() {
+            ilt_dll_offs.push(self.rdata.len())
+            let dname = dll_names.get(di)
+            mut j = 0
+            while j < self.imp_syms.len() {
+                if self.imp_dlls.get(j) == dname {
+                    pe_push_u64(self.rdata, rdata_rva + hn_offs.get(j))
+                }
+                j = j + 1
+            }
+            pe_push_u64(self.rdata, 0)
+            di = di + 1
+        }
+
+        while (self.rdata.len() % 8) != 0 { self.rdata.push(0) }
+        let iat_start_off = self.rdata.len()
+        let iat_dll_offs = List<i64>()
+        di = 0
+        while di < dll_names.len() {
+            iat_dll_offs.push(self.rdata.len())
+            let dname = dll_names.get(di)
+            mut j = 0
+            while j < self.imp_syms.len() {
+                if self.imp_dlls.get(j) == dname {
+                    self.imp_iat_offs.set(j, self.rdata.len())
+                    pe_push_u64(self.rdata, rdata_rva + hn_offs.get(j))
+                }
+                j = j + 1
+            }
+            pe_push_u64(self.rdata, 0)
+            di = di + 1
+        }
+        let iat_end_off = self.rdata.len()
+
+        // 3. Import Directory Table
+        while (self.rdata.len() % 4) != 0 { self.rdata.push(0) }
+        let idt_off = self.rdata.len()
+        di = 0
+        while di < dll_names.len() {
+            pe_push_u32(self.rdata, rdata_rva + ilt_dll_offs.get(di))
+            pe_push_u32(self.rdata, 0)
+            pe_push_u32(self.rdata, 0)
+            pe_push_u32(self.rdata, rdata_rva + dll_name_offs.get(di))
+            pe_push_u32(self.rdata, rdata_rva + iat_dll_offs.get(di))
+            di = di + 1
+        }
+        // Null terminator IDT entry (20 bytes)
+        mut z = 0
+        while z < 20 { self.rdata.push(0); z = z + 1 }
+        let idt_len = self.rdata.len() - idt_off
+
+        if self.rdata.len() == 0 { self.rdata.push(0) }
+        if self.data.len() == 0 { pe_push_u64(self.data, 0) }
+
+        let rdata_virt = self.rdata.len()
+        let data_virt = self.data.len()
+        let data_rva = pe_align_up(rdata_rva + rdata_virt, 0x1000)
+
+        // Patch all RIP+rel32 fixups in .text
+        mut fi = 0
+        while fi < asm.fix_pos.len() {
+            let fp = asm.fix_pos.get(fi)
+            let fk = asm.fix_kind.get(fi)
+            let ft = asm.fix_target.get(fi)
+            mut target_rva = 0
+            if fk == FIX_IAT() {
+                target_rva = rdata_rva + self.imp_iat_offs.get(ft)
+            } else if fk == FIX_RDATA() {
+                target_rva = rdata_rva + ft
+            } else if fk == FIX_DATA() {
+                target_rva = data_rva + ft
+            }
+            let next_rip_rva = text_rva + fp + 4
+            asm.patch_i32(fp, target_rva - next_rip_rva)
+            fi = fi + 1
+        }
+
+        let headers_size = 0x400
+        let text_raw_size = pe_align_up(asm.code.len(), 0x200)
+        let rdata_raw_size = pe_align_up(rdata_virt, 0x200)
+        let data_raw_size = pe_align_up(data_virt, 0x200)
+
+        let text_ptr = headers_size
+        let rdata_ptr = text_ptr + text_raw_size
+        let data_ptr = rdata_ptr + rdata_raw_size
+        let size_of_image = pe_align_up(data_rva + data_virt, 0x1000)
+
+        // Assemble final PE32+ header
+        let hdr = List<i64>()
+        // DOS Header
+        hdr.push(0x4D); hdr.push(0x5A) // 'MZ'
+        while hdr.len() < 0x3C { hdr.push(0) }
+        pe_push_u32(hdr, 0x80) // e_lfanew
+        while hdr.len() < 0x80 { hdr.push(0) }
+
+        // PE Signature
+        hdr.push(0x50); hdr.push(0x45); hdr.push(0); hdr.push(0)
+
+        // COFF Header (20 bytes)
+        pe_push_u16(hdr, 0x8664)       // Machine = AMD64
+        pe_push_u16(hdr, 3)            // NumberOfSections
+        pe_push_u32(hdr, 0)            // TimeDateStamp
+        pe_push_u32(hdr, 0)            // PointerToSymbolTable
+        pe_push_u32(hdr, 0)            // NumberOfSymbols
+        pe_push_u16(hdr, 0xF0)         // SizeOfOptionalHeader
+        pe_push_u16(hdr, 0x0022)       // Characteristics = EXECUTABLE | LARGE_ADDRESS_AWARE
+
+        // OptionalHeader64 (240 bytes)
+        pe_push_u16(hdr, 0x020B)       // Magic = PE32+
+        hdr.push(1); hdr.push(0)       // Linker version
+        pe_push_u32(hdr, text_raw_size)
+        pe_push_u32(hdr, rdata_raw_size + data_raw_size)
+        pe_push_u32(hdr, 0)
+        pe_push_u32(hdr, text_rva)     // AddressOfEntryPoint
+        pe_push_u32(hdr, text_rva)     // BaseOfCode
+        pe_push_u64(hdr, 0x140000000)  // ImageBase
+        pe_push_u32(hdr, 0x1000)       // SectionAlignment
+        pe_push_u32(hdr, 0x200)        // FileAlignment
+        pe_push_u16(hdr, 6); pe_push_u16(hdr, 0) // OS version 6.0
+        pe_push_u16(hdr, 1); pe_push_u16(hdr, 0) // Image version
+        pe_push_u16(hdr, 6); pe_push_u16(hdr, 0) // Subsystem version 6.0
+        pe_push_u32(hdr, 0)            // Win32VersionValue
+        pe_push_u32(hdr, size_of_image)
+        pe_push_u32(hdr, headers_size)
+        pe_push_u32(hdr, 0)            // CheckSum
+        pe_push_u16(hdr, 3)            // Subsystem = WINDOWS_CUI
+        pe_push_u16(hdr, 0x8100)       // DllCharacteristics = NX_COMPAT | TERMINAL_SERVER_AWARE
+        pe_push_u64(hdr, 0x100000)     // SizeOfStackReserve
+        pe_push_u64(hdr, 0x10000)      // SizeOfStackCommit
+        pe_push_u64(hdr, 0x100000)     // SizeOfHeapReserve
+        pe_push_u64(hdr, 0x1000)       // SizeOfHeapCommit
+        pe_push_u32(hdr, 0)            // LoaderFlags
+        pe_push_u32(hdr, 16)           // NumberOfRvaAndSizes
+
+        // DataDirectory[0..15]
+        mut ddi = 0
+        while ddi < 16 {
+            if ddi == 1 && dll_names.len() > 0 {
+                pe_push_u32(hdr, rdata_rva + idt_off)
+                pe_push_u32(hdr, idt_len)
+            } else if ddi == 12 && dll_names.len() > 0 {
+                pe_push_u32(hdr, rdata_rva + iat_start_off)
+                pe_push_u32(hdr, iat_end_off - iat_start_off)
+            } else {
+                pe_push_u32(hdr, 0)
+                pe_push_u32(hdr, 0)
+            }
+            ddi = ddi + 1
+        }
+
+        // Section Headers (.text, .rdata, .data)
+        // .text
+        pe_push_str_fixed8(hdr, ".text")
+        pe_push_u32(hdr, asm.code.len())
+        pe_push_u32(hdr, text_rva)
+        pe_push_u32(hdr, text_raw_size)
+        pe_push_u32(hdr, text_ptr)
+        pe_push_u32(hdr, 0); pe_push_u32(hdr, 0)
+        pe_push_u16(hdr, 0); pe_push_u16(hdr, 0)
+        pe_push_u32(hdr, 0x60000020)
+
+        // .rdata
+        pe_push_str_fixed8(hdr, ".rdata")
+        pe_push_u32(hdr, rdata_virt)
+        pe_push_u32(hdr, rdata_rva)
+        pe_push_u32(hdr, rdata_raw_size)
+        pe_push_u32(hdr, rdata_ptr)
+        pe_push_u32(hdr, 0); pe_push_u32(hdr, 0)
+        pe_push_u16(hdr, 0); pe_push_u16(hdr, 0)
+        pe_push_u32(hdr, 0x40000040)
+
+        // .data
+        pe_push_str_fixed8(hdr, ".data")
+        pe_push_u32(hdr, data_virt)
+        pe_push_u32(hdr, data_rva)
+        pe_push_u32(hdr, data_raw_size)
+        pe_push_u32(hdr, data_ptr)
+        pe_push_u32(hdr, 0); pe_push_u32(hdr, 0)
+        pe_push_u16(hdr, 0); pe_push_u16(hdr, 0)
+        pe_push_u32(hdr, 0xC0000040)
+
+        while hdr.len() < headers_size { hdr.push(0) }
+
+        // Write final binary image directly
+        let total = data_ptr + data_raw_size
+        let bh = arx_bin_new(total)
+        mut k = 0
+        while k < hdr.len() { arx_bin_u8(bh, hdr.get(k)); k = k + 1 }
+
+        k = 0
+        while k < asm.code.len() { arx_bin_u8(bh, asm.code.get(k)); k = k + 1 }
+        while k < text_raw_size { arx_bin_u8(bh, 0); k = k + 1 }
+
+        k = 0
+        while k < self.rdata.len() { arx_bin_u8(bh, self.rdata.get(k)); k = k + 1 }
+        while k < rdata_raw_size { arx_bin_u8(bh, 0); k = k + 1 }
+
+        k = 0
+        while k < self.data.len() { arx_bin_u8(bh, self.data.get(k)); k = k + 1 }
+        while k < data_raw_size { arx_bin_u8(bh, 0); k = k + 1 }
+
+        let ok = arx_bin_write_file(bh, out_path)
+        arx_bin_free(bh)
+        return ok != 0
+    }
+}

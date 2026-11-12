@@ -1,0 +1,375 @@
+// Aerix Native x86-64 Assembler & Fixup Recorder
+
+pub fn REG_RAX() -> i64 { return 0 }
+pub fn REG_RCX() -> i64 { return 1 }
+pub fn REG_RDX() -> i64 { return 2 }
+pub fn REG_RBX() -> i64 { return 3 }
+pub fn REG_RSP() -> i64 { return 4 }
+pub fn REG_RBP() -> i64 { return 5 }
+pub fn REG_RSI() -> i64 { return 6 }
+pub fn REG_RDI() -> i64 { return 7 }
+pub fn REG_R8() -> i64 { return 8 }
+pub fn REG_R9() -> i64 { return 9 }
+pub fn REG_R10() -> i64 { return 10 }
+pub fn REG_R11() -> i64 { return 11 }
+pub fn REG_R12() -> i64 { return 12 }
+pub fn REG_R13() -> i64 { return 13 }
+pub fn REG_R14() -> i64 { return 14 }
+pub fn REG_R15() -> i64 { return 15 }
+
+// Condition codes for Jcc (0x0F <cc>) and SETcc (0x0F <cc + 0x10>)
+pub fn CC_B() -> i64 { return 0x82 }
+pub fn CC_AE() -> i64 { return 0x83 }
+pub fn CC_E() -> i64 { return 0x84 }
+pub fn CC_NE() -> i64 { return 0x85 }
+pub fn CC_BE() -> i64 { return 0x86 }
+pub fn CC_A() -> i64 { return 0x87 }
+pub fn CC_L() -> i64 { return 0x8C }
+pub fn CC_GE() -> i64 { return 0x8D }
+pub fn CC_LE() -> i64 { return 0x8E }
+pub fn CC_G() -> i64 { return 0x8F }
+
+// RIP fixup kinds resolved during PE linking
+pub fn FIX_IAT() -> i64 { return 1 }
+pub fn FIX_RDATA() -> i64 { return 2 }
+pub fn FIX_DATA() -> i64 { return 3 }
+
+pub class X64Asm {
+    pub code: List<i64>
+    pub label_addrs: List<i64>
+    pub label_ref_pos: List<i64>
+    pub label_ref_id: List<i64>
+
+    pub fix_pos: List<i64>
+    pub fix_kind: List<i64>
+    pub fix_target: List<i64>
+
+    init() {
+        self.code = List<i64>()
+        self.label_addrs = List<i64>()
+        self.label_ref_pos = List<i64>()
+        self.label_ref_id = List<i64>()
+        self.fix_pos = List<i64>()
+        self.fix_kind = List<i64>()
+        self.fix_target = List<i64>()
+    }
+
+    pub fn pos() -> i64 {
+        return self.code.len()
+    }
+
+    pub fn emit_u8(b: i64) {
+        self.code.push(b & 255)
+    }
+
+    pub fn emit_u16(v: i64) {
+        self.emit_u8(v & 255)
+        self.emit_u8((v >> 8) & 255)
+    }
+
+    pub fn emit_i32(v: i64) {
+        self.emit_u8(v & 255)
+        self.emit_u8((v >> 8) & 255)
+        self.emit_u8((v >> 16) & 255)
+        self.emit_u8((v >> 24) & 255)
+    }
+
+    pub fn emit_i64(v: i64) {
+        self.emit_i32(v & 0xFFFFFFFF)
+        self.emit_i32((v >> 32) & 0xFFFFFFFF)
+    }
+
+    pub fn patch_i32(at: i64, v: i64) {
+        self.code.set(at, v & 255)
+        self.code.set(at + 1, (v >> 8) & 255)
+        self.code.set(at + 2, (v >> 16) & 255)
+        self.code.set(at + 3, (v >> 24) & 255)
+    }
+
+    priv fn rex(w: i64, r: i64, b: i64) {
+        let byte = 0x40 | ((w & 1) << 3) | (((r >> 3) & 1) << 2) | ((b >> 3) & 1)
+        self.emit_u8(byte)
+    }
+
+    priv fn rex_opt(r: i64, b: i64) {
+        let rb = ((r >> 3) & 1) << 2
+        let bb = (b >> 3) & 1
+        if rb != 0 || bb != 0 {
+            self.emit_u8(0x40 | rb | bb)
+        }
+    }
+
+    priv fn modrm(mod_bits: i64, reg: i64, rm: i64) {
+        self.emit_u8(((mod_bits & 3) << 6) | ((reg & 7) << 3) | (rm & 7))
+    }
+
+    // Labels
+    pub fn new_label() -> i64 {
+        let id = self.label_addrs.len()
+        self.label_addrs.push(-1)
+        return id
+    }
+
+    pub fn bind_label(id: i64) {
+        self.label_addrs.set(id, self.pos())
+    }
+
+    pub fn patch_labels() {
+        let n = self.label_ref_pos.len()
+        mut i = 0
+        while i < n {
+            let p = self.label_ref_pos.get(i)
+            let lid = self.label_ref_id.get(i)
+            let target = self.label_addrs.get(lid)
+            if target >= 0 {
+                let rel = target - (p + 4)
+                self.patch_i32(p, rel)
+            }
+            i = i + 1
+        }
+    }
+
+    // Core instructions
+    pub fn nop() { self.emit_u8(0x90) }
+    pub fn ret() { self.emit_u8(0xC3) }
+
+    pub fn push_r(r: i64) {
+        if r >= 8 { self.emit_u8(0x41) }
+        self.emit_u8(0x50 + (r & 7))
+    }
+
+    pub fn pop_r(r: i64) {
+        if r >= 8 { self.emit_u8(0x41) }
+        self.emit_u8(0x58 + (r & 7))
+    }
+
+    pub fn mov_rr(dst: i64, src: i64) {
+        self.rex(1, src, dst)
+        self.emit_u8(0x89)
+        self.modrm(3, src, dst)
+    }
+
+    pub fn mov_ri64(dst: i64, imm: i64) {
+        self.rex(1, 0, dst)
+        self.emit_u8(0xB8 + (dst & 7))
+        self.emit_i64(imm)
+    }
+
+    pub fn mov_ri32_sext(dst: i64, imm: i64) {
+        self.rex(1, 0, dst)
+        self.emit_u8(0xC7)
+        self.modrm(3, 0, dst)
+        self.emit_i32(imm)
+    }
+
+    // Memory [base + disp32] (always uses mod=2 + disp32 so RBP/R13 behave cleanly)
+    pub fn mov_rm64(dst: i64, base: i64, disp: i64) {
+        self.rex(1, dst, base)
+        self.emit_u8(0x8B)
+        self.modrm(2, dst, base)
+        if (base & 7) == 4 { self.emit_u8(0x24) }
+        self.emit_i32(disp)
+    }
+
+    pub fn mov_mr64(base: i64, disp: i64, src: i64) {
+        self.rex(1, src, base)
+        self.emit_u8(0x89)
+        self.modrm(2, src, base)
+        if (base & 7) == 4 { self.emit_u8(0x24) }
+        self.emit_i32(disp)
+    }
+
+    pub fn movzx_rm8(dst: i64, base: i64, disp: i64) {
+        self.rex(1, dst, base)
+        self.emit_u8(0x0F)
+        self.emit_u8(0xB6)
+        self.modrm(2, dst, base)
+        if (base & 7) == 4 { self.emit_u8(0x24) }
+        self.emit_i32(disp)
+    }
+
+    pub fn movsxd(dst: i64, src: i64) {
+        self.rex(1, dst, src)
+        self.emit_u8(0x63)
+        self.modrm(3, dst, src)
+    }
+
+    pub fn mov_mr8(base: i64, disp: i64, src: i64) {
+        self.rex(0, src, base)
+        self.emit_u8(0x88)
+        self.modrm(2, src, base)
+        if (base & 7) == 4 { self.emit_u8(0x24) }
+        self.emit_i32(disp)
+    }
+
+    pub fn lea_rm(dst: i64, base: i64, disp: i64) {
+        self.rex(1, dst, base)
+        self.emit_u8(0x8D)
+        self.modrm(2, dst, base)
+        if (base & 7) == 4 { self.emit_u8(0x24) }
+        self.emit_i32(disp)
+    }
+
+    // RIP-relative external & section references
+    pub fn lea_rip_rdata(dst: i64, rdata_off: i64) {
+        self.rex(1, dst, 0)
+        self.emit_u8(0x8D)
+        self.modrm(0, dst, 5)
+        self.fix_pos.push(self.pos())
+        self.fix_kind.push(FIX_RDATA())
+        self.fix_target.push(rdata_off)
+        self.emit_i32(0)
+    }
+
+    pub fn lea_rip_data(dst: i64, data_off: i64) {
+        self.rex(1, dst, 0)
+        self.emit_u8(0x8D)
+        self.modrm(0, dst, 5)
+        self.fix_pos.push(self.pos())
+        self.fix_kind.push(FIX_DATA())
+        self.fix_target.push(data_off)
+        self.emit_i32(0)
+    }
+
+    pub fn mov_rm64_rip_data(dst: i64, data_off: i64) {
+        self.rex(1, dst, 0)
+        self.emit_u8(0x8B)
+        self.modrm(0, dst, 5)
+        self.fix_pos.push(self.pos())
+        self.fix_kind.push(FIX_DATA())
+        self.fix_target.push(data_off)
+        self.emit_i32(0)
+    }
+
+    pub fn mov_mr64_rip_data(data_off: i64, src: i64) {
+        self.rex(1, src, 0)
+        self.emit_u8(0x89)
+        self.modrm(0, src, 5)
+        self.fix_pos.push(self.pos())
+        self.fix_kind.push(FIX_DATA())
+        self.fix_target.push(data_off)
+        self.emit_i32(0)
+    }
+
+    pub fn call_rip_iat(iat_slot: i64) {
+        self.emit_u8(0xFF)
+        self.emit_u8(0x15)
+        self.fix_pos.push(self.pos())
+        self.fix_kind.push(FIX_IAT())
+        self.fix_target.push(iat_slot)
+        self.emit_i32(0)
+    }
+
+    pub fn call_rel32(lbl: i64) {
+        self.emit_u8(0xE8)
+        self.label_ref_pos.push(self.pos())
+        self.label_ref_id.push(lbl)
+        self.emit_i32(0)
+    }
+
+    pub fn call_r(r: i64) {
+        if r >= 8 { self.emit_u8(0x41) }
+        self.emit_u8(0xFF)
+        self.modrm(3, 2, r)
+    }
+
+    pub fn jmp_rel32(lbl: i64) {
+        self.emit_u8(0xE9)
+        self.label_ref_pos.push(self.pos())
+        self.label_ref_id.push(lbl)
+        self.emit_i32(0)
+    }
+
+    pub fn jcc_rel32(cc: i64, lbl: i64) {
+        self.emit_u8(0x0F)
+        self.emit_u8(cc)
+        self.label_ref_pos.push(self.pos())
+        self.label_ref_id.push(lbl)
+        self.emit_i32(0)
+    }
+
+    // ALU operations (dst op= src)
+    pub fn add_rr(dst: i64, src: i64) { self.rex(1, src, dst); self.emit_u8(0x01); self.modrm(3, src, dst) }
+    pub fn sub_rr(dst: i64, src: i64) { self.rex(1, src, dst); self.emit_u8(0x29); self.modrm(3, src, dst) }
+    pub fn and_rr(dst: i64, src: i64) { self.rex(1, src, dst); self.emit_u8(0x21); self.modrm(3, src, dst) }
+    pub fn or_rr(dst: i64, src: i64) { self.rex(1, src, dst); self.emit_u8(0x09); self.modrm(3, src, dst) }
+    pub fn xor_rr(dst: i64, src: i64) { self.rex(1, src, dst); self.emit_u8(0x31); self.modrm(3, src, dst) }
+    pub fn cmp_rr(lhs: i64, rhs: i64) { self.rex(1, rhs, lhs); self.emit_u8(0x39); self.modrm(3, rhs, lhs) }
+    pub fn test_rr(a: i64, b: i64) { self.rex(1, b, a); self.emit_u8(0x85); self.modrm(3, b, a) }
+
+    pub fn imul_rr(dst: i64, src: i64) {
+        self.rex(1, dst, src)
+        self.emit_u8(0x0F)
+        self.emit_u8(0xAF)
+        self.modrm(3, dst, src)
+    }
+
+    pub fn add_ri32(dst: i64, imm: i64) {
+        self.rex(1, 0, dst); self.emit_u8(0x81); self.modrm(3, 0, dst); self.emit_i32(imm)
+    }
+
+    pub fn sub_ri32(dst: i64, imm: i64) {
+        self.rex(1, 0, dst); self.emit_u8(0x81); self.modrm(3, 5, dst); self.emit_i32(imm)
+    }
+
+    pub fn cmp_ri32(lhs: i64, imm: i64) {
+        self.rex(1, 0, lhs); self.emit_u8(0x81); self.modrm(3, 7, lhs); self.emit_i32(imm)
+    }
+
+    pub fn neg_r(dst: i64) { self.rex(1, 0, dst); self.emit_u8(0xF7); self.modrm(3, 3, dst) }
+    pub fn not_r(dst: i64) { self.rex(1, 0, dst); self.emit_u8(0xF7); self.modrm(3, 2, dst) }
+    pub fn cqo() { self.emit_u8(0x48); self.emit_u8(0x99) }
+    pub fn idiv_r(src: i64) { self.rex(1, 0, src); self.emit_u8(0xF7); self.modrm(3, 7, src) }
+
+    pub fn shl_cl(dst: i64) { self.rex(1, 0, dst); self.emit_u8(0xD3); self.modrm(3, 4, dst) }
+    pub fn shr_cl(dst: i64) { self.rex(1, 0, dst); self.emit_u8(0xD3); self.modrm(3, 5, dst) }
+    pub fn sar_cl(dst: i64) { self.rex(1, 0, dst); self.emit_u8(0xD3); self.modrm(3, 7, dst) }
+
+    pub fn setcc_u8(cc: i64, dst: i64) {
+        self.rex(0, 0, dst)
+        self.emit_u8(0x0F)
+        self.emit_u8(cc + 0x10)
+        self.modrm(3, 0, dst)
+        self.rex(1, dst, dst)
+        self.emit_u8(0x0F)
+        self.emit_u8(0xB6)
+        self.modrm(3, dst, dst)
+    }
+
+    // SSE2 double precision (f64)
+    pub fn movq_xmm_r(xmm: i64, r: i64) {
+        self.emit_u8(0x66); self.rex(1, xmm, r); self.emit_u8(0x0F); self.emit_u8(0x6E); self.modrm(3, xmm, r)
+    }
+
+    pub fn movq_r_xmm(r: i64, xmm: i64) {
+        self.emit_u8(0x66); self.rex(1, xmm, r); self.emit_u8(0x0F); self.emit_u8(0x7E); self.modrm(3, xmm, r)
+    }
+
+    pub fn addsd(dst: i64, src: i64) {
+        self.emit_u8(0xF2); self.rex_opt(dst, src); self.emit_u8(0x0F); self.emit_u8(0x58); self.modrm(3, dst, src)
+    }
+
+    pub fn subsd(dst: i64, src: i64) {
+        self.emit_u8(0xF2); self.rex_opt(dst, src); self.emit_u8(0x0F); self.emit_u8(0x5C); self.modrm(3, dst, src)
+    }
+
+    pub fn mulsd(dst: i64, src: i64) {
+        self.emit_u8(0xF2); self.rex_opt(dst, src); self.emit_u8(0x0F); self.emit_u8(0x59); self.modrm(3, dst, src)
+    }
+
+    pub fn divsd(dst: i64, src: i64) {
+        self.emit_u8(0xF2); self.rex_opt(dst, src); self.emit_u8(0x0F); self.emit_u8(0x5E); self.modrm(3, dst, src)
+    }
+
+    pub fn ucomisd(a: i64, b: i64) {
+        self.emit_u8(0x66); self.rex_opt(a, b); self.emit_u8(0x0F); self.emit_u8(0x2E); self.modrm(3, a, b)
+    }
+
+    pub fn cvtsi2sd(xmm: i64, r: i64) {
+        self.emit_u8(0xF2); self.rex(1, xmm, r); self.emit_u8(0x0F); self.emit_u8(0x2A); self.modrm(3, xmm, r)
+    }
+
+    pub fn cvttsd2si(r: i64, xmm: i64) {
+        self.emit_u8(0xF2); self.rex(1, r, xmm); self.emit_u8(0x0F); self.emit_u8(0x2C); self.modrm(3, r, xmm)
+    }
+}
