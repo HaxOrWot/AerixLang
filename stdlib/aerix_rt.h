@@ -54,10 +54,27 @@ typedef intptr_t isize;
 typedef const char* str;
 
 // --- Runtime Panic Handler ---
+static inline int arx_rt_use_color(void) {
+    const char* nc = getenv("NO_COLOR");
+    return !(nc && nc[0] != '\0');
+}
+
 static inline void arx_panic(const char* msg, const char* file, int line) {
-    fprintf(stderr, "\n\033[1;31m[AERIX RUNTIME PANIC]\033[0m: %s\n", msg);
-    fprintf(stderr, "  --> at %s:%d\n\n", file, line);
+    if (arx_rt_use_color()) {
+        fprintf(stderr, "\n\033[1;31m[Aerix Runtime Panic]\033[0m %s\n", msg ? msg : "unknown panic");
+        fprintf(stderr, "  \033[1;34m-->\033[0m %s:%d\n\n", file ? file : "<unknown>", line);
+    } else {
+        fprintf(stderr, "\n[Aerix Runtime Panic] %s\n", msg ? msg : "unknown panic");
+        fprintf(stderr, "  --> %s:%d\n\n", file ? file : "<unknown>", line);
+    }
     exit(1);
+}
+
+static inline void arx_panic_bounds(const char* op, int64_t idx, size_t len, const char* file, int line) {
+    char buf[256];
+    snprintf(buf, sizeof(buf), "IndexOutOfBounds in %s: index %lld is out of bounds for length %zu",
+             op ? op : "collection", (long long)idx, len);
+    arx_panic(buf, file, line);
 }
 
 #define ARX_ASSERT(cond, msg) \
@@ -100,7 +117,13 @@ static inline void arx_throw(const char* msg, int code) {
         arx_top_frame->code = (code != 0) ? code : 1;
         longjmp(arx_top_frame->env, arx_top_frame->code);
     } else {
-        fprintf(stderr, "\n\033[1;31m[AERIX UNCAUGHT EXCEPTION]\033[0m: %s (code %d)\n\n", msg ? msg : "Error", code);
+        if (arx_rt_use_color()) {
+            fprintf(stderr, "\n\033[1;31m[Aerix Uncaught Exception]\033[0m %s (exit code %d)\n  \033[1;36m= help:\033[0m wrap throwing calls in a 'try { ... } catch (err) { ... }' block\n\n",
+                    msg ? msg : "Error", code);
+        } else {
+            fprintf(stderr, "\n[Aerix Uncaught Exception] %s (exit code %d)\n  = help: wrap throwing calls in a 'try { ... } catch (err) { ... }' block\n\n",
+                    msg ? msg : "Error", code);
+        }
         exit(code != 0 ? code : 1);
     }
 }
@@ -715,18 +738,18 @@ static inline int64_t arx_list_pop(int64_t list_handle) {
 
 static inline int64_t arx_list_get(int64_t list_handle, int64_t idx) {
     Arx_List* list = (Arx_List*)(intptr_t)list_handle;
-    if (!list) arx_panic("NullPointerError: access on null List", __FILE__, __LINE__);
+    if (!list) arx_panic("NullPointerError: attempted to index a null List", __FILE__, __LINE__);
     if (idx < 0 || (size_t)idx >= list->len) {
-        arx_panic("IndexOutOfBounds: index out of bounds on List", __FILE__, __LINE__);
+        arx_panic_bounds("List.get", idx, list->len, __FILE__, __LINE__);
     }
     return list->data[idx];
 }
 
 static inline void arx_list_set(int64_t list_handle, int64_t idx, int64_t val) {
     Arx_List* list = (Arx_List*)(intptr_t)list_handle;
-    if (!list) arx_panic("NullPointerError: access on null List", __FILE__, __LINE__);
+    if (!list) arx_panic("NullPointerError: attempted to mutate a null List", __FILE__, __LINE__);
     if (idx < 0 || (size_t)idx >= list->len) {
-        arx_panic("IndexOutOfBounds: index out of bounds on List", __FILE__, __LINE__);
+        arx_panic_bounds("List.set", idx, list->len, __FILE__, __LINE__);
     }
     list->data[idx] = val;
 }

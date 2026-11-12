@@ -971,15 +971,28 @@ pub fn lsp_build_diagnostics_json(az: Analyzer, doc_path: str, source: str) -> s
         mut ln0 = az.err_lines.get(i) - 1
         mut cl0 = az.err_cols.get(i) - 1
         mut msg = az.err_msgs.get(i)
+        mut code = ""
+        if i < az.err_codes.len() { code = az.err_codes.get(i) }
+        mut hmsg = ""
+        if i < az.err_helps.len() { hmsg = az.err_helps.get(i) }
+        mut sev = 1
+        if i < az.err_sevs.len() { sev = az.err_sevs.get(i) }
+        mut elen_diag = 1
+        if i < az.err_lens.len() { elen_diag = az.err_lens.get(i) }
+        if elen_diag < 1 { elen_diag = 1 }
+
         let in_cur = (ef == doc_path)
         if !in_cur {
             ln0 = 0
             cl0 = 0
             msg = "[" + bpath_basename(ef) + ":" + az.err_lines.get(i) + "] " + msg
         }
+        if hmsg != "" {
+            msg = msg + "\nhelp: " + hmsg
+        }
         if ln0 < 0 { ln0 = 0 }
         if cl0 < 0 { cl0 = 0 }
-        mut end_cl0 = cl0 + 1
+        mut end_cl0 = cl0 + elen_diag
         if in_cur && source != "" {
             let eline = lsp_get_line_text(source, ln0)
             let elen = eline.len()
@@ -988,8 +1001,9 @@ pub fn lsp_build_diagnostics_json(az: Analyzer, doc_path: str, source: str) -> s
                 while ep < elen && lsp_is_ident_char(eline.byte_at(ep)) {
                     ep = ep + 1
                 }
-                end_cl0 = ep
+                if ep > end_cl0 { end_cl0 = ep }
             }
+            if end_cl0 > elen && elen > cl0 { end_cl0 = elen }
         }
 
         if !first { jb.comma() }
@@ -1001,10 +1015,150 @@ pub fn lsp_build_diagnostics_json(az: Analyzer, doc_path: str, source: str) -> s
         jb.comma()
         jb.key("end"); jb.lbrace(); jb.kv_int("line", ln0, true); jb.kv_int("character", end_cl0, false); jb.rbrace()
         jb.rbrace()
-        jb.kv_int("severity", 1, false)
+        jb.kv_int("severity", sev, false)
+        if code != "" {
+            jb.kv_str("code", code, false)
+        }
         jb.kv_str("source", "aerix", false)
         jb.kv_str("message", msg, false)
         jb.rbrace()
+        i = i + 1
+    }
+    jb.rbrack()
+    return jb.finish()
+}
+
+fn lsp_extract_quoted_after(text: str, marker: str) -> str {
+    let idx = lsp_str_find(text, marker, 0)
+    if idx < 0 { return "" }
+    let start = idx + marker.len()
+    let q2 = lsp_str_find(text, "'", start)
+    if q2 <= start { return "" }
+    return text.slice(start, q2)
+}
+
+pub fn lsp_build_code_action_json(source: str, az: Analyzer, doc_path: str, doc_uri: str, start_line0: i64, end_line0: i64) -> str {
+    let jb = JsonBuf()
+    jb.lbrack()
+    mut first = true
+    mut i = 0
+    while i < az.err_count {
+        if az.err_files.get(i) != doc_path {
+            i = i + 1
+            continue
+        }
+        let ln0 = az.err_lines.get(i) - 1
+        let cl0 = az.err_cols.get(i) - 1
+        if ln0 < start_line0 - 1 || ln0 > end_line0 + 1 {
+            i = i + 1
+            continue
+        }
+        mut code = ""
+        if i < az.err_codes.len() { code = az.err_codes.get(i) }
+        mut hmsg = ""
+        if i < az.err_helps.len() { hmsg = az.err_helps.get(i) }
+        let msg = az.err_msgs.get(i)
+
+        // Quick Fix 1: Replace typo with suggested identifier ("did you mean 'X'?")
+        let sug = lsp_extract_quoted_after(hmsg, "did you mean '")
+        if sug != "" && ln0 >= 0 && cl0 >= 0 {
+            mut end_cl0 = cl0 + 1
+            if i < az.err_lens.len() && az.err_lens.get(i) > 1 {
+                end_cl0 = cl0 + az.err_lens.get(i)
+            }
+            let eline = lsp_get_line_text(source, ln0)
+            if cl0 < eline.len() && lsp_is_ident_char(eline.byte_at(cl0)) {
+                mut ep = cl0 + 1
+                while ep < eline.len() && lsp_is_ident_char(eline.byte_at(ep)) { ep = ep + 1 }
+                if ep > end_cl0 { end_cl0 = ep }
+            }
+            if !first { jb.comma() }
+            first = false
+            jb.lbrace()
+            jb.kv_str("title", "Replace with '" + sug + "'", true)
+            jb.kv_str("kind", "quickfix", false)
+            jb.kv_bool("isPreferred", true, false)
+            jb.comma(); jb.key("edit"); jb.lbrace()
+            jb.key("changes"); jb.lbrace()
+            jb.key(doc_uri); jb.lbrack(); jb.lbrace()
+            jb.key("range"); jb.lbrace()
+            jb.key("start"); jb.lbrace(); jb.kv_int("line", ln0, true); jb.kv_int("character", cl0, false); jb.rbrace()
+            jb.comma()
+            jb.key("end"); jb.lbrace(); jb.kv_int("line", ln0, true); jb.kv_int("character", end_cl0, false); jb.rbrace()
+            jb.rbrace()
+            jb.kv_str("newText", sug, false)
+            jb.rbrace(); jb.rbrack()
+            jb.rbrace(); jb.rbrace()
+            jb.rbrace()
+        }
+
+        // Quick Fix 2: Convert 'let v' to 'mut v' on E0204 immutable variable assignment
+        if code == "E0204" {
+            let vname = lsp_extract_quoted_after(msg, "immutable variable '")
+            if vname != "" && source != "" {
+                mut scan_ln = ln0 - 1
+                mut found_let_ln = -1
+                mut found_let_cl = -1
+                while scan_ln >= 0 {
+                    let sline = lsp_get_line_text(source, scan_ln)
+                    let pos_let = lsp_str_find(sline, "let ", 0)
+                    if pos_let >= 0 {
+                        let after = sline.slice(pos_let + 4, sline.len()).trim()
+                        if after.starts_with(vname) {
+                            let rem = after.slice(vname.len(), after.len())
+                            if rem == "" || rem.starts_with(":") || rem.starts_with("=") || rem.starts_with(" ") || rem.starts_with("\t") {
+                                found_let_ln = scan_ln
+                                found_let_cl = pos_let
+                                break
+                            }
+                        }
+                    }
+                    scan_ln = scan_ln - 1
+                }
+                if found_let_ln >= 0 && found_let_cl >= 0 {
+                    if !first { jb.comma() }
+                    first = false
+                    jb.lbrace()
+                    jb.kv_str("title", "Change 'let " + vname + "' to 'mut " + vname + "'", true)
+                    jb.kv_str("kind", "quickfix", false)
+                    jb.kv_bool("isPreferred", true, false)
+                    jb.comma(); jb.key("edit"); jb.lbrace()
+                    jb.key("changes"); jb.lbrace()
+                    jb.key(doc_uri); jb.lbrack(); jb.lbrace()
+                    jb.key("range"); jb.lbrace()
+                    jb.key("start"); jb.lbrace(); jb.kv_int("line", found_let_ln, true); jb.kv_int("character", found_let_cl, false); jb.rbrace()
+                    jb.comma()
+                    jb.key("end"); jb.lbrace(); jb.kv_int("line", found_let_ln, true); jb.kv_int("character", found_let_cl + 3, false); jb.rbrace()
+                    jb.rbrace()
+                    jb.kv_str("newText", "mut", false)
+                    jb.rbrace(); jb.rbrack()
+                    jb.rbrace(); jb.rbrace()
+                    jb.rbrace()
+                }
+            }
+        }
+
+        // Quick Fix 3: Remove unreachable statement (W0001)
+        if code == "W0001" && ln0 >= 0 {
+            if !first { jb.comma() }
+            first = false
+            jb.lbrace()
+            jb.kv_str("title", "Remove unreachable statement", true)
+            jb.kv_str("kind", "quickfix", false)
+            jb.comma(); jb.key("edit"); jb.lbrace()
+            jb.key("changes"); jb.lbrace()
+            jb.key(doc_uri); jb.lbrack(); jb.lbrace()
+            jb.key("range"); jb.lbrace()
+            jb.key("start"); jb.lbrace(); jb.kv_int("line", ln0, true); jb.kv_int("character", 0, false); jb.rbrace()
+            jb.comma()
+            jb.key("end"); jb.lbrace(); jb.kv_int("line", ln0 + 1, true); jb.kv_int("character", 0, false); jb.rbrace()
+            jb.rbrace()
+            jb.kv_str("newText", "", false)
+            jb.rbrace(); jb.rbrack()
+            jb.rbrace(); jb.rbrace()
+            jb.rbrace()
+        }
+
         i = i + 1
     }
     jb.rbrack()

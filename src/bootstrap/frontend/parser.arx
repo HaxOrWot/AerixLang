@@ -13,6 +13,7 @@ pub class Parser {
     pub tok_vals: List<str>
     pub tok_lines: List<i64>
     pub tok_cols: List<i64>
+    pub tok_lens: List<i64>
     pub tok_count: i64
     pub pos: i64
     pub cur_file: str
@@ -41,7 +42,11 @@ pub class Parser {
     pub err_files: List<str>
     pub err_lines: List<i64>
     pub err_cols: List<i64>
+    pub err_lens: List<i64>
+    pub err_codes: List<str>
     pub err_msgs: List<str>
+    pub err_helps: List<str>
+    pub err_sevs: List<i64>
     pub err_count: i64
     pub virtual_docs: Map<str, str>
     priv last_err_pos: i64
@@ -75,6 +80,7 @@ pub class Parser {
         self.tok_vals = List<str>()
         self.tok_lines = List<i64>()
         self.tok_cols = List<i64>()
+        self.tok_lens = List<i64>()
         self.tok_count = 0
         self.pos = 0
         self.cur_file = bpath_normalize(entry_file)
@@ -101,7 +107,11 @@ pub class Parser {
         self.err_files = List<str>()
         self.err_lines = List<i64>()
         self.err_cols = List<i64>()
+        self.err_lens = List<i64>()
+        self.err_codes = List<str>()
         self.err_msgs = List<str>()
+        self.err_helps = List<str>()
+        self.err_sevs = List<i64>()
         self.err_count = 0
         self.virtual_docs = Map<str, str>()
         self.last_err_pos = -1
@@ -289,6 +299,32 @@ pub class Parser {
         return 1
     }
 
+    priv fn with_tok_col(nid: i64, tok_idx: i64) -> i64 {
+        if nid >= 0 && tok_idx >= 0 && tok_idx < self.tok_cols.len() {
+            self.nc.set(nid, self.tok_cols.get(tok_idx))
+        }
+        return nid
+    }
+
+    priv fn cur_len() -> i64 {
+        if self.pos < self.tok_lens.len() {
+            let l = self.tok_lens.get(self.pos)
+            if l > 0 { return l }
+        }
+        let v = self.cur_val()
+        if v.len() > 0 && v != "\n" { return v.len() }
+        return 1
+    }
+
+    priv fn cur_tok_desc() -> str {
+        let k = self.cur_kind()
+        if k == TK_EOF() { return "<end of file>" }
+        if k == TK_NEWLINE() { return "<end of line>" }
+        let v = self.cur_val()
+        if v == "" || v == "\n" { return "<end of line>" }
+        return "'" + v + "'"
+    }
+
     priv fn adv() -> i64 {
         if self.tok_count == 0 { return 0 }
         let idx = self.pos
@@ -308,24 +344,71 @@ pub class Parser {
         return false
     }
 
-    priv fn record_err(ln: i64, cl: i64, msg: str) {
+    priv fn record_err_full(ln: i64, cl: i64, tlen: i64, code: str, msg: str, help_msg: str, sev: i64) {
         if self.err_count >= 64 { return }
+        mut sl = tlen
+        if sl < 1 { sl = 1 }
         self.err_files.push(self.cur_file)
         self.err_lines.push(ln)
         self.err_cols.push(cl)
+        self.err_lens.push(sl)
+        self.err_codes.push(code)
         self.err_msgs.push(msg)
+        self.err_helps.push(help_msg)
+        self.err_sevs.push(sev)
         self.err_count = self.err_count + 1
     }
 
+    priv fn record_err(ln: i64, cl: i64, msg: str) {
+        self.record_err_full(ln, cl, 1, "E0102", msg, "", 1)
+    }
+
+    priv fn parse_err_help(msg: str) -> str {
+        if msg.contains("'}'") || msg.contains("brace") {
+            return "check for an unclosed block or missing statement terminator above"
+        }
+        if msg.contains("')'") || msg.contains("']'") {
+            return "ensure delimiters are balanced in this expression or parameter list"
+        }
+        if msg.contains("type") {
+            return "provide a valid Aerix type such as 'i64', 'f64', 'str', 'bool', or a class/enum name"
+        }
+        if msg.contains("identifier") || msg.contains("variable name") || msg.contains("function name") {
+            return "a valid identifier starting with a letter or '_' is required here"
+        }
+        if msg.contains("'='") {
+            return "variable declarations and assignments require '=' followed by an expression"
+        }
+        return ""
+    }
+
+    priv fn parse_err_code(msg: str) -> str {
+        if msg.contains("'}'") || msg.contains("')'") || msg.contains("']'") || msg.contains("'('") || msg.contains("'") {
+            return "E0101"
+        }
+        if msg.contains("type") || msg.contains("identifier") || msg.contains("name") {
+            return "E0103"
+        }
+        if msg.contains("import") || msg.contains("module") {
+            return "E0104"
+        }
+        return "E0102"
+    }
+
     priv fn fail(msg: str) {
+        let got_desc = self.cur_tok_desc()
+        let full_msg = msg + ", found " + got_desc
+        let code = self.parse_err_code(msg)
+        let help_msg = self.parse_err_help(msg)
         if self.recover_mode {
             if self.last_err_pos != self.pos {
                 self.last_err_pos = self.pos
-                self.record_err(self.cur_line(), self.cur_col(), msg)
+                self.record_err_full(self.cur_line(), self.cur_col(), self.cur_len(), code, full_msg, help_msg, 1)
             }
             return
         }
-        eprintln("PARSER ERROR (" + self.cur_file + ":" + self.cur_line() + "): " + msg + " [got '" + self.cur_val() + "']")
+        eprintln("error[" + code + "]: " + full_msg + " at " + self.cur_file + ":" + self.cur_line() + ":" + self.cur_col())
+        if help_msg != "" { eprintln("  = help: " + help_msg) }
         Env.exit(1)
     }
 
@@ -370,11 +453,13 @@ pub class Parser {
             return
         }
         if !File.exists(resolved) {
+            let msg = "cannot find imported source file '" + resolved + "'"
+            let help_msg = "verify the relative path from '" + self.cur_dir + "' or check that the file ends with '.arx'"
             if self.recover_mode {
-                self.record_err(self.cur_line(), self.cur_col(), "Cannot find imported source file: " + resolved)
+                self.record_err_full(self.cur_line(), self.cur_col(), self.cur_len(), "E0104", msg, help_msg, 1)
                 return
             }
-            self.fail("Cannot find imported source file: " + resolved)
+            self.fail(msg)
         }
         self.loaded_files.insert(resolved, 1)
 
@@ -401,11 +486,17 @@ pub class Parser {
         if self.recover_mode && lx.err_count > 0 {
             mut li = 0
             while li < lx.err_count {
-                self.err_files.push(norm_name)
-                self.err_lines.push(lx.err_lines.get(li))
-                self.err_cols.push(lx.err_cols.get(li))
-                self.err_msgs.push(lx.err_msgs.get(li))
-                self.err_count = self.err_count + 1
+                if self.err_count < 64 {
+                    self.err_files.push(norm_name)
+                    self.err_lines.push(lx.err_lines.get(li))
+                    self.err_cols.push(lx.err_cols.get(li))
+                    self.err_lens.push(lx.err_lens.get(li))
+                    self.err_codes.push(lx.err_codes.get(li))
+                    self.err_msgs.push(lx.err_msgs.get(li))
+                    self.err_helps.push(lx.err_helps.get(li))
+                    self.err_sevs.push(1)
+                    self.err_count = self.err_count + 1
+                }
                 li = li + 1
             }
         }
@@ -415,6 +506,7 @@ pub class Parser {
         let s_vals = self.tok_vals
         let s_lines = self.tok_lines
         let s_cols = self.tok_cols
+        let s_lens = self.tok_lens
         let s_tcount = self.tok_count
         let s_pos = self.pos
         let s_file = self.cur_file
@@ -425,6 +517,7 @@ pub class Parser {
         self.tok_vals = ts.vals
         self.tok_lines = ts.lines
         self.tok_cols = ts.cols
+        self.tok_lens = ts.lens
         self.tok_count = ts.count
         self.pos = 0
         self.cur_file = norm_name
@@ -438,6 +531,7 @@ pub class Parser {
         self.tok_vals = s_vals
         self.tok_lines = s_lines
         self.tok_cols = s_cols
+        self.tok_lens = s_lens
         self.tok_count = s_tcount
         self.pos = s_pos
         self.cur_file = s_file
@@ -472,11 +566,19 @@ pub class Parser {
         }
         let mod_dir = find_module_dir(mod_name, self.entry_dir)
         if mod_dir == "" {
+            let msg = "built-in module '" + mod_name + "' not found"
+            let help_msg = "check module spelling (e.g. 'Math', 'Random', 'Json') or use a relative file path like import \"./mod.arx\""
             if self.recover_mode {
-                self.record_err(self.cur_line(), self.cur_col(), "Inbuilt module '" + mod_name + "' not found")
+                mut err_ln = self.cur_line()
+                mut err_cl = self.cur_col()
+                if self.pos > 0 && self.pos - 1 < self.tok_cols.len() {
+                    err_ln = self.tok_lines.get(self.pos - 1)
+                    err_cl = self.tok_cols.get(self.pos - 1)
+                }
+                self.record_err_full(err_ln, err_cl, mod_name.len(), "E0104", msg, help_msg, 1)
                 return
             }
-            self.fail("Inbuilt module '" + mod_name + "' not found")
+            self.fail(msg)
         }
         self.loaded_mods.insert(mod_name, 1)
 
@@ -1018,7 +1120,7 @@ pub class Parser {
             if nk != TK_NEWLINE() && nk != TK_SEMICOLON() && nk != TK_RBRACE() && nk != TK_EOF() {
                 val_id = self.parse_expr(0)
             }
-            return self.add_node(NK_RETURN(), "", "", 0, val_id, -1, -1, rln)
+            return self.with_tok_col(self.add_node(NK_RETURN(), "", "", 0, val_id, -1, -1, rln), rt)
         }
         if k == TK_BREAK() {
             let bt = self.adv()
@@ -1058,9 +1160,13 @@ pub class Parser {
         if ak == TK_EQUALS() || ak == TK_PLUS_EQ() || ak == TK_MINUS_EQ() || ak == TK_STAR_EQ() || ak == TK_SLASH_EQ() || ak == TK_PERCENT_EQ() {
             let op_str = self.tok_vals.get(self.adv())
             let rhs = self.parse_expr(0)
-            return self.add_node(NK_ASSIGN(), op_str, "", 0, lhs, rhs, -1, self.ln.get(lhs))
+            let aid = self.add_node(NK_ASSIGN(), op_str, "", 0, lhs, rhs, -1, self.ln.get(lhs))
+            self.nc.set(aid, self.nc.get(lhs))
+            return aid
         }
-        return self.add_node(NK_EXPR_STMT(), "", "", 0, lhs, -1, -1, self.ln.get(lhs))
+        let esid = self.add_node(NK_EXPR_STMT(), "", "", 0, lhs, -1, -1, self.ln.get(lhs))
+        self.nc.set(esid, self.nc.get(lhs))
+        return esid
     }
 
     priv fn parse_var_decl() -> i64 {
@@ -1373,27 +1479,27 @@ pub class Parser {
         let ln = self.tok_lines.get(t_idx)
 
         if k == TK_INT() {
-            return self.add_node(NK_INT_LIT(), v, "i64", 0, -1, -1, -1, ln)
+            return self.with_tok_col(self.add_node(NK_INT_LIT(), v, "i64", 0, -1, -1, -1, ln), t_idx)
         }
         if k == TK_FLOAT() {
-            return self.add_node(NK_FLOAT_LIT(), v, "f64", 0, -1, -1, -1, ln)
+            return self.with_tok_col(self.add_node(NK_FLOAT_LIT(), v, "f64", 0, -1, -1, -1, ln), t_idx)
         }
         if k == TK_STR() {
-            return self.add_node(NK_STR_LIT(), v, "str", 0, -1, -1, -1, ln)
+            return self.with_tok_col(self.add_node(NK_STR_LIT(), v, "str", 0, -1, -1, -1, ln), t_idx)
         }
         if k == TK_STR_INTERP() {
-            return self.parse_str_interp_node(v, ln)
+            return self.with_tok_col(self.parse_str_interp_node(v, ln), t_idx)
         }
         if k == TK_CHAR() {
-            return self.add_node(NK_CHAR_LIT(), v, "char", 0, -1, -1, -1, ln)
+            return self.with_tok_col(self.add_node(NK_CHAR_LIT(), v, "char", 0, -1, -1, -1, ln), t_idx)
         }
         if k == TK_BOOL() {
             mut bval = 0
             if v == "true" { bval = 1 }
-            return self.add_node(NK_BOOL_LIT(), v, "bool", bval, -1, -1, -1, ln)
+            return self.with_tok_col(self.add_node(NK_BOOL_LIT(), v, "bool", bval, -1, -1, -1, ln), t_idx)
         }
         if k == TK_NULL() {
-            return self.add_node(NK_NULL_LIT(), "null", "null", 0, -1, -1, -1, ln)
+            return self.with_tok_col(self.add_node(NK_NULL_LIT(), "null", "null", 0, -1, -1, -1, ln), t_idx)
         }
         if k == TK_IDENT() || k == TK_SELF() || k == TK_SUPER() {
             if k == TK_IDENT() && self.is_generic_call_ahead() {
@@ -1409,9 +1515,9 @@ pub class Parser {
                 let mangled = self.register_generic(v, targs, tacount)
                 let args = List<i64>()
                 let acount = self.parse_arg_list_into(args)
-                return self.make_group(NK_GENERIC_CALL(), mangled, v, 0, -1, -1, -1, ln, args, acount)
+                return self.with_tok_col(self.make_group(NK_GENERIC_CALL(), mangled, v, 0, -1, -1, -1, ln, args, acount), t_idx)
             }
-            return self.add_node(NK_IDENT(), v, "", 0, -1, -1, -1, ln)
+            return self.with_tok_col(self.add_node(NK_IDENT(), v, "", 0, -1, -1, -1, ln), t_idx)
         }
         if k == TK_NEW() {
             let ct = self.expect_k(TK_IDENT(), "Expected class name after 'new'")
@@ -1498,16 +1604,18 @@ pub class Parser {
             self.pos = self.pos - 1
             let args = List<i64>()
             let acount = self.parse_arg_list_into(args)
-            return self.make_group(NK_CALL(), "", "", 0, left, -1, -1, ln, args, acount)
+            let cid = self.make_group(NK_CALL(), "", "", 0, left, -1, -1, ln, args, acount)
+            if left >= 0 { self.nc.set(cid, self.nc.get(left)) }
+            return cid
         }
         if k == TK_DOT() || k == TK_QDOT() {
             if self.cur_kind() == TK_INT() {
                 let m_idx = self.adv()
-                return self.add_node(NK_MEMBER(), "f" + self.tok_vals.get(m_idx), "", 0, left, -1, -1, ln)
+                return self.with_tok_col(self.add_node(NK_MEMBER(), "f" + self.tok_vals.get(m_idx), "", 0, left, -1, -1, ln), m_idx)
             }
             if self.cur_kind() == TK_IDENT() {
                 let m_tok = self.adv()
-                return self.add_node(NK_MEMBER(), self.tok_vals.get(m_tok), "", 0, left, -1, -1, ln)
+                return self.with_tok_col(self.add_node(NK_MEMBER(), self.tok_vals.get(m_tok), "", 0, left, -1, -1, ln), m_tok)
             }
             self.fail("Expected member name after '.'")
             return self.add_node(NK_MEMBER(), "", "", 0, left, -1, -1, ln)

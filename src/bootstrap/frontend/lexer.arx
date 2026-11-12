@@ -42,7 +42,10 @@ pub class Lexer {
     pub com_count: i64
     pub err_lines: List<i64>
     pub err_cols: List<i64>
+    pub err_lens: List<i64>
+    pub err_codes: List<str>
     pub err_msgs: List<str>
+    pub err_helps: List<str>
     pub err_count: i64
 
     init(source: str, filename: str) {
@@ -66,7 +69,10 @@ pub class Lexer {
         self.com_count = 0
         self.err_lines = List<i64>()
         self.err_cols = List<i64>()
+        self.err_lens = List<i64>()
+        self.err_codes = List<str>()
         self.err_msgs = List<str>()
+        self.err_helps = List<str>()
         self.err_count = 0
     }
 
@@ -90,11 +96,20 @@ pub class Lexer {
         self.com_count = self.com_count + 1
     }
 
-    priv fn record_lex_err(ln: i64, cl: i64, msg: str) {
+    priv fn record_lex_err_full(ln: i64, cl: i64, tlen: i64, code: str, msg: str, help_msg: str) {
+        mut slen = tlen
+        if slen < 1 { slen = 1 }
         self.err_lines.push(ln)
         self.err_cols.push(cl)
+        self.err_lens.push(slen)
+        self.err_codes.push(code)
         self.err_msgs.push(msg)
+        self.err_helps.push(help_msg)
         self.err_count = self.err_count + 1
+    }
+
+    priv fn record_lex_err(ln: i64, cl: i64, msg: str) {
+        self.record_lex_err_full(ln, cl, 1, "E0001", msg, "")
     }
 
     priv fn peek_at(offset: i64) -> i64 {
@@ -143,10 +158,10 @@ pub class Lexer {
             if self.pos >= self.length {
                 self.push_comment(seg_line, seg_col, self.col - seg_col)
                 if self.recover_mode {
-                    self.record_lex_err(start_line, start_col, "Unterminated block comment")
+                    self.record_lex_err_full(start_line, start_col, 2, "E0004", "unterminated block comment", "close the block comment with '*/'")
                     return
                 }
-                eprintln("LEXER ERROR: Unterminated block comment")
+                eprintln("error[E0004]: unterminated block comment at " + self.filename + ":" + start_line + ":" + start_col)
                 Env.exit(1)
             }
             let b0 = self.peek_at(0)
@@ -273,10 +288,12 @@ pub class Lexer {
         while true {
             if self.pos >= self.length || self.peek_at(0) == 10 {
                 if self.recover_mode {
-                    self.record_lex_err(start_line, start_col, "Unterminated string literal")
+                    mut span = self.col - start_col
+                    if span < 1 { span = 1 }
+                    self.record_lex_err_full(start_line, start_col, span, "E0001", "unterminated string literal", "add a closing '\"' before the end of the line")
                     break
                 }
-                eprintln("LEXER ERROR: Unterminated string literal")
+                eprintln("error[E0001]: unterminated string literal at " + self.filename + ":" + start_line + ":" + start_col)
                 Env.exit(1)
             }
             let ch = self.advance_byte()
@@ -323,10 +340,10 @@ pub class Lexer {
     priv fn scan_char(start_line: i64, start_col: i64) {
         if self.pos >= self.length || self.peek_at(0) == 10 {
             if self.recover_mode {
-                self.record_lex_err(start_line, start_col, "Unterminated char literal")
+                self.record_lex_err_full(start_line, start_col, 1, "E0002", "unterminated character literal", "close the character literal with a matching '''")
                 return
             }
-            eprintln("LEXER ERROR: Unterminated char literal")
+            eprintln("error[E0002]: unterminated char literal at " + self.filename + ":" + start_line + ":" + start_col)
             Env.exit(1)
         }
         // Check lifetime/loop label: 'ident (not followed by ')
@@ -340,16 +357,26 @@ pub class Lexer {
             return
         }
         mut ch = self.advance_byte()
+        if ch == 39 {
+            if self.recover_mode {
+                self.record_lex_err_full(start_line, start_col, 2, "E0003", "empty character literal", "character literals must contain one character or escape sequence")
+                return
+            }
+            eprintln("error[E0003]: empty char literal at " + self.filename + ":" + start_line + ":" + start_col)
+            Env.exit(1)
+        }
         if ch == 92 {
             let esc = self.advance_byte()
             if esc == 110 { ch = 10 } else if esc == 116 { ch = 9 } else if esc == 114 { ch = 13 } else { ch = esc }
         }
         if !self.match_byte(39) {
             if self.recover_mode {
-                self.record_lex_err(start_line, start_col, "Unterminated char literal")
+                mut span = self.col - start_col
+                if span < 1 { span = 1 }
+                self.record_lex_err_full(start_line, start_col, span, "E0002", "unterminated character literal", "close the character literal with a matching '''")
                 return
             }
-            eprintln("LEXER ERROR: Unterminated char literal")
+            eprintln("error[E0002]: unterminated char literal at " + self.filename + ":" + start_line + ":" + start_col)
             Env.exit(1)
         }
         let bb = ByteBuffer()
@@ -360,6 +387,9 @@ pub class Lexer {
     }
 
     pub fn tokenize() -> TokenStream {
+        if self.length >= 3 && self.src.byte_at(0) == 239 && self.src.byte_at(1) == 187 && self.src.byte_at(2) == 191 {
+            self.pos = 3
+        }
         while self.pos < self.length {
             let sl = self.line
             let sc = self.col
@@ -468,6 +498,17 @@ pub class Lexer {
                 self.push_tok(TK_SEMICOLON(), ";", sl, sc)
             } else if ch == 35 {
                 self.push_tok(TK_HASH(), "#", sl, sc)
+            } else {
+                let ubb = ByteBuffer()
+                ubb.write_u8(ch)
+                let uch = ubb.to_str()
+                ubb.free()
+                if self.recover_mode {
+                    self.record_lex_err_full(sl, sc, 1, "E0005", "unexpected character '" + uch + "' (ASCII " + ch + ")", "remove this unexpected character or put it inside a string literal")
+                } else {
+                    eprintln("error[E0005]: unexpected character '" + uch + "' at " + self.filename + ":" + sl + ":" + sc)
+                    Env.exit(1)
+                }
             }
         }
 

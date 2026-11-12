@@ -36,8 +36,13 @@ pub class Analyzer {
     pub err_files: List<str>
     pub err_lines: List<i64>
     pub err_cols: List<i64>
+    pub err_lens: List<i64>
+    pub err_codes: List<str>
     pub err_msgs: List<str>
+    pub err_helps: List<str>
+    pub err_sevs: List<i64>
     pub err_count: i64
+    pub warn_count: i64
     pub root_decls: List<i64>
     pub root_count: i64
     pub c_includes: List<str>
@@ -107,13 +112,17 @@ pub class Analyzer {
     // Lexical scope stack
     pub scope_names: List<str>
     pub scope_types: List<str>
+    pub scope_mut: List<i64>
+    pub scope_lines: List<i64>
     pub scope_count: i64
     pub scope_marks: List<i64>
     pub scope_depth: i64
 
     pub cur_class: str
     pub cur_ret_type: str
+    pub cur_fn_kind: i64
     pub has_errors: i64
+    priv unresolved_nodes: Map<i64, i64>
 
     init(p: Parser) {
         self.nk = p.nk
@@ -133,8 +142,13 @@ pub class Analyzer {
         self.err_files = p.err_files
         self.err_lines = p.err_lines
         self.err_cols = p.err_cols
+        self.err_lens = p.err_lens
+        self.err_codes = p.err_codes
         self.err_msgs = p.err_msgs
+        self.err_helps = p.err_helps
+        self.err_sevs = p.err_sevs
         self.err_count = p.err_count
+        self.warn_count = 0
         self.root_decls = p.root_decls
         self.root_count = p.root_count
         self.c_includes = p.c_includes
@@ -199,12 +213,28 @@ pub class Analyzer {
 
         self.scope_names = List<str>()
         self.scope_types = List<str>()
+        self.scope_mut = List<i64>()
+        self.scope_lines = List<i64>()
         self.scope_count = 0
         self.scope_marks = List<i64>()
         self.scope_depth = 0
         self.cur_class = ""
         self.cur_ret_type = "void"
-        self.has_errors = 0
+        self.cur_fn_kind = 0
+        self.unresolved_nodes = Map<i64, i64>()
+        mut init_errs = 0
+        mut ei0 = 0
+        while ei0 < self.err_count {
+            mut sv0 = 1
+            if ei0 < self.err_sevs.len() { sv0 = self.err_sevs.get(ei0) }
+            if sv0 == 2 {
+                self.warn_count = self.warn_count + 1
+            } else {
+                init_errs = init_errs + 1
+            }
+            ei0 = ei0 + 1
+        }
+        self.has_errors = init_errs
 
         // Copy generic instantiations recorded during parsing
         mut gi = 0
@@ -356,16 +386,35 @@ pub class Analyzer {
         while self.scope_count > target {
             self.scope_names.pop()
             self.scope_types.pop()
+            self.scope_mut.pop()
+            self.scope_lines.pop()
             self.scope_count = self.scope_count - 1
         }
     }
 
-    priv fn scope_def(name: str, raw_t: str) {
+    priv fn scope_def_full(name: str, raw_t: str, is_mut: i64, decl_ln: i64) {
         let nt = btype_norm(raw_t)
         self.ensure_generic_type(nt)
         self.scope_names.push(name)
         self.scope_types.push(nt)
+        self.scope_mut.push(is_mut)
+        self.scope_lines.push(decl_ln)
         self.scope_count = self.scope_count + 1
+    }
+
+    priv fn scope_def(name: str, raw_t: str) {
+        self.scope_def_full(name, raw_t, 1, 0)
+    }
+
+    priv fn scope_is_mut(name: str) -> i64 {
+        mut i = self.scope_count - 1
+        while i >= 0 {
+            if self.scope_names.get(i) == name {
+                return self.scope_mut.get(i)
+            }
+            i = i - 1
+        }
+        return 1
     }
 
     priv fn scope_lookup(name: str) -> str {
@@ -380,6 +429,254 @@ pub class Analyzer {
             return self.global_types.get(name)
         }
         return ""
+    }
+
+    // --- Diagnostic & Fuzzy Suggestion Helpers ---
+
+    priv fn add_diag(nid: i64, span_len: i64, code: str, msg: str, help_msg: str, sev: i64) {
+        if self.err_count >= 64 { return }
+        mut f = ""
+        mut ln = 1
+        mut cl = 1
+        if nid >= 0 && nid < self.ncount {
+            f = self.nf.get(nid)
+            ln = self.ln.get(nid)
+            cl = self.nc.get(nid)
+        }
+        mut sl = span_len
+        if sl < 1 { sl = 1 }
+        // Deduplicate exact same location + code
+        mut di = 0
+        while di < self.err_count {
+            if self.err_files.get(di) == f && self.err_lines.get(di) == ln && self.err_cols.get(di) == cl {
+                if di < self.err_codes.len() && self.err_codes.get(di) == code { return }
+            }
+            di = di + 1
+        }
+        self.err_files.push(f)
+        self.err_lines.push(ln)
+        self.err_cols.push(cl)
+        self.err_lens.push(sl)
+        self.err_codes.push(code)
+        self.err_msgs.push(msg)
+        self.err_helps.push(help_msg)
+        self.err_sevs.push(sev)
+        self.err_count = self.err_count + 1
+        if sev == 2 {
+            self.warn_count = self.warn_count + 1
+        } else {
+            self.has_errors = self.has_errors + 1
+        }
+    }
+
+    priv fn edit_dist(a: str, b: str) -> i64 {
+        let m = a.len()
+        let n = b.len()
+        if m == 0 { return n }
+        if n == 0 { return m }
+        mut diff = m - n
+        if diff < 0 { diff = -diff }
+        if diff > 3 { return 99 }
+        mut prev = List<i64>()
+        mut curr = List<i64>()
+        mut j = 0
+        while j <= n {
+            prev.push(j)
+            curr.push(0)
+            j = j + 1
+        }
+        mut i = 1
+        while i <= m {
+            curr.set(0, i)
+            let ca = a.byte_at(i - 1)
+            mut j2 = 1
+            while j2 <= n {
+                mut cost = 1
+                if ca == b.byte_at(j2 - 1) { cost = 0 }
+                mut best = prev.get(j2) + 1
+                let ins = curr.get(j2 - 1) + 1
+                let sub = prev.get(j2 - 1) + cost
+                if ins < best { best = ins }
+                if sub < best { best = sub }
+                curr.set(j2, best)
+                j2 = j2 + 1
+            }
+            mut k = 0
+            while k <= n {
+                prev.set(k, curr.get(k))
+                k = k + 1
+            }
+            i = i + 1
+        }
+        return prev.get(n)
+    }
+
+    priv fn suggest_ident(name: str) -> str {
+        if name.len() <= 1 { return "" }
+        mut max_d = 2
+        if name.len() <= 3 { max_d = 1 }
+        mut best = ""
+        mut best_d = 99
+        // Local scope
+        mut i = self.scope_count - 1
+        while i >= 0 {
+            let cand = self.scope_names.get(i)
+            if cand != name {
+                let d = self.edit_dist(name, cand)
+                if d <= max_d && d < best_d { best_d = d; best = cand }
+            }
+            i = i - 1
+        }
+        // Functions
+        mut fi = 0
+        while fi < self.fn_count {
+            let cand = self.sa.get(self.fn_nodes.get(fi))
+            if cand != name {
+                let d = self.edit_dist(name, cand)
+                if d <= max_d && d < best_d { best_d = d; best = cand }
+            }
+            fi = fi + 1
+        }
+        // Classes & enums
+        mut ci = 0
+        while ci < self.cls_count {
+            let cand = self.cls_names.get(ci)
+            if cand != name {
+                let d = self.edit_dist(name, cand)
+                if d <= max_d && d < best_d { best_d = d; best = cand }
+            }
+            ci = ci + 1
+        }
+        mut ei = 0
+        while ei < self.enum_count {
+            let cand = self.enum_names.get(ei)
+            if cand != name {
+                let d = self.edit_dist(name, cand)
+                if d <= max_d && d < best_d { best_d = d; best = cand }
+            }
+            ei = ei + 1
+        }
+        // Common builtins
+        let builtins = List<str>()
+        builtins.push("println"); builtins.push("print"); builtins.push("eprintln")
+        builtins.push("panic"); builtins.push("assert"); builtins.push("assert_eq")
+        builtins.push("len"); builtins.push("to_string"); builtins.push("parse_int")
+        builtins.push("parse_float"); builtins.push("chr"); builtins.push("ord")
+        builtins.push("exit"); builtins.push("File"); builtins.push("Directory")
+        builtins.push("Process"); builtins.push("Env"); builtins.push("Math")
+        builtins.push("ByteBuffer"); builtins.push("String"); builtins.push("List")
+        builtins.push("Map"); builtins.push("Set"); builtins.push("Stack")
+        builtins.push("Queue"); builtins.push("Deque"); builtins.push("true")
+        builtins.push("false"); builtins.push("null")
+        mut bi = 0
+        while bi < builtins.len() {
+            let cand = builtins.get(bi)
+            if cand != name {
+                let d = self.edit_dist(name, cand)
+                if d <= max_d && d < best_d { best_d = d; best = cand }
+            }
+            bi = bi + 1
+        }
+        return best
+    }
+
+    priv fn is_builtin_ident(name: str) -> bool {
+        if name == "true" || name == "false" || name == "null" || name == "_" || name == "self" { return true }
+        if name == "println" || name == "print" || name == "eprintln" || name == "panic" || name == "abort" || name == "assert" || name == "assert_eq" || name == "arx_free" { return true }
+        if name == "input" || name == "read_line" || name == "to_string" || name == "chr" || name == "parse_int" || name == "ord" || name == "len" { return true }
+        if name == "parse_float" || name == "sqrt" || name == "sin" || name == "cos" || name == "tan" || name == "pow" || name == "floor" || name == "ceil" || name == "round" || name == "log" || name == "exp" || name == "abs" || name == "min" || name == "max" || name == "exit" { return true }
+        if name == "File" || name == "Directory" || name == "Process" || name == "Env" || name == "Math" || name == "ByteBuffer" || name == "String" || name == "List" || name == "Map" || name == "Set" || name == "Stack" || name == "Queue" || name == "Deque" { return true }
+        if name == "stdin" || name == "stdout" || name == "stderr" || name.starts_with("arx_") { return true }
+        return false
+    }
+
+    priv fn expr_span(nid: i64) -> i64 {
+        if nid < 0 || nid >= self.ncount { return 1 }
+        let k = self.nk.get(nid)
+        if k == NK_STR_LIT() { return self.sa.get(nid).len() + 2 }
+        let sl = self.sa.get(nid).len()
+        if sl > 0 { return sl }
+        return 1
+    }
+
+    priv fn is_subclass_of(sub_cls: str, base_cls: str) -> bool {
+        mut cur = sub_cls
+        mut g = 0
+        while cur != "" && g < 32 {
+            if cur == base_cls { return true }
+            if self.cls_base_map.has_key(cur) { cur = self.cls_base_map.get(cur) }
+            else { cur = "" }
+            g = g + 1
+        }
+        return false
+    }
+
+    priv fn types_compatible(expected_raw: str, actual_raw: str) -> bool {
+        let exp = btype_norm(expected_raw)
+        let act = btype_norm(actual_raw)
+        if exp == "" || act == "" || exp == "void" && act == "void" { return true }
+        if exp == act { return true }
+        if exp.ends_with("?") {
+            if act == "null" { return true }
+            let inner = exp.slice(0, exp.len() - 1)
+            if self.types_compatible(inner, act) { return true }
+        }
+        if act == "null" {
+            if btype_is_ptr(exp) || exp == "str" || self.cls_idx_map.has_key(exp) || btype_is_list(exp) || btype_is_map(exp) { return true }
+        }
+        let exp_num = btype_is_numeric(exp) || exp == "char" || exp == "bool"
+        let act_num = btype_is_numeric(act) || act == "char" || act == "bool"
+        if exp_num && act_num {
+            if (exp == "bool") != (act == "bool") && act != "i64" && exp != "i64" { return false }
+            return true
+        }
+        if self.cls_idx_map.has_key(act) && self.cls_idx_map.has_key(exp) {
+            if self.is_subclass_of(act, exp) { return true }
+        }
+        if (btype_is_ptr(exp) && act == "str") || (exp == "str" && btype_is_ptr(act)) { return true }
+        if (exp.starts_with("Fn_") && act.starts_with("Fn_")) || (exp.starts_with("Fn_") && act == "i64") { return true }
+        return false
+    }
+
+    priv fn check_call_arity(nid: i64, key: str, label: str, argc: i64, kind_lbl: str) {
+        if !self.sig_by_key.has_key(key) { return }
+        let raw = self.sig_by_key.get(key)
+        let parts = raw.split(",")
+        let pc = parts.len()
+        mut pi = 0
+        mut ref_min = -1
+        mut ref_max = -1
+        while pi < pc {
+            let sidx = parts.get(pi).to_i64()
+            let fn_nid = self.sig_nodes.get(sidx)
+            if self.nk.get(fn_nid) == NK_CEXTERN() { return }
+            let pg = self.la.get(fn_nid)
+            mut max_p = 0
+            mut min_p = 0
+            if pg >= 0 {
+                max_p = self.child_count(pg)
+                mut j = 0
+                while j < max_p {
+                    let pid = self.child_at(pg, j)
+                    if self.la.get(pid) < 0 { min_p = min_p + 1 }
+                    j = j + 1
+                }
+            }
+            if argc >= min_p && argc <= max_p { return }
+            if pi == 0 { ref_min = min_p; ref_max = max_p }
+            pi = pi + 1
+        }
+        mut span = label.len()
+        if span < 1 { span = 1 }
+        if pc == 1 {
+            mut exp_s = "" + ref_min
+            if ref_min != ref_max { exp_s = "" + ref_min + ".." + ref_max }
+            mut pl_s = "s"
+            if ref_min == 1 && ref_max == 1 { pl_s = "" }
+            self.add_diag(nid, span, "E0203", kind_lbl + " '" + label + "' expects " + exp_s + " argument" + pl_s + ", but " + argc + " were supplied", "pass " + exp_s + " argument" + pl_s + " to '" + label + "'", 1)
+        } else {
+            self.add_diag(nid, span, "E0203", "no overload of " + kind_lbl + " '" + label + "' accepts " + argc + " argument(s)", "check the parameter count of the available '" + label + "' overloads", 1)
+        }
     }
 
     // --- Signature & Overload Registration ---
@@ -873,7 +1170,9 @@ pub class Analyzer {
 
         let old_cls = self.cur_class
         let old_ret = self.cur_ret_type
+        let old_fnk = self.cur_fn_kind
         self.cur_class = owner_cls
+        self.cur_fn_kind = k
         if k == NK_INIT_DEF() || k == NK_DROP_DEF() {
             self.cur_ret_type = owner_cls
         } else {
@@ -904,6 +1203,7 @@ pub class Analyzer {
 
         self.cur_class = old_cls
         self.cur_ret_type = old_ret
+        self.cur_fn_kind = old_fnk
     }
 
     priv fn analyze_block(blk_id: i64) {
@@ -911,8 +1211,19 @@ pub class Analyzer {
         self.scope_push()
         let cnt = self.child_count(blk_id)
         mut i = 0
+        mut ended = false
+        mut warned_dead = false
         while i < cnt {
-            self.analyze_stmt(self.child_at(blk_id, i))
+            let sid = self.child_at(blk_id, i)
+            let sk = self.nk.get(sid)
+            if ended && !warned_dead {
+                warned_dead = true
+                self.add_diag(sid, self.expr_span(sid), "W0001", "unreachable statement after control-flow transfer", "remove or guard statements after 'return', 'break', 'continue', or 'throw'", 2)
+            }
+            self.analyze_stmt(sid)
+            if sk == NK_RETURN() || sk == NK_BREAK() || sk == NK_CONTINUE() || sk == NK_THROW() {
+                ended = true
+            }
             i = i + 1
         }
         self.scope_pop()
@@ -936,6 +1247,8 @@ pub class Analyzer {
                     let it = self.analyze_expr(init_id)
                     if it == "null" && btype_is_ptr(res_t) {
                         self.node_types.set(init_id, res_t)
+                    } else if !self.unresolved_nodes.has_key(init_id) && !self.types_compatible(res_t, it) {
+                        self.add_diag(init_id, self.expr_span(init_id), "E0205", "mismatched types for '" + vname + "': expected '" + res_t + "', found '" + it + "'", "convert the initializer to '" + res_t + "' or update the type annotation on '" + vname + "'", 1)
                     }
                 }
             } else if init_id >= 0 {
@@ -943,7 +1256,9 @@ pub class Analyzer {
             }
             if res_t == "" || res_t == "void" { res_t = "i64" }
             self.node_types.set(nid, res_t)
-            self.scope_def(vname, res_t)
+            mut is_m = 0
+            if has_flag(self.ia.get(nid), FLAG_MUT()) { is_m = 1 }
+            self.scope_def_full(vname, res_t, is_m, self.ln.get(nid))
             return
         }
         if k == NK_TUPLE_DESTR() {
@@ -966,8 +1281,21 @@ pub class Analyzer {
             return
         }
         if k == NK_ASSIGN() {
-            let lt = self.analyze_expr(self.la.get(nid))
-            self.analyze_expr(self.ra.get(nid))
+            let lhs_id = self.la.get(nid)
+            let rhs_id = self.ra.get(nid)
+            let lt = self.analyze_expr(lhs_id)
+            let rt = self.analyze_expr(rhs_id)
+            if lhs_id >= 0 && self.nk.get(lhs_id) == NK_IDENT() {
+                let vname = self.sa.get(lhs_id)
+                if self.scope_lookup(vname) != "" && self.scope_is_mut(vname) == 0 {
+                    self.add_diag(lhs_id, vname.len(), "E0204", "cannot assign twice to immutable variable '" + vname + "'", "declare '" + vname + "' with 'mut " + vname + "' instead of 'let " + vname + "'", 1)
+                }
+            }
+            if !self.unresolved_nodes.has_key(lhs_id) && !self.unresolved_nodes.has_key(rhs_id) {
+                if !self.types_compatible(lt, rt) {
+                    self.add_diag(rhs_id, 1, "E0205", "mismatched types in assignment: expected '" + lt + "', found '" + rt + "'", "ensure the assigned expression matches type '" + lt + "'", 1)
+                }
+            }
             self.node_types.set(nid, lt)
             return
         }
@@ -1046,8 +1374,18 @@ pub class Analyzer {
             if val_id >= 0 {
                 let vt = self.analyze_expr(val_id)
                 self.node_types.set(nid, vt)
+                if self.cur_fn_kind != NK_INIT_DEF() && self.cur_fn_kind != NK_DROP_DEF() {
+                    if self.cur_ret_type == "void" {
+                        self.add_diag(nid, 6, "E0205", "cannot return a value from a 'void' function", "remove the return value or change the function signature to return '" + vt + "'", 1)
+                    } else if !self.unresolved_nodes.has_key(val_id) && !self.types_compatible(self.cur_ret_type, vt) {
+                        self.add_diag(val_id, self.expr_span(val_id), "E0205", "mismatched return type: expected '" + self.cur_ret_type + "', found '" + vt + "'", "return a value of type '" + self.cur_ret_type + "' or update the return type annotation", 1)
+                    }
+                }
             } else {
                 self.node_types.set(nid, "void")
+                if self.cur_fn_kind != NK_INIT_DEF() && self.cur_fn_kind != NK_DROP_DEF() && self.cur_ret_type != "void" && self.cur_ret_type != "" {
+                    self.add_diag(nid, 6, "E0205", "missing return value: enclosing function expects '" + self.cur_ret_type + "'", "return an expression of type '" + self.cur_ret_type + "'", 1)
+                }
             }
             return
         }
@@ -1217,8 +1555,15 @@ pub class Analyzer {
                     t = name
                 } else if self.enum_idx_map.has_key(name) {
                     t = name
+                } else if self.sig_by_key.has_key("fn::" + name) || self.is_builtin_ident(name) {
+                    t = "i64"
                 } else {
                     t = "i64"
+                    self.unresolved_nodes.insert(nid, 1)
+                    let sug = self.suggest_ident(name)
+                    mut hmsg = "declare '" + name + "' with 'let' or 'mut' before using it, or import its module"
+                    if sug != "" { hmsg = "did you mean '" + sug + "'?" }
+                    self.add_diag(nid, name.len(), "E0201", "cannot find value '" + name + "' in this scope", hmsg, 1)
                 }
             }
             self.node_types.set(nid, t)
@@ -1366,6 +1711,9 @@ pub class Analyzer {
                         self.node_ext.set(nid, "enum_unit::" + vkey)
                         self.node_types.set(nid, lname)
                         return lname
+                    }
+                    if !self.sig_by_key.has_key("m::" + lname + "::" + mname) {
+                        self.add_diag(nid, mname.len(), "E0206", "no variant named '" + mname + "' found for enum '" + lname + "'", "check the declared variants of enum '" + lname + "'", 1)
                     }
                 }
                 if !self.cls_idx_map.has_key(lname) {
@@ -1604,6 +1952,11 @@ pub class Analyzer {
 
             // 3. User class constructor call ClassName(args)
             if self.cls_idx_map.has_key(name) {
+                if self.sig_by_key.has_key("ctor::" + name) {
+                    self.check_call_arity(callee, "ctor::" + name, name, ac, "constructor")
+                } else if ac > 0 {
+                    self.add_diag(callee, name.len(), "E0203", "class '" + name + "' has default 0-argument init, but " + ac + " argument(s) were supplied", "remove the extra constructor arguments or add an init(...) constructor to '" + name + "'", 1)
+                }
                 let sig_i = self.find_best_overload("ctor::" + name, arg_types, ac)
                 self.call_kinds.set(nid, CK_CTOR())
                 if sig_i >= 0 {
@@ -1617,6 +1970,9 @@ pub class Analyzer {
             }
 
             // 4. User function / cextern call
+            if self.sig_by_key.has_key("fn::" + name) {
+                self.check_call_arity(callee, "fn::" + name, name, ac, "function")
+            }
             let sig_i = self.find_best_overload("fn::" + name, arg_types, ac)
             if sig_i >= 0 {
                 let rt = self.sig_rets.get(sig_i)
@@ -1627,7 +1983,14 @@ pub class Analyzer {
                 return rt
             }
 
-            // Fallback direct runtime helper (e.g. arx_* inside tests/modules)
+            // Fallback direct runtime helper or function variable; otherwise undefined function
+            if self.scope_lookup(name) == "" && !name.starts_with("arx_") {
+                self.unresolved_nodes.insert(nid, 1)
+                let sug = self.suggest_ident(name)
+                mut hmsg = "define 'fn " + name + "(...)' or import the module providing it"
+                if sug != "" { hmsg = "did you mean '" + sug + "'?" }
+                self.add_diag(callee, name.len(), "E0202", "cannot find function '" + name + "' in this scope", hmsg, 1)
+            }
             self.call_kinds.set(nid, CK_NORMAL())
             self.call_targets.set(nid, name)
             self.node_types.set(nid, "i64")

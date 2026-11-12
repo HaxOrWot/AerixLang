@@ -52,20 +52,148 @@ fn quote_shell_arg(s: str) -> str {
     return q + s + q
 }
 
+fn diag_esc() -> str {
+    let bb = ByteBuffer()
+    bb.write_u8(27)
+    let s = bb.to_str()
+    bb.free()
+    return s
+}
+
+fn diag_repeat(ch: str, n: i64) -> str {
+    if n <= 0 { return "" }
+    let bb = ByteBuffer()
+    mut i = 0
+    while i < n {
+        bb.write_str(ch)
+        i = i + 1
+    }
+    let s = bb.to_str()
+    bb.free()
+    return s
+}
+
+fn diag_get_line(src: str, line1: i64) -> str {
+    if src == "" || line1 <= 0 { return "" }
+    let norm = src.replace("\r\n", "\n").replace("\r", "\n")
+    let lines = norm.split("\n")
+    if line1 - 1 < lines.len() {
+        return lines.get(line1 - 1)
+    }
+    return ""
+}
+
+fn print_compiler_diagnostics(az: Analyzer) {
+    let use_color = (Env.get("NO_COLOR") == "")
+    let esc = diag_esc()
+    mut c_red = ""
+    mut c_yel = ""
+    mut c_blu = ""
+    mut c_cyn = ""
+    mut c_bld = ""
+    mut c_rst = ""
+    if use_color {
+        c_red = esc + "[1;31m"
+        c_yel = esc + "[1;33m"
+        c_blu = esc + "[1;34m"
+        c_cyn = esc + "[1;36m"
+        c_bld = esc + "[1m"
+        c_rst = esc + "[0m"
+    }
+
+    let file_cache = Map<str, str>()
+    mut i = 0
+    while i < az.err_count {
+        let f = az.err_files.get(i)
+        let ln = az.err_lines.get(i)
+        let cl = az.err_cols.get(i)
+        let msg = az.err_msgs.get(i)
+        mut tlen = 1
+        if i < az.err_lens.len() { tlen = az.err_lens.get(i) }
+        if tlen < 1 { tlen = 1 }
+        mut code = ""
+        if i < az.err_codes.len() { code = az.err_codes.get(i) }
+        mut hmsg = ""
+        if i < az.err_helps.len() { hmsg = az.err_helps.get(i) }
+        mut sev = 1
+        if i < az.err_sevs.len() { sev = az.err_sevs.get(i) }
+
+        mut sev_lbl = "error"
+        mut c_sev = c_red
+        if sev == 2 {
+            sev_lbl = "warning"
+            c_sev = c_yel
+        }
+        mut code_tag = ""
+        if code != "" { code_tag = "[" + code + "]" }
+
+        eprintln(c_sev + sev_lbl + code_tag + c_rst + c_bld + ": " + msg + c_rst)
+        if f != "" {
+            eprintln("  " + c_blu + "-->" + c_rst + " " + f + ":" + (ln as str) + ":" + (cl as str))
+            if !file_cache.has_key(f) {
+                if File.exists(f) {
+                    file_cache.insert(f, File.read_to_string(f))
+                } else {
+                    file_cache.insert(f, "")
+                }
+            }
+            let src = file_cache.get(f)
+            let line_txt = diag_get_line(src, ln)
+            if line_txt != "" {
+                let ln_s = ln as str
+                mut gw = ln_s.len()
+                if gw < 2 { gw = 2 }
+                let pad_g = diag_repeat(" ", gw)
+                let pad_l = diag_repeat(" ", gw - ln_s.len())
+                mut col0 = cl - 1
+                if col0 < 0 { col0 = 0 }
+                if col0 > line_txt.len() { col0 = line_txt.len() }
+                let lead = diag_repeat(" ", col0)
+                let carets = diag_repeat("^", tlen)
+                eprintln(" " + pad_g + c_blu + "|" + c_rst)
+                eprintln(" " + c_blu + pad_l + ln_s + " |" + c_rst + " " + line_txt)
+                eprintln(" " + pad_g + c_blu + "|" + c_rst + " " + lead + c_sev + carets + c_rst)
+            }
+        }
+        if hmsg != "" {
+            eprintln("  " + c_cyn + "= help:" + c_rst + " " + hmsg)
+        }
+        eprintln("")
+        i = i + 1
+    }
+
+    if az.has_errors > 0 {
+        mut wnote = ""
+        if az.warn_count > 0 {
+            wnote = "; " + (az.warn_count as str) + " warning(s) emitted"
+        }
+        eprintln(c_red + "error" + c_rst + c_bld + ": aborting due to " + (az.has_errors as str) + " previous error(s)" + wnote + c_rst)
+    } else if az.warn_count > 0 {
+        eprintln(c_yel + "warning" + c_rst + c_bld + ": " + (az.warn_count as str) + " warning(s) emitted" + c_rst)
+    }
+}
+
 fn compile_frontend(input_file: str) -> Analyzer {
     if !File.exists(input_file) {
-        eprintln("ERROR: Source file not found: " + input_file)
+        eprintln("error: source file not found: " + input_file)
         Env.exit(1)
     }
     mut parser = Parser(input_file)
+    parser.recover_mode = true
     parser.load_resolved_file(input_file)
     mut az = Analyzer(parser)
     az.analyze()
+    if az.err_count > 0 {
+        print_compiler_diagnostics(az)
+    }
     return az
 }
 
 fn emit_c_for_file(input_file: str) -> str {
     mut az = compile_frontend(input_file)
+    if az.has_errors > 0 {
+        Env.exit(1)
+    }
     mut em = Emitter(az)
     return em.emit()
 }
@@ -73,7 +201,6 @@ fn emit_c_for_file(input_file: str) -> str {
 fn cmd_check(input_file: str) -> i64 {
     let az = compile_frontend(input_file)
     if az.has_errors > 0 {
-        eprintln("Check failed for: " + input_file)
         return 1
     }
     println("OK: " + input_file + " (" + (az.ncount as str) + " AST nodes, " + (az.fn_count as str) + " fns, " + (az.cls_count as str) + " classes)")

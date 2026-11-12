@@ -165,6 +165,7 @@ fn lsp_build_initialize_result() -> str {
     jb.lbrace()
     jb.kv_bool("resolveProvider", false, true)
     jb.rbrace()
+    jb.kv_bool("codeActionProvider", true, false)
 
     jb.rbrace() // end capabilities
 
@@ -456,6 +457,15 @@ pub fn run_lsp_server() -> i64 {
             }
             if method == "textDocument/formatting" {
                 lsp_send_response(id_raw, lsp_build_formatting_json(src))
+                continue
+            }
+            if method == "textDocument/codeAction" {
+                let rng = jdoc.get(params, "range")
+                let rst = jdoc.get(rng, "start")
+                let ren = jdoc.get(rng, "end")
+                let sl0 = jdoc.get_int(rst, "line", line0)
+                let el0 = jdoc.get_int(ren, "line", line0)
+                lsp_send_response(id_raw, lsp_build_code_action_json(src, cached_az, fpath, uri, sl0, el0))
                 continue
             }
 
