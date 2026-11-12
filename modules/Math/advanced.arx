@@ -3,6 +3,8 @@
 // Advanced algorithms: roots, combinatorics, number theory, and conversions.
 // ==============================================================================
 
+import "./exponential.arx"
+
 pub fn sqrt(x: f64) -> f64 {
     if x <= 0.0 {
         return 0.0;
