@@ -14,7 +14,6 @@
   },
   "main": "./extension.js",
   "activationEvents": [
-    "onLanguage:aerix",
     "onStartupFinished"
   ],
   "categories": [
