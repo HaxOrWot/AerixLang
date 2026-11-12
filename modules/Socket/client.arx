@@ -1,0 +1,74 @@
+// ==============================================================================
+// Aerix Standard Library: Socket::Client
+// Object-oriented TCP Client and Network Stream Wrapper
+// ==============================================================================
+
+import "./constants.arx"
+import "./core.arx"
+
+pub class TcpClient {
+    pub sock: i64
+    pub connected: bool
+
+    init() {
+        self.sock = INVALID_SOCKET()
+        self.connected = false
+    }
+
+    pub fn connect(ip: str, port: i64) -> bool {
+        self.sock = create_tcp_socket()
+        if self.sock == INVALID_SOCKET() {
+            return false
+        }
+        let addr_buf = make_sockaddr_in(ip, port)
+        let res = connect(self.sock, addr_buf, 16)
+        if res == SOCKET_ERROR() {
+            self.close()
+            return false
+        }
+        self.connected = true
+        return true
+    }
+
+    pub fn send_str(data: str) -> i64 {
+        if !self.connected {
+            return -1
+        }
+        return send(self.sock, data, data.len(), 0)
+    }
+
+    pub fn recv_str(max_bytes: i64) -> str {
+        if !self.connected {
+            return ""
+        }
+        let buf = " ".repeat(max_bytes)
+        let bytes_read = recv(self.sock, buf, max_bytes, 0)
+        if bytes_read <= 0 {
+            return ""
+        }
+        return buf.slice(0, bytes_read)
+    }
+
+    pub fn close() -> void {
+        if self.sock != INVALID_SOCKET() {
+            closesocket(self.sock)
+            self.sock = INVALID_SOCKET()
+        }
+        self.connected = false
+    }
+
+    pub fn is_connected() -> bool {
+        return self.connected
+    }
+}
+
+pub fn tcp_request(host: str, port: i64, request: str) -> str {
+    let client = TcpClient()
+    if !client.connect(host, port) {
+        return ""
+    }
+    client.send_str(request)
+    let resp = client.recv_str(4096)
+    client.close()
+    return resp
+}

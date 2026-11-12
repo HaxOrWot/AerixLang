@@ -1,0 +1,21 @@
+// ==============================================================================
+// Aerix Standard Library: Socket::Constants
+// Standard Winsock2 Address Families, Socket Types, and Protocol Identifiers
+// ==============================================================================
+
+// Address Families
+pub fn AF_INET() -> i64 { return 2; }
+pub fn AF_INET6() -> i64 { return 23; }
+
+// Socket Types
+pub fn SOCK_STREAM() -> i64 { return 1; }
+pub fn SOCK_DGRAM() -> i64 { return 2; }
+pub fn SOCK_RAW() -> i64 { return 3; }
+
+// Protocols
+pub fn IPPROTO_TCP() -> i64 { return 6; }
+pub fn IPPROTO_UDP() -> i64 { return 17; }
+
+// Return codes
+pub fn INVALID_SOCKET() -> i64 { return -1; }
+pub fn SOCKET_ERROR() -> i64 { return -1; }

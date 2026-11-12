@@ -89,7 +89,9 @@ pub fn link_c_to_exe_from(c_source: str, c_path: str, exe_path: str, opt_flag: s
     let cc = detect_cc()
     let q = "\""
     mut libs = " -lm"
-    if Env.os_name() != "windows" {
+    if Env.os_name() == "windows" {
+        libs = " -lm -luser32 -lws2_32"
+    } else {
         libs = " -lm -lpthread"
     }
 
