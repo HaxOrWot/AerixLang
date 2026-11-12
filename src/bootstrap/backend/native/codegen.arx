@@ -89,6 +89,8 @@ pub class NativeCodegen {
     pub enum_var_tags: Map<str, i64>     // "Enum::Var" -> tag index
     pub global_offs: Map<str, i64>       // global var -> .data offset
     pub global_nodes: List<i64>
+    pub fn_externs: Map<str, str>
+    pub extern_iats: Map<i64, i64>
 
     // Per-function compilation state (lexical variable stack for shadowing/blocks)
     pub scope_names: List<str>
@@ -136,6 +138,8 @@ pub class NativeCodegen {
         self.enum_var_tags = Map<str, i64>()
         self.global_offs = Map<str, i64>()
         self.global_nodes = List<i64>()
+        self.fn_externs = az.fn_externs
+        self.extern_iats = Map<i64, i64>()
 
         self.scope_names = List<str>()
         self.scope_offs = List<i64>()
@@ -240,6 +244,18 @@ pub class NativeCodegen {
                     self.global_offs.insert(nm, self.pe.alloc_data_qword(0))
                 }
                 self.global_nodes.push(nid)
+            } else if self.nk.get(nid) == NK_FN_DEF() {
+                let fname = self.sa.get(nid)
+                if self.fn_externs.has_key(fname) {
+                    let full_ext = self.fn_externs.get(fname)
+                    let parts = full_ext.split("::")
+                    if parts.len() >= 2 {
+                        let dll = parts.get(0)
+                        let sym = parts.get(1)
+                        let iat_off = self.pe.add_import(dll, sym)
+                        self.extern_iats.insert(nid, iat_off)
+                    }
+                }
             }
             ri = ri + 1
         }
@@ -1828,6 +1844,10 @@ pub class NativeCodegen {
             mut k = 0
             while k < arg_temps.len() { fargs.push(arg_temps.get(k)); k = k + 1 }
             self.emit_default_args_if_needed(fn_node, arg_temps.len(), fargs)
+            if self.extern_iats.has_key(fn_node) {
+                self.emit_call_with_temps(self.extern_iats.get(fn_node), true, fargs)
+                return
+            }
             self.emit_call_with_temps(self.rt.lbl(self.fn_symbol_name(fn_node)), false, fargs)
             return
         }

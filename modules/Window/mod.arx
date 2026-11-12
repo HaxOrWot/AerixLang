@@ -1,0 +1,6 @@
+// ==============================================================================
+// Aerix Standard Library: Window
+// Native OS Windowing, Dialogs, Message Boxes, and UI Interaction
+// ==============================================================================
+
+import "./core.arx"

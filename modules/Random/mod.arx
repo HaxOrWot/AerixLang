@@ -1,0 +1,9 @@
+// ==============================================================================
+// Aerix Standard Library: Random
+// Pseudo-Random Number Generation, Distributions, and Sequence Helpers
+// ==============================================================================
+
+import "./core.arx"
+import "./integers.arx"
+import "./distributions.arx"
+import "./sequences.arx"

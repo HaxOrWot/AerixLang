@@ -3,6 +3,12 @@
 // Time measurement, delays, and timestamp primitives.
 // ==============================================================================
 
+#[extern("kernel32.dll", "GetTickCount64")]
+pub fn ticks() -> i64;
+
+#[extern("kernel32.dll", "Sleep")]
+pub fn sleep_ms(ms: i64) -> void;
+
 pub fn now() -> f64 {
     return arx_time_now();
 }

@@ -88,6 +88,7 @@ pub class Analyzer {
     pub global_nodes: List<i64>
     pub global_count: i64
     pub global_types: Map<str, str>
+    pub fn_externs: Map<str, str>
 
     pub fn_nodes: List<i64>
     pub fn_count: i64
@@ -157,6 +158,7 @@ pub class Analyzer {
         self.c_inc_count = p.c_inc_count
         self.mod_aliases = p.mod_aliases
         self.item_aliases = p.item_aliases
+        self.fn_externs = p.fn_externs
 
         self.gen_list_types = List<str>()
         self.gen_list_count = 0

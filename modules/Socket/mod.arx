@@ -1,0 +1,6 @@
+// ==============================================================================
+// Aerix Standard Library: Socket
+// Network Socket and Winsock2 Communication Primitives
+// ==============================================================================
+
+import "./core.arx"
