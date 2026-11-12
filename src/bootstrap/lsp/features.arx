@@ -17,8 +17,12 @@ pub fn CKIND_FUNCTION() -> i64 { return 3 }
 pub fn CKIND_FIELD() -> i64 { return 5 }
 pub fn CKIND_VARIABLE() -> i64 { return 6 }
 pub fn CKIND_CLASS() -> i64 { return 7 }
+pub fn CKIND_MODULE() -> i64 { return 9 }
 pub fn CKIND_ENUM() -> i64 { return 13 }
 pub fn CKIND_KEYWORD() -> i64 { return 14 }
+pub fn CKIND_SNIPPET() -> i64 { return 15 }
+pub fn CKIND_FILE() -> i64 { return 17 }
+pub fn CKIND_FOLDER() -> i64 { return 19 }
 pub fn CKIND_ENUM_MEM() -> i64 { return 20 }
 
 // LSP SymbolKind constants
@@ -87,6 +91,14 @@ pub fn lsp_word_start_at(source: str, line0: i64, char0: i64) -> i64 {
         st = st - 1
     }
     return st
+}
+
+fn lsp_lbrace() -> str {
+    let bb = ByteBuffer()
+    bb.write_u8(123)
+    let s = bb.to_str()
+    bb.free()
+    return s
 }
 
 pub fn lsp_word_at(source: str, line0: i64, char0: i64) -> str {
@@ -410,7 +422,31 @@ fn lsp_resolve_scoped_var_node(az: Analyzer, doc_path: str, line1: i64, fn_start
     return best_nid
 }
 
-fn lsp_resolve_var_type(az: Analyzer, doc_path: str, line1: i64, name: str) -> str {
+fn lsp_unwrap_optional_type(t: str) -> str {
+    let tr = t.trim()
+    if tr.ends_with("?") && tr.len() > 1 { return tr.slice(0, tr.len() - 1).trim() }
+    if tr.starts_with("Option<") && tr.ends_with(">") {
+        let inner = lsp_generic_inner_arg(tr, 0)
+        if inner != "" { return inner }
+    }
+    return tr
+}
+
+fn lsp_unwrap_iterable_type(iter_t: str) -> str {
+    if iter_t == "" { return "" }
+    if iter_t == "str" { return "u8" }
+    let elem = lsp_unwrap_indexed_type(iter_t)
+    if elem != "" {
+        let base_lt = lsp_str_find(iter_t, "<", 0)
+        if base_lt > 0 && iter_t.slice(0, base_lt).trim() == "Map" {
+            return lsp_generic_inner_arg(iter_t, 0)
+        }
+        return elem
+    }
+    return ""
+}
+
+fn lsp_resolve_var_type(az: Analyzer, doc_path: str, line1: i64, name: str, source: str = "") -> str {
     if name == "self" {
         return lsp_enclosing_class_at(az, doc_path, line1)
     }
@@ -421,22 +457,29 @@ fn lsp_resolve_var_type(az: Analyzer, doc_path: str, line1: i64, name: str) -> s
         }
         return ""
     }
-    // Check locals/params in current file (closest <= line1)
+    // Check locals/params inside enclosing function (or top-level if none)
+    mut min_ln = 1
+    if source != "" {
+        let fb = lsp_enclosing_fn_bounds(source, az, doc_path, line1)
+        if fb.get(1) > 0 { min_ln = fb.get(1) }
+    }
     mut best_type = ""
     mut best_ln = -1
+    mut best_nid = -1
     mut i = 0
     while i < az.ncount {
         let k = az.nk.get(i)
         if (k == NK_VAR_DECL() || k == NK_PARAM() || k == NK_FOR()) && az.nf.get(i) == doc_path {
-            if az.sa.get(i) == name {
+            if az.sa.get(i) == name || (k == NK_FOR() && az.sb.get(i) == name) {
                 let nln = az.ln.get(i)
-                if nln <= line1 && nln >= best_ln {
+                if nln >= min_ln && nln <= line1 && nln >= best_ln {
+                    best_ln = nln
+                    best_nid = i
                     mut t = btype_norm(az.node_types.get(i))
-                    if t == "" || t == "void" {
+                    if (t == "" || t == "void") && k != NK_FOR() {
                         t = btype_norm(az.sb.get(i))
                     }
                     if t != "" && t != "void" {
-                        best_ln = nln
                         best_type = t
                     }
                 }
@@ -444,7 +487,40 @@ fn lsp_resolve_var_type(az: Analyzer, doc_path: str, line1: i64, name: str) -> s
         }
         i = i + 1
     }
-    if best_type != "" { return best_type }
+    if best_type != "" && (best_nid < 0 || az.nk.get(best_nid) != NK_FOR() || best_type != "i64") {
+        return lsp_unwrap_optional_type(best_type)
+    }
+
+    // Fallback RHS inference on declaration line when AST node type is unresolved (or default i64 on for-in)
+    if best_nid >= 0 {
+        let fsrc = lsp_read_target_source(source, doc_path, doc_path)
+        if fsrc != "" {
+            let dline = lsp_get_line_text(fsrc, best_ln - 1).trim()
+            if az.nk.get(best_nid) == NK_FOR() {
+                let in_pos = lsp_str_find(dline, " in ", 0)
+                if in_pos > 0 {
+                    mut rhs_iter = dline.slice(in_pos + 4, dline.len()).trim()
+                    let brace_p = lsp_str_find(rhs_iter, lsp_lbrace(), 0)
+                    if brace_p > 0 { rhs_iter = rhs_iter.slice(0, brace_p).trim() }
+                    if lsp_str_find(rhs_iter, "..", 0) >= 0 { return "i64" }
+                    let it = lsp_infer_expr_receiver_type(az, doc_path, best_ln, rhs_iter, fsrc)
+                    let elem = lsp_unwrap_iterable_type(it)
+                    if elem != "" { return elem }
+                }
+            } else {
+                let eq_pos = lsp_str_find(dline, "=", 0)
+                if eq_pos > 0 && (eq_pos + 1 >= dline.len() || dline.byte_at(eq_pos + 1) != 61) {
+                    let rhs_e = dline.slice(eq_pos + 1, dline.len()).trim()
+                    if rhs_e != "" && rhs_e != name {
+                        let rt = lsp_infer_expr_receiver_type(az, doc_path, best_ln, rhs_e, fsrc)
+                        if rt != "" { return lsp_unwrap_optional_type(rt) }
+                    }
+                }
+            }
+        }
+    }
+    if best_type != "" { return lsp_unwrap_optional_type(best_type) }
+
     // Enclosing class fields (implicit self)
     let ec2 = lsp_enclosing_class_at(az, doc_path, line1)
     if ec2 != "" {
@@ -453,7 +529,7 @@ fn lsp_resolve_var_type(az: Analyzer, doc_path: str, line1: i64, name: str) -> s
         while walk != "" && hops < 8 {
             let fk = walk + "::" + name
             if az.cls_field_types.has_key(fk) {
-                return az.cls_field_types.get(fk)
+                return lsp_unwrap_optional_type(az.cls_field_types.get(fk))
             }
             if az.cls_base_map.has_key(walk) {
                 walk = az.cls_base_map.get(walk)
@@ -465,7 +541,7 @@ fn lsp_resolve_var_type(az: Analyzer, doc_path: str, line1: i64, name: str) -> s
     }
     // Check module globals
     if az.global_types.has_key(name) {
-        return az.global_types.get(name)
+        return lsp_unwrap_optional_type(az.global_types.get(name))
     }
     return ""
 }
@@ -606,8 +682,8 @@ fn lsp_infer_builtin_member_ret(recv_t: str, mname: str) -> str {
     return ""
 }
 
-fn lsp_extract_receiver_before_dot(line: str, dot_pos: i64) -> str {
-    if dot_pos <= 0 { return "" }
+fn lsp_extract_receiver_start_before_dot(line: str, dot_pos: i64) -> i64 {
+    if dot_pos <= 0 { return 0 }
     mut p = dot_pos
     // Handle cascade operator `~>` and optional chaining `?.`
     if p > 0 && line.byte_at(p) == 62 && line.byte_at(p - 1) == 126 {
@@ -653,7 +729,23 @@ fn lsp_extract_receiver_before_dot(line: str, dot_pos: i64) -> str {
         }
         break
     }
-    return line.slice(i, p).trim()
+    while i < p && (line.byte_at(i) == 32 || line.byte_at(i) == 9) {
+        i = i + 1
+    }
+    return i
+}
+
+fn lsp_extract_receiver_before_dot(line: str, dot_pos: i64) -> str {
+    if dot_pos <= 0 { return "" }
+    mut p = dot_pos
+    if p > 0 && line.byte_at(p) == 62 && line.byte_at(p - 1) == 126 {
+        p = p - 1
+    } else if p > 0 && line.byte_at(p - 1) == 63 {
+        p = p - 1
+    }
+    let st = lsp_extract_receiver_start_before_dot(line, dot_pos)
+    if st >= p { return "" }
+    return line.slice(st, p).trim()
 }
 
 fn lsp_split_dot_chain(expr: str) -> List<str> {
@@ -708,10 +800,29 @@ fn lsp_unwrap_indexed_type(container_t: str) -> str {
     return ""
 }
 
-fn lsp_infer_expr_receiver_type(az: Analyzer, doc_path: str, line1: i64, expr: str) -> str {
-    let trimmed = expr.trim()
+fn lsp_infer_array_lit_type(lit: str) -> str {
+    let inner = lit.slice(1, lit.len() - 1).trim()
+    if inner == "" { return "List<any>" }
+    mut first_el = inner
+    let cm = lsp_str_find(inner, ",", 0)
+    if cm >= 0 { first_el = inner.slice(0, cm).trim() }
+    if first_el.starts_with("\"") && first_el.ends_with("\"") { return "List<str>" }
+    if first_el == "true" || first_el == "false" { return "List<bool>" }
+    if lsp_str_find(first_el, ".", 0) >= 0 { return "List<f64>" }
+    let fb = first_el.byte_at(0)
+    if (fb >= 48 && fb <= 57) || fb == 45 { return "List<i64>" }
+    return "List<any>"
+}
+
+fn lsp_infer_expr_receiver_type(az: Analyzer, doc_path: str, line1: i64, expr: str, source: str = "") -> str {
+    mut trimmed = expr.trim()
     if trimmed == "" { return "" }
+    if trimmed.starts_with("new ") { trimmed = trimmed.slice(4, trimmed.len()).trim() }
     if trimmed.starts_with("\"") && trimmed.ends_with("\"") { return "str" }
+    if trimmed.starts_with("[") && trimmed.ends_with("]") && trimmed.len() >= 2 {
+        return lsp_infer_array_lit_type(trimmed)
+    }
+    if trimmed == "true" || trimmed == "false" { return "bool" }
     if trimmed == "self" {
         return lsp_enclosing_class_at(az, doc_path, line1)
     }
@@ -727,9 +838,10 @@ fn lsp_infer_expr_receiver_type(az: Analyzer, doc_path: str, line1: i64, expr: s
     // Handle top-level chain a.b().c or a[i].b
     let parts = lsp_split_dot_chain(trimmed)
     if parts.len() > 1 {
-        mut cur_t = lsp_infer_expr_receiver_type(az, doc_path, line1, parts.get(0))
+        mut cur_t = lsp_unwrap_optional_type(lsp_infer_expr_receiver_type(az, doc_path, line1, parts.get(0), source))
         mut pi = 1
         while pi < parts.len() && cur_t != "" {
+            cur_t = lsp_unwrap_optional_type(cur_t)
             mut mem = parts.get(pi).trim()
             mut had_index = false
             if mem.ends_with("]") {
@@ -789,7 +901,7 @@ fn lsp_infer_expr_receiver_type(az: Analyzer, doc_path: str, line1: i64, expr: s
             cur_t = found_t
             pi = pi + 1
         }
-        return cur_t
+        return lsp_unwrap_optional_type(cur_t)
     }
 
     // Handle trailing indexing: arr[idx] / map[key]
@@ -804,9 +916,9 @@ fn lsp_infer_expr_receiver_type(az: Analyzer, doc_path: str, line1: i64, expr: s
                 if bd2 == 0 {
                     let base_expr = trimmed.slice(0, bi2).trim()
                     if base_expr != "" {
-                        let bt = lsp_infer_expr_receiver_type(az, doc_path, line1, base_expr)
+                        let bt = lsp_infer_expr_receiver_type(az, doc_path, line1, base_expr, source)
                         let elem_t = lsp_unwrap_indexed_type(bt)
-                        if elem_t != "" { return elem_t }
+                        if elem_t != "" { return lsp_unwrap_optional_type(elem_t) }
                     }
                     break
                 }
@@ -828,7 +940,7 @@ fn lsp_infer_expr_receiver_type(az: Analyzer, doc_path: str, line1: i64, expr: s
         while fi < az.fn_count {
             let fid = az.fn_nodes.get(fi)
             if az.sa.get(fid) == base_head {
-                return btype_norm(az.sb.get(fid))
+                return lsp_unwrap_optional_type(btype_norm(az.sb.get(fid)))
             }
             fi = fi + 1
         }
@@ -838,13 +950,13 @@ fn lsp_infer_expr_receiver_type(az: Analyzer, doc_path: str, line1: i64, expr: s
             let sig_k2 = "m::" + ec3 + "::" + base_head
             if az.sig_by_key.has_key(sig_k2) {
                 let sidx2 = az.sig_by_key.get(sig_k2).split(",").get(0).to_i64()
-                return az.sig_rets.get(sidx2)
+                return lsp_unwrap_optional_type(az.sig_rets.get(sidx2))
             }
         }
         return ""
     }
 
-    return lsp_resolve_var_type(az, doc_path, line1, trimmed)
+    return lsp_resolve_var_type(az, doc_path, line1, trimmed, source)
 }
 
 // --- 1. Diagnostics ---
@@ -901,12 +1013,31 @@ pub fn lsp_build_diagnostics_json(az: Analyzer, doc_path: str, source: str) -> s
 
 // --- 2. Completions ---
 
-fn emit_comp_item(jb: JsonBuf, label: str, kind: i64, detail: str, doc: str, insert_txt: str, sort_txt: str, first: bool) {
+fn emit_comp_item_ex(jb: JsonBuf, label: str, label_detail: str, label_desc: str, kind: i64,
+                      detail: str, doc: str, insert_txt: str, sort_txt: str, filter_txt: str,
+                      te_ln0: i64, te_s0: i64, te_e0: i64, te_text: str,
+                      preselect: bool, first: bool) {
     if !first { jb.comma() }
     jb.lbrace()
     jb.kv_str("label", label, true)
+    if label_detail != "" || label_desc != "" {
+        jb.comma()
+        jb.key("labelDetails")
+        jb.lbrace()
+        mut ld_first = true
+        if label_detail != "" {
+            jb.kv_str("detail", label_detail, true)
+            ld_first = false
+        }
+        if label_desc != "" {
+            jb.kv_str("description", label_desc, ld_first)
+        }
+        jb.rbrace()
+    }
     jb.kv_int("kind", kind, false)
     if sort_txt != "" { jb.kv_str("sortText", sort_txt, false) }
+    if filter_txt != "" { jb.kv_str("filterText", filter_txt, false) }
+    if preselect { jb.kv_bool("preselect", true, false) }
     if detail != "" { jb.kv_str("detail", detail, false) }
     if doc != "" {
         jb.comma()
@@ -916,14 +1047,525 @@ fn emit_comp_item(jb: JsonBuf, label: str, kind: i64, detail: str, doc: str, ins
         jb.kv_str("value", doc, false)
         jb.rbrace()
     }
-    if insert_txt != "" {
+    if te_ln0 >= 0 {
+        jb.comma()
+        jb.key("textEdit")
+        jb.lbrace()
+        jb.key("range")
+        jb.lbrace()
+        jb.key("start"); jb.lbrace(); jb.kv_int("line", te_ln0, true); jb.kv_int("character", te_s0, false); jb.rbrace()
+        jb.comma()
+        jb.key("end"); jb.lbrace(); jb.kv_int("line", te_ln0, true); jb.kv_int("character", te_e0, false); jb.rbrace()
+        jb.rbrace()
+        jb.comma()
+        jb.kv_str("newText", te_text, true)
+        jb.rbrace()
+        jb.kv_int("insertTextFormat", 2, false)
+    } else if insert_txt != "" {
         jb.kv_str("insertText", insert_txt, false)
         jb.kv_int("insertTextFormat", 2, false)
     }
     jb.rbrace()
 }
 
-fn collect_class_member_completions(az: Analyzer, source: str, doc_path: str, cname: str, jb: JsonBuf, seen: Map<str, i64>, is_first_box: List<i64>) {
+fn emit_comp_item(jb: JsonBuf, label: str, kind: i64, detail: str, doc: str, insert_txt: str, sort_txt: str, first: bool) {
+    emit_comp_item_ex(jb, label, "", "", kind, detail, doc, insert_txt, sort_txt, "", -1, 0, 0, "", false, first)
+}
+
+fn lsp_extract_sig_params_from_str(sig_label: str) -> List<str> {
+    let out = List<str>()
+    let open_p = lsp_str_find(sig_label, "(", 0)
+    if open_p < 0 { return out }
+    let n = sig_label.len()
+    mut cl = open_p + 1
+    mut depth = 1
+    while cl < n && depth > 0 {
+        let b = sig_label.byte_at(cl)
+        if b == 40 { depth = depth + 1 }
+        else if b == 41 { depth = depth - 1 }
+        if depth > 0 { cl = cl + 1 }
+    }
+    let inner = sig_label.slice(open_p + 1, cl).trim()
+    if inner == "" { return out }
+    mut d = 0
+    mut start = 0
+    mut i = 0
+    while i <= inner.len() {
+        let at_end = (i == inner.len())
+        mut sep = false
+        if !at_end {
+            let b = inner.byte_at(i)
+            if b == 60 || b == 40 { d = d + 1 }
+            else if b == 62 || b == 41 { d = d - 1 }
+            else if b == 44 && d == 0 { sep = true }
+        }
+        if at_end || sep {
+            let part = inner.slice(start, i).trim()
+            if part != "" { out.push(part) }
+            start = i + 1
+        }
+        i = i + 1
+    }
+    return out
+}
+
+fn lsp_resolve_call_site_sig(source: str, az: Analyzer, doc_path: str, line0: i64, char0: i64,
+                             sig_params: List<str>, meta: List<str>) -> i64 {
+    let curoff = lsp_line_col_to_offset(source, line0, char0)
+    if curoff <= 0 { return -1 }
+
+    // Walk backward across lines (bounded to 4096 bytes) tracking balanced () and strings
+    mut floor_off = curoff - 4096
+    if floor_off < 0 { floor_off = 0 }
+    mut depth = 0
+    mut commas = 0
+    mut in_str = false
+    mut open_idx = -1
+    mut i = curoff - 1
+    while i >= floor_off {
+        let b = source.byte_at(i)
+        if b == 34 && (i == 0 || source.byte_at(i - 1) != 92) {
+            in_str = !in_str
+        } else if !in_str {
+            if b == 41 {
+                depth = depth + 1
+            } else if b == 40 {
+                if depth == 0 {
+                    open_idx = i
+                    break
+                }
+                depth = depth - 1
+            } else if b == 44 && depth == 0 {
+                commas = commas + 1
+            } else if b == 123 || b == 125 || b == 59 {
+                break
+            }
+        }
+        i = i - 1
+    }
+    if open_idx <= 0 { return -1 }
+
+    mut end_name = open_idx
+    while end_name > 0 && (source.byte_at(end_name - 1) == 32 || source.byte_at(end_name - 1) == 9) {
+        end_name = end_name - 1
+    }
+    mut start_name = end_name
+    while start_name > 0 && lsp_is_ident_char(source.byte_at(start_name - 1)) {
+        start_name = start_name - 1
+    }
+    let callee = source.slice(start_name, end_name)
+    if callee == "" { return -1 }
+
+    mut sig_label = ""
+    mut sig_doc = ""
+    mut fn_nid = -1
+
+    let has_dot = start_name > 0 && source.byte_at(start_name - 1) == 46
+    let has_cascade = start_name >= 2 && source.byte_at(start_name - 1) == 62 && source.byte_at(start_name - 2) == 126
+    if has_dot || has_cascade {
+        let op_pos = start_name - 1
+        mut ls = start_name - 1
+        while ls > 0 && source.byte_at(ls - 1) != 10 { ls = ls - 1 }
+        let line_before = source.slice(ls, op_pos + 1)
+        let rname = lsp_extract_receiver_before_dot(line_before, line_before.len() - 1)
+        let rt = lsp_infer_expr_receiver_type(az, doc_path, line0 + 1, rname, source)
+        if rt != "" {
+            let owner = lsp_find_class_method_sidx(az, rt, callee)
+            if owner >= 0 {
+                fn_nid = az.sig_nodes.get(owner)
+            } else {
+                let bmethods = lsp_builtin_methods_for(rt)
+                mut bi = 0
+                while bi < bmethods.len() {
+                    let msig = bmethods.get(bi)
+                    if msig.starts_with(callee + ":") {
+                        sig_label = lsp_subst_generic_sig(msig, rt)
+                        sig_doc = lsp_lookup_member_doc(rt, callee)
+                        break
+                    }
+                    bi = bi + 1
+                }
+            }
+        }
+    } else if az.cls_idx_map.has_key(callee) {
+        let ctor_k = "ctor::" + callee
+        if az.sig_by_key.has_key(ctor_k) {
+            let sidx = az.sig_by_key.get(ctor_k).split(",").get(0).to_i64()
+            fn_nid = az.sig_nodes.get(sidx)
+        }
+    } else {
+        let fn_k = "fn::" + callee
+        if az.sig_by_key.has_key(fn_k) {
+            let sidx = az.sig_by_key.get(fn_k).split(",").get(0).to_i64()
+            fn_nid = az.sig_nodes.get(sidx)
+        } else {
+            let ec_c = lsp_enclosing_class_at(az, doc_path, line0 + 1)
+            if ec_c != "" {
+                let msidx = lsp_find_class_method_sidx(az, ec_c, callee)
+                if msidx >= 0 { fn_nid = az.sig_nodes.get(msidx) }
+            }
+        }
+        if fn_nid < 0 {
+            let bsig = lsp_builtin_fn_sig(callee)
+            if bsig != "" {
+                sig_label = bsig
+                sig_doc = lsp_lookup_doc(callee)
+            }
+        }
+    }
+
+    if fn_nid >= 0 {
+        sig_label = lsp_fn_signature_str(az, fn_nid)
+        sig_doc = lsp_extract_doc_comments(source, doc_path, az.nf.get(fn_nid), az.ln.get(fn_nid))
+        let pg = az.la.get(fn_nid)
+        if pg >= 0 {
+            let pc = az.ll.get(pg)
+            mut pi = 0
+            while pi < pc {
+                let pid = az.ch.get(az.ls.get(pg) + pi)
+                sig_params.push(az.sa.get(pid) + ": " + btype_norm(az.sb.get(pid)))
+                pi = pi + 1
+            }
+        }
+    } else if sig_label != "" {
+        let parsed_p = lsp_extract_sig_params_from_str(sig_label)
+        mut pi = 0
+        while pi < parsed_p.len() {
+            sig_params.push(parsed_p.get(pi))
+            pi = pi + 1
+        }
+    }
+
+    if sig_label == "" { return -1 }
+    meta.push(sig_label)
+    meta.push(sig_doc)
+    return commas
+}
+
+fn lsp_sig_to_label_parts(sig: str) -> List<str> {
+    let out = List<str>()
+    let open_p = lsp_str_find(sig, "(", 0)
+    if open_p < 0 {
+        out.push(""); out.push("")
+        return out
+    }
+    let n = sig.len()
+    mut cl = open_p + 1
+    mut depth = 1
+    while cl < n && depth > 0 {
+        let b = sig.byte_at(cl)
+        if b == 40 { depth = depth + 1 }
+        else if b == 41 { depth = depth - 1 }
+        if depth > 0 { cl = cl + 1 }
+    }
+    let params_paren = sig.slice(open_p, cl + 1)
+    mut ret = "void"
+    let arrow = lsp_str_find(sig, "->", cl)
+    if arrow >= 0 {
+        ret = sig.slice(arrow + 2, n).trim()
+    }
+    out.push(params_paren)
+    out.push(ret)
+    return out
+}
+
+fn lsp_build_call_snippet(name: str, param_paren: str, insert_parens: bool) -> str {
+    if !insert_parens || param_paren == "" { return "" }
+    if param_paren == "()" { return name + "()$0" }
+    let plist = lsp_extract_sig_params_from_str(name + param_paren)
+    if plist.len() == 0 { return name + "()$0" }
+    let bb = ByteBuffer()
+    bb.write_str(name)
+    bb.write_str("(")
+    mut i = 0
+    while i < plist.len() {
+        if i > 0 { bb.write_str(", ") }
+        mut seg = plist.get(i).trim()
+        if seg.starts_with("mut ") { seg = seg.slice(4, seg.len()).trim() }
+        let col_i = lsp_str_find(seg, ":", 0)
+        mut pname = seg
+        if col_i > 0 { pname = seg.slice(0, col_i).trim() }
+        let eq_i = lsp_str_find(pname, "=", 0)
+        if eq_i > 0 { pname = pname.slice(0, eq_i).trim() }
+        if pname == "" { pname = "arg" + (i + 1) }
+        bb.write_str("$")
+        bb.write_u8(123)
+        bb.write_str("" + (i + 1))
+        bb.write_str(":")
+        bb.write_str(pname)
+        bb.write_str("}")
+        i = i + 1
+    }
+    bb.write_str(")$0")
+    let out = bb.to_str()
+    bb.free()
+    return out
+}
+
+fn lsp_type_matches(cand_t: str, expected_t: str) -> bool {
+    if expected_t == "" || cand_t == "" { return false }
+    let cn = btype_norm(lsp_unwrap_optional_type(cand_t))
+    let en = btype_norm(lsp_unwrap_optional_type(expected_t))
+    if en == "any" || cn == "any" { return false }
+    if cn == en { return true }
+    if (en == "int" && cn == "i64") || (en == "i64" && cn == "int") { return true }
+    if (en == "float" && cn == "f64") || (en == "f64" && cn == "float") { return true }
+    return false
+}
+
+fn lsp_infer_expected_type(source: str, az: Analyzer, doc_path: str, line0: i64, cpos: i64, before_word: str) -> str {
+    // 1. Inside call arguments -> active parameter type
+    let sig_params = List<str>()
+    let meta = List<str>()
+    let arg_idx = lsp_resolve_call_site_sig(source, az, doc_path, line0, cpos, sig_params, meta)
+    if arg_idx >= 0 && arg_idx < sig_params.len() {
+        let p = sig_params.get(arg_idx)
+        let col_i = lsp_str_find(p, ":", 0)
+        if col_i > 0 {
+            mut pt = p.slice(col_i + 1, p.len()).trim()
+            let eq_i = lsp_str_find(pt, "=", 0)
+            if eq_i > 0 { pt = pt.slice(0, eq_i).trim() }
+            if pt != "" && pt != "any" && pt != "T" && pt != "K" && pt != "V" {
+                return btype_norm(pt)
+            }
+        }
+    }
+
+    // 2. Return statement -> enclosing function return type
+    if before_word == "return" || before_word.ends_with(" return") {
+        let fb = lsp_enclosing_fn_bounds(source, az, doc_path, line0 + 1)
+        let fn_nid = fb.get(0)
+        if fn_nid >= 0 {
+            let rt = btype_norm(az.sb.get(fn_nid))
+            if rt != "" && rt != "void" { return rt }
+        }
+    }
+
+    // 3. Typed declaration RHS: `let x: Type = ...` or `mut x: Type = ...`
+    if before_word.ends_with("=") && !before_word.ends_with("==") && !before_word.ends_with("!=") && !before_word.ends_with("<=") && !before_word.ends_with(">=") {
+        let lhs = before_word.slice(0, before_word.len() - 1).trim()
+        let col_i2 = lsp_str_find(lhs, ":", 0)
+        if col_i2 > 0 {
+            let decl_t = btype_norm(lhs.slice(col_i2 + 1, lhs.len()).trim())
+            if decl_t != "" { return decl_t }
+        }
+    }
+    return ""
+}
+
+fn lsp_is_type_position(before_word: str) -> bool {
+    if before_word == "" { return false }
+    if before_word.ends_with("->") || before_word.ends_with("extends") || before_word.ends_with("implements") || before_word.ends_with("as") {
+        return true
+    }
+    if before_word.ends_with(":") && !before_word.ends_with("::") && !before_word.ends_with("?:") {
+        return true
+    }
+    // Unclosed generic `<` after identifier (e.g., `List<`, `Map<str, `)
+    mut i = before_word.len() - 1
+    mut ad = 0
+    while i >= 0 {
+        let b = before_word.byte_at(i)
+        if b == 62 { ad = ad + 1 }
+        else if b == 60 {
+            if ad == 0 {
+                return i > 0 && lsp_is_ident_char(before_word.byte_at(i - 1))
+            }
+            ad = ad - 1
+        } else if b == 40 || b == 41 || b == 123 || b == 125 || b == 61 || b == 59 {
+            return false
+        }
+        i = i - 1
+    }
+    return false
+}
+
+fn lsp_emit_import_completions(doc_path: str, line0: i64, prefix: str, cpos: i64, jb: JsonBuf, is_first: List<i64>) -> bool {
+    let tr = prefix.trim()
+    if !tr.starts_with("import ") && !tr.starts_with("use ") { return false }
+    let qpos = lsp_str_find(prefix, "\"", 0)
+    if qpos < 0 { return false }
+    // Ensure cursor is inside unclosed quote
+    let after_q = prefix.slice(qpos + 1, prefix.len())
+    if lsp_str_find(after_q, "\"", 0) >= 0 { return false }
+
+    let slash_pos = after_q.replace("\\", "/")
+    mut last_sl = -1
+    mut si = 0
+    while si < slash_pos.len() {
+        if slash_pos.byte_at(si) == 47 { last_sl = si }
+        si = si + 1
+    }
+    mut dir_rel = ""
+    if last_sl >= 0 { dir_rel = slash_pos.slice(0, last_sl + 1) }
+
+    // Suggest built-in stdlib modules at root quote level
+    if dir_rel == "" {
+        let mods = List<str>()
+        mods.push("Math"); mods.push("Random"); mods.push("Socket"); mods.push("Time"); mods.push("Window")
+        mut mi = 0
+        while mi < mods.len() {
+            let mnm = mods.get(mi)
+            let fst = is_first.get(0) == 1
+            is_first.set(0, 0)
+            emit_comp_item_ex(jb, mnm, "", "stdlib", CKIND_MODULE(), "Aerix stdlib module `" + mnm + "`",
+                              "Standard library module `" + mnm + "`.", "", "0_" + mnm, "",
+                              line0, qpos + 1, cpos, mnm, false, fst)
+            mi = mi + 1
+        }
+    }
+
+    // Suggest real relative files & folders in current document directory
+    let base_dir = bpath_dirname(doc_path)
+    if base_dir != "" {
+        mut scan_dir = base_dir
+        if dir_rel != "" { scan_dir = bpath_join(base_dir, dir_rel) }
+        if Directory.exists(scan_dir) {
+            let files = Directory.list_files(scan_dir)
+            mut fi = 0
+            while fi < files.len() {
+                let f = bpath_basename(files.get(fi))
+                if str_ends_with_arx(f) && bpath_join(scan_dir, f) != bpath_normalize(doc_path) {
+                    let ins = dir_rel + f
+                    let fst = is_first.get(0) == 1
+                    is_first.set(0, 0)
+                    emit_comp_item_ex(jb, f, "", dir_rel, CKIND_FILE(), "Aerix module", "Import `" + ins + "`",
+                                      "", "1_" + f, ins, line0, qpos + 1, cpos, ins, false, fst)
+                }
+                fi = fi + 1
+            }
+            let dirs = Directory.list_dirs(scan_dir)
+            mut di = 0
+            while di < dirs.len() {
+                let d = bpath_basename(dirs.get(di))
+                if !d.starts_with(".") && d != "dist" && d != "seed" {
+                    let ins = dir_rel + d + "/"
+                    let fst = is_first.get(0) == 1
+                    is_first.set(0, 0)
+                    emit_comp_item_ex(jb, d + "/", "", "folder", CKIND_FOLDER(), "Directory", "Browse `" + ins + "`",
+                                      "", "2_" + d, ins, line0, qpos + 1, cpos, ins, false, fst)
+                }
+                di = di + 1
+            }
+        }
+    }
+    return true
+}
+
+fn lsp_emit_type_completions(az: Analyzer, source: str, doc_path: str, line0: i64, before_word: str,
+                             jb: JsonBuf, seen: Map<str, i64>, is_first: List<i64>) {
+    mut ci = 0
+    while ci < az.cls_count {
+        let cid = az.cls_nodes.get(ci)
+        let cnm = az.cls_names.get(ci)
+        if !seen.has_key("c::" + cnm) {
+            seen.insert("c::" + cnm, 1)
+            let same_file = az.nf.get(cid) == doc_path
+            mut stxt = "2_" + cnm
+            if same_file { stxt = "0_" + cnm }
+            mut cdoc = ""
+            if same_file { cdoc = lsp_extract_doc_comments(source, doc_path, doc_path, az.ln.get(cid)) }
+            let src_note = "*Defined in* `" + bpath_basename(az.nf.get(cid)) + ":" + az.ln.get(cid) + "`"
+            if cdoc != "" { cdoc = cdoc + "\n\n" + src_note } else { cdoc = src_note }
+            let fst = is_first.get(0) == 1
+            is_first.set(0, 0)
+            emit_comp_item_ex(jb, cnm, "", bpath_basename(az.nf.get(cid)), CKIND_CLASS(), "class " + cnm, cdoc,
+                              "", stxt, "", -1, 0, 0, "", false, fst)
+        }
+        ci = ci + 1
+    }
+
+    mut ei = 0
+    while ei < az.enum_count {
+        let eid = az.enum_nodes.get(ei)
+        let enm = az.enum_names.get(ei)
+        if !seen.has_key("e::" + enm) {
+            seen.insert("e::" + enm, 1)
+            let same_file = az.nf.get(eid) == doc_path
+            mut edoc = ""
+            if same_file { edoc = lsp_extract_doc_comments(source, doc_path, doc_path, az.ln.get(eid)) }
+            let src_note = "*Defined in* `" + bpath_basename(az.nf.get(eid)) + ":" + az.ln.get(eid) + "`"
+            if edoc != "" { edoc = edoc + "\n\n" + src_note } else { edoc = src_note }
+            let fst = is_first.get(0) == 1
+            is_first.set(0, 0)
+            emit_comp_item_ex(jb, enm, "", bpath_basename(az.nf.get(eid)), CKIND_ENUM(), "enum " + enm, edoc,
+                              "", "1_" + enm, "", -1, 0, 0, "", false, fst)
+        }
+        ei = ei + 1
+    }
+
+    let in_fn_ret = before_word.ends_with("->")
+    let ts = lsp_type_list()
+    mut ti = 0
+    while ti < ts.len() {
+        let tnm = ts.get(ti)
+        if !seen.has_key("c::" + tnm) {
+            seen.insert("c::" + tnm, 1)
+            mut stxt = "3_" + tnm
+            if tnm == "i64" || tnm == "f64" || tnm == "str" || tnm == "bool" || tnm == "List" || tnm == "Map" || (in_fn_ret && tnm == "void") {
+                stxt = "0_" + tnm
+            }
+            let lb = lsp_lbrace()
+            mut snip = ""
+            if tnm == "List" { snip = "List<$" + lb + "1:T}>" }
+            else if tnm == "Map" { snip = "Map<$" + lb + "1:K}, $" + lb + "2:V}>" }
+            else if tnm == "Set" { snip = "Set<$" + lb + "1:T}>" }
+            else if tnm == "Queue" { snip = "Queue<$" + lb + "1:T}>" }
+            else if tnm == "Stack" { snip = "Stack<$" + lb + "1:T}>" }
+            else if tnm == "Deque" { snip = "Deque<$" + lb + "1:T}>" }
+            else if tnm == "Channel" { snip = "Channel<$" + lb + "1:T}>" }
+            let fst = is_first.get(0) == 1
+            is_first.set(0, 0)
+            emit_comp_item_ex(jb, tnm, "", "type", CKIND_CLASS(), "type " + tnm, lsp_lookup_doc(tnm),
+                              snip, stxt, "", -1, 0, 0, "", false, fst)
+        }
+        ti = ti + 1
+    }
+}
+
+fn lsp_emit_postfix_completions(line0: i64, recv_start0: i64, dot_col0: i64, cpos: i64, line: str,
+                                clean_recv: str, recv_t: str, jb: JsonBuf, is_first: List<i64>) {
+    if clean_recv == "" || lsp_is_static_runtime(clean_recv) { return }
+    if recv_start0 < 0 || recv_start0 >= dot_col0 { return }
+    let raw_recv = line.slice(recv_start0, dot_col0)
+    if raw_recv == "" { return }
+
+    let is_iter = recv_t == "str" || recv_t.starts_with("List<") || recv_t.starts_with("Map<") || recv_t.starts_with("Set<") || recv_t.ends_with("[]")
+
+    let triggers = List<str>()
+    let descs = List<str>()
+    let templates = List<str>()
+    let sorts = List<str>()
+
+    let lb = lsp_lbrace()
+    triggers.push("let");     descs.push("let name = expr");      templates.push("let $" + lb + "1:name} = " + clean_recv + "$0"); sorts.push("9_let")
+    triggers.push("mut");     descs.push("mut name = expr");      templates.push("mut $" + lb + "1:name} = " + clean_recv + "$0"); sorts.push("9_mut")
+    triggers.push("print");   descs.push("print(expr)");          templates.push("print(" + clean_recv + ")$0");            sorts.push("9_print")
+    triggers.push("println"); descs.push("println(expr)");        templates.push("println(" + clean_recv + ")$0");          sorts.push("9_println")
+    triggers.push("return");  descs.push("return expr");          templates.push("return " + clean_recv + "$0");            sorts.push("9_return")
+    triggers.push("if");      descs.push("if expr " + lb + " ... }"); templates.push("if " + clean_recv + " " + lb + "\n\t$0\n}"); sorts.push("9_if")
+    let for_sort = "9_for"
+    mut fsort = for_sort
+    if is_iter { fsort = "8_for" }
+    triggers.push("for");     descs.push("for item in expr");     templates.push("for $" + lb + "1:item} in " + clean_recv + " " + lb + "\n\t$0\n}"); sorts.push(fsort)
+    triggers.push("not");     descs.push("!expr");                templates.push("!" + clean_recv);                         sorts.push("9_not")
+
+    mut pi = 0
+    while pi < triggers.len() {
+        let trg = triggers.get(pi)
+        let fst = is_first.get(0) == 1
+        is_first.set(0, 0)
+        emit_comp_item_ex(jb, "." + trg, "", descs.get(pi), CKIND_SNIPPET(), "Postfix ." + trg,
+                          "Wraps `" + clean_recv + "` into `" + descs.get(pi) + "`.",
+                          "", sorts.get(pi), raw_recv + "." + trg,
+                          line0, recv_start0, cpos, templates.get(pi), false, fst)
+        pi = pi + 1
+    }
+}
+
+fn collect_class_member_completions(az: Analyzer, source: str, doc_path: str, cname: str,
+                                    insert_parens: bool, expected_t: str,
+                                    jb: JsonBuf, seen: Map<str, i64>, is_first_box: List<i64>) {
     mut cur = cname
     mut depth = 0
     while cur != "" && depth < 16 {
@@ -943,9 +1585,13 @@ fn collect_class_member_completions(az: Analyzer, source: str, doc_path: str, cn
                         fdoc = lsp_extract_doc_comments(source, doc_path, doc_path, az.ln.get(fid))
                     }
                     if fdoc == "" { fdoc = "Field on `" + cur + "`" }
+                    let matched = lsp_type_matches(ft, expected_t)
+                    mut stxt = "0_" + fnm
+                    if matched { stxt = "00_" + fnm }
                     let fst = is_first_box.get(0) == 1
                     is_first_box.set(0, 0)
-                    emit_comp_item(jb, fnm, CKIND_FIELD(), fnm + ": " + ft, fdoc, "", "0_" + fnm, fst)
+                    emit_comp_item_ex(jb, fnm, "", ft, CKIND_FIELD(), fnm + ": " + ft, fdoc,
+                                      "", stxt, "", -1, 0, 0, "", matched, fst)
                 }
                 fi = fi + 1
             }
@@ -958,14 +1604,21 @@ fn collect_class_member_completions(az: Analyzer, source: str, doc_path: str, cn
                 if !seen.has_key("m::" + mnm) {
                     seen.insert("m::" + mnm, 1)
                     let sig = lsp_fn_signature_str(az, mid)
+                    let lparts = lsp_sig_to_label_parts(sig)
+                    let snip = lsp_build_call_snippet(mnm, lparts.get(0), insert_parens)
+                    let rt = lparts.get(1)
                     mut mdoc = ""
                     if az.nf.get(mid) == doc_path {
                         mdoc = lsp_extract_doc_comments(source, doc_path, doc_path, az.ln.get(mid))
                     }
                     if mdoc == "" { mdoc = "Method on `" + cur + "`" }
+                    let matched = lsp_type_matches(rt, expected_t)
+                    mut stxt = "1_" + mnm
+                    if matched { stxt = "00_" + mnm }
                     let fst = is_first_box.get(0) == 1
                     is_first_box.set(0, 0)
-                    emit_comp_item(jb, mnm, CKIND_METHOD(), sig, mdoc, "", "1_" + mnm, fst)
+                    emit_comp_item_ex(jb, mnm, lparts.get(0), rt, CKIND_METHOD(), sig, mdoc,
+                                      snip, stxt, "", -1, 0, 0, "", matched, fst)
                 }
                 mi = mi + 1
             }
@@ -991,9 +1644,16 @@ fn collect_class_member_completions(az: Analyzer, source: str, doc_path: str, cn
                 if !seen.has_key("m::" + mnm) {
                     seen.insert("m::" + mnm, 1)
                     let sig = lsp_fn_signature_str(az, mid)
+                    let lparts = lsp_sig_to_label_parts(sig)
+                    let snip = lsp_build_call_snippet(mnm, lparts.get(0), insert_parens)
+                    let rt = lparts.get(1)
+                    let matched = lsp_type_matches(rt, expected_t)
+                    mut stxt = "1_" + mnm
+                    if matched { stxt = "00_" + mnm }
                     let fst = is_first_box.get(0) == 1
                     is_first_box.set(0, 0)
-                    emit_comp_item(jb, mnm, CKIND_METHOD(), sig, "Extension method on `" + cname + "`", "", "1_" + mnm, fst)
+                    emit_comp_item_ex(jb, mnm, lparts.get(0), rt, CKIND_METHOD(), sig, "Extension method on `" + cname + "`",
+                                      snip, stxt, "", -1, 0, 0, "", matched, fst)
                 }
                 mi = mi + 1
             }
@@ -1008,6 +1668,7 @@ pub fn lsp_build_completion_json(source: str, az: Analyzer, doc_path: str, line0
     if cpos > line.len() { cpos = line.len() }
     if cpos < 0 { cpos = 0 }
     let prefix = line.slice(0, cpos)
+    let insert_parens = (cpos >= line.len() || line.byte_at(cpos) != 40)
 
     // Strip partial identifier being typed at cursor end
     mut scan = prefix.len()
@@ -1027,19 +1688,36 @@ pub fn lsp_build_completion_json(source: str, az: Analyzer, doc_path: str, line0
     let is_first = List<i64>()
     is_first.push(1)
 
-    // Case 1: Member / Cascade completion after '.' / '?.' / '~>'
+    // Case 0: Import / Use file & stdlib path completion inside quotes
+    if lsp_emit_import_completions(doc_path, line0, prefix, cpos, jb, is_first) {
+        jb.rbrack()
+        jb.rbrace()
+        return jb.finish()
+    }
+
+    let expected_t = lsp_infer_expected_type(source, az, doc_path, line0, cpos, before_word)
+
+    // Case 1: Member / Cascade completion after '.' / '?.' / '~>' + Postfix transforms
     mut is_member = false
-    mut clean_recv = ""
+    mut is_plain_dot = false
+    mut dot_col0 = -1
     if before_word.ends_with("?.") || before_word.ends_with("~>") {
         is_member = true
-        clean_recv = lsp_extract_receiver_before_dot(before_word, before_word.len() - 1)
+        dot_col0 = before_word.len() - 2
     } else if before_word.ends_with(".") {
         is_member = true
-        clean_recv = lsp_extract_receiver_before_dot(before_word, before_word.len() - 1)
+        is_plain_dot = true
+        dot_col0 = before_word.len() - 1
     }
 
     if is_member {
-        let recv_t = lsp_infer_expr_receiver_type(az, doc_path, line0 + 1, clean_recv)
+        // Compute dot position in un-trimmed `prefix` so `textEdit` ranges align identically
+        mut raw_dot_col = scan - 1
+        while raw_dot_col > 0 && (prefix.byte_at(raw_dot_col) == 32 || prefix.byte_at(raw_dot_col) == 9) {
+            raw_dot_col = raw_dot_col - 1
+        }
+        let clean_recv = lsp_extract_receiver_before_dot(before_word, before_word.len() - 1)
+        let recv_t = lsp_infer_expr_receiver_type(az, doc_path, line0 + 1, clean_recv, source)
 
         if recv_t != "" {
             if az.enum_idx_map.has_key(recv_t) {
@@ -1051,14 +1729,18 @@ pub fn lsp_build_completion_json(source: str, az: Analyzer, doc_path: str, line0
                         let vid = az.ch.get(az.ls.get(eid) + vi)
                         let vnm = az.sa.get(vid)
                         let vfmt = lsp_format_enum_variant(az, vid)
+                        let matched = lsp_type_matches(recv_t, expected_t)
+                        mut stxt = "0_" + vnm
+                        if matched { stxt = "00_" + vnm }
                         let fst = is_first.get(0) == 1
                         is_first.set(0, 0)
-                        emit_comp_item(jb, vnm, CKIND_ENUM_MEM(), recv_t + "." + vfmt, "Enum variant of `" + recv_t + "`", "", "0_" + vnm, fst)
+                        emit_comp_item_ex(jb, vnm, "", recv_t, CKIND_ENUM_MEM(), recv_t + "." + vfmt,
+                                          "Enum variant of `" + recv_t + "`", "", stxt, "", -1, 0, 0, "", matched, fst)
                         vi = vi + 1
                     }
                 }
             } else if az.cls_idx_map.has_key(recv_t) {
-                collect_class_member_completions(az, source, doc_path, recv_t, jb, seen, is_first)
+                collect_class_member_completions(az, source, doc_path, recv_t, insert_parens, expected_t, jb, seen, is_first)
             } else {
                 let bms = lsp_builtin_methods_for(recv_t)
                 mut bi = 0
@@ -1067,37 +1749,88 @@ pub fn lsp_build_completion_json(source: str, az: Analyzer, doc_path: str, line0
                     let colon_i = lsp_str_find(entry, ":", 0)
                     let mnm = entry.slice(0, colon_i)
                     let msig = lsp_subst_generic_sig(entry, recv_t)
+                    let lparts = lsp_sig_to_label_parts(msig)
+                    let snip = lsp_build_call_snippet(mnm, lparts.get(0), insert_parens)
+                    let rt = lparts.get(1)
                     mut mdoc = lsp_lookup_member_doc(recv_t, mnm)
                     if mdoc == "" { mdoc = "Built-in `" + recv_t + "` method" }
+                    let matched = lsp_type_matches(rt, expected_t)
+                    mut stxt = "0_" + mnm
+                    if matched { stxt = "00_" + mnm }
                     let fst = is_first.get(0) == 1
                     is_first.set(0, 0)
-                    emit_comp_item(jb, mnm, CKIND_METHOD(), msig, mdoc, "", "0_" + mnm, fst)
+                    emit_comp_item_ex(jb, mnm, lparts.get(0), rt, CKIND_METHOD(), msig, mdoc,
+                                      snip, stxt, "", -1, 0, 0, "", matched, fst)
                     bi = bi + 1
                 }
             }
         }
+
+        if is_plain_dot && raw_dot_col > 0 && !az.enum_idx_map.has_key(clean_recv) {
+            let recv_start0 = lsp_extract_receiver_start_before_dot(line, raw_dot_col)
+            lsp_emit_postfix_completions(line0, recv_start0, raw_dot_col, cpos, line, clean_recv, recv_t, jb, is_first)
+        }
+
         jb.rbrack()
         jb.rbrace()
         return jb.finish()
     }
 
-    // Case 2: Scope + Project Symbols + Builtins + Keywords
-    // Local & Parameter declarations in current file near/above cursor
+    // Case 2A: Type annotation context (after `:`, `->`, `extends`, `implements`, `as`, or inside `<...>`)
+    if lsp_is_type_position(before_word) {
+        lsp_emit_type_completions(az, source, doc_path, line0, before_word, jb, seen, is_first)
+        jb.rbrack()
+        jb.rbrace()
+        return jb.finish()
+    }
+
+    // Case 2B: Scope + Enclosing Class + Project Symbols + Builtins + Keywords
+    let line1 = line0 + 1
+    let fbounds = lsp_enclosing_fn_bounds(source, az, doc_path, line1)
+    let fn_start = fbounds.get(1)
+    let in_fn = (fn_start > 0)
+    let enc_cls = lsp_enclosing_class_at(az, doc_path, line1)
+
+    // Scoped local, parameter, for-loop variables & module globals in current file
     mut ni = 0
     while ni < az.ncount {
         let k = az.nk.get(ni)
-        if (k == NK_VAR_DECL() || k == NK_PARAM() || k == NK_FOR()) && az.nf.get(ni) == doc_path && az.ln.get(ni) <= line0 + 1 {
-            let vnm = az.sa.get(ni)
-            if vnm != "" && !seen.has_key("v::" + vnm) {
-                seen.insert("v::" + vnm, 1)
-                mut vt = btype_norm(az.node_types.get(ni))
-                if vt == "" { vt = btype_norm(az.sb.get(ni)) }
-                let fst = is_first.get(0) == 1
-                is_first.set(0, 0)
-                emit_comp_item(jb, vnm, CKIND_VARIABLE(), vnm + ": " + vt, "", "", "0_" + vnm, fst)
+        let nln = az.ln.get(ni)
+        if az.nf.get(ni) == doc_path && nln <= line1 {
+            mut is_in_scope = false
+            if k == NK_VAR_DECL_GLOBAL() {
+                is_in_scope = true
+            } else if k == NK_VAR_DECL() || k == NK_PARAM() || k == NK_FOR() {
+                if in_fn {
+                    is_in_scope = (nln >= fn_start)
+                } else {
+                    is_in_scope = false
+                }
+            }
+            if is_in_scope {
+                mut vnm = az.sa.get(ni)
+                if k == NK_FOR() && az.sb.get(ni) != "" && vnm == "" { vnm = az.sb.get(ni) }
+                if vnm != "" && !seen.has_key("v::" + vnm) {
+                    seen.insert("v::" + vnm, 1)
+                    mut vt = btype_norm(az.node_types.get(ni))
+                    if (vt == "" || vt == "void") && k != NK_FOR() { vt = btype_norm(az.sb.get(ni)) }
+                    if vt == "" || vt == "void" { vt = lsp_resolve_var_type(az, doc_path, line1, vnm, source) }
+                    let matched = lsp_type_matches(vt, expected_t)
+                    mut stxt = "0_" + vnm
+                    if matched { stxt = "00_" + vnm }
+                    let fst = is_first.get(0) == 1
+                    is_first.set(0, 0)
+                    emit_comp_item_ex(jb, vnm, "", vt, CKIND_VARIABLE(), vnm + ": " + vt, "",
+                                      "", stxt, "", -1, 0, 0, "", matched, fst)
+                }
             }
         }
         ni = ni + 1
+    }
+
+    // Enclosing class implicit self members when inside a class
+    if enc_cls != "" {
+        collect_class_member_completions(az, source, doc_path, enc_cls, insert_parens, expected_t, jb, seen, is_first)
     }
 
     // Functions
@@ -1108,21 +1841,27 @@ pub fn lsp_build_completion_json(source: str, az: Analyzer, doc_path: str, line0
         if fnm != "" && !seen.has_key("fn::" + fnm) {
             seen.insert("fn::" + fnm, 1)
             let sig = lsp_fn_signature_str(az, fid)
+            let lparts = lsp_sig_to_label_parts(sig)
+            let snip = lsp_build_call_snippet(fnm, lparts.get(0), insert_parens)
+            let rt = lparts.get(1)
             let same_file = az.nf.get(fid) == doc_path
             mut fdoc = ""
             if same_file { fdoc = lsp_extract_doc_comments(source, doc_path, doc_path, az.ln.get(fid)) }
             let src_note = "*Defined in* `" + bpath_basename(az.nf.get(fid)) + ":" + az.ln.get(fid) + "`"
             if fdoc != "" { fdoc = fdoc + "\n\n" + src_note } else { fdoc = src_note }
+            let matched = lsp_type_matches(rt, expected_t)
             mut stxt = "2_" + fnm
             if same_file { stxt = "1_" + fnm }
+            if matched { stxt = "00_" + fnm }
             let fst = is_first.get(0) == 1
             is_first.set(0, 0)
-            emit_comp_item(jb, fnm, CKIND_FUNCTION(), sig, fdoc, "", stxt, fst)
+            emit_comp_item_ex(jb, fnm, lparts.get(0), rt, CKIND_FUNCTION(), sig, fdoc,
+                              snip, stxt, "", -1, 0, 0, "", matched, fst)
         }
         fi = fi + 1
     }
 
-    // Classes
+    // Classes (with ctor signature hint when available)
     mut ci = 0
     while ci < az.cls_count {
         let cid = az.cls_nodes.get(ci)
@@ -1130,15 +1869,28 @@ pub fn lsp_build_completion_json(source: str, az: Analyzer, doc_path: str, line0
         if !seen.has_key("c::" + cnm) {
             seen.insert("c::" + cnm, 1)
             let same_file = az.nf.get(cid) == doc_path
+            mut cdetail = ""
+            mut csnip = ""
+            let ctor_k = "ctor::" + cnm
+            if az.sig_by_key.has_key(ctor_k) {
+                let sidx = az.sig_by_key.get(ctor_k).split(",").get(0).to_i64()
+                let csig = lsp_fn_signature_str(az, az.sig_nodes.get(sidx))
+                let cparts = lsp_sig_to_label_parts(csig)
+                cdetail = cparts.get(0)
+                csnip = lsp_build_call_snippet(cnm, cdetail, insert_parens && in_fn)
+            }
             mut cdoc = ""
             if same_file { cdoc = lsp_extract_doc_comments(source, doc_path, doc_path, az.ln.get(cid)) }
             let src_note = "*Defined in* `" + bpath_basename(az.nf.get(cid)) + ":" + az.ln.get(cid) + "`"
             if cdoc != "" { cdoc = cdoc + "\n\n" + src_note } else { cdoc = src_note }
+            let matched = lsp_type_matches(cnm, expected_t)
             mut stxt = "2_" + cnm
             if same_file { stxt = "1_" + cnm }
+            if matched { stxt = "00_" + cnm }
             let fst = is_first.get(0) == 1
             is_first.set(0, 0)
-            emit_comp_item(jb, cnm, CKIND_CLASS(), "class " + cnm, cdoc, "", stxt, fst)
+            emit_comp_item_ex(jb, cnm, cdetail, "class", CKIND_CLASS(), "class " + cnm, cdoc,
+                              csnip, stxt, "", -1, 0, 0, "", matched, fst)
         }
         ci = ci + 1
     }
@@ -1155,16 +1907,19 @@ pub fn lsp_build_completion_json(source: str, az: Analyzer, doc_path: str, line0
             if same_file { edoc = lsp_extract_doc_comments(source, doc_path, doc_path, az.ln.get(eid)) }
             let src_note = "*Defined in* `" + bpath_basename(az.nf.get(eid)) + ":" + az.ln.get(eid) + "`"
             if edoc != "" { edoc = edoc + "\n\n" + src_note } else { edoc = src_note }
+            let matched = lsp_type_matches(enm, expected_t)
             mut stxt = "2_" + enm
             if same_file { stxt = "1_" + enm }
+            if matched { stxt = "00_" + enm }
             let fst = is_first.get(0) == 1
             is_first.set(0, 0)
-            emit_comp_item(jb, enm, CKIND_ENUM(), "enum " + enm, edoc, "", stxt, fst)
+            emit_comp_item_ex(jb, enm, "", "enum", CKIND_ENUM(), "enum " + enm, edoc,
+                              "", stxt, "", -1, 0, 0, "", matched, fst)
         }
         ei = ei + 1
     }
 
-    // Builtin Functions
+    // Builtin Functions (only relevant inside function/expression bodies or untyped positions)
     let bfns = lsp_builtin_fn_list()
     mut bfi = 0
     while bfi < bfns.len() {
@@ -1173,9 +1928,15 @@ pub fn lsp_build_completion_json(source: str, az: Analyzer, doc_path: str, line0
             seen.insert("fn::" + bnm, 1)
             mut bsig = lsp_builtin_fn_sig(bnm)
             if bsig == "" { bsig = "builtin " + bnm }
+            let lparts = lsp_sig_to_label_parts(bsig)
+            let snip = lsp_build_call_snippet(bnm, lparts.get(0), insert_parens)
+            let matched = lsp_type_matches(lparts.get(1), expected_t)
+            mut stxt = "3_" + bnm
+            if matched { stxt = "00_" + bnm }
             let fst = is_first.get(0) == 1
             is_first.set(0, 0)
-            emit_comp_item(jb, bnm, CKIND_FUNCTION(), bsig, lsp_lookup_doc(bnm), "", "3_" + bnm, fst)
+            emit_comp_item_ex(jb, bnm, lparts.get(0), lparts.get(1), CKIND_FUNCTION(), bsig, lsp_lookup_doc(bnm),
+                              snip, stxt, "", -1, 0, 0, "", matched, fst)
         }
         bfi = bfi + 1
     }
@@ -1188,22 +1949,38 @@ pub fn lsp_build_completion_json(source: str, az: Analyzer, doc_path: str, line0
         if !seen.has_key("c::" + tnm) {
             seen.insert("c::" + tnm, 1)
             mut stxt = "4_" + tnm
-            if lsp_is_static_runtime(tnm) { stxt = "2_" + tnm }
+            mut desc = "type"
+            if lsp_is_static_runtime(tnm) {
+                stxt = "2_" + tnm
+                desc = "stdlib"
+            }
             let fst = is_first.get(0) == 1
             is_first.set(0, 0)
-            emit_comp_item(jb, tnm, CKIND_CLASS(), "type " + tnm, lsp_lookup_doc(tnm), "", stxt, fst)
+            emit_comp_item_ex(jb, tnm, "", desc, CKIND_CLASS(), "type " + tnm, lsp_lookup_doc(tnm),
+                              "", stxt, "", -1, 0, 0, "", false, fst)
         }
         ti = ti + 1
     }
 
-    // Keywords
+    // Context-ranked Keywords
     let ks = lsp_keyword_list()
     mut ki = 0
     while ki < ks.len() {
         let knm = ks.get(ki)
+        mut ksort = "5b_" + knm
+        if in_fn {
+            if knm == "let" || knm == "mut" || knm == "if" || knm == "else" || knm == "elif" || knm == "for" || knm == "while" || knm == "match" || knm == "return" || knm == "guard" || knm == "defer" || knm == "true" || knm == "false" || knm == "null" {
+                ksort = "5a_" + knm
+            }
+        } else {
+            if knm == "fn" || knm == "pub" || knm == "class" || knm == "struct" || knm == "enum" || knm == "trait" || knm == "extend" || knm == "const" || knm == "import" || knm == "use" {
+                ksort = "5a_" + knm
+            }
+        }
         let fst = is_first.get(0) == 1
         is_first.set(0, 0)
-        emit_comp_item(jb, knm, CKIND_KEYWORD(), "keyword " + knm, lsp_lookup_doc(knm), "", "5_" + knm, fst)
+        emit_comp_item_ex(jb, knm, "", "keyword", CKIND_KEYWORD(), "keyword " + knm, lsp_lookup_doc(knm),
+                          "", ksort, "", -1, 0, 0, "", false, fst)
         ki = ki + 1
     }
 
@@ -1724,164 +2501,13 @@ fn lsp_line_col_to_offset(source: str, line0: i64, char0: i64) -> i64 {
     return i
 }
 
-fn lsp_extract_sig_params_from_str(sig_label: str) -> List<str> {
-    let out = List<str>()
-    let open_p = lsp_str_find(sig_label, "(", 0)
-    if open_p < 0 { return out }
-    let n = sig_label.len()
-    mut cl = open_p + 1
-    mut depth = 1
-    while cl < n && depth > 0 {
-        let b = sig_label.byte_at(cl)
-        if b == 40 { depth = depth + 1 }
-        else if b == 41 { depth = depth - 1 }
-        if depth > 0 { cl = cl + 1 }
-    }
-    let inner = sig_label.slice(open_p + 1, cl).trim()
-    if inner == "" { return out }
-    mut d = 0
-    mut start = 0
-    mut i = 0
-    while i <= inner.len() {
-        let at_end = (i == inner.len())
-        mut sep = false
-        if !at_end {
-            let b = inner.byte_at(i)
-            if b == 60 || b == 40 { d = d + 1 }
-            else if b == 62 || b == 41 { d = d - 1 }
-            else if b == 44 && d == 0 { sep = true }
-        }
-        if at_end || sep {
-            let part = inner.slice(start, i).trim()
-            if part != "" { out.push(part) }
-            start = i + 1
-        }
-        i = i + 1
-    }
-    return out
-}
-
 pub fn lsp_build_signature_help_json(source: str, az: Analyzer, doc_path: str, line0: i64, char0: i64) -> str {
-    let curoff = lsp_line_col_to_offset(source, line0, char0)
-    if curoff <= 0 { return "null" }
-
-    // Walk backward across lines (bounded to 4096 bytes) tracking balanced () and strings
-    mut floor_off = curoff - 4096
-    if floor_off < 0 { floor_off = 0 }
-    mut depth = 0
-    mut commas = 0
-    mut in_str = false
-    mut open_idx = -1
-    mut i = curoff - 1
-    while i >= floor_off {
-        let b = source.byte_at(i)
-        if b == 34 && (i == 0 || source.byte_at(i - 1) != 92) {
-            in_str = !in_str
-        } else if !in_str {
-            if b == 41 {
-                depth = depth + 1
-            } else if b == 40 {
-                if depth == 0 {
-                    open_idx = i
-                    break
-                }
-                depth = depth - 1
-            } else if b == 44 && depth == 0 {
-                commas = commas + 1
-            } else if b == 123 || b == 125 || b == 59 {
-                break
-            }
-        }
-        i = i - 1
-    }
-    if open_idx <= 0 { return "null" }
-
-    mut end_name = open_idx
-    while end_name > 0 && (source.byte_at(end_name - 1) == 32 || source.byte_at(end_name - 1) == 9) {
-        end_name = end_name - 1
-    }
-    mut start_name = end_name
-    while start_name > 0 && lsp_is_ident_char(source.byte_at(start_name - 1)) {
-        start_name = start_name - 1
-    }
-    let callee = source.slice(start_name, end_name)
-    if callee == "" { return "null" }
-
-    mut sig_label = ""
-    mut sig_doc = ""
-    mut fn_nid = -1
     let sig_params = List<str>()
-
-    let has_dot = start_name > 0 && source.byte_at(start_name - 1) == 46
-    let has_cascade = start_name >= 2 && source.byte_at(start_name - 1) == 62 && source.byte_at(start_name - 2) == 126
-    if has_dot || has_cascade {
-        mut op_pos = start_name - 1
-        mut ls = start_name - 1
-        while ls > 0 && source.byte_at(ls - 1) != 10 { ls = ls - 1 }
-        let line_before = source.slice(ls, op_pos + 1)
-        let rname = lsp_extract_receiver_before_dot(line_before, line_before.len() - 1)
-        let rt = lsp_infer_expr_receiver_type(az, doc_path, line0 + 1, rname)
-        if rt != "" {
-            let owner = lsp_find_class_method_sidx(az, rt, callee)
-            if owner >= 0 {
-                fn_nid = az.sig_nodes.get(owner)
-            } else {
-                let bmethods = lsp_builtin_methods_for(rt)
-                mut bi = 0
-                while bi < bmethods.len() {
-                    let msig = bmethods.get(bi)
-                    if msig.starts_with(callee + ":") {
-                        sig_label = lsp_subst_generic_sig(msig, rt)
-                        sig_doc = lsp_lookup_member_doc(rt, callee)
-                        break
-                    }
-                    bi = bi + 1
-                }
-            }
-        }
-    } else if az.cls_idx_map.has_key(callee) {
-        let ctor_k = "ctor::" + callee
-        if az.sig_by_key.has_key(ctor_k) {
-            let sidx = az.sig_by_key.get(ctor_k).split(",").get(0).to_i64()
-            fn_nid = az.sig_nodes.get(sidx)
-        }
-    } else {
-        let fn_k = "fn::" + callee
-        if az.sig_by_key.has_key(fn_k) {
-            let sidx = az.sig_by_key.get(fn_k).split(",").get(0).to_i64()
-            fn_nid = az.sig_nodes.get(sidx)
-        } else {
-            let bsig = lsp_builtin_fn_sig(callee)
-            if bsig != "" {
-                sig_label = bsig
-                sig_doc = lsp_lookup_doc(callee)
-            }
-        }
-    }
-
-    if fn_nid >= 0 {
-        sig_label = lsp_fn_signature_str(az, fn_nid)
-        sig_doc = lsp_extract_doc_comments(source, doc_path, az.nf.get(fn_nid), az.ln.get(fn_nid))
-        let pg = az.la.get(fn_nid)
-        if pg >= 0 {
-            let pc = az.ll.get(pg)
-            mut pi = 0
-            while pi < pc {
-                let pid = az.ch.get(az.ls.get(pg) + pi)
-                sig_params.push(az.sa.get(pid) + ": " + btype_norm(az.sb.get(pid)))
-                pi = pi + 1
-            }
-        }
-    } else if sig_label != "" {
-        let parsed_p = lsp_extract_sig_params_from_str(sig_label)
-        mut pi = 0
-        while pi < parsed_p.len() {
-            sig_params.push(parsed_p.get(pi))
-            pi = pi + 1
-        }
-    }
-
-    if sig_label == "" { return "null" }
+    let meta = List<str>()
+    let commas = lsp_resolve_call_site_sig(source, az, doc_path, line0, char0, sig_params, meta)
+    if commas < 0 || meta.len() < 2 { return "null" }
+    let sig_label = meta.get(0)
+    let sig_doc = meta.get(1)
 
     let jb = JsonBuf()
     jb.lbrace()
@@ -2588,7 +3214,7 @@ fn lsp_is_ident_token_at(source: str, line0: i64, char0: i64, word: str) -> bool
             if char0 >= st0 && char0 <= ed0 {
                 // Inside string token: only true if inside \{...} interpolation
                 let s_sub = line.slice(st0, ed0)
-                if lsp_str_find(s_sub, "\{", 0) >= 0 { return true }
+                if lsp_str_find(s_sub, lsp_lbrace(), 0) >= 0 { return true }
             }
         }
         i = i + 1
@@ -2653,7 +3279,7 @@ fn lsp_scan_interp_ident_matches(source: str, ln1: i64, col1: i64, tlen: i64, wo
     mut end_c = start_c + tlen
     if start_c < 0 || start_c >= line.len() { return }
     if end_c > line.len() { end_c = line.len() }
-    if lsp_str_find(line.slice(start_c, end_c), "\{", 0) < 0 { return }
+    if lsp_str_find(line.slice(start_c, end_c), lsp_lbrace(), 0) < 0 { return }
 
     mut p = start_c
     while p < end_c {

@@ -431,21 +431,38 @@ function activate(context) {
                 }, doc);
                 const items = res && Array.isArray(res.items) ? res.items : (Array.isArray(res) ? res : []);
                 return items.map((it) => {
-                    const ci = new vscode.CompletionItem(it.label, it.kind || vscode.CompletionItemKind.Text);
+                    const labelObj = it.labelDetails
+                        ? {
+                            label: it.label,
+                            detail: it.labelDetails.detail || '',
+                            description: it.labelDetails.description || ''
+                        }
+                        : it.label;
+                    const ci = new vscode.CompletionItem(labelObj, it.kind || vscode.CompletionItemKind.Text);
                     if (it.detail) ci.detail = it.detail;
                     if (it.sortText) ci.sortText = it.sortText;
                     if (it.filterText) ci.filterText = it.filterText;
+                    if (it.preselect) ci.preselect = true;
                     if (it.documentation && (it.documentation.value || typeof it.documentation === 'string')) {
                         const docStr = typeof it.documentation === 'string' ? it.documentation : it.documentation.value;
                         const md = new vscode.MarkdownString(docStr);
                         md.isTrusted = true;
                         ci.documentation = md;
                     }
-                    if (it.insertText) ci.insertText = new vscode.SnippetString(it.insertText);
+                    const rawInsert = it.textEdit ? (it.textEdit.newText || '') : (it.insertText || '');
+                    if (it.textEdit && it.textEdit.range) {
+                        ci.range = toVsRange(it.textEdit.range);
+                        ci.insertText = it.insertTextFormat === 2 ? new vscode.SnippetString(rawInsert) : rawInsert;
+                    } else if (it.insertText) {
+                        ci.insertText = new vscode.SnippetString(it.insertText);
+                    }
+                    if (rawInsert.includes('${') && rawInsert.includes('(')) {
+                        ci.command = { command: 'editor.action.triggerParameterHints', title: 'Trigger Parameter Hints' };
+                    }
                     return ci;
                 });
             }
-        }, '.', '>', ':'),
+        }, '.', '>', ':', '<', '"', '/'),
 
         vscode.languages.registerHoverProvider(sel, {
             async provideHover(doc, pos) {

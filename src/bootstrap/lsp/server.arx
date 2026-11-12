@@ -129,7 +129,8 @@ fn lsp_build_initialize_result() -> str {
     jb.comma()
     jb.key("triggerCharacters")
     jb.lbrack()
-    jb.str_val("."); jb.comma(); jb.str_val(">"); jb.comma(); jb.str_val(":")
+    jb.str_val("."); jb.comma(); jb.str_val(">"); jb.comma(); jb.str_val(":"); jb.comma()
+    jb.str_val("<"); jb.comma(); jb.str_val("\""); jb.comma(); jb.str_val("/")
     jb.rbrack()
     jb.rbrace()
 
