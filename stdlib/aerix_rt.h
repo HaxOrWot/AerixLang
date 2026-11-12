@@ -2548,6 +2548,31 @@ static inline int64_t arx_lsp_write_msg(const char* body) {
     return 0;
 }
 
+// Binary output helpers for native PE32+ executable writer
+static inline int64_t arx_bin_new(int64_t cap) {
+    return arx_bytebuf_new(cap > 0 ? cap : 4096);
+}
+
+static inline int64_t arx_bin_u8(int64_t bh, int64_t val) {
+    arx_bytebuf_write_u8(bh, val);
+    return 0;
+}
+
+static inline int64_t arx_bin_write_file(int64_t bh, const char* path) {
+    Arx_ByteBuf* buf = (Arx_ByteBuf*)(intptr_t)bh;
+    if (!buf || !path || !*path) return 0;
+    FILE* f = fopen(path, "wb");
+    if (!f) return 0;
+    size_t wrote = buf->len > 0 ? fwrite(buf->data, 1, buf->len, f) : 0;
+    fclose(f);
+    return wrote == buf->len ? 1 : 0;
+}
+
+static inline int64_t arx_bin_free(int64_t bh) {
+    arx_bytebuf_free(bh);
+    return 0;
+}
+
 #endif // AERIX_RT_H
 
 

@@ -28,10 +28,23 @@ function resolveAerixBinary() {
     if (cfgPath && fs.existsSync(cfgPath)) return cfgPath;
 
     const exe = process.platform === 'win32' ? '.exe' : '';
-    const candidates = [
+    const candidates = [];
+    if (process.env.AERIX_HOME) {
+        candidates.push(
+            path.join(process.env.AERIX_HOME, 'bin', `arx${exe}`),
+            path.join(process.env.AERIX_HOME, 'bin', `arxc${exe}`)
+        );
+    }
+    if (process.platform === 'win32' && process.env.LOCALAPPDATA) {
+        candidates.push(
+            path.join(process.env.LOCALAPPDATA, 'Programs', 'Aerix', 'bin', 'arx.exe'),
+            path.join(process.env.LOCALAPPDATA, 'Programs', 'Aerix', 'bin', 'arxc.exe')
+        );
+    }
+    candidates.push(
         path.join(os.homedir(), '.aerix', 'bin', `arx${exe}`),
         path.join(os.homedir(), '.aerix', 'bin', `arxc${exe}`)
-    ];
+    );
     for (const c of candidates) {
         if (fs.existsSync(c)) return c;
     }

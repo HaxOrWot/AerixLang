@@ -1581,7 +1581,7 @@ pub class Analyzer {
                 self.node_types.set(nid, "f64")
                 return "f64"
             }
-            if name == "arx_prng_get_state" || name == "arx_prng_next_i64" || name == "arx_lsp_init_stdio" || name == "arx_lsp_read_start" || name == "arx_lsp_read_byte" || name == "arx_lsp_write_msg" {
+            if name == "arx_prng_get_state" || name == "arx_prng_next_i64" || name == "arx_lsp_init_stdio" || name == "arx_lsp_read_start" || name == "arx_lsp_read_byte" || name == "arx_lsp_write_msg" || name == "arx_bin_new" || name == "arx_bin_u8" || name == "arx_bin_write_file" || name == "arx_bin_free" {
                 self.call_kinds.set(nid, CK_NORMAL())
                 self.call_targets.set(nid, name)
                 self.node_types.set(nid, "i64")
@@ -1653,7 +1653,7 @@ pub class Analyzer {
                 }
 
                 // Static prelude classes
-                if lname == "File" || lname == "Directory" || lname == "Process" || lname == "Env" {
+                if lname == "File" || lname == "Directory" || lname == "Process" || lname == "Env" || lname == "Math" {
                     let rt = self.prelude_static_ret(lname, mname)
                     self.ensure_generic_type(rt)
                     self.call_kinds.set(nid, CK_STATIC())
@@ -1814,6 +1814,9 @@ pub class Analyzer {
             if mname == "set" { return "bool" }
             return "void"
         }
+        if cls == "Math" {
+            return "f64"
+        }
         return "i64"
     }
 
@@ -1847,6 +1850,7 @@ pub class Analyzer {
         if mname == "len" || mname == "length" || mname == "index_of" { return "i64" }
         if mname == "is_empty" || mname == "contains" { return "bool" }
         if mname == "slice" { return list_t }
+        if mname == "join" { return "str" }
         return "void"
     }
 

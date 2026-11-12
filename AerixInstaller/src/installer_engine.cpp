@@ -359,16 +359,30 @@ std::wstring DetectVSCodeCli() {
         });
 }
 
-std::wstring DetectAntigravityCli() {
+std::wstring DetectAntigravityStandardCli() {
+    std::wstring local = ExpandEnv(L"%LOCALAPPDATA%");
+    return FindOnPathOrCandidates(
+        {L"antigravity.cmd", L"antigravity"},
+        {
+            local + L"\\Programs\\Antigravity\\bin\\antigravity.cmd",
+        });
+}
+
+std::wstring DetectAntigravityIdeCli() {
     std::wstring local = ExpandEnv(L"%LOCALAPPDATA%");
     std::wstring pf = ExpandEnv(L"%ProgramFiles%");
     return FindOnPathOrCandidates(
-        {L"antigravity.cmd", L"antigravity-ide.cmd", L"antigravity"},
+        {L"antigravity-ide.cmd", L"antigravity-ide"},
         {
-            local + L"\\Programs\\Antigravity\\bin\\antigravity.cmd",
             local + L"\\Programs\\Antigravity IDE\\bin\\antigravity-ide.cmd",
             pf + L"\\Antigravity IDE\\bin\\antigravity-ide.cmd",
         });
+}
+
+std::wstring DetectAntigravityCli() {
+    std::wstring ide = DetectAntigravityIdeCli();
+    if (!ide.empty()) return ide;
+    return DetectAntigravityStandardCli();
 }
 
 bool RunInstall(void* hInstance,
@@ -485,14 +499,33 @@ bool RunInstall(void* hInstance,
     }
 
     if (opts.install_antigravity) {
-        InstallExtensionToEditor(
-            L"Antigravity IDE",
-            DetectAntigravityCli(),
-            vsix_path,
-            ext_src,
-            fs::path(user_home) / L".antigravity" / L"extensions" / (std::wstring(L"aerix-lang.aerix-") + AERIX_VERSION_WSTR),
-            progress,
-            98);
+        std::wstring cli_std = DetectAntigravityStandardCli();
+        std::wstring cli_ide = DetectAntigravityIdeCli();
+        fs::path home_std = fs::path(user_home) / L".antigravity";
+        fs::path home_ide = fs::path(user_home) / L".antigravity-ide";
+        bool has_std = !cli_std.empty() || fs::exists(home_std, ec);
+        bool has_ide = !cli_ide.empty() || fs::exists(home_ide, ec);
+
+        if (has_std || !has_ide) {
+            InstallExtensionToEditor(
+                L"Antigravity",
+                cli_std,
+                vsix_path,
+                ext_src,
+                home_std / L"extensions" / (std::wstring(L"aerix-lang.aerix-") + AERIX_VERSION_WSTR),
+                progress,
+                has_ide ? 96 : 98);
+        }
+        if (has_ide) {
+            InstallExtensionToEditor(
+                L"Antigravity IDE",
+                cli_ide,
+                vsix_path,
+                ext_src,
+                home_ide / L"extensions" / (std::wstring(L"aerix-lang.aerix-") + AERIX_VERSION_WSTR),
+                progress,
+                98);
+        }
     }
 
     if (progress) progress(100, L"Installation complete!");
