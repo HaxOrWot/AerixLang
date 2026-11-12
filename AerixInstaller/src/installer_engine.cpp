@@ -459,7 +459,7 @@ bool RunInstall(void* hInstance,
     const std::wstring uninst_key = L"Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\AerixLang";
     std::wstring uninst_exe = (root / L"Uninstall.exe").wstring();
     RegSetStr(HKEY_CURRENT_USER, uninst_key, L"DisplayName",
-              std::wstring(L"Aerix Native Systems Language (") + AERIX_VERSION_WSTR + L")");
+              std::wstring(L"Aerix ") + AERIX_VERSION_WSTR);
     RegSetStr(HKEY_CURRENT_USER, uninst_key, L"DisplayVersion", AERIX_VERSION_WSTR);
     RegSetStr(HKEY_CURRENT_USER, uninst_key, L"Publisher", L"HaxOrWot");
     RegSetStr(HKEY_CURRENT_USER, uninst_key, L"URLInfoAbout", L"https://github.com/HaxOrWot/AerixLang");

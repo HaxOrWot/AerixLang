@@ -25,11 +25,11 @@ BEGIN
         BLOCK "040904B0"
         BEGIN
             VALUE "CompanyName",      "HaxOrWot"
-            VALUE "FileDescription",  "Aerix Native Systems Language Setup"
+            VALUE "FileDescription",  "Aerix 1.1.0-stable Setup"
             VALUE "FileVersion",      "1.1.0-stable"
             VALUE "InternalName",     "AerixSetup"
             VALUE "OriginalFilename", "AerixSetup-1.1.0-stable.exe"
-            VALUE "ProductName",      "Aerix Programming Language"
+            VALUE "ProductName",      "Aerix"
             VALUE "ProductVersion",   "1.1.0-stable"
         END
     END
