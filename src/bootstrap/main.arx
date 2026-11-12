@@ -32,8 +32,10 @@ fn print_update_usage() {
     println("")
     println("Options:")
     println("  -c, --check     Check GitHub for the latest stable release without installing")
+    println("      --status    Alias for --check (shows installed version, last check & status)")
     println("  -f, --force     Reinstall the latest stable release even if already up to date")
     println("  -v, --verbose   Show release notes from the latest stable release")
+    println("      --notes     Alias for --verbose")
     println("      --no-ide    Skip refreshing VS Code / Antigravity extension packages")
     println("  -h, --help      Show this help message")
 }
@@ -430,11 +432,11 @@ fn main() -> i64 {
             if ua == "--help" || ua == "-h" {
                 print_update_usage()
                 return 0
-            } else if ua == "--check" || ua == "-c" {
+            } else if ua == "--check" || ua == "-c" || ua == "--status" {
                 upd_check = true
             } else if ua == "--force" || ua == "-f" {
                 upd_force = true
-            } else if ua == "--verbose" || ua == "-v" {
+            } else if ua == "--verbose" || ua == "-v" || ua == "--notes" {
                 upd_verbose = true
             } else if ua == "--no-ide" || ua == "--no-vscode" || ua == "--no-antigravity" {
                 upd_no_ide = true

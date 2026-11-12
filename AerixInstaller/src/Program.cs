@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Windows.Forms;
 
 namespace AerixSetup
@@ -15,14 +16,53 @@ namespace AerixSetup
         private static extern IntPtr GetStdHandle(int nStdHandle);
 
         [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern uint GetFileType(IntPtr hFile);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
         private static extern bool GetConsoleMode(IntPtr hConsoleHandle, out uint lpMode);
 
         [DllImport("kernel32.dll", SetLastError = true)]
         private static extern bool SetConsoleMode(IntPtr hConsoleHandle, uint dwMode);
 
-        private static bool TryEnableAnsiColor()
+        private const uint FILE_TYPE_DISK = 1;
+        private const uint FILE_TYPE_CHAR = 2;
+        private const uint FILE_TYPE_PIPE = 3;
+
+        private static bool PrepareConsoleIo(out bool isInteractiveConsole)
         {
-            if (Console.IsOutputRedirected) return false;
+            isInteractiveConsole = false;
+            IntPtr hOut = GetStdHandle(-11);
+            uint ftype = (hOut == IntPtr.Zero || hOut == new IntPtr(-1)) ? 0u : GetFileType(hOut);
+
+            // If stdout is not redirected to a pipe or disk file, attach parent console
+            // BEFORE calling any System.Console members (Console.IsOutputRedirected would
+            // cache a broken Stream.Null handle on /target:winexe processes).
+            if (ftype != FILE_TYPE_PIPE && ftype != FILE_TYPE_DISK)
+            {
+                bool attached = AttachConsole(-1);
+                if (attached)
+                {
+                    try
+                    {
+                        Encoding enc = Console.OutputEncoding;
+                        Console.SetOut(new StreamWriter(Console.OpenStandardOutput(), enc) { AutoFlush = true });
+                        Console.SetError(new StreamWriter(Console.OpenStandardError(), enc) { AutoFlush = true });
+                    }
+                    catch
+                    {
+                    }
+                    hOut = GetStdHandle(-11);
+                    ftype = (hOut == IntPtr.Zero || hOut == new IntPtr(-1)) ? 0u : GetFileType(hOut);
+                }
+            }
+
+            isInteractiveConsole = (ftype == FILE_TYPE_CHAR);
+            return isInteractiveConsole || ftype == FILE_TYPE_PIPE || ftype == FILE_TYPE_DISK;
+        }
+
+        private static bool TryEnableAnsiColor(bool isInteractive)
+        {
+            if (!isInteractive) return false;
             if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("NO_COLOR"))) return false;
             try
             {
@@ -37,6 +77,14 @@ namespace AerixSetup
             {
                 return false;
             }
+        }
+
+        private static string RenderProgressBar(int pct, int width)
+        {
+            if (pct < 0) pct = 0;
+            if (pct > 100) pct = 100;
+            int filled = (pct * width) / 100;
+            return "[" + new string('#', filled) + new string('-', width - filled) + "]";
         }
 
         private static string FormatPublishedDate(string iso)
@@ -128,8 +176,9 @@ namespace AerixSetup
 
             if (updateMode)
             {
-                if (!quietUpdate && !Console.IsOutputRedirected) AttachConsole(-1);
-                bool color = !quietUpdate && TryEnableAnsiColor();
+                bool isInteractive = false;
+                if (!quietUpdate) PrepareConsoleIo(out isInteractive);
+                bool color = !quietUpdate && TryEnableAnsiColor(isInteractive);
                 string cBold = color ? "\x1b[1m" : "";
                 string cCyan = color ? "\x1b[1;36m" : "";
                 string cGreen = color ? "\x1b[1;32m" : "";
@@ -144,6 +193,7 @@ namespace AerixSetup
                 }
 
                 bool headerPrinted = false;
+                bool inlineBarActive = false;
                 UpdateResult res = InstallerEngine.RunAutoUpdate(
                     checkUpdateOnly,
                     forceUpdate,
@@ -157,15 +207,35 @@ namespace AerixSetup
                             headerPrinted = true;
                             string[] hp = logLine.Split('|');
                             Console.WriteLine("  Install path : {0}", hp[0]);
-                            Console.WriteLine("  Installed    : {0}{1}{2}", cBold, hp.Length > 1 ? hp[1] : "", cReset);
+                            Console.WriteLine("  Installed    : {0}v{1}{2}", cBold, (hp.Length > 1 ? hp[1] : "").TrimStart('v', 'V'), cReset);
+                            Console.WriteLine("  Last checked : {0}", InstallerEngine.ReadLastCheckStampDisplay());
                             Console.WriteLine("  Repository   : https://github.com/HaxOrWot/AerixLang/releases");
                             Console.WriteLine();
                         }
                         if (pct < 100)
                         {
-                            Console.WriteLine("  {0}[{1,3}%]{2} {3}", cDim, pct, cReset, status);
+                            if (isInteractive && logLine == "progress")
+                            {
+                                string line = string.Format("  {0}{1}{2} {3,3}% {4}", cCyan, RenderProgressBar(pct, 22), cReset, pct, status);
+                                Console.Write("\r" + line.PadRight(78));
+                                inlineBarActive = true;
+                            }
+                            else
+                            {
+                                if (inlineBarActive)
+                                {
+                                    Console.WriteLine();
+                                    inlineBarActive = false;
+                                }
+                                Console.WriteLine("  {0}[{1,3}%]{2} {3}", cDim, pct, cReset, status);
+                            }
                         }
                     });
+
+                if (inlineBarActive)
+                {
+                    Console.WriteLine();
+                }
 
                 if (!quietUpdate)
                 {
@@ -198,12 +268,10 @@ namespace AerixSetup
                         {
                             Console.WriteLine("  {0}Status        :{1} Updated v{2} -> v{3} in {4:0.0}s",
                                 cGreen, cReset, res.CurrentVersion, res.LatestVersion, res.ElapsedSeconds);
-                            Console.WriteLine("  Compiler      : {0}\\bin\\arx.exe (v{1})", res.InstallDir, res.LatestVersion);
+                            Console.WriteLine("  Compiler      : {0}\\bin\\arx.exe (v{1}, PE32+ native)", res.InstallDir, res.LatestVersion);
+                            Console.WriteLine("  Runtime/Mods  : {0}, {1} stdlib module(s)",
+                                res.HasStdlib ? "stdlib/aerix_rt.h ready" : "stdlib missing", res.ModuleCount);
                             Console.WriteLine("  IDE extension : {0}", opts.InstallIdeExtensions ? "refreshed" : "skipped (--no-ide)");
-                            if (!string.IsNullOrEmpty(res.LogPath))
-                            {
-                                Console.WriteLine("  Updater log   : {0}", res.LogPath);
-                            }
                         }
                         else if (res.UpdateAvailable)
                         {
@@ -213,6 +281,12 @@ namespace AerixSetup
                         else
                         {
                             Console.WriteLine("  {0}Status        :{1} {2}", cGreen, cReset, res.Message);
+                            Console.WriteLine("  Runtime/Mods  : {0}, {1} stdlib module(s)",
+                                res.HasStdlib ? "stdlib/aerix_rt.h ready" : "stdlib missing", res.ModuleCount);
+                        }
+                        if (!string.IsNullOrEmpty(res.LogPath))
+                        {
+                            Console.WriteLine("  Updater log   : {0}", res.LogPath);
                         }
 
                         if (verboseUpdate && !string.IsNullOrWhiteSpace(res.ReleaseNotes))
@@ -227,17 +301,19 @@ namespace AerixSetup
                                 if (string.IsNullOrEmpty(t)) continue;
                                 Console.WriteLine("    " + t);
                                 shown++;
-                                if (shown >= 6) break;
+                                if (shown >= 14) break;
                             }
                         }
                     }
+                    try { Console.Out.Flush(); Console.Error.Flush(); } catch { }
                 }
                 return res.Success ? 0 : 1;
             }
 
             if (silent)
             {
-                if (!Console.IsOutputRedirected) AttachConsole(-1);
+                bool unusedInteractive;
+                PrepareConsoleIo(out unusedInteractive);
                 if (uninstall)
                 {
                     string target = InstallerEngine.ResolveInstalledDirFromRegistry();

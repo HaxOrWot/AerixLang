@@ -74,7 +74,10 @@ namespace AerixSetup
         public long AssetSize;
         public string ReleaseUrl = "";
         public string ReleaseNotes = "";
+        public string LastCheckedAt = "";
         public string LogPath = "";
+        public int ModuleCount;
+        public bool HasStdlib;
         public double ElapsedSeconds;
         public string Message = "";
     }
@@ -1288,10 +1291,48 @@ namespace AerixSetup
             return Path.Combine(localApp, "Aerix", "updater.log");
         }
 
+        public static string ReadLastCheckStampDisplay()
+        {
+            try
+            {
+                string localApp = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+                if (string.IsNullOrEmpty(localApp)) return "never";
+                string stampPath = Path.Combine(localApp, "Aerix", "last_update_check");
+                if (!File.Exists(stampPath)) return "never";
+                DateTime dt = File.GetLastWriteTime(stampPath);
+                TimeSpan age = DateTime.Now - dt;
+                if (age.TotalMinutes < 1) return dt.ToString("yyyy-MM-dd HH:mm") + " (just now)";
+                if (age.TotalHours < 1) return string.Format("{0:yyyy-MM-dd HH:mm} ({1}m ago)", dt, (int)age.TotalMinutes);
+                if (age.TotalDays < 1) return string.Format("{0:yyyy-MM-dd HH:mm} ({1:0.0}h ago)", dt, age.TotalHours);
+                return string.Format("{0:yyyy-MM-dd HH:mm} ({1:0}d ago)", dt, age.TotalDays);
+            }
+            catch
+            {
+                return "unknown";
+            }
+        }
+
+        private static void PopulateToolchainStats(string root, UpdateResult res)
+        {
+            try
+            {
+                res.HasStdlib = File.Exists(Path.Combine(root, "stdlib", "aerix_rt.h"));
+                string modDir = Path.Combine(root, "modules");
+                if (Directory.Exists(modDir))
+                {
+                    res.ModuleCount = Directory.GetFiles(modDir, "*.arx", SearchOption.AllDirectories).Length;
+                }
+            }
+            catch
+            {
+            }
+        }
+
         public static UpdateResult RunAutoUpdate(bool checkOnly, bool force, bool skipIde, string installDirOverride, ProgressHandler progress)
         {
             var res = new UpdateResult();
             res.LogPath = ResolveUpdaterLogPath();
+            res.LastCheckedAt = ReadLastCheckStampDisplay();
             var sw = Stopwatch.StartNew();
             Mutex mtx = null;
             bool acquired = false;
@@ -1339,6 +1380,7 @@ namespace AerixSetup
                 }
                 targetDir = Path.GetFullPath(TrimTrailingSlashes(targetDir));
                 res.InstallDir = targetDir;
+                PopulateToolchainStats(targetDir, res);
 
                 res.CurrentVersion = GetInstalledVersionFromDisk(targetDir);
                 Report(progress, 10, "Checking GitHub for latest stable release...", targetDir + "|v" + res.CurrentVersion);
@@ -1472,6 +1514,9 @@ namespace AerixSetup
                 }
 
                 Report(progress, 92, "Verifying updated compiler binary...", targetDir);
+                CleanupStaleBackups(targetDir);
+                CleanupStaleBackups(Path.Combine(targetDir, "bin"));
+                PopulateToolchainStats(targetDir, res);
                 string postVer = GetInstalledVersionFromDisk(targetDir);
                 res.Success = true;
                 res.Updated = true;
