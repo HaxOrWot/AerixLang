@@ -1754,9 +1754,11 @@ pub class NativeCodegen {
 
             // User class instance or static method call resolved by Analyzer
             if fn_node >= 0 {
+                let ckind = self.az.call_kinds.get(nid)
                 let is_st = has_flag(self.ia.get(fn_node), FLAG_STATIC())
+                let is_method = (ckind == CK_METHOD())
                 let margs = List<i64>()
-                if !is_st {
+                if is_method && !is_st {
                     self.emit_expr(recv_id)
                     let rslot = self.alloc_slot("", recv_t)
                     a.mov_mr64(REG_RBP(), -rslot, REG_RAX())
@@ -1770,9 +1772,17 @@ pub class NativeCodegen {
             }
         }
 
-        // Class constructor call: Player(...) -> calloc(1, size) + Player_init(obj, ...)
-        if cal >= 0 && self.nk.get(cal) == NK_IDENT() && self.az.cls_idx_map.has_key(self.sa.get(cal)) {
-            let cname = self.sa.get(cal)
+        // Class constructor call: Player(...) or Mod.Player(...) -> calloc(1, size) + Player_init(obj, ...)
+        mut ctor_cls = ""
+        if cal >= 0 {
+            if self.nk.get(cal) == NK_IDENT() && self.az.cls_idx_map.has_key(self.sa.get(cal)) {
+                ctor_cls = self.sa.get(cal)
+            } else if self.nk.get(cal) == NK_MEMBER() && self.az.cls_idx_map.has_key(self.sa.get(cal)) {
+                ctor_cls = self.sa.get(cal)
+            }
+        }
+        if ctor_cls != "" {
+            let cname = ctor_cls
             let sz = self.cls_sizes.get(cname)
             a.mov_ri32_sext(REG_RCX(), 1)
             a.mov_ri32_sext(REG_RDX(), sz)

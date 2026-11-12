@@ -582,6 +582,11 @@ pub class Parser {
         }
         self.loaded_mods.insert(mod_name, 1)
 
+        if File.exists(mod_dir) && str_ends_with_arx(mod_dir) {
+            self.load_resolved_file(mod_dir)
+            return
+        }
+
         let arx_files = List<str>()
         let count_box = List<i64>()
         count_box.push(0)
@@ -712,7 +717,7 @@ pub class Parser {
         self.skip_stmt_end()
         while self.cur_kind() != TK_EOF() {
             let lp = self.pos
-            if self.cur_kind() == TK_IMPORT() || self.cur_kind() == TK_USE() {
+            if self.cur_kind() == TK_IMPORT() || self.cur_kind() == TK_USE() || self.cur_kind() == TK_FROM() {
                 self.parse_import_stmt()
                 self.skip_stmt_end()
                 if self.pos == lp { self.adv() }
@@ -729,6 +734,36 @@ pub class Parser {
     }
 
     priv fn parse_import_stmt() {
+        if self.cur_kind() == TK_FROM() {
+            self.adv()
+            if self.cur_kind() == TK_STR() {
+                let t = self.adv()
+                self.load_file(self.tok_vals.get(t))
+            } else if self.cur_kind() == TK_IDENT() {
+                let t = self.adv()
+                self.load_module(self.tok_vals.get(t))
+            } else {
+                self.fail("Expected path or module name after 'from'")
+                return
+            }
+            self.expect_k(TK_IMPORT(), "Expected 'import' after 'from <module>'")
+            if self.match_k(TK_LBRACE()) {
+                while self.cur_kind() != TK_RBRACE() && self.cur_kind() != TK_EOF() {
+                    self.adv()
+                    if !self.match_k(TK_COMMA()) { break }
+                }
+                self.expect_k(TK_RBRACE(), "Expected closing brace in from ... import")
+            } else if self.match_k(TK_STAR()) {
+                // from Mod import *
+            } else {
+                while self.cur_kind() == TK_IDENT() {
+                    self.adv()
+                    if !self.match_k(TK_COMMA()) { break }
+                }
+            }
+            return
+        }
+
         self.adv()
         // Selective: import { a, b } from "path" / Mod
         if self.match_k(TK_LBRACE()) {
@@ -749,16 +784,22 @@ pub class Parser {
             }
             return
         }
-        // File path: import "./foo.arx"
+        // File path: import "./foo.arx" (optionally with 'as Alias')
         if self.cur_kind() == TK_STR() {
             let t = self.adv()
             self.load_file(self.tok_vals.get(t))
+            if self.match_k(TK_AS()) {
+                self.expect_k(TK_IDENT(), "Expected alias identifier after 'as'")
+            }
             return
         }
-        // Module list: import Math, Random
+        // Module list: import Math, Random (optionally with 'as Alias')
         while self.cur_kind() == TK_IDENT() {
             let t = self.adv()
             self.load_module(self.tok_vals.get(t))
+            if self.match_k(TK_AS()) {
+                self.expect_k(TK_IDENT(), "Expected alias identifier after 'as'")
+            }
             if !self.match_k(TK_COMMA()) { break }
         }
     }

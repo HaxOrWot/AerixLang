@@ -2052,6 +2052,16 @@ pub class Analyzer {
                                     self.node_types.set(nid, rt)
                                     return rt
                                 }
+                                if self.cls_idx_map.has_key(mname) {
+                                    let ctor_sig = self.find_best_overload("ctor::" + mname, arg_types, ac)
+                                    self.call_kinds.set(nid, CK_CTOR())
+                                    self.call_targets.set(nid, mname)
+                                    if ctor_sig >= 0 {
+                                        self.call_fn_nodes.set(nid, self.sig_nodes.get(ctor_sig))
+                                    }
+                                    self.node_types.set(nid, mname)
+                                    return mname
+                                }
                             }
                         }
                     }
