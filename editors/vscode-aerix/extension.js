@@ -45,6 +45,13 @@ function resolveAerixBinary() {
         path.join(os.homedir(), '.aerix', 'bin', `arx${exe}`),
         path.join(os.homedir(), '.aerix', 'bin', `arxc${exe}`)
     );
+    if (process.platform === 'win32') {
+        const sysDrive = process.env.SystemDrive || 'C:';
+        candidates.push(
+            path.join(sysDrive + '\\', 'Aerix', 'bin', 'arx.exe'),
+            path.join(sysDrive + '\\', 'Aerix', 'bin', 'arxc.exe')
+        );
+    }
     for (const c of candidates) {
         if (fs.existsSync(c)) return c;
     }
@@ -698,34 +705,61 @@ function activate(context) {
     );
 
     // Commands
-    const runInTerm = (cmdLine) => {
+    const getOrCreateTerminal = () => {
         let term = vscode.window.terminals.find((t) => t.name === 'Aerix Terminal');
         if (!term) term = vscode.window.createTerminal('Aerix Terminal');
-        term.show();
-        term.sendText(cmdLine);
+        return term;
     };
 
-    const resolveDocPath = (uri) => {
+    const formatCliInvocation = (term, subcmdAndArgs) => {
+        const bin = resolveAerixBinary();
+        if (bin === 'arx') {
+            return `arx ${subcmdAndArgs}`;
+        }
+        const shellPath = (term.creationOptions && term.creationOptions.shellPath) || vscode.env.shell || '';
+        const isPowerShell = process.platform === 'win32' && (!shellPath || /powershell|pwsh/i.test(shellPath));
+        return isPowerShell ? `& "${bin}" ${subcmdAndArgs}` : `"${bin}" ${subcmdAndArgs}`;
+    };
+
+    const runInTerm = (subcmdAndArgs) => {
+        const term = getOrCreateTerminal();
+        term.show();
+        term.sendText(formatCliInvocation(term, subcmdAndArgs));
+    };
+
+    const prepareDocPath = async (uri) => {
         const ed = vscode.window.activeTextEditor;
-        return uri ? uri.fsPath : (ed ? ed.document.fileName : null);
+        let doc = null;
+        if (uri) {
+            doc = vscode.workspace.textDocuments.find((d) => d.uri.fsPath === uri.fsPath) || null;
+        } else if (ed) {
+            doc = ed.document;
+        }
+        if (doc && doc.isUntitled) {
+            const saved = await doc.save();
+            if (!saved) return null;
+        } else if (doc && doc.isDirty) {
+            await doc.save();
+        }
+        return uri ? uri.fsPath : (doc ? doc.fileName : null);
     };
 
     context.subscriptions.push(
-        vscode.commands.registerCommand('aerix.runFile', (uri) => {
-            const p = resolveDocPath(uri);
-            if (p) runInTerm(`arx run "${p}"`);
+        vscode.commands.registerCommand('aerix.runFile', async (uri) => {
+            const p = await prepareDocPath(uri);
+            if (p) runInTerm(`run "${p}"`);
         }),
-        vscode.commands.registerCommand('aerix.checkFile', (uri) => {
-            const p = resolveDocPath(uri);
-            if (p) runInTerm(`arx check "${p}"`);
+        vscode.commands.registerCommand('aerix.checkFile', async (uri) => {
+            const p = await prepareDocPath(uri);
+            if (p) runInTerm(`check "${p}"`);
         }),
-        vscode.commands.registerCommand('aerix.buildWasm', (uri) => {
-            const p = resolveDocPath(uri);
-            if (p) runInTerm(`arx wasm "${p}" --wat --html`);
+        vscode.commands.registerCommand('aerix.buildWasm', async (uri) => {
+            const p = await prepareDocPath(uri);
+            if (p) runInTerm(`wasm "${p}" --wat --html`);
         }),
-        vscode.commands.registerCommand('aerix.serveWasm', (uri) => {
-            const p = resolveDocPath(uri);
-            if (p) runInTerm(`arx wasm "${p}" --serve`);
+        vscode.commands.registerCommand('aerix.serveWasm', async (uri) => {
+            const p = await prepareDocPath(uri);
+            if (p) runInTerm(`wasm "${p}" --serve`);
         })
     );
 }

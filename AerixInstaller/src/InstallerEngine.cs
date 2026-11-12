@@ -698,7 +698,7 @@ namespace AerixSetup
             if (!string.IsNullOrEmpty(ed.CliPath) && File.Exists(vsixPath))
             {
                 Report(progress, pct - 2, "Installing " + ed.Name + " extension...", "Running " + ed.Name + " CLI");
-                string cmdArgs = string.Format("/C \"\"{0}\" --install-extension \"{1}\" --force\"", ed.CliPath, vsixPath);
+                string cmdArgs = string.Format("/S /C \"\"{0}\" --install-extension \"{1}\" --force\"", ed.CliPath, vsixPath);
                 cliOk = RunHiddenCmd(cmdArgs, 45000);
             }
 
@@ -786,9 +786,9 @@ namespace AerixSetup
 
             string editorCmd = DetectPreferredEditorCli();
             SetShellVerb("open", "Open with Code Editor", null, string.Format("\"{0}\" \"%1\"", editorCmd));
-            SetShellVerb("run", "Run with Aerix (arx run)", appIco + ",0", string.Format("cmd.exe /K \"\"{0}\" run \"%1\"\"", arxExe));
-            SetShellVerb("check", "Check Syntax & Types (arx check)", appIco + ",0", string.Format("cmd.exe /K \"\"{0}\" check \"%1\"\"", arxExe));
-            SetShellVerb("build", "Build Native Executable (arx build)", appIco + ",0", string.Format("cmd.exe /K \"\"{0}\" build \"%1\"\"", arxExe));
+            SetShellVerb("run", "Run with Aerix (arx run)", appIco + ",0", string.Format("cmd.exe /S /K \"\"{0}\" run \"%1\"\"", arxExe));
+            SetShellVerb("check", "Check Syntax & Types (arx check)", appIco + ",0", string.Format("cmd.exe /S /K \"\"{0}\" check \"%1\"\"", arxExe));
+            SetShellVerb("build", "Build Native Executable (arx build)", appIco + ",0", string.Format("cmd.exe /S /K \"\"{0}\" build \"%1\"\"", arxExe));
 
             SHChangeNotify(SHCNE_ASSOCCHANGED, SHCNF_IDLIST, IntPtr.Zero, IntPtr.Zero);
         }

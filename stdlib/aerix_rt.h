@@ -2439,15 +2439,28 @@ static inline const char* arx_path_basename(const char* p) {
 static inline int64_t arx_proc_execute(const char* cmdline) {
     if (!cmdline || !*cmdline) return -1;
 #if defined(_WIN32) || defined(_WIN64)
+    fflush(stdout);
+    fflush(stderr);
     STARTUPINFOA si;
     PROCESS_INFORMATION pi;
-    ZeroMemory(&si, sizeof(si));
-    si.cb = sizeof(si);
-    ZeroMemory(&pi, sizeof(pi));
     size_t len = strlen(cmdline);
     char* mutable_cmd = (char*)arx_alloc(len + 1);
-    memcpy(mutable_cmd, cmdline, len + 1);
-    bool ok = CreateProcessA(NULL, mutable_cmd, NULL, NULL, TRUE, 0, NULL, NULL, &si, &pi) != 0;
+    bool ok = false;
+    DWORD last_err = 0;
+    for (int attempt = 0; attempt < 10; attempt++) {
+        ZeroMemory(&si, sizeof(si));
+        si.cb = sizeof(si);
+        ZeroMemory(&pi, sizeof(pi));
+        memcpy(mutable_cmd, cmdline, len + 1);
+        ok = CreateProcessA(NULL, mutable_cmd, NULL, NULL, TRUE, 0, NULL, NULL, &si, &pi) != 0;
+        if (ok) break;
+        last_err = GetLastError();
+        if (last_err == ERROR_SHARING_VIOLATION || last_err == ERROR_ACCESS_DENIED) {
+            Sleep(25);
+            continue;
+        }
+        break;
+    }
     arx_free(mutable_cmd);
     if (ok) {
         WaitForSingleObject(pi.hProcess, INFINITE);
@@ -2457,7 +2470,26 @@ static inline int64_t arx_proc_execute(const char* cmdline) {
         CloseHandle(pi.hThread);
         return (int64_t)exit_code;
     }
-    return (int64_t)system(cmdline);
+    if (last_err == ERROR_FILE_NOT_FOUND || last_err == ERROR_PATH_NOT_FOUND) {
+        return (int64_t)system(cmdline);
+    }
+    char err_msg[512];
+    DWORD msg_len = FormatMessageA(
+        FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+        NULL,
+        last_err,
+        0,
+        err_msg,
+        (DWORD)sizeof(err_msg),
+        NULL
+    );
+    while (msg_len > 0 && (err_msg[msg_len - 1] == '\n' || err_msg[msg_len - 1] == '\r')) {
+        err_msg[--msg_len] = '\0';
+    }
+    fprintf(stderr, "error: failed to launch process (win32 error %lu: %s): %s\n",
+            (unsigned long)last_err, msg_len > 0 ? err_msg : "unknown error", cmdline);
+    fflush(stderr);
+    return -1;
 #else
     int rc = system(cmdline);
     if (rc == -1) return -1;

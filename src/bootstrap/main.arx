@@ -317,6 +317,11 @@ fn cmd_run(input_file: str, opt_flag: str, backend: str, prog_args: List<str>, p
 
     let rc = Process.execute(run_cmd)
     File.remove(exe_path)
+    if rc == -1 {
+        eprintln("error: failed to execute compiled binary '" + exe_path + "'. If Windows Defender or antivirus blocked temp execution, try 'arx build \"" + input_file + "\"' and run the built .exe directly.")
+    } else if rc >= 3221225472 {
+        eprintln("error: compiled program crashed or failed to initialize (Windows status code " + (rc as str) + ").")
+    }
     return rc
 }
 
