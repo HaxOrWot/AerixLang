@@ -410,7 +410,7 @@ fn main() -> i64 {
 
     let first = cli_args.get(1)
     if first == "version" || first == "--version" || first == "-v" {
-        println("Aerix Self-Hosting Bootstrap Compiler (arxc) v1.1.2-stable")
+        println("Aerix Self-Hosting Bootstrap Compiler (arxc) v1.1.3b")
         maybe_trigger_bg_update()
         return 0
     }

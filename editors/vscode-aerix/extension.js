@@ -796,13 +796,24 @@ function parseSemverParts(raw) {
     const s = String(raw || '').trim().replace(/^v/i, '');
     const dash = s.indexOf('-');
     const core = dash >= 0 ? s.slice(0, dash) : s;
-    const tag = dash >= 0 ? s.slice(dash + 1).trim().toLowerCase() : '';
-    const nums = core.split('.').map((n) => parseInt(n, 10) || 0);
+    let tag = dash >= 0 ? s.slice(dash + 1).trim().toLowerCase() : '';
+    const parts = core.split('.');
+    const maj = parseInt(parts[0], 10) || 0;
+    const min = parseInt(parts[1], 10) || 0;
+    let pat = 0;
+    if (parts[2]) {
+        const pm = parts[2].match(/^(\d+)(.*)$/);
+        if (pm) {
+            pat = parseInt(pm[1], 10) || 0;
+            if (!tag && pm[2]) tag = pm[2].trim().toLowerCase();
+        }
+    }
     let rank = 0;
-    if (!tag || tag === 'stable') rank = 3;
-    else if (tag.startsWith('rc')) rank = 2;
-    else if (tag.startsWith('beta') || tag.startsWith('pre')) rank = 1;
-    return [nums[0] || 0, nums[1] || 0, nums[2] || 0, rank];
+    if (!tag || tag === 'stable') rank = 4;
+    else if (tag.startsWith('rc')) rank = 3;
+    else if (tag === 'p' || tag.startsWith('pre')) rank = 2;
+    else if (tag === 'b' || tag.startsWith('beta')) rank = 1;
+    return [maj, min, pat, rank];
 }
 
 function compareSemver(a, b) {

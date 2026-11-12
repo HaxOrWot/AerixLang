@@ -86,7 +86,7 @@ namespace AerixSetup
 
     public static class InstallerEngine
     {
-        public const string DefaultVersion = "1.1.2-stable";
+        public const string DefaultVersion = "1.1.3b";
         private const string UninstallRegPath = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\AerixLang";
         private const string ExtensionIdPrefix = "aerix-lang.aerix-";
 
@@ -1147,14 +1147,27 @@ namespace AerixSetup
             string[] parts = core.Split('.');
             if (parts.Length > 0) int.TryParse(parts[0], out major);
             if (parts.Length > 1) int.TryParse(parts[1], out minor);
-            if (parts.Length > 2) int.TryParse(parts[2], out patch);
+            if (parts.Length > 2)
+            {
+                Match m = Regex.Match(parts[2], "^([0-9]+)(.*)$");
+                if (m.Success)
+                {
+                    int.TryParse(m.Groups[1].Value, out patch);
+                    string trailing = m.Groups[2].Value.Trim().ToLowerInvariant();
+                    if (!string.IsNullOrEmpty(trailing) && string.IsNullOrEmpty(preTag))
+                    {
+                        preTag = trailing;
+                    }
+                }
+            }
         }
 
         private static int TagStabilityRank(string tag)
         {
-            if (string.IsNullOrEmpty(tag) || tag == "stable") return 3;
-            if (tag.StartsWith("rc")) return 2;
-            if (tag.StartsWith("beta") || tag.StartsWith("pre")) return 1;
+            if (string.IsNullOrEmpty(tag) || tag == "stable") return 4;
+            if (tag.StartsWith("rc")) return 3;
+            if (tag == "p" || tag.StartsWith("pre")) return 2;
+            if (tag == "b" || tag.StartsWith("beta")) return 1;
             return 0;
         }
 
