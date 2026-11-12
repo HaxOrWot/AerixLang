@@ -41,6 +41,9 @@ test.exe
 *.userosv
 *.sln.docstates
 
+# Local documentation notes
+docs/
+
 # OS generated files
 .DS_Store
 Thumbs.db
