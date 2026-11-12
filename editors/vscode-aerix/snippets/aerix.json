@@ -34,7 +34,7 @@
   "Aerix Variable Mut": {
     "prefix": "mut",
     "body": [
-      "let mut ${1:name} = ${0}"
+      "mut ${1:name} = ${0}"
     ],
     "description": "Declare a mutable variable"
   },
@@ -138,14 +138,14 @@
   "Aerix Input": {
     "prefix": "input",
     "body": [
-      "let mut ${1:name} = input(\"${2:Enter: }\")"
+      "mut ${1:name} = input(\"${2:Enter: }\")"
     ],
     "description": "Read console input as a string"
   },
   "Aerix Typed Input": {
     "prefix": "input_typed",
     "body": [
-      "let mut ${1:name} : ${2|i32,i64,u8,u16,u32,u64,uint,f64,f32,bool,str|} = input(\"${3:Enter: }\")"
+      "mut ${1:name}: ${2|i32,i64,u8,u16,u32,u64,uint,f64,f32,bool,str|} = input(\"${3:Enter: }\")"
     ],
     "description": "Read console input parsed directly into a specific data type"
   },
@@ -283,5 +283,80 @@
       "}"
     ],
     "description": "WebAssembly Canvas starter application"
+  },
+  "Aerix Import File": {
+    "prefix": "import",
+    "body": [
+      "import \"./${1:module}.arx\""
+    ],
+    "description": "Import a local .arx module"
+  },
+  "Aerix Struct": {
+    "prefix": "struct",
+    "body": [
+      "struct ${1:Name} {",
+      "\tpub ${2:field}: ${3:i64}${0}",
+      "}"
+    ],
+    "description": "Declare a lightweight aggregate struct"
+  },
+  "Aerix Extend Type": {
+    "prefix": "extend",
+    "body": [
+      "extend ${1:TargetType} {",
+      "\tpub fn ${2:method}(${3:params}) -> ${4:void} {",
+      "\t\t${0}",
+      "\t}",
+      "}"
+    ],
+    "description": "Add extension methods to an existing class or primitive"
+  },
+  "Aerix Method": {
+    "prefix": "method",
+    "body": [
+      "pub fn ${1:name}(${2:params}) -> ${3:void} {",
+      "\t${0}",
+      "}"
+    ],
+    "description": "Declare a public class method"
+  },
+  "Aerix Try Catch": {
+    "prefix": "try",
+    "body": [
+      "try {",
+      "\t${1}",
+      "} catch ${2:err} {",
+      "\teprintln(${2:err})",
+      "\t${0}",
+      "}"
+    ],
+    "description": "Structured exception handling frame"
+  },
+  "Aerix For-In Collection": {
+    "prefix": "for_in",
+    "body": [
+      "for ${1:item} in ${2:collection} {",
+      "\t${0}",
+      "}"
+    ],
+    "description": "Iterate over items in a List or collection"
+  },
+  "Aerix Doc Comment": {
+    "prefix": "doc",
+    "body": [
+      "/// ${1:Summary description of this symbol.}",
+      "///"
+    ],
+    "description": "Insert triple-slash doc comment shown in Hover and IntelliSense"
+  },
+  "Aerix Unit Test": {
+    "prefix": "test",
+    "body": [
+      "#[test]",
+      "fn test_${1:behavior}() {",
+      "\tassert_eq(${2:actual}, ${0:expected})",
+      "}"
+    ],
+    "description": "Declare a unit test function"
   }
 }

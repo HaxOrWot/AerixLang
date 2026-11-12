@@ -219,7 +219,6 @@ fn hl_extract_header_from_ts(ts: TokenStream, sig_str: str) -> HlFileHeader {
     mut is_static = false
     mut in_fn_sig = false
     mut fn_paren_depth = 0
-    mut expect_brace = false
     mut prev_k = TK_EOF()
     mut i = 0
 
@@ -235,7 +234,6 @@ fn hl_extract_header_from_ts(ts: TokenStream, sig_str: str) -> HlFileHeader {
 
         if k == TK_LBRACE() {
             brace_depth = brace_depth + 1
-            expect_brace = false
             prev_k = k; i = i + 1; continue
         }
         if k == TK_RBRACE() {
@@ -259,13 +257,11 @@ fn hl_extract_header_from_ts(ts: TokenStream, sig_str: str) -> HlFileHeader {
                 fn_paren_depth = fn_paren_depth - 1
                 if fn_paren_depth <= 0 {
                     in_fn_sig = false
-                    expect_brace = true
                 }
             }
             prev_k = k; i = i + 1; continue
         }
         if k == TK_SEMICOLON() {
-            expect_brace = false
             is_static = false
             prev_k = k; i = i + 1; continue
         }
@@ -311,7 +307,7 @@ fn hl_extract_header_from_ts(ts: TokenStream, sig_str: str) -> HlFileHeader {
 
         if k == TK_IDENT() {
             let nxt = next_sig_kind(ts, i)
-            if (prev_k == TK_CLASS() || prev_k == TK_STRUCT()) && brace_depth == 0 {
+            if (prev_k == TK_CLASS() || prev_k == TK_STRUCT() || prev_k == TK_TRAIT()) && brace_depth == 0 {
                 hdr.classes.push(v)
                 cls_depth = 1
                 cur_cls = v
@@ -798,7 +794,7 @@ fn split_str_interp_spans(src: str, line_starts: List<i64>, ln1: i64, col1: i64,
                         push_sem_span(lines, cols, lens, types, mods, ln1, c_abs, il, ST_OPERATOR(), 0)
                     } else if ik == TK_IDENT() {
                         let inxt = next_sig_kind(its, ii)
-                        if ii > 0 && (its.kinds.get(ii - 1) == TK_DOT() || its.kinds.get(ii - 1) == TK_QDOT()) {
+                        if ii > 0 && (its.kinds.get(ii - 1) == TK_DOT() || its.kinds.get(ii - 1) == TK_QDOT() || its.kinds.get(ii - 1) == TK_CASCADE()) {
                             if ii >= 2 && enum_set.has_key(its.vals.get(ii - 2)) {
                                 push_sem_span(lines, cols, lens, types, mods, ln1, c_abs, il, ST_ENUM_MEMBER(), SM_STATIC())
                             } else if inxt == TK_LPAREN() {
@@ -926,6 +922,14 @@ pub fn hl_classify_ts(source: str, lx: Lexer, ts: TokenStream, line_starts: List
             pending_tparam_decl = false
             if prev_kind != TK_COMMA() && prev_kind != TK_ARROW() && prev_kind != TK_COLON() && expect_type_depth == 1 {
                 expect_type_depth = 0
+            }
+            if pending_fn_body && fn_depth < 0 && prev_kind != TK_FAT_ARROW() && prev_kind != TK_ARROW() && prev_kind != TK_COLON() && prev_kind != TK_COMMA() {
+                pending_fn_body = false
+                if cur_params.len() > 0 { cur_params = Map<str, i64>() }
+                if ro_vars.len() > 0 { ro_vars = Map<str, i64>() }
+                if mut_vars.len() > 0 { mut_vars = Map<str, i64>() }
+                if var_types.len() > 0 { var_types = Map<str, str>() }
+                if fn_tparams.len() > 0 { fn_tparams = Map<str, i64>() }
             }
             i = i + 1
             continue
@@ -1058,7 +1062,7 @@ pub fn hl_classify_ts(source: str, lx: Lexer, ts: TokenStream, line_starts: List
         if is_keyword_token_kind(k) {
             if k == TK_STATIC() {
                 is_static_decl = true
-            } else if k == TK_FN() {
+            } else if k == TK_FN() || k == TK_OP() {
                 if cur_params.len() > 0 { cur_params = Map<str, i64>() }
                 if ro_vars.len() > 0 { ro_vars = Map<str, i64>() }
                 if mut_vars.len() > 0 { mut_vars = Map<str, i64>() }
@@ -1067,7 +1071,7 @@ pub fn hl_classify_ts(source: str, lx: Lexer, ts: TokenStream, line_starts: List
                 in_fn_sig = true
                 fn_sig_paren_depth = 0
                 pending_fn_body = false
-                pending_tparam_decl = true
+                pending_tparam_decl = (k == TK_FN())
                 decl_tparam_is_cls = false
             } else if k == TK_INIT() || k == TK_DROP() {
                 if cur_params.len() > 0 { cur_params = Map<str, i64>() }
@@ -1263,8 +1267,8 @@ pub fn hl_classify_ts(source: str, lx: Lexer, ts: TokenStream, line_starts: List
                 prev_kind = k; i = i + 1; continue
             }
 
-            // 2. Member access (.member or ?.member)
-            if prev_kind == TK_DOT() || prev_kind == TK_QDOT() {
+            // 2. Member access (.member, ?.member, or ~>member)
+            if prev_kind == TK_DOT() || prev_kind == TK_QDOT() || prev_kind == TK_CASCADE() {
                 mut recv_nm = ""
                 if i >= 2 {
                     let pk2 = ts.kinds.get(i - 2)
@@ -1272,7 +1276,7 @@ pub fn hl_classify_ts(source: str, lx: Lexer, ts: TokenStream, line_starts: List
                         recv_nm = ts.vals.get(i - 2)
                     }
                 }
-                if recv_nm != "" && enum_set.has_key(recv_nm) {
+                if prev_kind == TK_DOT() && recv_nm != "" && enum_set.has_key(recv_nm) {
                     push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, ST_ENUM_MEMBER(), SM_STATIC())
                     prev_kind = k; i = i + 1; continue
                 }
@@ -1288,7 +1292,7 @@ pub fn hl_classify_ts(source: str, lx: Lexer, ts: TokenStream, line_starts: List
                         recv_t = global_var_types.get(recv_nm)
                     }
                 }
-                if nxt == TK_LPAREN() {
+                if prev_kind == TK_CASCADE() || nxt == TK_LPAREN() || is_generic_call_tok(ts, i) {
                     mut mmod = 0
                     if recv_nm != "" && lsp_is_static_runtime(recv_nm) {
                         mmod = SM_STATIC() + SM_DEFAULT_LIB()
