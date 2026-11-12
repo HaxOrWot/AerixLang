@@ -1606,9 +1606,10 @@ void arx_lsp_publish_diagnostics(const char* uri, const char* diags_json);
 const char* arx_lsp_encode_semantic_tokens_json(Arx_List_i64 data);
 int64_t arx_run_lsp_server(void);
 void arx_print_usage(void);
+void arx_print_update_usage(void);
 const char* arx_resolve_updater_exe(void);
 void arx_maybe_trigger_bg_update(void);
-int64_t arx_cmd_update(bool check_only, bool force);
+int64_t arx_cmd_update(bool check_only, bool force, bool verbose, bool no_ide);
 const char* arx_strip_arx_ext(const char* p);
 const char* arx_strip_exe_ext(const char* p);
 const char* arx_get_temp_dir(void);
@@ -48778,7 +48779,7 @@ void arx_print_usage(void) {
     arx_println_str(__t19486);
     const char* __t19487 = "  arxc lsp";
     arx_println_str(__t19487);
-    const char* __t19488 = "  arxc update [--check] [--force]";
+    const char* __t19488 = "  arxc update [--check] [--force] [--verbose] [--no-ide]";
     arx_println_str(__t19488);
     const char* __t19489 = "  arxc <file.arx> [-o <out>]";
     arx_println_str(__t19489);
@@ -48786,403 +48787,438 @@ void arx_print_usage(void) {
     arx_println_str(__t19490);
 }
 
+void arx_print_update_usage(void) {
+    const char* __t19491 = "Aerix Toolchain Updater (alias: arx upgrade)";
+    arx_println_str(__t19491);
+    const char* __t19492 = "Usage:";
+    arx_println_str(__t19492);
+    const char* __t19493 = "  arx update [options]";
+    arx_println_str(__t19493);
+    const char* __t19494 = "  arx upgrade [options]";
+    arx_println_str(__t19494);
+    const char* __t19495 = "";
+    arx_println_str(__t19495);
+    const char* __t19496 = "Options:";
+    arx_println_str(__t19496);
+    const char* __t19497 = "  -c, --check     Check GitHub for the latest stable release without installing";
+    arx_println_str(__t19497);
+    const char* __t19498 = "  -f, --force     Reinstall the latest stable release even if already up to date";
+    arx_println_str(__t19498);
+    const char* __t19499 = "  -v, --verbose   Show release notes from the latest stable release";
+    arx_println_str(__t19499);
+    const char* __t19500 = "      --no-ide    Skip refreshing VS Code / Antigravity extension packages";
+    arx_println_str(__t19500);
+    const char* __t19501 = "  -h, --help      Show this help message";
+    arx_println_str(__t19501);
+}
+
 const char* arx_resolve_updater_exe(void) {
-    const char* __t19491 = "AERIX_HOME";
-    const char* __t19492 = Arx_Env_get(__t19491);
-    const char* env_home = __t19492;
-    const char* __t19493 = "";
-    if ((arx_str_compare(env_home, __t19493) != 0)) {
-        const char* __t19494 = arx_bpath_normalize(env_home);
-        const char* __t19495 = "Uninstall.exe";
-        const char* __t19496 = arx_bpath_join(__t19494, __t19495);
-        const char* p = __t19496;
-        bool __t19497 = Arx_File_exists(p);
-        if (__t19497) {
-            const char* __t19498 = p;
-            return __t19498;
-        }
-    }
-    const char* __t19499 = Arx_Env_arg(((int64_t)0LL));
-    const char* __t19500 = arx_bpath_normalize(__t19499);
-    const char* self_exe = __t19500;
-    const char* __t19501 = "";
-    bool __t19502 = false;
-    if ((arx_str_compare(self_exe, __t19501) != 0)) {
-        const char* __t19503 = ".";
-        __t19502 = ((arx_str_compare(self_exe, __t19503) != 0));
-    }
-    if (__t19502) {
-        const char* __t19504 = arx_bpath_dirname(self_exe);
-        const char* bin_dir = __t19504;
-        const char* __t19505 = arx_bpath_dirname(bin_dir);
-        const char* root_dir = __t19505;
+    const char* __t19502 = "AERIX_HOME";
+    const char* __t19503 = Arx_Env_get(__t19502);
+    const char* env_home = __t19503;
+    const char* __t19504 = "";
+    if ((arx_str_compare(env_home, __t19504) != 0)) {
+        const char* __t19505 = arx_bpath_normalize(env_home);
         const char* __t19506 = "Uninstall.exe";
-        const char* __t19507 = arx_bpath_join(root_dir, __t19506);
-        const char* p2 = __t19507;
-        bool __t19508 = Arx_File_exists(p2);
+        const char* __t19507 = arx_bpath_join(__t19505, __t19506);
+        const char* p = __t19507;
+        bool __t19508 = Arx_File_exists(p);
         if (__t19508) {
-            const char* __t19509 = p2;
+            const char* __t19509 = p;
             return __t19509;
         }
     }
-    const char* __t19510 = "C:/Aerix/Uninstall.exe";
-    bool __t19511 = Arx_File_exists(__t19510);
-    if (__t19511) {
-        const char* __t19512 = "C:/Aerix/Uninstall.exe";
-        const char* __t19513 = __t19512;
-        return __t19513;
+    const char* __t19510 = Arx_Env_arg(((int64_t)0LL));
+    const char* __t19511 = arx_bpath_normalize(__t19510);
+    const char* self_exe = __t19511;
+    const char* __t19512 = "";
+    bool __t19513 = false;
+    if ((arx_str_compare(self_exe, __t19512) != 0)) {
+        const char* __t19514 = ".";
+        __t19513 = ((arx_str_compare(self_exe, __t19514) != 0));
     }
-    const char* __t19514 = "";
-    const char* __t19515 = __t19514;
-    return __t19515;
+    if (__t19513) {
+        const char* __t19515 = arx_bpath_dirname(self_exe);
+        const char* bin_dir = __t19515;
+        const char* __t19516 = arx_bpath_dirname(bin_dir);
+        const char* root_dir = __t19516;
+        const char* __t19517 = "Uninstall.exe";
+        const char* __t19518 = arx_bpath_join(root_dir, __t19517);
+        const char* p2 = __t19518;
+        bool __t19519 = Arx_File_exists(p2);
+        if (__t19519) {
+            const char* __t19520 = p2;
+            return __t19520;
+        }
+    }
+    const char* __t19521 = "C:/Aerix/Uninstall.exe";
+    bool __t19522 = Arx_File_exists(__t19521);
+    if (__t19522) {
+        const char* __t19523 = "C:/Aerix/Uninstall.exe";
+        const char* __t19524 = __t19523;
+        return __t19524;
+    }
+    const char* __t19525 = "";
+    const char* __t19526 = __t19525;
+    return __t19526;
 }
 
 void arx_maybe_trigger_bg_update(void) {
-    const char* __t19516 = Arx_Env_os_name();
-    const char* __t19517 = "windows";
-    if ((arx_str_compare(__t19516, __t19517) != 0)) {
+    const char* __t19527 = Arx_Env_os_name();
+    const char* __t19528 = "windows";
+    if ((arx_str_compare(__t19527, __t19528) != 0)) {
         return;
     }
-    const char* __t19518 = arx_resolve_updater_exe();
-    const char* u = __t19518;
-    const char* __t19519 = "";
-    if ((arx_str_compare(u, __t19519) != 0)) {
-        const char* __t19520 = "/";
-        const char* __t19521 = "\\";
-        const char* __t19522 = arx_str_replace(u, __t19520, __t19521);
-        const char* win_u = __t19522;
-        int64_t __t19523 = arx_autoupdate_bg_trigger(win_u);
-        (void)(__t19523);
+    const char* __t19529 = arx_resolve_updater_exe();
+    const char* u = __t19529;
+    const char* __t19530 = "";
+    if ((arx_str_compare(u, __t19530) != 0)) {
+        const char* __t19531 = "/";
+        const char* __t19532 = "\\";
+        const char* __t19533 = arx_str_replace(u, __t19531, __t19532);
+        const char* win_u = __t19533;
+        int64_t __t19534 = arx_autoupdate_bg_trigger(win_u);
+        (void)(__t19534);
     }
 }
 
-int64_t arx_cmd_update(bool check_only, bool force) {
-    const char* __t19524 = Arx_Env_os_name();
-    const char* __t19525 = "windows";
-    if ((arx_str_compare(__t19524, __t19525) != 0)) {
-        const char* __t19526 = "error: built-in self-updater currently supports Windows installations only.";
-        fprintf(stderr, "%s\n", __t19526);
-        int64_t __t19527 = ((int64_t)1LL);
-        return __t19527;
+int64_t arx_cmd_update(bool check_only, bool force, bool verbose, bool no_ide) {
+    const char* __t19535 = Arx_Env_os_name();
+    const char* __t19536 = "windows";
+    if ((arx_str_compare(__t19535, __t19536) != 0)) {
+        const char* __t19537 = "error: built-in self-updater currently supports Windows installations only.";
+        fprintf(stderr, "%s\n", __t19537);
+        int64_t __t19538 = ((int64_t)1LL);
+        return __t19538;
     }
-    const char* __t19528 = arx_resolve_updater_exe();
-    const char* u = __t19528;
-    const char* __t19529 = "";
-    if ((arx_str_compare(u, __t19529) == 0)) {
-        const char* __t19530 = "error: Aerix updater (Uninstall.exe) was not found in this installation.";
-        fprintf(stderr, "%s\n", __t19530);
-        const char* __t19531 = "  = help: install via AerixSetup-*.exe from https://github.com/HaxOrWot/AerixLang/releases";
-        fprintf(stderr, "%s\n", __t19531);
-        int64_t __t19532 = ((int64_t)1LL);
-        return __t19532;
+    const char* __t19539 = arx_resolve_updater_exe();
+    const char* u = __t19539;
+    const char* __t19540 = "";
+    if ((arx_str_compare(u, __t19540) == 0)) {
+        const char* __t19541 = "error: Aerix updater (Uninstall.exe) was not found in this installation.";
+        fprintf(stderr, "%s\n", __t19541);
+        const char* __t19542 = "  = help: install via AerixSetup-*.exe from https://github.com/HaxOrWot/AerixLang/releases";
+        fprintf(stderr, "%s\n", __t19542);
+        int64_t __t19543 = ((int64_t)1LL);
+        return __t19543;
     }
-    const char* __t19533 = "/";
-    const char* __t19534 = "\\";
-    const char* __t19535 = arx_str_replace(u, __t19533, __t19534);
-    const char* win_u = __t19535;
-    const char* __t19536 = arx_quote_shell_arg(win_u);
-    const char* cmd = __t19536;
+    const char* __t19544 = "/";
+    const char* __t19545 = "\\";
+    const char* __t19546 = arx_str_replace(u, __t19544, __t19545);
+    const char* win_u = __t19546;
+    const char* __t19547 = arx_quote_shell_arg(win_u);
+    const char* cmd = __t19547;
     if (check_only) {
-        const char* __t19537 = " --check-update";
-        const char* __t19538 = arx_str_concat(cmd, __t19537);
-        cmd = __t19538;
+        const char* __t19548 = " --check-update";
+        const char* __t19549 = arx_str_concat(cmd, __t19548);
+        cmd = __t19549;
     } else {
-        const char* __t19539 = " --update";
-        const char* __t19540 = arx_str_concat(cmd, __t19539);
-        cmd = __t19540;
+        const char* __t19550 = " --update";
+        const char* __t19551 = arx_str_concat(cmd, __t19550);
+        cmd = __t19551;
     }
     if (force) {
-        const char* __t19541 = " --force";
-        const char* __t19542 = arx_str_concat(cmd, __t19541);
-        cmd = __t19542;
+        const char* __t19552 = " --force";
+        const char* __t19553 = arx_str_concat(cmd, __t19552);
+        cmd = __t19553;
     }
-    int64_t __t19543 = Arx_Process_execute(cmd);
-    int64_t __t19544 = __t19543;
-    return __t19544;
+    if (verbose) {
+        const char* __t19554 = " --verbose";
+        const char* __t19555 = arx_str_concat(cmd, __t19554);
+        cmd = __t19555;
+    }
+    if (no_ide) {
+        const char* __t19556 = " --no-ide";
+        const char* __t19557 = arx_str_concat(cmd, __t19556);
+        cmd = __t19557;
+    }
+    int64_t __t19558 = Arx_Process_execute(cmd);
+    int64_t __t19559 = __t19558;
+    return __t19559;
 }
 
 const char* arx_strip_arx_ext(const char* p) {
-    const char* __t19545 = ".arx";
-    if (arx_str_ends_with(p, __t19545)) {
-        const char* __t19546 = __arx_bstr_slice(p, ((int64_t)0LL), ((arx_str_len(p)) - (((int64_t)4LL))));
-        const char* __t19547 = __t19546;
-        return __t19547;
+    const char* __t19560 = ".arx";
+    if (arx_str_ends_with(p, __t19560)) {
+        const char* __t19561 = __arx_bstr_slice(p, ((int64_t)0LL), ((arx_str_len(p)) - (((int64_t)4LL))));
+        const char* __t19562 = __t19561;
+        return __t19562;
     }
-    const char* __t19548 = p;
-    return __t19548;
+    const char* __t19563 = p;
+    return __t19563;
 }
 
 const char* arx_strip_exe_ext(const char* p) {
-    const char* __t19549 = ".exe";
-    if (arx_str_ends_with(p, __t19549)) {
-        const char* __t19550 = __arx_bstr_slice(p, ((int64_t)0LL), ((arx_str_len(p)) - (((int64_t)4LL))));
-        const char* __t19551 = __t19550;
-        return __t19551;
+    const char* __t19564 = ".exe";
+    if (arx_str_ends_with(p, __t19564)) {
+        const char* __t19565 = __arx_bstr_slice(p, ((int64_t)0LL), ((arx_str_len(p)) - (((int64_t)4LL))));
+        const char* __t19566 = __t19565;
+        return __t19566;
     }
-    const char* __t19552 = arx_strip_arx_ext(p);
-    const char* __t19553 = __t19552;
-    return __t19553;
+    const char* __t19567 = arx_strip_arx_ext(p);
+    const char* __t19568 = __t19567;
+    return __t19568;
 }
 
 const char* arx_get_temp_dir(void) {
-    const char* __t19554 = "TEMP";
-    const char* __t19555 = Arx_Env_get(__t19554);
-    const char* t1 = __t19555;
-    const char* __t19556 = "";
-    if ((arx_str_compare(t1, __t19556) != 0)) {
-        const char* __t19557 = arx_bpath_normalize(t1);
-        const char* __t19558 = __t19557;
-        return __t19558;
+    const char* __t19569 = "TEMP";
+    const char* __t19570 = Arx_Env_get(__t19569);
+    const char* t1 = __t19570;
+    const char* __t19571 = "";
+    if ((arx_str_compare(t1, __t19571) != 0)) {
+        const char* __t19572 = arx_bpath_normalize(t1);
+        const char* __t19573 = __t19572;
+        return __t19573;
     }
-    const char* __t19559 = "TMP";
-    const char* __t19560 = Arx_Env_get(__t19559);
-    const char* t2 = __t19560;
-    const char* __t19561 = "";
-    if ((arx_str_compare(t2, __t19561) != 0)) {
-        const char* __t19562 = arx_bpath_normalize(t2);
-        const char* __t19563 = __t19562;
-        return __t19563;
+    const char* __t19574 = "TMP";
+    const char* __t19575 = Arx_Env_get(__t19574);
+    const char* t2 = __t19575;
+    const char* __t19576 = "";
+    if ((arx_str_compare(t2, __t19576) != 0)) {
+        const char* __t19577 = arx_bpath_normalize(t2);
+        const char* __t19578 = __t19577;
+        return __t19578;
     }
-    const char* __t19564 = "TMPDIR";
-    const char* __t19565 = Arx_Env_get(__t19564);
-    const char* t3 = __t19565;
-    const char* __t19566 = "";
-    if ((arx_str_compare(t3, __t19566) != 0)) {
-        const char* __t19567 = arx_bpath_normalize(t3);
-        const char* __t19568 = __t19567;
-        return __t19568;
+    const char* __t19579 = "TMPDIR";
+    const char* __t19580 = Arx_Env_get(__t19579);
+    const char* t3 = __t19580;
+    const char* __t19581 = "";
+    if ((arx_str_compare(t3, __t19581) != 0)) {
+        const char* __t19582 = arx_bpath_normalize(t3);
+        const char* __t19583 = __t19582;
+        return __t19583;
     }
-    const char* __t19569 = "/tmp";
-    const char* __t19570 = __t19569;
-    return __t19570;
+    const char* __t19584 = "/tmp";
+    const char* __t19585 = __t19584;
+    return __t19585;
 }
 
 const char* arx_quote_shell_arg(const char* s) {
-    const char* __t19571 = "\"";
-    const char* q = __t19571;
-    const char* __t19572 = arx_str_concat(q, s);
-    const char* __t19573 = arx_str_concat(__t19572, q);
-    const char* __t19574 = __t19573;
-    return __t19574;
+    const char* __t19586 = "\"";
+    const char* q = __t19586;
+    const char* __t19587 = arx_str_concat(q, s);
+    const char* __t19588 = arx_str_concat(__t19587, q);
+    const char* __t19589 = __t19588;
+    return __t19589;
 }
 
 const char* arx_diag_esc(void) {
-    Arx_ByteBuffer __t19575 = Arx_ByteBuffer_init();
-    Arx_ByteBuffer bb = __t19575;
+    Arx_ByteBuffer __t19590 = Arx_ByteBuffer_init();
+    Arx_ByteBuffer bb = __t19590;
     Arx_ByteBuffer_write_u8((&(bb)), ((int64_t)27LL));
-    const char* __t19576 = Arx_ByteBuffer_to_str((&(bb)));
-    const char* s = __t19576;
+    const char* __t19591 = Arx_ByteBuffer_to_str((&(bb)));
+    const char* s = __t19591;
     Arx_ByteBuffer_free((&(bb)));
-    const char* __t19577 = s;
-    return __t19577;
+    const char* __t19592 = s;
+    return __t19592;
 }
 
 const char* arx_diag_repeat(const char* ch, int64_t n) {
     if (((n) <= (((int64_t)0LL)))) {
-        const char* __t19578 = "";
-        const char* __t19579 = __t19578;
-        return __t19579;
+        const char* __t19593 = "";
+        const char* __t19594 = __t19593;
+        return __t19594;
     }
-    Arx_ByteBuffer __t19580 = Arx_ByteBuffer_init();
-    Arx_ByteBuffer bb = __t19580;
+    Arx_ByteBuffer __t19595 = Arx_ByteBuffer_init();
+    Arx_ByteBuffer bb = __t19595;
     int64_t i = ((int64_t)0LL);
     while (1) {
         if (!(((i) < (n)))) break;
         Arx_ByteBuffer_write_str((&(bb)), ch);
         i = ((i) + (((int64_t)1LL)));
     }
-    const char* __t19581 = Arx_ByteBuffer_to_str((&(bb)));
-    const char* s = __t19581;
+    const char* __t19596 = Arx_ByteBuffer_to_str((&(bb)));
+    const char* s = __t19596;
     Arx_ByteBuffer_free((&(bb)));
-    const char* __t19582 = s;
-    return __t19582;
+    const char* __t19597 = s;
+    return __t19597;
 }
 
 const char* arx_diag_get_line(const char* src, int64_t line1) {
-    const char* __t19583 = "";
-    bool __t19584 = true;
-    if (!((arx_str_compare(src, __t19583) == 0))) {
-        __t19584 = (((line1) <= (((int64_t)0LL))));
-    }
-    if (__t19584) {
-        const char* __t19585 = "";
-        const char* __t19586 = __t19585;
-        return __t19586;
-    }
-    const char* __t19587 = "\r\n";
-    const char* __t19588 = "\n";
-    const char* __t19589 = arx_str_replace(src, __t19587, __t19588);
-    const char* __t19590 = "\r";
-    const char* __t19591 = "\n";
-    const char* __t19592 = arx_str_replace(__t19589, __t19590, __t19591);
-    const char* norm = __t19592;
-    const char* __t19593 = "\n";
-    Arx_List_str __t19594 = __arx_bstr_split(norm, __t19593);
-    Arx_List_str lines = __t19594;
-    int64_t __t19595 = Arx_List_str_len((&(lines)));
-    if (((((line1) - (((int64_t)1LL)))) < (__t19595))) {
-        const char* __t19596 = Arx_List_str_get((&(lines)), ((line1) - (((int64_t)1LL))));
-        const char* __t19597 = __t19596;
-        return __t19597;
-    }
     const char* __t19598 = "";
-    const char* __t19599 = __t19598;
-    return __t19599;
+    bool __t19599 = true;
+    if (!((arx_str_compare(src, __t19598) == 0))) {
+        __t19599 = (((line1) <= (((int64_t)0LL))));
+    }
+    if (__t19599) {
+        const char* __t19600 = "";
+        const char* __t19601 = __t19600;
+        return __t19601;
+    }
+    const char* __t19602 = "\r\n";
+    const char* __t19603 = "\n";
+    const char* __t19604 = arx_str_replace(src, __t19602, __t19603);
+    const char* __t19605 = "\r";
+    const char* __t19606 = "\n";
+    const char* __t19607 = arx_str_replace(__t19604, __t19605, __t19606);
+    const char* norm = __t19607;
+    const char* __t19608 = "\n";
+    Arx_List_str __t19609 = __arx_bstr_split(norm, __t19608);
+    Arx_List_str lines = __t19609;
+    int64_t __t19610 = Arx_List_str_len((&(lines)));
+    if (((((line1) - (((int64_t)1LL)))) < (__t19610))) {
+        const char* __t19611 = Arx_List_str_get((&(lines)), ((line1) - (((int64_t)1LL))));
+        const char* __t19612 = __t19611;
+        return __t19612;
+    }
+    const char* __t19613 = "";
+    const char* __t19614 = __t19613;
+    return __t19614;
 }
 
 void arx_print_compiler_diagnostics(Arx_Analyzer az) {
-    const char* __t19600 = "NO_COLOR";
-    const char* __t19601 = Arx_Env_get(__t19600);
-    const char* __t19602 = "";
-    bool use_color = (arx_str_compare(__t19601, __t19602) == 0);
-    const char* __t19603 = arx_diag_esc();
-    const char* esc = __t19603;
-    const char* __t19604 = "";
-    const char* c_red = __t19604;
-    const char* __t19605 = "";
-    const char* c_yel = __t19605;
-    const char* __t19606 = "";
-    const char* c_blu = __t19606;
-    const char* __t19607 = "";
-    const char* c_cyn = __t19607;
-    const char* __t19608 = "";
-    const char* c_bld = __t19608;
-    const char* __t19609 = "";
-    const char* c_rst = __t19609;
+    const char* __t19615 = "NO_COLOR";
+    const char* __t19616 = Arx_Env_get(__t19615);
+    const char* __t19617 = "";
+    bool use_color = (arx_str_compare(__t19616, __t19617) == 0);
+    const char* __t19618 = arx_diag_esc();
+    const char* esc = __t19618;
+    const char* __t19619 = "";
+    const char* c_red = __t19619;
+    const char* __t19620 = "";
+    const char* c_yel = __t19620;
+    const char* __t19621 = "";
+    const char* c_blu = __t19621;
+    const char* __t19622 = "";
+    const char* c_cyn = __t19622;
+    const char* __t19623 = "";
+    const char* c_bld = __t19623;
+    const char* __t19624 = "";
+    const char* c_rst = __t19624;
     if (use_color) {
-        const char* __t19610 = "[1;31m";
-        const char* __t19611 = arx_str_concat(esc, __t19610);
-        c_red = __t19611;
-        const char* __t19612 = "[1;33m";
-        const char* __t19613 = arx_str_concat(esc, __t19612);
-        c_yel = __t19613;
-        const char* __t19614 = "[1;34m";
-        const char* __t19615 = arx_str_concat(esc, __t19614);
-        c_blu = __t19615;
-        const char* __t19616 = "[1;36m";
-        const char* __t19617 = arx_str_concat(esc, __t19616);
-        c_cyn = __t19617;
-        const char* __t19618 = "[1m";
-        const char* __t19619 = arx_str_concat(esc, __t19618);
-        c_bld = __t19619;
-        const char* __t19620 = "[0m";
-        const char* __t19621 = arx_str_concat(esc, __t19620);
-        c_rst = __t19621;
+        const char* __t19625 = "[1;31m";
+        const char* __t19626 = arx_str_concat(esc, __t19625);
+        c_red = __t19626;
+        const char* __t19627 = "[1;33m";
+        const char* __t19628 = arx_str_concat(esc, __t19627);
+        c_yel = __t19628;
+        const char* __t19629 = "[1;34m";
+        const char* __t19630 = arx_str_concat(esc, __t19629);
+        c_blu = __t19630;
+        const char* __t19631 = "[1;36m";
+        const char* __t19632 = arx_str_concat(esc, __t19631);
+        c_cyn = __t19632;
+        const char* __t19633 = "[1m";
+        const char* __t19634 = arx_str_concat(esc, __t19633);
+        c_bld = __t19634;
+        const char* __t19635 = "[0m";
+        const char* __t19636 = arx_str_concat(esc, __t19635);
+        c_rst = __t19636;
     }
-    Arx_Map_str_str __t19622 = Arx_Map_str_str_init();
-    Arx_Map_str_str file_cache = __t19622;
+    Arx_Map_str_str __t19637 = Arx_Map_str_str_init();
+    Arx_Map_str_str file_cache = __t19637;
     int64_t i = ((int64_t)0LL);
     while (1) {
         if (!(((i) < (az.err_count)))) break;
-        const char* __t19623 = Arx_List_str_get((&(az.err_files)), i);
-        const char* f = __t19623;
-        int64_t __t19624 = Arx_List_i64_get((&(az.err_lines)), i);
-        int64_t ln = __t19624;
-        int64_t __t19625 = Arx_List_i64_get((&(az.err_cols)), i);
-        int64_t cl = __t19625;
-        const char* __t19626 = Arx_List_str_get((&(az.err_msgs)), i);
-        const char* msg = __t19626;
+        const char* __t19638 = Arx_List_str_get((&(az.err_files)), i);
+        const char* f = __t19638;
+        int64_t __t19639 = Arx_List_i64_get((&(az.err_lines)), i);
+        int64_t ln = __t19639;
+        int64_t __t19640 = Arx_List_i64_get((&(az.err_cols)), i);
+        int64_t cl = __t19640;
+        const char* __t19641 = Arx_List_str_get((&(az.err_msgs)), i);
+        const char* msg = __t19641;
         int64_t tlen = ((int64_t)1LL);
-        int64_t __t19627 = Arx_List_i64_len((&(az.err_lens)));
-        if (((i) < (__t19627))) {
-            int64_t __t19628 = Arx_List_i64_get((&(az.err_lens)), i);
-            tlen = __t19628;
+        int64_t __t19642 = Arx_List_i64_len((&(az.err_lens)));
+        if (((i) < (__t19642))) {
+            int64_t __t19643 = Arx_List_i64_get((&(az.err_lens)), i);
+            tlen = __t19643;
         }
         if (((tlen) < (((int64_t)1LL)))) {
             tlen = ((int64_t)1LL);
         }
-        const char* __t19629 = "";
-        const char* code = __t19629;
-        int64_t __t19630 = Arx_List_str_len((&(az.err_codes)));
-        if (((i) < (__t19630))) {
-            const char* __t19631 = Arx_List_str_get((&(az.err_codes)), i);
-            code = __t19631;
+        const char* __t19644 = "";
+        const char* code = __t19644;
+        int64_t __t19645 = Arx_List_str_len((&(az.err_codes)));
+        if (((i) < (__t19645))) {
+            const char* __t19646 = Arx_List_str_get((&(az.err_codes)), i);
+            code = __t19646;
         }
-        const char* __t19632 = "";
-        const char* hmsg = __t19632;
-        int64_t __t19633 = Arx_List_str_len((&(az.err_helps)));
-        if (((i) < (__t19633))) {
-            const char* __t19634 = Arx_List_str_get((&(az.err_helps)), i);
-            hmsg = __t19634;
+        const char* __t19647 = "";
+        const char* hmsg = __t19647;
+        int64_t __t19648 = Arx_List_str_len((&(az.err_helps)));
+        if (((i) < (__t19648))) {
+            const char* __t19649 = Arx_List_str_get((&(az.err_helps)), i);
+            hmsg = __t19649;
         }
         int64_t sev = ((int64_t)1LL);
-        int64_t __t19635 = Arx_List_i64_len((&(az.err_sevs)));
-        if (((i) < (__t19635))) {
-            int64_t __t19636 = Arx_List_i64_get((&(az.err_sevs)), i);
-            sev = __t19636;
+        int64_t __t19650 = Arx_List_i64_len((&(az.err_sevs)));
+        if (((i) < (__t19650))) {
+            int64_t __t19651 = Arx_List_i64_get((&(az.err_sevs)), i);
+            sev = __t19651;
         }
-        const char* __t19637 = "error";
-        const char* sev_lbl = __t19637;
+        const char* __t19652 = "error";
+        const char* sev_lbl = __t19652;
         const char* c_sev = c_red;
         if (((sev) == (((int64_t)2LL)))) {
-            const char* __t19638 = "warning";
-            sev_lbl = __t19638;
+            const char* __t19653 = "warning";
+            sev_lbl = __t19653;
             c_sev = c_yel;
         }
-        const char* __t19639 = "";
-        const char* code_tag = __t19639;
-        const char* __t19640 = "";
-        if ((arx_str_compare(code, __t19640) != 0)) {
-            const char* __t19641 = "[";
-            const char* __t19642 = arx_str_concat(__t19641, code);
-            const char* __t19643 = "]";
-            const char* __t19644 = arx_str_concat(__t19642, __t19643);
-            code_tag = __t19644;
+        const char* __t19654 = "";
+        const char* code_tag = __t19654;
+        const char* __t19655 = "";
+        if ((arx_str_compare(code, __t19655) != 0)) {
+            const char* __t19656 = "[";
+            const char* __t19657 = arx_str_concat(__t19656, code);
+            const char* __t19658 = "]";
+            const char* __t19659 = arx_str_concat(__t19657, __t19658);
+            code_tag = __t19659;
         }
-        const char* __t19645 = arx_str_concat(c_sev, sev_lbl);
-        const char* __t19646 = arx_str_concat(__t19645, code_tag);
-        const char* __t19647 = arx_str_concat(__t19646, c_rst);
-        const char* __t19648 = arx_str_concat(__t19647, c_bld);
-        const char* __t19649 = ": ";
-        const char* __t19650 = arx_str_concat(__t19648, __t19649);
-        const char* __t19651 = arx_str_concat(__t19650, msg);
-        const char* __t19652 = arx_str_concat(__t19651, c_rst);
-        fprintf(stderr, "%s\n", __t19652);
-        const char* __t19653 = "";
-        if ((arx_str_compare(f, __t19653) != 0)) {
-            const char* __t19654 = "  ";
-            const char* __t19655 = arx_str_concat(__t19654, c_blu);
-            const char* __t19656 = "-->";
-            const char* __t19657 = arx_str_concat(__t19655, __t19656);
-            const char* __t19658 = arx_str_concat(__t19657, c_rst);
-            const char* __t19659 = " ";
-            const char* __t19660 = arx_str_concat(__t19658, __t19659);
-            const char* __t19661 = arx_str_concat(__t19660, f);
-            const char* __t19662 = ":";
-            const char* __t19663 = arx_str_concat(__t19661, __t19662);
-            const char* __t19664 = arx_str_concat(__t19663, arx_cast_i64_to_str((int64_t)(ln)));
-            const char* __t19665 = ":";
-            const char* __t19666 = arx_str_concat(__t19664, __t19665);
-            const char* __t19667 = arx_str_concat(__t19666, arx_cast_i64_to_str((int64_t)(cl)));
-            fprintf(stderr, "%s\n", __t19667);
-            bool __t19668 = Arx_Map_str_str_has_key((&(file_cache)), f);
-            if ((!(__t19668))) {
-                bool __t19669 = Arx_File_exists(f);
-                if (__t19669) {
-                    const char* __t19670 = Arx_File_read_to_string(f);
-                    Arx_Map_str_str_insert((&(file_cache)), f, __t19670);
+        const char* __t19660 = arx_str_concat(c_sev, sev_lbl);
+        const char* __t19661 = arx_str_concat(__t19660, code_tag);
+        const char* __t19662 = arx_str_concat(__t19661, c_rst);
+        const char* __t19663 = arx_str_concat(__t19662, c_bld);
+        const char* __t19664 = ": ";
+        const char* __t19665 = arx_str_concat(__t19663, __t19664);
+        const char* __t19666 = arx_str_concat(__t19665, msg);
+        const char* __t19667 = arx_str_concat(__t19666, c_rst);
+        fprintf(stderr, "%s\n", __t19667);
+        const char* __t19668 = "";
+        if ((arx_str_compare(f, __t19668) != 0)) {
+            const char* __t19669 = "  ";
+            const char* __t19670 = arx_str_concat(__t19669, c_blu);
+            const char* __t19671 = "-->";
+            const char* __t19672 = arx_str_concat(__t19670, __t19671);
+            const char* __t19673 = arx_str_concat(__t19672, c_rst);
+            const char* __t19674 = " ";
+            const char* __t19675 = arx_str_concat(__t19673, __t19674);
+            const char* __t19676 = arx_str_concat(__t19675, f);
+            const char* __t19677 = ":";
+            const char* __t19678 = arx_str_concat(__t19676, __t19677);
+            const char* __t19679 = arx_str_concat(__t19678, arx_cast_i64_to_str((int64_t)(ln)));
+            const char* __t19680 = ":";
+            const char* __t19681 = arx_str_concat(__t19679, __t19680);
+            const char* __t19682 = arx_str_concat(__t19681, arx_cast_i64_to_str((int64_t)(cl)));
+            fprintf(stderr, "%s\n", __t19682);
+            bool __t19683 = Arx_Map_str_str_has_key((&(file_cache)), f);
+            if ((!(__t19683))) {
+                bool __t19684 = Arx_File_exists(f);
+                if (__t19684) {
+                    const char* __t19685 = Arx_File_read_to_string(f);
+                    Arx_Map_str_str_insert((&(file_cache)), f, __t19685);
                 } else {
-                    const char* __t19671 = "";
-                    Arx_Map_str_str_insert((&(file_cache)), f, __t19671);
+                    const char* __t19686 = "";
+                    Arx_Map_str_str_insert((&(file_cache)), f, __t19686);
                 }
             }
-            const char* __t19672 = Arx_Map_str_str_get((&(file_cache)), f);
-            const char* src = __t19672;
-            const char* __t19673 = arx_diag_get_line(src, ln);
-            const char* line_txt = __t19673;
-            const char* __t19674 = "";
-            if ((arx_str_compare(line_txt, __t19674) != 0)) {
+            const char* __t19687 = Arx_Map_str_str_get((&(file_cache)), f);
+            const char* src = __t19687;
+            const char* __t19688 = arx_diag_get_line(src, ln);
+            const char* line_txt = __t19688;
+            const char* __t19689 = "";
+            if ((arx_str_compare(line_txt, __t19689) != 0)) {
                 const char* ln_s = arx_cast_i64_to_str((int64_t)(ln));
                 int64_t gw = arx_str_len(ln_s);
                 if (((gw) < (((int64_t)2LL)))) {
                     gw = ((int64_t)2LL);
                 }
-                const char* __t19675 = " ";
-                const char* __t19676 = arx_diag_repeat(__t19675, gw);
-                const char* pad_g = __t19676;
-                const char* __t19677 = " ";
-                const char* __t19678 = arx_diag_repeat(__t19677, ((gw) - (arx_str_len(ln_s))));
-                const char* pad_l = __t19678;
+                const char* __t19690 = " ";
+                const char* __t19691 = arx_diag_repeat(__t19690, gw);
+                const char* pad_g = __t19691;
+                const char* __t19692 = " ";
+                const char* __t19693 = arx_diag_repeat(__t19692, ((gw) - (arx_str_len(ln_s))));
+                const char* pad_l = __t19693;
                 int64_t col0 = ((cl) - (((int64_t)1LL)));
                 if (((col0) < (((int64_t)0LL)))) {
                     col0 = ((int64_t)0LL);
@@ -49190,576 +49226,631 @@ void arx_print_compiler_diagnostics(Arx_Analyzer az) {
                 if (((col0) > (arx_str_len(line_txt)))) {
                     col0 = arx_str_len(line_txt);
                 }
-                const char* __t19679 = " ";
-                const char* __t19680 = arx_diag_repeat(__t19679, col0);
-                const char* lead = __t19680;
-                const char* __t19681 = "^";
-                const char* __t19682 = arx_diag_repeat(__t19681, tlen);
-                const char* carets = __t19682;
-                const char* __t19683 = " ";
-                const char* __t19684 = arx_str_concat(__t19683, pad_g);
-                const char* __t19685 = arx_str_concat(__t19684, c_blu);
-                const char* __t19686 = "|";
-                const char* __t19687 = arx_str_concat(__t19685, __t19686);
-                const char* __t19688 = arx_str_concat(__t19687, c_rst);
-                fprintf(stderr, "%s\n", __t19688);
-                const char* __t19689 = " ";
-                const char* __t19690 = arx_str_concat(__t19689, c_blu);
-                const char* __t19691 = arx_str_concat(__t19690, pad_l);
-                const char* __t19692 = arx_str_concat(__t19691, ln_s);
-                const char* __t19693 = " |";
-                const char* __t19694 = arx_str_concat(__t19692, __t19693);
-                const char* __t19695 = arx_str_concat(__t19694, c_rst);
-                const char* __t19696 = " ";
-                const char* __t19697 = arx_str_concat(__t19695, __t19696);
-                const char* __t19698 = arx_str_concat(__t19697, line_txt);
-                fprintf(stderr, "%s\n", __t19698);
-                const char* __t19699 = " ";
-                const char* __t19700 = arx_str_concat(__t19699, pad_g);
-                const char* __t19701 = arx_str_concat(__t19700, c_blu);
-                const char* __t19702 = "|";
-                const char* __t19703 = arx_str_concat(__t19701, __t19702);
-                const char* __t19704 = arx_str_concat(__t19703, c_rst);
-                const char* __t19705 = " ";
-                const char* __t19706 = arx_str_concat(__t19704, __t19705);
-                const char* __t19707 = arx_str_concat(__t19706, lead);
-                const char* __t19708 = arx_str_concat(__t19707, c_sev);
-                const char* __t19709 = arx_str_concat(__t19708, carets);
+                const char* __t19694 = " ";
+                const char* __t19695 = arx_diag_repeat(__t19694, col0);
+                const char* lead = __t19695;
+                const char* __t19696 = "^";
+                const char* __t19697 = arx_diag_repeat(__t19696, tlen);
+                const char* carets = __t19697;
+                const char* __t19698 = " ";
+                const char* __t19699 = arx_str_concat(__t19698, pad_g);
+                const char* __t19700 = arx_str_concat(__t19699, c_blu);
+                const char* __t19701 = "|";
+                const char* __t19702 = arx_str_concat(__t19700, __t19701);
+                const char* __t19703 = arx_str_concat(__t19702, c_rst);
+                fprintf(stderr, "%s\n", __t19703);
+                const char* __t19704 = " ";
+                const char* __t19705 = arx_str_concat(__t19704, c_blu);
+                const char* __t19706 = arx_str_concat(__t19705, pad_l);
+                const char* __t19707 = arx_str_concat(__t19706, ln_s);
+                const char* __t19708 = " |";
+                const char* __t19709 = arx_str_concat(__t19707, __t19708);
                 const char* __t19710 = arx_str_concat(__t19709, c_rst);
-                fprintf(stderr, "%s\n", __t19710);
+                const char* __t19711 = " ";
+                const char* __t19712 = arx_str_concat(__t19710, __t19711);
+                const char* __t19713 = arx_str_concat(__t19712, line_txt);
+                fprintf(stderr, "%s\n", __t19713);
+                const char* __t19714 = " ";
+                const char* __t19715 = arx_str_concat(__t19714, pad_g);
+                const char* __t19716 = arx_str_concat(__t19715, c_blu);
+                const char* __t19717 = "|";
+                const char* __t19718 = arx_str_concat(__t19716, __t19717);
+                const char* __t19719 = arx_str_concat(__t19718, c_rst);
+                const char* __t19720 = " ";
+                const char* __t19721 = arx_str_concat(__t19719, __t19720);
+                const char* __t19722 = arx_str_concat(__t19721, lead);
+                const char* __t19723 = arx_str_concat(__t19722, c_sev);
+                const char* __t19724 = arx_str_concat(__t19723, carets);
+                const char* __t19725 = arx_str_concat(__t19724, c_rst);
+                fprintf(stderr, "%s\n", __t19725);
             }
         }
-        const char* __t19711 = "";
-        if ((arx_str_compare(hmsg, __t19711) != 0)) {
-            const char* __t19712 = "  ";
-            const char* __t19713 = arx_str_concat(__t19712, c_cyn);
-            const char* __t19714 = "= help:";
-            const char* __t19715 = arx_str_concat(__t19713, __t19714);
-            const char* __t19716 = arx_str_concat(__t19715, c_rst);
-            const char* __t19717 = " ";
-            const char* __t19718 = arx_str_concat(__t19716, __t19717);
-            const char* __t19719 = arx_str_concat(__t19718, hmsg);
-            fprintf(stderr, "%s\n", __t19719);
+        const char* __t19726 = "";
+        if ((arx_str_compare(hmsg, __t19726) != 0)) {
+            const char* __t19727 = "  ";
+            const char* __t19728 = arx_str_concat(__t19727, c_cyn);
+            const char* __t19729 = "= help:";
+            const char* __t19730 = arx_str_concat(__t19728, __t19729);
+            const char* __t19731 = arx_str_concat(__t19730, c_rst);
+            const char* __t19732 = " ";
+            const char* __t19733 = arx_str_concat(__t19731, __t19732);
+            const char* __t19734 = arx_str_concat(__t19733, hmsg);
+            fprintf(stderr, "%s\n", __t19734);
         }
-        const char* __t19720 = "";
-        fprintf(stderr, "%s\n", __t19720);
+        const char* __t19735 = "";
+        fprintf(stderr, "%s\n", __t19735);
         i = ((i) + (((int64_t)1LL)));
     }
     if (((az.has_errors) > (((int64_t)0LL)))) {
-        const char* __t19721 = "";
-        const char* wnote = __t19721;
+        const char* __t19736 = "";
+        const char* wnote = __t19736;
         if (((az.warn_count) > (((int64_t)0LL)))) {
-            const char* __t19722 = "; ";
-            const char* __t19723 = arx_str_concat(__t19722, arx_cast_i64_to_str((int64_t)(az.warn_count)));
-            const char* __t19724 = " warning(s) emitted";
-            const char* __t19725 = arx_str_concat(__t19723, __t19724);
-            wnote = __t19725;
+            const char* __t19737 = "; ";
+            const char* __t19738 = arx_str_concat(__t19737, arx_cast_i64_to_str((int64_t)(az.warn_count)));
+            const char* __t19739 = " warning(s) emitted";
+            const char* __t19740 = arx_str_concat(__t19738, __t19739);
+            wnote = __t19740;
         }
-        const char* __t19726 = "error";
-        const char* __t19727 = arx_str_concat(c_red, __t19726);
-        const char* __t19728 = arx_str_concat(__t19727, c_rst);
-        const char* __t19729 = arx_str_concat(__t19728, c_bld);
-        const char* __t19730 = ": aborting due to ";
-        const char* __t19731 = arx_str_concat(__t19729, __t19730);
-        const char* __t19732 = arx_str_concat(__t19731, arx_cast_i64_to_str((int64_t)(az.has_errors)));
-        const char* __t19733 = " previous error(s)";
-        const char* __t19734 = arx_str_concat(__t19732, __t19733);
-        const char* __t19735 = arx_str_concat(__t19734, wnote);
-        const char* __t19736 = arx_str_concat(__t19735, c_rst);
-        fprintf(stderr, "%s\n", __t19736);
+        const char* __t19741 = "error";
+        const char* __t19742 = arx_str_concat(c_red, __t19741);
+        const char* __t19743 = arx_str_concat(__t19742, c_rst);
+        const char* __t19744 = arx_str_concat(__t19743, c_bld);
+        const char* __t19745 = ": aborting due to ";
+        const char* __t19746 = arx_str_concat(__t19744, __t19745);
+        const char* __t19747 = arx_str_concat(__t19746, arx_cast_i64_to_str((int64_t)(az.has_errors)));
+        const char* __t19748 = " previous error(s)";
+        const char* __t19749 = arx_str_concat(__t19747, __t19748);
+        const char* __t19750 = arx_str_concat(__t19749, wnote);
+        const char* __t19751 = arx_str_concat(__t19750, c_rst);
+        fprintf(stderr, "%s\n", __t19751);
     } else {
         if (((az.warn_count) > (((int64_t)0LL)))) {
-            const char* __t19737 = "warning";
-            const char* __t19738 = arx_str_concat(c_yel, __t19737);
-            const char* __t19739 = arx_str_concat(__t19738, c_rst);
-            const char* __t19740 = arx_str_concat(__t19739, c_bld);
-            const char* __t19741 = ": ";
-            const char* __t19742 = arx_str_concat(__t19740, __t19741);
-            const char* __t19743 = arx_str_concat(__t19742, arx_cast_i64_to_str((int64_t)(az.warn_count)));
-            const char* __t19744 = " warning(s) emitted";
-            const char* __t19745 = arx_str_concat(__t19743, __t19744);
-            const char* __t19746 = arx_str_concat(__t19745, c_rst);
-            fprintf(stderr, "%s\n", __t19746);
+            const char* __t19752 = "warning";
+            const char* __t19753 = arx_str_concat(c_yel, __t19752);
+            const char* __t19754 = arx_str_concat(__t19753, c_rst);
+            const char* __t19755 = arx_str_concat(__t19754, c_bld);
+            const char* __t19756 = ": ";
+            const char* __t19757 = arx_str_concat(__t19755, __t19756);
+            const char* __t19758 = arx_str_concat(__t19757, arx_cast_i64_to_str((int64_t)(az.warn_count)));
+            const char* __t19759 = " warning(s) emitted";
+            const char* __t19760 = arx_str_concat(__t19758, __t19759);
+            const char* __t19761 = arx_str_concat(__t19760, c_rst);
+            fprintf(stderr, "%s\n", __t19761);
         }
     }
 }
 
 Arx_Analyzer arx_compile_frontend(const char* input_file) {
-    bool __t19747 = Arx_File_exists(input_file);
-    if ((!(__t19747))) {
-        const char* __t19748 = "error: source file not found: ";
-        const char* __t19749 = arx_str_concat(__t19748, input_file);
-        fprintf(stderr, "%s\n", __t19749);
+    bool __t19762 = Arx_File_exists(input_file);
+    if ((!(__t19762))) {
+        const char* __t19763 = "error: source file not found: ";
+        const char* __t19764 = arx_str_concat(__t19763, input_file);
+        fprintf(stderr, "%s\n", __t19764);
         Arx_Env_exit(((int64_t)1LL));
     }
-    Arx_Parser __t19750 = Arx_Parser_init(input_file);
-    Arx_Parser parser = __t19750;
+    Arx_Parser __t19765 = Arx_Parser_init(input_file);
+    Arx_Parser parser = __t19765;
     parser.recover_mode = true;
     Arx_Parser_load_resolved_file((&(parser)), input_file);
-    Arx_Analyzer __t19751 = Arx_Analyzer_init(parser);
-    Arx_Analyzer az = __t19751;
+    Arx_Analyzer __t19766 = Arx_Analyzer_init(parser);
+    Arx_Analyzer az = __t19766;
     Arx_Analyzer_analyze((&(az)));
     if (((az.err_count) > (((int64_t)0LL)))) {
         arx_print_compiler_diagnostics(az);
     }
-    Arx_Analyzer __t19752 = az;
-    return __t19752;
+    Arx_Analyzer __t19767 = az;
+    return __t19767;
 }
 
 const char* arx_emit_c_for_file(const char* input_file) {
-    Arx_Analyzer __t19753 = arx_compile_frontend(input_file);
-    Arx_Analyzer az = __t19753;
+    Arx_Analyzer __t19768 = arx_compile_frontend(input_file);
+    Arx_Analyzer az = __t19768;
     if (((az.has_errors) > (((int64_t)0LL)))) {
         Arx_Env_exit(((int64_t)1LL));
     }
-    Arx_Emitter __t19754 = Arx_Emitter_init(az);
-    Arx_Emitter em = __t19754;
-    const char* __t19755 = Arx_Emitter_emit((&(em)));
-    const char* __t19756 = __t19755;
-    return __t19756;
+    Arx_Emitter __t19769 = Arx_Emitter_init(az);
+    Arx_Emitter em = __t19769;
+    const char* __t19770 = Arx_Emitter_emit((&(em)));
+    const char* __t19771 = __t19770;
+    return __t19771;
 }
 
 int64_t arx_cmd_check(const char* input_file) {
-    Arx_Analyzer __t19757 = arx_compile_frontend(input_file);
-    Arx_Analyzer az = __t19757;
+    Arx_Analyzer __t19772 = arx_compile_frontend(input_file);
+    Arx_Analyzer az = __t19772;
     if (((az.has_errors) > (((int64_t)0LL)))) {
-        int64_t __t19758 = ((int64_t)1LL);
-        return __t19758;
+        int64_t __t19773 = ((int64_t)1LL);
+        return __t19773;
     }
-    const char* __t19759 = "OK: ";
-    const char* __t19760 = arx_str_concat(__t19759, input_file);
-    const char* __t19761 = " (";
-    const char* __t19762 = arx_str_concat(__t19760, __t19761);
-    const char* __t19763 = arx_str_concat(__t19762, arx_cast_i64_to_str((int64_t)(az.ncount)));
-    const char* __t19764 = " AST nodes, ";
-    const char* __t19765 = arx_str_concat(__t19763, __t19764);
-    const char* __t19766 = arx_str_concat(__t19765, arx_cast_i64_to_str((int64_t)(az.fn_count)));
-    const char* __t19767 = " fns, ";
-    const char* __t19768 = arx_str_concat(__t19766, __t19767);
-    const char* __t19769 = arx_str_concat(__t19768, arx_cast_i64_to_str((int64_t)(az.cls_count)));
-    const char* __t19770 = " classes)";
-    const char* __t19771 = arx_str_concat(__t19769, __t19770);
-    arx_println_str(__t19771);
-    int64_t __t19772 = ((int64_t)0LL);
-    return __t19772;
+    const char* __t19774 = "OK: ";
+    const char* __t19775 = arx_str_concat(__t19774, input_file);
+    const char* __t19776 = " (";
+    const char* __t19777 = arx_str_concat(__t19775, __t19776);
+    const char* __t19778 = arx_str_concat(__t19777, arx_cast_i64_to_str((int64_t)(az.ncount)));
+    const char* __t19779 = " AST nodes, ";
+    const char* __t19780 = arx_str_concat(__t19778, __t19779);
+    const char* __t19781 = arx_str_concat(__t19780, arx_cast_i64_to_str((int64_t)(az.fn_count)));
+    const char* __t19782 = " fns, ";
+    const char* __t19783 = arx_str_concat(__t19781, __t19782);
+    const char* __t19784 = arx_str_concat(__t19783, arx_cast_i64_to_str((int64_t)(az.cls_count)));
+    const char* __t19785 = " classes)";
+    const char* __t19786 = arx_str_concat(__t19784, __t19785);
+    arx_println_str(__t19786);
+    int64_t __t19787 = ((int64_t)0LL);
+    return __t19787;
 }
 
 int64_t arx_cmd_emit_c(const char* input_file, const char* out_file) {
     const char* target = out_file;
-    const char* __t19773 = "";
-    if ((arx_str_compare(target, __t19773) == 0)) {
-        const char* __t19774 = arx_bpath_normalize(input_file);
-        const char* __t19775 = arx_strip_arx_ext(__t19774);
-        const char* __t19776 = ".c";
-        const char* __t19777 = arx_str_concat(__t19775, __t19776);
-        target = __t19777;
+    const char* __t19788 = "";
+    if ((arx_str_compare(target, __t19788) == 0)) {
+        const char* __t19789 = arx_bpath_normalize(input_file);
+        const char* __t19790 = arx_strip_arx_ext(__t19789);
+        const char* __t19791 = ".c";
+        const char* __t19792 = arx_str_concat(__t19790, __t19791);
+        target = __t19792;
     }
-    const char* __t19778 = arx_bpath_dirname(target);
-    const char* dir = __t19778;
-    const char* __t19779 = "";
-    bool __t19780 = false;
-    if ((arx_str_compare(dir, __t19779) != 0)) {
-        const char* __t19781 = ".";
-        __t19780 = ((arx_str_compare(dir, __t19781) != 0));
+    const char* __t19793 = arx_bpath_dirname(target);
+    const char* dir = __t19793;
+    const char* __t19794 = "";
+    bool __t19795 = false;
+    if ((arx_str_compare(dir, __t19794) != 0)) {
+        const char* __t19796 = ".";
+        __t19795 = ((arx_str_compare(dir, __t19796) != 0));
     }
-    if (__t19780) {
-        bool __t19782 = Arx_Directory_create(dir);
-        (void)(__t19782);
+    if (__t19795) {
+        bool __t19797 = Arx_Directory_create(dir);
+        (void)(__t19797);
     }
-    const char* __t19783 = arx_emit_c_for_file(input_file);
-    const char* c_src = __t19783;
-    bool __t19784 = Arx_File_write_string(target, c_src);
-    if ((!(__t19784))) {
-        const char* __t19785 = "ERROR: Failed to write C file: ";
-        const char* __t19786 = arx_str_concat(__t19785, target);
-        fprintf(stderr, "%s\n", __t19786);
-        int64_t __t19787 = ((int64_t)1LL);
-        return __t19787;
+    const char* __t19798 = arx_emit_c_for_file(input_file);
+    const char* c_src = __t19798;
+    bool __t19799 = Arx_File_write_string(target, c_src);
+    if ((!(__t19799))) {
+        const char* __t19800 = "ERROR: Failed to write C file: ";
+        const char* __t19801 = arx_str_concat(__t19800, target);
+        fprintf(stderr, "%s\n", __t19801);
+        int64_t __t19802 = ((int64_t)1LL);
+        return __t19802;
     }
-    int64_t __t19788 = ((int64_t)0LL);
-    return __t19788;
+    int64_t __t19803 = ((int64_t)0LL);
+    return __t19803;
 }
 
 int64_t arx_emit_native_exe(const char* input_file, const char* exe_path) {
-    const char* __t19789 = arx_bpath_dirname(exe_path);
-    const char* dir = __t19789;
-    const char* __t19790 = "";
-    bool __t19791 = false;
-    if ((arx_str_compare(dir, __t19790) != 0)) {
-        const char* __t19792 = ".";
-        __t19791 = ((arx_str_compare(dir, __t19792) != 0));
+    const char* __t19804 = arx_bpath_dirname(exe_path);
+    const char* dir = __t19804;
+    const char* __t19805 = "";
+    bool __t19806 = false;
+    if ((arx_str_compare(dir, __t19805) != 0)) {
+        const char* __t19807 = ".";
+        __t19806 = ((arx_str_compare(dir, __t19807) != 0));
     }
-    if (__t19791) {
-        bool __t19793 = Arx_Directory_create(dir);
-        (void)(__t19793);
+    if (__t19806) {
+        bool __t19808 = Arx_Directory_create(dir);
+        (void)(__t19808);
     }
-    Arx_Analyzer __t19794 = arx_compile_frontend(input_file);
-    Arx_Analyzer az = __t19794;
+    Arx_Analyzer __t19809 = arx_compile_frontend(input_file);
+    Arx_Analyzer az = __t19809;
     if (((az.has_errors) > (((int64_t)0LL)))) {
-        int64_t __t19795 = ((int64_t)1LL);
-        return __t19795;
+        int64_t __t19810 = ((int64_t)1LL);
+        return __t19810;
     }
-    Arx_NativeCodegen __t19796 = Arx_NativeCodegen_init(az);
-    Arx_NativeCodegen ncg = __t19796;
-    bool __t19797 = Arx_NativeCodegen_compile((&(ncg)), exe_path);
-    if ((!(__t19797))) {
-        const char* __t19798 = "ERROR: Failed to emit native PE32+ executable: ";
-        const char* __t19799 = arx_str_concat(__t19798, exe_path);
-        fprintf(stderr, "%s\n", __t19799);
-        int64_t __t19800 = ((int64_t)1LL);
-        return __t19800;
+    Arx_NativeCodegen __t19811 = Arx_NativeCodegen_init(az);
+    Arx_NativeCodegen ncg = __t19811;
+    bool __t19812 = Arx_NativeCodegen_compile((&(ncg)), exe_path);
+    if ((!(__t19812))) {
+        const char* __t19813 = "ERROR: Failed to emit native PE32+ executable: ";
+        const char* __t19814 = arx_str_concat(__t19813, exe_path);
+        fprintf(stderr, "%s\n", __t19814);
+        int64_t __t19815 = ((int64_t)1LL);
+        return __t19815;
     }
-    int64_t __t19801 = ((int64_t)0LL);
-    return __t19801;
+    int64_t __t19816 = ((int64_t)0LL);
+    return __t19816;
 }
 
 int64_t arx_cmd_build(const char* input_file, const char* out_file, const char* opt_flag, bool keep_c, const char* backend) {
-    const char* __t19802 = arx_bpath_normalize(input_file);
-    const char* norm_in = __t19802;
+    const char* __t19817 = arx_bpath_normalize(input_file);
+    const char* norm_in = __t19817;
     const char* exe_path = out_file;
-    const char* __t19803 = "";
-    if ((arx_str_compare(exe_path, __t19803) == 0)) {
-        const char* __t19804 = arx_strip_arx_ext(norm_in);
-        exe_path = __t19804;
+    const char* __t19818 = "";
+    if ((arx_str_compare(exe_path, __t19818) == 0)) {
+        const char* __t19819 = arx_strip_arx_ext(norm_in);
+        exe_path = __t19819;
     }
-    const char* __t19805 = arx_bpath_normalize(exe_path);
-    const char* __t19806 = arx_ensure_exe_ext(__t19805);
-    exe_path = __t19806;
+    const char* __t19820 = arx_bpath_normalize(exe_path);
+    const char* __t19821 = arx_ensure_exe_ext(__t19820);
+    exe_path = __t19821;
     bool use_native = false;
-    const char* __t19807 = "native";
-    if ((arx_str_compare(backend, __t19807) == 0)) {
+    const char* __t19822 = "native";
+    if ((arx_str_compare(backend, __t19822) == 0)) {
         use_native = true;
     } else {
-        const char* __t19808 = "c";
-        bool __t19809 = true;
-        if (!((arx_str_compare(backend, __t19808) == 0))) {
-            __t19809 = (keep_c);
+        const char* __t19823 = "c";
+        bool __t19824 = true;
+        if (!((arx_str_compare(backend, __t19823) == 0))) {
+            __t19824 = (keep_c);
         }
-        if (__t19809) {
+        if (__t19824) {
             use_native = false;
         } else {
-            const char* __t19810 = Arx_Env_os_name();
-            const char* __t19811 = "windows";
-            if ((arx_str_compare(__t19810, __t19811) == 0)) {
+            const char* __t19825 = Arx_Env_os_name();
+            const char* __t19826 = "windows";
+            if ((arx_str_compare(__t19825, __t19826) == 0)) {
                 use_native = true;
             }
         }
     }
     if (use_native) {
-        int64_t __t19812 = arx_emit_native_exe(norm_in, exe_path);
-        int64_t rc = __t19812;
+        int64_t __t19827 = arx_emit_native_exe(norm_in, exe_path);
+        int64_t rc = __t19827;
         if (((rc) == (((int64_t)0LL)))) {
-            const char* __t19813 = "Built ";
-            const char* __t19814 = arx_str_concat(__t19813, exe_path);
-            arx_println_str(__t19814);
+            const char* __t19828 = "Built ";
+            const char* __t19829 = arx_str_concat(__t19828, exe_path);
+            arx_println_str(__t19829);
         }
-        int64_t __t19815 = rc;
-        return __t19815;
+        int64_t __t19830 = rc;
+        return __t19830;
     }
-    const char* __t19816 = arx_strip_exe_ext(exe_path);
-    const char* __t19817 = ".c";
-    const char* __t19818 = arx_str_concat(__t19816, __t19817);
-    const char* c_path = __t19818;
-    const char* __t19819 = arx_emit_c_for_file(norm_in);
-    const char* c_src = __t19819;
-    int64_t __t19820 = arx_link_c_to_exe_from(c_src, c_path, exe_path, opt_flag, keep_c, norm_in);
-    int64_t __t19821 = __t19820;
-    return __t19821;
+    const char* __t19831 = arx_strip_exe_ext(exe_path);
+    const char* __t19832 = ".c";
+    const char* __t19833 = arx_str_concat(__t19831, __t19832);
+    const char* c_path = __t19833;
+    const char* __t19834 = arx_emit_c_for_file(norm_in);
+    const char* c_src = __t19834;
+    int64_t __t19835 = arx_link_c_to_exe_from(c_src, c_path, exe_path, opt_flag, keep_c, norm_in);
+    int64_t __t19836 = __t19835;
+    return __t19836;
 }
 
 int64_t arx_cmd_run(const char* input_file, const char* opt_flag, const char* backend, Arx_List_str prog_args, int64_t prog_argc) {
-    const char* __t19822 = arx_bpath_normalize(input_file);
-    const char* norm_in = __t19822;
-    const char* __t19823 = arx_get_temp_dir();
-    const char* __t19824 = "aerix_boot_run";
-    const char* __t19825 = arx_bpath_join(__t19823, __t19824);
-    const char* tmp_dir = __t19825;
-    bool __t19826 = Arx_Directory_create(tmp_dir);
-    (void)(__t19826);
-    const char* __t19827 = arx_bpath_basename(norm_in);
-    const char* __t19828 = arx_strip_arx_ext(__t19827);
-    const char* base = __t19828;
-    const char* __t19829 = ".c";
-    const char* __t19830 = arx_str_concat(base, __t19829);
-    const char* __t19831 = arx_bpath_join(tmp_dir, __t19830);
-    const char* c_path = __t19831;
-    const char* __t19832 = arx_bpath_join(tmp_dir, base);
-    const char* __t19833 = arx_ensure_exe_ext(__t19832);
-    const char* exe_path = __t19833;
+    const char* __t19837 = arx_bpath_normalize(input_file);
+    const char* norm_in = __t19837;
+    const char* __t19838 = arx_get_temp_dir();
+    const char* __t19839 = "aerix_boot_run";
+    const char* __t19840 = arx_bpath_join(__t19838, __t19839);
+    const char* tmp_dir = __t19840;
+    bool __t19841 = Arx_Directory_create(tmp_dir);
+    (void)(__t19841);
+    const char* __t19842 = arx_bpath_basename(norm_in);
+    const char* __t19843 = arx_strip_arx_ext(__t19842);
+    const char* base = __t19843;
+    const char* __t19844 = ".c";
+    const char* __t19845 = arx_str_concat(base, __t19844);
+    const char* __t19846 = arx_bpath_join(tmp_dir, __t19845);
+    const char* c_path = __t19846;
+    const char* __t19847 = arx_bpath_join(tmp_dir, base);
+    const char* __t19848 = arx_ensure_exe_ext(__t19847);
+    const char* exe_path = __t19848;
     bool use_native = false;
-    const char* __t19834 = "native";
-    if ((arx_str_compare(backend, __t19834) == 0)) {
+    const char* __t19849 = "native";
+    if ((arx_str_compare(backend, __t19849) == 0)) {
         use_native = true;
     } else {
-        const char* __t19835 = "c";
-        if ((arx_str_compare(backend, __t19835) == 0)) {
+        const char* __t19850 = "c";
+        if ((arx_str_compare(backend, __t19850) == 0)) {
             use_native = false;
         } else {
-            const char* __t19836 = Arx_Env_os_name();
-            const char* __t19837 = "windows";
-            if ((arx_str_compare(__t19836, __t19837) == 0)) {
+            const char* __t19851 = Arx_Env_os_name();
+            const char* __t19852 = "windows";
+            if ((arx_str_compare(__t19851, __t19852) == 0)) {
                 use_native = true;
             }
         }
     }
     int64_t rc_link = ((int64_t)0LL);
     if (use_native) {
-        int64_t __t19838 = arx_emit_native_exe(norm_in, exe_path);
-        rc_link = __t19838;
+        int64_t __t19853 = arx_emit_native_exe(norm_in, exe_path);
+        rc_link = __t19853;
     } else {
-        const char* __t19839 = arx_emit_c_for_file(norm_in);
-        const char* c_src = __t19839;
-        int64_t __t19840 = arx_link_c_to_exe_from(c_src, c_path, exe_path, opt_flag, false, norm_in);
-        rc_link = __t19840;
+        const char* __t19854 = arx_emit_c_for_file(norm_in);
+        const char* c_src = __t19854;
+        int64_t __t19855 = arx_link_c_to_exe_from(c_src, c_path, exe_path, opt_flag, false, norm_in);
+        rc_link = __t19855;
     }
     if (((rc_link) != (((int64_t)0LL)))) {
-        int64_t __t19841 = rc_link;
-        return __t19841;
+        int64_t __t19856 = rc_link;
+        return __t19856;
     }
-    Arx_ByteBuffer __t19842 = Arx_ByteBuffer_init();
-    Arx_ByteBuffer bb = __t19842;
-    const char* __t19843 = Arx_Env_os_name();
-    const char* __t19844 = "windows";
-    if ((arx_str_compare(__t19843, __t19844) == 0)) {
-        const char* __t19845 = "/";
-        const char* __t19846 = "\\";
-        const char* __t19847 = arx_str_replace(exe_path, __t19845, __t19846);
-        const char* win_exe = __t19847;
-        const char* __t19848 = arx_quote_shell_arg(win_exe);
-        Arx_ByteBuffer_write_str((&(bb)), __t19848);
+    Arx_ByteBuffer __t19857 = Arx_ByteBuffer_init();
+    Arx_ByteBuffer bb = __t19857;
+    const char* __t19858 = Arx_Env_os_name();
+    const char* __t19859 = "windows";
+    if ((arx_str_compare(__t19858, __t19859) == 0)) {
+        const char* __t19860 = "/";
+        const char* __t19861 = "\\";
+        const char* __t19862 = arx_str_replace(exe_path, __t19860, __t19861);
+        const char* win_exe = __t19862;
+        const char* __t19863 = arx_quote_shell_arg(win_exe);
+        Arx_ByteBuffer_write_str((&(bb)), __t19863);
     } else {
-        const char* __t19849 = arx_quote_shell_arg(exe_path);
-        Arx_ByteBuffer_write_str((&(bb)), __t19849);
+        const char* __t19864 = arx_quote_shell_arg(exe_path);
+        Arx_ByteBuffer_write_str((&(bb)), __t19864);
     }
     int64_t i = ((int64_t)0LL);
     while (1) {
         if (!(((i) < (prog_argc)))) break;
         Arx_ByteBuffer_write_u8((&(bb)), ((int64_t)32LL));
-        const char* __t19850 = Arx_List_str_get((&(prog_args)), i);
-        const char* __t19851 = arx_quote_shell_arg(__t19850);
-        Arx_ByteBuffer_write_str((&(bb)), __t19851);
+        const char* __t19865 = Arx_List_str_get((&(prog_args)), i);
+        const char* __t19866 = arx_quote_shell_arg(__t19865);
+        Arx_ByteBuffer_write_str((&(bb)), __t19866);
         i = ((i) + (((int64_t)1LL)));
     }
-    const char* __t19852 = Arx_ByteBuffer_to_str((&(bb)));
-    const char* run_cmd = __t19852;
+    const char* __t19867 = Arx_ByteBuffer_to_str((&(bb)));
+    const char* run_cmd = __t19867;
     Arx_ByteBuffer_free((&(bb)));
-    int64_t __t19853 = Arx_Process_execute(run_cmd);
-    int64_t rc = __t19853;
-    bool __t19854 = Arx_File_remove(exe_path);
-    (void)(__t19854);
+    int64_t __t19868 = Arx_Process_execute(run_cmd);
+    int64_t rc = __t19868;
+    bool __t19869 = Arx_File_remove(exe_path);
+    (void)(__t19869);
     if (((rc) == ((-(((int64_t)1LL)))))) {
-        const char* __t19855 = "error: failed to execute compiled binary '";
-        const char* __t19856 = arx_str_concat(__t19855, exe_path);
-        const char* __t19857 = "'. If Windows Defender or antivirus blocked temp execution, try 'arx build \"";
-        const char* __t19858 = arx_str_concat(__t19856, __t19857);
-        const char* __t19859 = arx_str_concat(__t19858, input_file);
-        const char* __t19860 = "\"' and run the built .exe directly.";
-        const char* __t19861 = arx_str_concat(__t19859, __t19860);
-        fprintf(stderr, "%s\n", __t19861);
+        const char* __t19870 = "error: failed to execute compiled binary '";
+        const char* __t19871 = arx_str_concat(__t19870, exe_path);
+        const char* __t19872 = "'. If Windows Defender or antivirus blocked temp execution, try 'arx build \"";
+        const char* __t19873 = arx_str_concat(__t19871, __t19872);
+        const char* __t19874 = arx_str_concat(__t19873, input_file);
+        const char* __t19875 = "\"' and run the built .exe directly.";
+        const char* __t19876 = arx_str_concat(__t19874, __t19875);
+        fprintf(stderr, "%s\n", __t19876);
     } else {
         if (((rc) >= (((int64_t)3221225472LL)))) {
-            const char* __t19862 = "error: compiled program crashed or failed to initialize (Windows status code ";
-            const char* __t19863 = arx_str_concat(__t19862, arx_cast_i64_to_str((int64_t)(rc)));
-            const char* __t19864 = ").";
-            const char* __t19865 = arx_str_concat(__t19863, __t19864);
-            fprintf(stderr, "%s\n", __t19865);
+            const char* __t19877 = "error: compiled program crashed or failed to initialize (Windows status code ";
+            const char* __t19878 = arx_str_concat(__t19877, arx_cast_i64_to_str((int64_t)(rc)));
+            const char* __t19879 = ").";
+            const char* __t19880 = arx_str_concat(__t19878, __t19879);
+            fprintf(stderr, "%s\n", __t19880);
         }
     }
-    int64_t __t19866 = rc;
-    return __t19866;
+    int64_t __t19881 = rc;
+    return __t19881;
 }
 
 int64_t arx_main(void) {
-    Arx_List_str __t19867 = Arx_Env_args();
-    Arx_List_str cli_args = __t19867;
-    int64_t __t19868 = Arx_Env_arg_count();
-    int64_t cli_argc = __t19868;
+    Arx_List_str __t19882 = Arx_Env_args();
+    Arx_List_str cli_args = __t19882;
+    int64_t __t19883 = Arx_Env_arg_count();
+    int64_t cli_argc = __t19883;
     if (((cli_argc) <= (((int64_t)1LL)))) {
         arx_print_usage();
-        int64_t __t19869 = ((int64_t)0LL);
-        return __t19869;
+        int64_t __t19884 = ((int64_t)0LL);
+        return __t19884;
     }
-    const char* __t19870 = Arx_List_str_get((&(cli_args)), ((int64_t)1LL));
-    const char* first = __t19870;
-    const char* __t19871 = "version";
-    bool __t19872 = true;
-    if (!((arx_str_compare(first, __t19871) == 0))) {
-        const char* __t19873 = "--version";
-        __t19872 = ((arx_str_compare(first, __t19873) == 0));
+    const char* __t19885 = Arx_List_str_get((&(cli_args)), ((int64_t)1LL));
+    const char* first = __t19885;
+    const char* __t19886 = "version";
+    bool __t19887 = true;
+    if (!((arx_str_compare(first, __t19886) == 0))) {
+        const char* __t19888 = "--version";
+        __t19887 = ((arx_str_compare(first, __t19888) == 0));
     }
-    bool __t19874 = true;
-    if (!(__t19872)) {
-        const char* __t19875 = "-v";
-        __t19874 = ((arx_str_compare(first, __t19875) == 0));
+    bool __t19889 = true;
+    if (!(__t19887)) {
+        const char* __t19890 = "-v";
+        __t19889 = ((arx_str_compare(first, __t19890) == 0));
     }
-    if (__t19874) {
-        const char* __t19876 = "Aerix Self-Hosting Bootstrap Compiler (arxc) v1.1.2-stable";
-        arx_println_str(__t19876);
+    if (__t19889) {
+        const char* __t19891 = "Aerix Self-Hosting Bootstrap Compiler (arxc) v1.1.2-stable";
+        arx_println_str(__t19891);
         arx_maybe_trigger_bg_update();
-        int64_t __t19877 = ((int64_t)0LL);
-        return __t19877;
+        int64_t __t19892 = ((int64_t)0LL);
+        return __t19892;
     }
-    const char* __t19878 = "help";
-    bool __t19879 = true;
-    if (!((arx_str_compare(first, __t19878) == 0))) {
-        const char* __t19880 = "--help";
-        __t19879 = ((arx_str_compare(first, __t19880) == 0));
+    const char* __t19893 = "help";
+    bool __t19894 = true;
+    if (!((arx_str_compare(first, __t19893) == 0))) {
+        const char* __t19895 = "--help";
+        __t19894 = ((arx_str_compare(first, __t19895) == 0));
     }
-    bool __t19881 = true;
-    if (!(__t19879)) {
-        const char* __t19882 = "-h";
-        __t19881 = ((arx_str_compare(first, __t19882) == 0));
+    bool __t19896 = true;
+    if (!(__t19894)) {
+        const char* __t19897 = "-h";
+        __t19896 = ((arx_str_compare(first, __t19897) == 0));
     }
-    if (__t19881) {
+    if (__t19896) {
         arx_print_usage();
-        int64_t __t19883 = ((int64_t)0LL);
-        return __t19883;
+        int64_t __t19898 = ((int64_t)0LL);
+        return __t19898;
     }
-    const char* __t19884 = "lsp";
-    if ((arx_str_compare(first, __t19884) == 0)) {
-        int64_t __t19885 = arx_run_lsp_server();
-        int64_t __t19886 = __t19885;
-        return __t19886;
+    const char* __t19899 = "lsp";
+    if ((arx_str_compare(first, __t19899) == 0)) {
+        int64_t __t19900 = arx_run_lsp_server();
+        int64_t __t19901 = __t19900;
+        return __t19901;
     }
-    const char* __t19887 = "update";
-    bool __t19888 = true;
-    if (!((arx_str_compare(first, __t19887) == 0))) {
-        const char* __t19889 = "upgrade";
-        __t19888 = ((arx_str_compare(first, __t19889) == 0));
+    const char* __t19902 = "update";
+    bool __t19903 = true;
+    if (!((arx_str_compare(first, __t19902) == 0))) {
+        const char* __t19904 = "upgrade";
+        __t19903 = ((arx_str_compare(first, __t19904) == 0));
     }
-    if (__t19888) {
+    if (__t19903) {
         bool upd_check = false;
         bool upd_force = false;
+        bool upd_verbose = false;
+        bool upd_no_ide = false;
         int64_t ui = ((int64_t)2LL);
         while (1) {
             if (!(((ui) < (cli_argc)))) break;
-            const char* __t19890 = Arx_List_str_get((&(cli_args)), ui);
-            const char* ua = __t19890;
-            const char* __t19891 = "--check";
-            bool __t19892 = true;
-            if (!((arx_str_compare(ua, __t19891) == 0))) {
-                const char* __t19893 = "-c";
-                __t19892 = ((arx_str_compare(ua, __t19893) == 0));
+            const char* __t19905 = Arx_List_str_get((&(cli_args)), ui);
+            const char* ua = __t19905;
+            const char* __t19906 = "--help";
+            bool __t19907 = true;
+            if (!((arx_str_compare(ua, __t19906) == 0))) {
+                const char* __t19908 = "-h";
+                __t19907 = ((arx_str_compare(ua, __t19908) == 0));
             }
-            if (__t19892) {
-                upd_check = true;
+            if (__t19907) {
+                arx_print_update_usage();
+                int64_t __t19909 = ((int64_t)0LL);
+                return __t19909;
             } else {
-                const char* __t19894 = "--force";
-                bool __t19895 = true;
-                if (!((arx_str_compare(ua, __t19894) == 0))) {
-                    const char* __t19896 = "-f";
-                    __t19895 = ((arx_str_compare(ua, __t19896) == 0));
+                const char* __t19910 = "--check";
+                bool __t19911 = true;
+                if (!((arx_str_compare(ua, __t19910) == 0))) {
+                    const char* __t19912 = "-c";
+                    __t19911 = ((arx_str_compare(ua, __t19912) == 0));
                 }
-                if (__t19895) {
-                    upd_force = true;
+                if (__t19911) {
+                    upd_check = true;
+                } else {
+                    const char* __t19913 = "--force";
+                    bool __t19914 = true;
+                    if (!((arx_str_compare(ua, __t19913) == 0))) {
+                        const char* __t19915 = "-f";
+                        __t19914 = ((arx_str_compare(ua, __t19915) == 0));
+                    }
+                    if (__t19914) {
+                        upd_force = true;
+                    } else {
+                        const char* __t19916 = "--verbose";
+                        bool __t19917 = true;
+                        if (!((arx_str_compare(ua, __t19916) == 0))) {
+                            const char* __t19918 = "-v";
+                            __t19917 = ((arx_str_compare(ua, __t19918) == 0));
+                        }
+                        if (__t19917) {
+                            upd_verbose = true;
+                        } else {
+                            const char* __t19919 = "--no-ide";
+                            bool __t19920 = true;
+                            if (!((arx_str_compare(ua, __t19919) == 0))) {
+                                const char* __t19921 = "--no-vscode";
+                                __t19920 = ((arx_str_compare(ua, __t19921) == 0));
+                            }
+                            bool __t19922 = true;
+                            if (!(__t19920)) {
+                                const char* __t19923 = "--no-antigravity";
+                                __t19922 = ((arx_str_compare(ua, __t19923) == 0));
+                            }
+                            if (__t19922) {
+                                upd_no_ide = true;
+                            } else {
+                                const char* __t19924 = "error: unknown option '";
+                                const char* __t19925 = arx_str_concat(__t19924, ua);
+                                const char* __t19926 = "' for 'arx ";
+                                const char* __t19927 = arx_str_concat(__t19925, __t19926);
+                                const char* __t19928 = arx_str_concat(__t19927, first);
+                                const char* __t19929 = "'";
+                                const char* __t19930 = arx_str_concat(__t19928, __t19929);
+                                fprintf(stderr, "%s\n", __t19930);
+                                const char* __t19931 = "  = help: run 'arx ";
+                                const char* __t19932 = arx_str_concat(__t19931, first);
+                                const char* __t19933 = " --help' to see supported options";
+                                const char* __t19934 = arx_str_concat(__t19932, __t19933);
+                                fprintf(stderr, "%s\n", __t19934);
+                                int64_t __t19935 = ((int64_t)1LL);
+                                return __t19935;
+                            }
+                        }
+                    }
                 }
             }
             ui = ((ui) + (((int64_t)1LL)));
         }
-        int64_t __t19897 = arx_cmd_update(upd_check, upd_force);
-        int64_t __t19898 = __t19897;
-        return __t19898;
+        int64_t __t19936 = arx_cmd_update(upd_check, upd_force, upd_verbose, upd_no_ide);
+        int64_t __t19937 = __t19936;
+        return __t19937;
     }
-    const char* __t19899 = "";
-    const char* mode = __t19899;
+    const char* __t19938 = "";
+    const char* mode = __t19938;
     int64_t start_i = ((int64_t)2LL);
-    const char* __t19900 = "build";
-    bool __t19901 = true;
-    if (!((arx_str_compare(first, __t19900) == 0))) {
-        const char* __t19902 = "run";
-        __t19901 = ((arx_str_compare(first, __t19902) == 0));
+    const char* __t19939 = "build";
+    bool __t19940 = true;
+    if (!((arx_str_compare(first, __t19939) == 0))) {
+        const char* __t19941 = "run";
+        __t19940 = ((arx_str_compare(first, __t19941) == 0));
     }
-    bool __t19903 = true;
-    if (!(__t19901)) {
-        const char* __t19904 = "emit-c";
-        __t19903 = ((arx_str_compare(first, __t19904) == 0));
+    bool __t19942 = true;
+    if (!(__t19940)) {
+        const char* __t19943 = "emit-c";
+        __t19942 = ((arx_str_compare(first, __t19943) == 0));
     }
-    bool __t19905 = true;
-    if (!(__t19903)) {
-        const char* __t19906 = "check";
-        __t19905 = ((arx_str_compare(first, __t19906) == 0));
+    bool __t19944 = true;
+    if (!(__t19942)) {
+        const char* __t19945 = "check";
+        __t19944 = ((arx_str_compare(first, __t19945) == 0));
     }
-    if (__t19905) {
+    if (__t19944) {
         mode = first;
     } else {
-        const char* __t19907 = "auto";
-        mode = __t19907;
+        const char* __t19946 = "auto";
+        mode = __t19946;
         start_i = ((int64_t)1LL);
     }
-    const char* __t19908 = "";
-    const char* input_file = __t19908;
-    const char* __t19909 = "";
-    const char* out_file = __t19909;
-    const char* __t19910 = "-O2";
-    const char* opt_flag = __t19910;
+    const char* __t19947 = "";
+    const char* input_file = __t19947;
+    const char* __t19948 = "";
+    const char* out_file = __t19948;
+    const char* __t19949 = "-O2";
+    const char* opt_flag = __t19949;
     bool keep_c = false;
-    const char* __t19911 = "auto";
-    const char* backend = __t19911;
-    Arx_List_str __t19912 = Arx_List_str_init();
-    Arx_List_str prog_args = __t19912;
+    const char* __t19950 = "auto";
+    const char* backend = __t19950;
+    Arx_List_str __t19951 = Arx_List_str_init();
+    Arx_List_str prog_args = __t19951;
     int64_t prog_argc = ((int64_t)0LL);
     bool after_dashdash = false;
     int64_t i = start_i;
     while (1) {
         if (!(((i) < (cli_argc)))) break;
-        const char* __t19913 = Arx_List_str_get((&(cli_args)), i);
-        const char* a = __t19913;
+        const char* __t19952 = Arx_List_str_get((&(cli_args)), i);
+        const char* a = __t19952;
         if (after_dashdash) {
             Arx_List_str_push((&(prog_args)), a);
             prog_argc = ((prog_argc) + (((int64_t)1LL)));
         } else {
-            const char* __t19914 = "--";
-            if ((arx_str_compare(a, __t19914) == 0)) {
+            const char* __t19953 = "--";
+            if ((arx_str_compare(a, __t19953) == 0)) {
                 after_dashdash = true;
             } else {
-                const char* __t19915 = "-o";
-                bool __t19916 = true;
-                if (!((arx_str_compare(a, __t19915) == 0))) {
-                    const char* __t19917 = "--output";
-                    __t19916 = ((arx_str_compare(a, __t19917) == 0));
+                const char* __t19954 = "-o";
+                bool __t19955 = true;
+                if (!((arx_str_compare(a, __t19954) == 0))) {
+                    const char* __t19956 = "--output";
+                    __t19955 = ((arx_str_compare(a, __t19956) == 0));
                 }
-                if (__t19916) {
+                if (__t19955) {
                     if (((((i) + (((int64_t)1LL)))) < (cli_argc))) {
                         i = ((i) + (((int64_t)1LL)));
-                        const char* __t19918 = Arx_List_str_get((&(cli_args)), i);
-                        out_file = __t19918;
+                        const char* __t19957 = Arx_List_str_get((&(cli_args)), i);
+                        out_file = __t19957;
                     }
                 } else {
-                    const char* __t19919 = "--emit-c";
-                    if ((arx_str_compare(a, __t19919) == 0)) {
+                    const char* __t19958 = "--emit-c";
+                    if ((arx_str_compare(a, __t19958) == 0)) {
                         keep_c = true;
                     } else {
-                        const char* __t19920 = "--backend=c";
-                        if ((arx_str_compare(a, __t19920) == 0)) {
-                            const char* __t19921 = "c";
-                            backend = __t19921;
+                        const char* __t19959 = "--backend=c";
+                        if ((arx_str_compare(a, __t19959) == 0)) {
+                            const char* __t19960 = "c";
+                            backend = __t19960;
                         } else {
-                            const char* __t19922 = "--backend=native";
-                            if ((arx_str_compare(a, __t19922) == 0)) {
-                                const char* __t19923 = "native";
-                                backend = __t19923;
+                            const char* __t19961 = "--backend=native";
+                            if ((arx_str_compare(a, __t19961) == 0)) {
+                                const char* __t19962 = "native";
+                                backend = __t19962;
                             } else {
-                                const char* __t19924 = "-O0";
-                                bool __t19925 = true;
-                                if (!((arx_str_compare(a, __t19924) == 0))) {
-                                    const char* __t19926 = "-O1";
-                                    __t19925 = ((arx_str_compare(a, __t19926) == 0));
+                                const char* __t19963 = "-O0";
+                                bool __t19964 = true;
+                                if (!((arx_str_compare(a, __t19963) == 0))) {
+                                    const char* __t19965 = "-O1";
+                                    __t19964 = ((arx_str_compare(a, __t19965) == 0));
                                 }
-                                bool __t19927 = true;
-                                if (!(__t19925)) {
-                                    const char* __t19928 = "-O2";
-                                    __t19927 = ((arx_str_compare(a, __t19928) == 0));
+                                bool __t19966 = true;
+                                if (!(__t19964)) {
+                                    const char* __t19967 = "-O2";
+                                    __t19966 = ((arx_str_compare(a, __t19967) == 0));
                                 }
-                                bool __t19929 = true;
-                                if (!(__t19927)) {
-                                    const char* __t19930 = "-O3";
-                                    __t19929 = ((arx_str_compare(a, __t19930) == 0));
+                                bool __t19968 = true;
+                                if (!(__t19966)) {
+                                    const char* __t19969 = "-O3";
+                                    __t19968 = ((arx_str_compare(a, __t19969) == 0));
                                 }
-                                if (__t19929) {
+                                if (__t19968) {
                                     opt_flag = a;
                                 } else {
-                                    const char* __t19931 = "";
-                                    if ((arx_str_compare(input_file, __t19931) == 0)) {
+                                    const char* __t19970 = "";
+                                    if ((arx_str_compare(input_file, __t19970) == 0)) {
                                         input_file = a;
                                     } else {
                                         Arx_List_str_push((&(prog_args)), a);
@@ -49774,48 +49865,48 @@ int64_t arx_main(void) {
         }
         i = ((i) + (((int64_t)1LL)));
     }
-    const char* __t19932 = "";
-    if ((arx_str_compare(input_file, __t19932) == 0)) {
-        const char* __t19933 = "ERROR: No input .arx file provided.";
-        fprintf(stderr, "%s\n", __t19933);
+    const char* __t19971 = "";
+    if ((arx_str_compare(input_file, __t19971) == 0)) {
+        const char* __t19972 = "ERROR: No input .arx file provided.";
+        fprintf(stderr, "%s\n", __t19972);
         arx_print_usage();
-        int64_t __t19934 = ((int64_t)1LL);
-        return __t19934;
+        int64_t __t19973 = ((int64_t)1LL);
+        return __t19973;
     }
     arx_maybe_trigger_bg_update();
-    const char* __t19935 = "check";
-    if ((arx_str_compare(mode, __t19935) == 0)) {
-        int64_t __t19936 = arx_cmd_check(input_file);
-        int64_t __t19937 = __t19936;
-        return __t19937;
+    const char* __t19974 = "check";
+    if ((arx_str_compare(mode, __t19974) == 0)) {
+        int64_t __t19975 = arx_cmd_check(input_file);
+        int64_t __t19976 = __t19975;
+        return __t19976;
     }
-    const char* __t19938 = "emit-c";
-    if ((arx_str_compare(mode, __t19938) == 0)) {
-        int64_t __t19939 = arx_cmd_emit_c(input_file, out_file);
-        int64_t __t19940 = __t19939;
-        return __t19940;
+    const char* __t19977 = "emit-c";
+    if ((arx_str_compare(mode, __t19977) == 0)) {
+        int64_t __t19978 = arx_cmd_emit_c(input_file, out_file);
+        int64_t __t19979 = __t19978;
+        return __t19979;
     }
-    const char* __t19941 = "build";
-    if ((arx_str_compare(mode, __t19941) == 0)) {
-        int64_t __t19942 = arx_cmd_build(input_file, out_file, opt_flag, keep_c, backend);
-        int64_t __t19943 = __t19942;
-        return __t19943;
+    const char* __t19980 = "build";
+    if ((arx_str_compare(mode, __t19980) == 0)) {
+        int64_t __t19981 = arx_cmd_build(input_file, out_file, opt_flag, keep_c, backend);
+        int64_t __t19982 = __t19981;
+        return __t19982;
     }
-    const char* __t19944 = "run";
-    if ((arx_str_compare(mode, __t19944) == 0)) {
-        int64_t __t19945 = arx_cmd_run(input_file, opt_flag, backend, prog_args, prog_argc);
-        int64_t __t19946 = __t19945;
-        return __t19946;
+    const char* __t19983 = "run";
+    if ((arx_str_compare(mode, __t19983) == 0)) {
+        int64_t __t19984 = arx_cmd_run(input_file, opt_flag, backend, prog_args, prog_argc);
+        int64_t __t19985 = __t19984;
+        return __t19985;
     }
-    const char* __t19947 = "";
-    if ((arx_str_compare(out_file, __t19947) != 0)) {
-        int64_t __t19948 = arx_cmd_build(input_file, out_file, opt_flag, keep_c, backend);
-        int64_t __t19949 = __t19948;
-        return __t19949;
+    const char* __t19986 = "";
+    if ((arx_str_compare(out_file, __t19986) != 0)) {
+        int64_t __t19987 = arx_cmd_build(input_file, out_file, opt_flag, keep_c, backend);
+        int64_t __t19988 = __t19987;
+        return __t19988;
     }
-    int64_t __t19950 = arx_cmd_run(input_file, opt_flag, backend, prog_args, prog_argc);
-    int64_t __t19951 = __t19950;
-    return __t19951;
+    int64_t __t19989 = arx_cmd_run(input_file, opt_flag, backend, prog_args, prog_argc);
+    int64_t __t19990 = __t19989;
+    return __t19990;
 }
 
 int main(int argc, char** argv) {

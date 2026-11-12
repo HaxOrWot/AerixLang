@@ -56,6 +56,9 @@ namespace AerixSetup
         public string SetupAssetName = "";
         public string SetupDownloadUrl = "";
         public long SetupSize;
+        public string PublishedAt = "";
+        public string HtmlUrl = "";
+        public string ReleaseNotes = "";
     }
 
     public sealed class UpdateResult
@@ -65,6 +68,14 @@ namespace AerixSetup
         public bool UpdateAvailable;
         public string CurrentVersion = "";
         public string LatestVersion = "";
+        public string InstallDir = "";
+        public string PublishedAt = "";
+        public string AssetName = "";
+        public long AssetSize;
+        public string ReleaseUrl = "";
+        public string ReleaseNotes = "";
+        public string LogPath = "";
+        public double ElapsedSeconds;
         public string Message = "";
     }
 
@@ -1252,16 +1263,36 @@ namespace AerixSetup
                         Version = ver,
                         SetupAssetName = assetName,
                         SetupDownloadUrl = downloadUrl,
-                        SetupSize = assetSize
+                        SetupSize = assetSize,
+                        PublishedAt = StrVal(rel, "published_at"),
+                        HtmlUrl = StrVal(rel, "html_url"),
+                        ReleaseNotes = StrVal(rel, "body")
                     };
                 }
             }
             return best;
         }
 
-        public static UpdateResult RunAutoUpdate(bool checkOnly, bool force, string installDirOverride, ProgressHandler progress)
+        public static string FormatBytes(long bytes)
+        {
+            if (bytes <= 0) return "unknown size";
+            if (bytes < 1024) return bytes + " B";
+            if (bytes < 1024 * 1024) return string.Format("{0:0.0} KB", bytes / 1024.0);
+            return string.Format("{0:0.00} MB", bytes / (1024.0 * 1024.0));
+        }
+
+        public static string ResolveUpdaterLogPath()
+        {
+            string localApp = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            if (string.IsNullOrEmpty(localApp)) return "";
+            return Path.Combine(localApp, "Aerix", "updater.log");
+        }
+
+        public static UpdateResult RunAutoUpdate(bool checkOnly, bool force, bool skipIde, string installDirOverride, ProgressHandler progress)
         {
             var res = new UpdateResult();
+            res.LogPath = ResolveUpdaterLogPath();
+            var sw = Stopwatch.StartNew();
             Mutex mtx = null;
             bool acquired = false;
             string tempDir = null;
@@ -1284,6 +1315,7 @@ namespace AerixSetup
                 if (!acquired)
                 {
                     res.Success = true;
+                    res.ElapsedSeconds = sw.Elapsed.TotalSeconds;
                     res.Message = "Another Aerix update is already running.";
                     return res;
                 }
@@ -1306,20 +1338,29 @@ namespace AerixSetup
                     }
                 }
                 targetDir = Path.GetFullPath(TrimTrailingSlashes(targetDir));
+                res.InstallDir = targetDir;
 
                 res.CurrentVersion = GetInstalledVersionFromDisk(targetDir);
-                Report(progress, 10, "Checking GitHub for latest stable release...", "Current version: v" + res.CurrentVersion);
+                Report(progress, 10, "Checking GitHub for latest stable release...", targetDir + "|v" + res.CurrentVersion);
 
                 StableReleaseInfo latest = FetchLatestStableRelease();
                 if (latest == null)
                 {
                     res.Success = false;
-                    res.Message = "No stable Aerix release with Windows installer found on GitHub.";
+                    res.ElapsedSeconds = sw.Elapsed.TotalSeconds;
+                    res.Message = "No stable Aerix release with a Windows installer was found on GitHub.";
                     WriteUpdaterLog("Check failed: " + res.Message);
                     return res;
                 }
 
                 res.LatestVersion = latest.Version;
+                res.PublishedAt = latest.PublishedAt;
+                res.AssetName = latest.SetupAssetName;
+                res.AssetSize = latest.SetupSize;
+                res.ReleaseUrl = string.IsNullOrEmpty(latest.HtmlUrl)
+                    ? ("https://github.com/HaxOrWot/AerixLang/releases/tag/" + latest.TagName)
+                    : latest.HtmlUrl;
+                res.ReleaseNotes = latest.ReleaseNotes;
                 TouchUpdateCheckStamp(latest.Version);
 
                 int cmp = CompareVersions(latest.Version, res.CurrentVersion);
@@ -1328,7 +1369,8 @@ namespace AerixSetup
                 {
                     res.Success = true;
                     res.Updated = false;
-                    res.Message = string.Format("Aerix is already up to date (v{0}).", res.CurrentVersion);
+                    res.ElapsedSeconds = sw.Elapsed.TotalSeconds;
+                    res.Message = string.Format("Already running the latest stable release (v{0}).", res.CurrentVersion);
                     Report(progress, 100, res.Message, res.Message);
                     return res;
                 }
@@ -1337,7 +1379,9 @@ namespace AerixSetup
                 {
                     res.Success = true;
                     res.Updated = false;
-                    res.Message = string.Format("Update available: v{0} -> v{1} ({2})", res.CurrentVersion, res.LatestVersion, latest.SetupAssetName);
+                    res.ElapsedSeconds = sw.Elapsed.TotalSeconds;
+                    res.Message = string.Format("Update available: v{0} -> v{1} ({2}, {3})",
+                        res.CurrentVersion, res.LatestVersion, latest.SetupAssetName, FormatBytes(latest.SetupSize));
                     Report(progress, 100, res.Message, res.Message);
                     return res;
                 }
@@ -1346,35 +1390,63 @@ namespace AerixSetup
                 Directory.CreateDirectory(tempDir);
                 string setupPath = Path.Combine(tempDir, latest.SetupAssetName);
 
-                Report(progress, 25, "Downloading " + latest.SetupAssetName + "...", latest.SetupDownloadUrl);
+                Report(progress, 20, "Downloading " + latest.SetupAssetName + " (" + FormatBytes(latest.SetupSize) + ")...", latest.SetupDownloadUrl);
                 ServicePointManager.SecurityProtocol |= (SecurityProtocolType)3072 | SecurityProtocolType.Tls | SecurityProtocolType.Tls11;
                 using (var wc = new WebClient())
                 {
                     wc.Headers.Add("User-Agent", "AerixSetup-Updater");
-                    wc.DownloadFile(latest.SetupDownloadUrl, setupPath);
+                    using (Stream inStream = wc.OpenRead(latest.SetupDownloadUrl))
+                    using (FileStream outStream = new FileStream(setupPath, FileMode.Create, FileAccess.Write, FileShare.None))
+                    {
+                        byte[] buf = new byte[32768];
+                        long totalRead = 0;
+                        int lastPct = 20;
+                        int nRead;
+                        while ((nRead = inStream.Read(buf, 0, buf.Length)) > 0)
+                        {
+                            outStream.Write(buf, 0, nRead);
+                            totalRead += nRead;
+                            if (latest.SetupSize > 0)
+                            {
+                                int pct = 20 + (int)((totalRead * 40L) / latest.SetupSize);
+                                if (pct >= lastPct + 5 || totalRead == latest.SetupSize)
+                                {
+                                    lastPct = pct;
+                                    Report(progress, pct,
+                                        string.Format("Downloading {0} ({1} / {2})...",
+                                            latest.SetupAssetName, FormatBytes(totalRead), FormatBytes(latest.SetupSize)),
+                                        "progress");
+                                }
+                            }
+                        }
+                    }
                 }
 
+                Report(progress, 62, "Verifying downloaded PE32+ installer...", setupPath);
                 var fi = new FileInfo(setupPath);
                 if (!fi.Exists || fi.Length < 100000)
                 {
                     res.Success = false;
+                    res.ElapsedSeconds = sw.Elapsed.TotalSeconds;
                     res.Message = "Downloaded installer is incomplete or corrupted.";
                     WriteUpdaterLog("Download invalid: size=" + (fi.Exists ? fi.Length : 0));
                     return res;
                 }
+                if (res.AssetSize <= 0) res.AssetSize = fi.Length;
                 using (FileStream fs = File.OpenRead(setupPath))
                 {
                     if (fs.ReadByte() != 0x4D || fs.ReadByte() != 0x5A)
                     {
                         res.Success = false;
+                        res.ElapsedSeconds = sw.Elapsed.TotalSeconds;
                         res.Message = "Downloaded update file is not a valid Windows executable.";
                         WriteUpdaterLog("Invalid PE header for " + setupPath);
                         return res;
                     }
                 }
 
-                Report(progress, 65, "Installing Aerix v" + latest.Version + "...", "Running silent installer into " + targetDir);
-                string args = string.Format("--silent \"--dir={0}\"", targetDir);
+                Report(progress, 75, "Installing Aerix v" + latest.Version + " into " + targetDir + "...", "silent-install");
+                string args = string.Format("--silent \"--dir={0}\"{1}", targetDir, skipIde ? " --no-ide" : "");
                 var psi = new ProcessStartInfo(setupPath, args);
                 psi.CreateNoWindow = true;
                 psi.UseShellExecute = false;
@@ -1384,6 +1456,7 @@ namespace AerixSetup
                     if (p == null || !p.WaitForExit(180000))
                     {
                         res.Success = false;
+                        res.ElapsedSeconds = sw.Elapsed.TotalSeconds;
                         res.Message = "Timed out applying Aerix update.";
                         WriteUpdaterLog(res.Message);
                         return res;
@@ -1391,15 +1464,20 @@ namespace AerixSetup
                     if (p.ExitCode != 0)
                     {
                         res.Success = false;
+                        res.ElapsedSeconds = sw.Elapsed.TotalSeconds;
                         res.Message = "Installer exited with code " + p.ExitCode + ".";
                         WriteUpdaterLog(res.Message);
                         return res;
                     }
                 }
 
+                Report(progress, 92, "Verifying updated compiler binary...", targetDir);
+                string postVer = GetInstalledVersionFromDisk(targetDir);
                 res.Success = true;
                 res.Updated = true;
-                res.Message = string.Format("Updated Aerix from v{0} to v{1}.", res.CurrentVersion, latest.Version);
+                res.ElapsedSeconds = sw.Elapsed.TotalSeconds;
+                if (!string.IsNullOrEmpty(postVer)) res.LatestVersion = postVer;
+                res.Message = string.Format("Updated Aerix from v{0} to v{1}.", res.CurrentVersion, res.LatestVersion);
                 WriteUpdaterLog(res.Message);
                 Report(progress, 100, res.Message, res.Message);
                 return res;
@@ -1407,6 +1485,7 @@ namespace AerixSetup
             catch (Exception ex)
             {
                 res.Success = false;
+                res.ElapsedSeconds = sw.Elapsed.TotalSeconds;
                 res.Message = ex.Message;
                 WriteUpdaterLog("Update exception: " + ex.Message);
                 return res;

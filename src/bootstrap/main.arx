@@ -19,9 +19,23 @@ fn print_usage() {
     println("  arxc emit-c <file.arx> [-o <out.c>]")
     println("  arxc check <file.arx>")
     println("  arxc lsp")
-    println("  arxc update [--check] [--force]")
+    println("  arxc update [--check] [--force] [--verbose] [--no-ide]")
     println("  arxc <file.arx> [-o <out>]")
     println("  arxc version")
+}
+
+fn print_update_usage() {
+    println("Aerix Toolchain Updater (alias: arx upgrade)")
+    println("Usage:")
+    println("  arx update [options]")
+    println("  arx upgrade [options]")
+    println("")
+    println("Options:")
+    println("  -c, --check     Check GitHub for the latest stable release without installing")
+    println("  -f, --force     Reinstall the latest stable release even if already up to date")
+    println("  -v, --verbose   Show release notes from the latest stable release")
+    println("      --no-ide    Skip refreshing VS Code / Antigravity extension packages")
+    println("  -h, --help      Show this help message")
 }
 
 fn resolve_updater_exe() -> str {
@@ -52,7 +66,7 @@ fn maybe_trigger_bg_update() {
     }
 }
 
-fn cmd_update(check_only: bool, force: bool) -> i64 {
+fn cmd_update(check_only: bool, force: bool, verbose: bool, no_ide: bool) -> i64 {
     if Env.os_name() != "windows" {
         eprintln("error: built-in self-updater currently supports Windows installations only.")
         return 1
@@ -72,6 +86,12 @@ fn cmd_update(check_only: bool, force: bool) -> i64 {
     }
     if force {
         cmd = cmd + " --force"
+    }
+    if verbose {
+        cmd = cmd + " --verbose"
+    }
+    if no_ide {
+        cmd = cmd + " --no-ide"
     }
     return Process.execute(cmd)
 }
@@ -402,17 +422,30 @@ fn main() -> i64 {
     if first == "update" || first == "upgrade" {
         mut upd_check = false
         mut upd_force = false
+        mut upd_verbose = false
+        mut upd_no_ide = false
         mut ui = 2
         while ui < cli_argc {
             let ua = cli_args.get(ui)
-            if ua == "--check" || ua == "-c" {
+            if ua == "--help" || ua == "-h" {
+                print_update_usage()
+                return 0
+            } else if ua == "--check" || ua == "-c" {
                 upd_check = true
             } else if ua == "--force" || ua == "-f" {
                 upd_force = true
+            } else if ua == "--verbose" || ua == "-v" {
+                upd_verbose = true
+            } else if ua == "--no-ide" || ua == "--no-vscode" || ua == "--no-antigravity" {
+                upd_no_ide = true
+            } else {
+                eprintln("error: unknown option '" + ua + "' for 'arx " + first + "'")
+                eprintln("  = help: run 'arx " + first + " --help' to see supported options")
+                return 1
             }
             ui = ui + 1
         }
-        return cmd_update(upd_check, upd_force)
+        return cmd_update(upd_check, upd_force, upd_verbose, upd_no_ide)
     }
 
     mut mode = ""
