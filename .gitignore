@@ -28,10 +28,12 @@ scratch/
 pch_test/
 
 # Test binaries and temporary output
+tests/
 test_bench.c
 test_bench.exe
 test.c
 test.exe
+test_*
 
 # IDE and Editor configurations
 .vscode/

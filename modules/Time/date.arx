@@ -45,62 +45,18 @@ pub class DateTime {
     }
 }
 
-pub fn from_epoch(secs: i64) -> DateTime {
-    let dt = DateTime()
-    if secs <= 0 {
-        return dt
-    }
-    let s = secs % 60
-    let rem_m = secs / 60
-    let m = rem_m % 60
-    let rem_h = rem_m / 60
-    let h = rem_h % 24
-    mut days = rem_h / 24
-
-    dt.second = s
-    dt.minute = m
-    dt.hour = h
-
-    mut y = 1970
-    loop {
-        mut diy = 365
-        if is_leap_year(y) {
-            diy = 366
-        }
-        if days < diy {
-            break
-        }
-        days = days - diy
-        y = y + 1
-    }
-    dt.year = y
-
-    mut mon = 1
-    while mon <= 12 {
-        let dim = days_in_month(y, mon)
-        if days < dim {
-            break
-        }
-        days = days - dim
-        mon = mon + 1
-    }
-    dt.month = mon
-    dt.day = days + 1
-    return dt
-}
-
-pub fn from_epoch_ms(ms: i64) -> DateTime {
-    let dt = from_epoch(ms / 1000)
-    dt.millisecond = ms % 1000
-    return dt
-}
-
 pub fn now_local() -> DateTime {
-    return from_epoch(c_time(0))
-}
-
-pub fn now_utc() -> DateTime {
-    return from_epoch(c_time(0))
+    let dt = DateTime()
+    let buf = " ".repeat(16)
+    get_local_time(buf)
+    dt.year = buf.byte_at(0) + (buf.byte_at(1) << 8)
+    dt.month = buf.byte_at(2) + (buf.byte_at(3) << 8)
+    dt.day = buf.byte_at(6) + (buf.byte_at(7) << 8)
+    dt.hour = buf.byte_at(8) + (buf.byte_at(9) << 8)
+    dt.minute = buf.byte_at(10) + (buf.byte_at(11) << 8)
+    dt.second = buf.byte_at(12) + (buf.byte_at(13) << 8)
+    dt.millisecond = buf.byte_at(14) + (buf.byte_at(15) << 8)
+    return dt
 }
 
 pub fn now_string() -> str {

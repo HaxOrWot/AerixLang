@@ -3,37 +3,34 @@
 // Time measurement, delays, and timestamp primitives.
 // ==============================================================================
 
-#[extern("msvcrt.dll", "time")]
-pub fn c_time(t: i64) -> i64;
-
 #[extern("kernel32.dll", "GetTickCount64")]
-pub fn get_tick_count_64() -> i64;
+pub fn ticks() -> i64;
 
 #[extern("kernel32.dll", "Sleep")]
 pub fn sleep_ms(ms: i64) -> void;
-
-pub fn ticks() -> i64 {
-    return get_tick_count_64();
-}
 
 pub fn now() -> f64 {
     return arx_time_now();
 }
 
 pub fn time() -> f64 {
-    return c_time(0) as f64;
+    return arx_time_now();
 }
 
 pub fn epoch() -> f64 {
-    return c_time(0) as f64;
+    return arx_time_now();
 }
 
 pub fn epoch_secs() -> i64 {
-    return c_time(0);
+    return arx_time_now() as i64;
 }
 
 pub fn epoch_ms() -> i64 {
-    return c_time(0) * 1000;
+    return (arx_time_now() * 1000.0) as i64;
+}
+
+pub fn sleep(ms: i64) -> void {
+    arx_sleep(ms);
 }
 
 pub fn sleep_secs(secs: f64) -> void {
@@ -41,5 +38,5 @@ pub fn sleep_secs(secs: f64) -> void {
         return;
     }
     let ms = (secs * 1000.0) as i64;
-    sleep_ms(ms);
+    arx_sleep(ms);
 }
