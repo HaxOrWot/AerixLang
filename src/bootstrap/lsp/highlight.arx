@@ -4,6 +4,7 @@
 import "../frontend/tokens.arx"
 import "../frontend/lexer.arx"
 import "../frontend/ast.arx"
+import "../middle/paths.arx"
 import "../middle/analyzer.arx"
 import "./docs.arx"
 
@@ -84,29 +85,568 @@ fn hl_is_builtin_receiver_type(rt: str) -> bool {
     return rt == "str" || lsp_is_container_type(base)
 }
 
-fn hl_is_field_readonly(az: Analyzer, cls_name: str, field_name: str) -> bool {
-    if !az.cls_idx_map.has_key(cls_name) { return false }
-    let cid = az.cls_nodes.get(az.cls_idx_map.get(cls_name))
-    let fg = az.la.get(cid)
-    if fg < 0 { return false }
-    let fc = az.ll.get(fg)
-    mut fi = 0
-    while fi < fc {
-        let fid = az.ch.get(az.ls.get(fg) + fi)
-        if az.sa.get(fid) == field_name {
-            return !has_flag(az.ia.get(fid), FLAG_MUT())
-        }
-        fi = fi + 1
+pub class HlFileHeader {
+    pub sig: str
+    pub classes: List<str>
+    pub enums: List<str>
+    pub enum_vars: List<str>
+    pub fns: List<str>
+    pub global_ro: List<str>
+    pub global_mut: List<str>
+    pub global_type_keys: List<str>
+    pub global_type_vals: List<str>
+    pub field_ro_keys: List<str>
+    pub field_all_keys: List<str>
+    pub method_static_keys: List<str>
+    pub method_all_keys: List<str>
+    pub import_files: List<str>
+    pub import_mods: List<str>
+
+    init(sig_str: str) {
+        self.sig = sig_str
+        self.classes = List<str>()
+        self.enums = List<str>()
+        self.enum_vars = List<str>()
+        self.fns = List<str>()
+        self.global_ro = List<str>()
+        self.global_mut = List<str>()
+        self.global_type_keys = List<str>()
+        self.global_type_vals = List<str>()
+        self.field_ro_keys = List<str>()
+        self.field_all_keys = List<str>()
+        self.method_static_keys = List<str>()
+        self.method_all_keys = List<str>()
+        self.import_files = List<str>()
+        self.import_mods = List<str>()
     }
-    return false
 }
 
-fn hl_is_method_static(az: Analyzer, cls_name: str, mname: str) -> bool {
-    let sk = "m::" + cls_name + "::" + mname
-    if !az.sig_by_key.has_key(sk) { return false }
-    let sidx = az.sig_by_key.get(sk).split(",").get(0).to_i64()
-    if sidx >= 0 && sidx < az.sig_count {
-        return az.sig_is_static.get(sidx) == 1
+pub class HlHeaderCache {
+    pub headers: Map<str, HlFileHeader>
+    pub dir_arx_cache: Map<str, List<str> >
+
+    init() {
+        self.headers = Map<str, HlFileHeader>()
+        self.dir_arx_cache = Map<str, List<str> >()
+    }
+
+    pub fn invalidate(fpath: str) {
+        let norm = bpath_normalize(fpath)
+        if self.headers.has_key(norm) {
+            self.headers.remove(norm)
+        }
+    }
+}
+
+pub class HlSymEnv {
+    pub class_set: Map<str, i64>
+    pub enum_set: Map<str, i64>
+    pub fn_set: Map<str, i64>
+    pub enum_var_set: Map<str, i64>
+    pub global_ro: Map<str, i64>
+    pub global_mut: Map<str, i64>
+    pub global_var_types: Map<str, str>
+    pub ast_decl_types: Map<str, str>
+    pub field_ro: Map<str, i64>
+    pub method_static: Map<str, i64>
+    pub class_fields: Map<str, i64>
+    pub class_methods: Map<str, i64>
+
+    init() {
+        self.class_set = Map<str, i64>()
+        self.enum_set = Map<str, i64>()
+        self.fn_set = Map<str, i64>()
+        self.enum_var_set = Map<str, i64>()
+        self.global_ro = Map<str, i64>()
+        self.global_mut = Map<str, i64>()
+        self.global_var_types = Map<str, str>()
+        self.ast_decl_types = Map<str, str>()
+        self.field_ro = Map<str, i64>()
+        self.method_static = Map<str, i64>()
+        self.class_fields = Map<str, i64>()
+        self.class_methods = Map<str, i64>()
+    }
+}
+
+fn hl_src_sig(s: str) -> str {
+    let n = s.len()
+    if n == 0 { return "0" }
+    return "" + n + ":" + s.byte_at(0) + ":" + s.byte_at(n / 2) + ":" + s.byte_at(n - 1)
+}
+
+fn hl_strip_gen_prefix(t: str) -> str {
+    let lt = lsp_str_find(t, "<", 0)
+    if lt > 0 { return t.slice(0, lt) }
+    return t
+}
+
+fn hl_collect_dir_arx_cached(dir_path: str, cache: HlHeaderCache) -> List<str> {
+    if cache.dir_arx_cache.has_key(dir_path) {
+        return cache.dir_arx_cache.get(dir_path)
+    }
+    let out = List<str>()
+    let stack = List<str>()
+    stack.push(dir_path)
+    while stack.len() > 0 {
+        let cur = stack.pop()
+        let files = Directory.list_files(cur)
+        mut fi = 0
+        while fi < files.len() {
+            let fnm = files.get(fi)
+            if str_ends_with_arx(fnm) {
+                out.push(bpath_join(cur, fnm))
+            }
+            fi = fi + 1
+        }
+        let dirs = Directory.list_dirs(cur)
+        mut di = 0
+        while di < dirs.len() {
+            stack.push(bpath_join(cur, dirs.get(di)))
+            di = di + 1
+        }
+    }
+    cache.dir_arx_cache.insert(dir_path, out)
+    return out
+}
+
+fn hl_extract_header_from_ts(ts: TokenStream, sig_str: str) -> HlFileHeader {
+    let hdr = HlFileHeader(sig_str)
+    let n = ts.count
+    mut brace_depth = 0
+    mut cls_depth = -1
+    mut enum_depth = -1
+    mut cur_cls = ""
+    mut is_static = false
+    mut in_fn_sig = false
+    mut fn_paren_depth = 0
+    mut expect_brace = false
+    mut prev_k = TK_EOF()
+    mut i = 0
+
+    while i < n {
+        let k = ts.kinds.get(i)
+        let v = ts.vals.get(i)
+        if k == TK_EOF() { break }
+        if k == TK_NEWLINE() {
+            is_static = false
+            i = i + 1
+            continue
+        }
+
+        if k == TK_LBRACE() {
+            brace_depth = brace_depth + 1
+            expect_brace = false
+            prev_k = k; i = i + 1; continue
+        }
+        if k == TK_RBRACE() {
+            if cls_depth == brace_depth {
+                cls_depth = -1
+                cur_cls = ""
+            }
+            if enum_depth == brace_depth {
+                enum_depth = -1
+            }
+            brace_depth = brace_depth - 1
+            if brace_depth < 0 { brace_depth = 0 }
+            prev_k = k; i = i + 1; continue
+        }
+        if k == TK_LPAREN() {
+            if in_fn_sig { fn_paren_depth = fn_paren_depth + 1 }
+            prev_k = k; i = i + 1; continue
+        }
+        if k == TK_RPAREN() {
+            if in_fn_sig {
+                fn_paren_depth = fn_paren_depth - 1
+                if fn_paren_depth <= 0 {
+                    in_fn_sig = false
+                    expect_brace = true
+                }
+            }
+            prev_k = k; i = i + 1; continue
+        }
+        if k == TK_SEMICOLON() {
+            expect_brace = false
+            is_static = false
+            prev_k = k; i = i + 1; continue
+        }
+
+        // Collect imports / use directives at top level
+        if brace_depth == 0 && (k == TK_IMPORT() || k == TK_USE()) {
+            mut j = i + 1
+            if j < n && ts.kinds.get(j) == TK_LBRACE() {
+                while j < n && ts.kinds.get(j) != TK_RBRACE() && ts.kinds.get(j) != TK_EOF() {
+                    j = j + 1
+                }
+                if j < n && ts.kinds.get(j) == TK_RBRACE() { j = j + 1 }
+                if j < n && ts.kinds.get(j) == TK_FROM() { j = j + 1 }
+            }
+            if j < n && ts.kinds.get(j) == TK_STR() {
+                hdr.import_files.push(ts.vals.get(j))
+                i = j + 1
+                prev_k = TK_STR()
+                continue
+            }
+            while j < n && ts.kinds.get(j) == TK_IDENT() {
+                hdr.import_mods.push(ts.vals.get(j))
+                j = j + 1
+                if j < n && ts.kinds.get(j) == TK_COMMA() {
+                    j = j + 1
+                } else {
+                    break
+                }
+            }
+            i = j
+            prev_k = k
+            continue
+        }
+
+        if k == TK_STATIC() {
+            is_static = true
+            prev_k = k; i = i + 1; continue
+        }
+        if k == TK_FN() {
+            in_fn_sig = true
+            fn_paren_depth = 0
+        }
+
+        if k == TK_IDENT() {
+            let nxt = next_sig_kind(ts, i)
+            if (prev_k == TK_CLASS() || prev_k == TK_STRUCT()) && brace_depth == 0 {
+                hdr.classes.push(v)
+                cls_depth = 1
+                cur_cls = v
+                is_static = false
+            } else if prev_k == TK_ENUM() && brace_depth == 0 {
+                hdr.enums.push(v)
+                enum_depth = 1
+                is_static = false
+            } else if enum_depth > 0 && brace_depth == enum_depth {
+                if nxt == TK_LPAREN() || nxt == TK_COMMA() || nxt == TK_RBRACE() || nxt == TK_NEWLINE() {
+                    hdr.enum_vars.push(v)
+                }
+            } else if prev_k == TK_FN() {
+                if cls_depth > 0 && brace_depth == cls_depth && cur_cls != "" {
+                    let mk = cur_cls + "::" + v
+                    hdr.method_all_keys.push(mk)
+                    if is_static { hdr.method_static_keys.push(mk) }
+                } else if brace_depth == 0 {
+                    hdr.fns.push(v)
+                }
+                is_static = false
+            } else if prev_k == TK_CEXTERN() && brace_depth == 0 {
+                hdr.fns.push(v)
+            } else if cls_depth > 0 && brace_depth == cls_depth && !in_fn_sig && nxt == TK_COLON() && cur_cls != "" {
+                let fk = cur_cls + "::" + v
+                hdr.field_all_keys.push(fk)
+                if prev_k != TK_MUT() {
+                    hdr.field_ro_keys.push(fk)
+                }
+                is_static = false
+            } else if brace_depth == 0 && (prev_k == TK_LET() || prev_k == TK_CONST() || prev_k == TK_MUT()) {
+                if prev_k == TK_MUT() {
+                    hdr.global_mut.push(v)
+                } else {
+                    hdr.global_ro.push(v)
+                }
+                // Check explicit ': Type' or '= Type(...)' on same statement
+                let n1 = next_nonnl_idx(ts, i)
+                if n1 < n && ts.kinds.get(n1) == TK_COLON() {
+                    let t_idx = next_nonnl_idx(ts, n1)
+                    if t_idx < n && ts.kinds.get(t_idx) == TK_IDENT() {
+                        hdr.global_type_keys.push(v)
+                        hdr.global_type_vals.push(ts.vals.get(t_idx))
+                    }
+                } else if n1 < n && ts.kinds.get(n1) == TK_EQUALS() {
+                    let r_idx = next_nonnl_idx(ts, n1)
+                    if r_idx < n && ts.kinds.get(r_idx) == TK_IDENT() {
+                        hdr.global_type_keys.push(v)
+                        hdr.global_type_vals.push(ts.vals.get(r_idx))
+                    }
+                }
+            }
+        }
+
+        prev_k = k
+        i = i + 1
+    }
+    return hdr
+}
+
+fn hl_merge_header(env: HlSymEnv, hdr: HlFileHeader) {
+    mut i = 0
+    while i < hdr.classes.len() { env.class_set.insert(hdr.classes.get(i), 1); i = i + 1 }
+    i = 0
+    while i < hdr.enums.len() { env.enum_set.insert(hdr.enums.get(i), 1); i = i + 1 }
+    i = 0
+    while i < hdr.enum_vars.len() { env.enum_var_set.insert(hdr.enum_vars.get(i), 1); i = i + 1 }
+    i = 0
+    while i < hdr.fns.len() { env.fn_set.insert(hdr.fns.get(i), 1); i = i + 1 }
+    i = 0
+    while i < hdr.global_ro.len() { env.global_ro.insert(hdr.global_ro.get(i), 1); i = i + 1 }
+    i = 0
+    while i < hdr.global_mut.len() { env.global_mut.insert(hdr.global_mut.get(i), 1); i = i + 1 }
+    i = 0
+    while i < hdr.global_type_keys.len() {
+        env.global_var_types.insert(hdr.global_type_keys.get(i), hdr.global_type_vals.get(i))
+        i = i + 1
+    }
+    i = 0
+    while i < hdr.field_all_keys.len() {
+        env.class_fields.insert(hdr.field_all_keys.get(i), 1)
+        i = i + 1
+    }
+    i = 0
+    while i < hdr.field_ro_keys.len() {
+        env.field_ro.insert(hdr.field_ro_keys.get(i), 1)
+        i = i + 1
+    }
+    i = 0
+    while i < hdr.method_all_keys.len() {
+        env.class_methods.insert(hdr.method_all_keys.get(i), 1)
+        i = i + 1
+    }
+    i = 0
+    while i < hdr.method_static_keys.len() {
+        env.method_static.insert(hdr.method_static_keys.get(i), 1)
+        i = i + 1
+    }
+}
+
+fn hl_load_header_cached(fpath: str, docs_by_path: Map<str, str>, cache: HlHeaderCache) -> HlFileHeader {
+    let norm = bpath_normalize(fpath)
+    mut src = ""
+    if docs_by_path.has_key(norm) {
+        src = docs_by_path.get(norm)
+    } else {
+        if cache.headers.has_key(norm) {
+            return cache.headers.get(norm)
+        }
+        if !File.exists(norm) {
+            return HlFileHeader("missing")
+        }
+        src = File.read_to_string(norm)
+    }
+
+    let sig = hl_src_sig(src)
+    if cache.headers.has_key(norm) {
+        let cached = cache.headers.get(norm)
+        if cached.sig == sig {
+            return cached
+        }
+    }
+
+    mut lx = Lexer(src, norm)
+    lx.recover_mode = true
+    let ts = lx.tokenize()
+    let hdr = hl_extract_header_from_ts(ts, sig)
+    cache.headers.insert(norm, hdr)
+    return hdr
+}
+
+fn hl_collect_imports_cached(entry_hdr: HlFileHeader, entry_path: str, docs_by_path: Map<str, str>, cache: HlHeaderCache, env: HlSymEnv) {
+    let entry_dir = bpath_dirname(entry_path)
+    let visited = Map<str, i64>()
+    visited.insert(entry_path, 1)
+
+    let queue_paths = List<str>()
+    let queue_hdrs = List<HlFileHeader>()
+    queue_paths.push(entry_path)
+    queue_hdrs.push(entry_hdr)
+
+    mut q = 0
+    while q < queue_paths.len() {
+        let cur_path = queue_paths.get(q)
+        let cur_dir = bpath_dirname(cur_path)
+        let hdr = queue_hdrs.get(q)
+        q = q + 1
+
+        mut fi = 0
+        while fi < hdr.import_files.len() {
+            let imp = hdr.import_files.get(fi)
+            fi = fi + 1
+            let resolved = bpath_join(cur_dir, imp)
+            if visited.has_key(resolved) { continue }
+            visited.insert(resolved, 1)
+            let ihdr = hl_load_header_cached(resolved, docs_by_path, cache)
+            hl_merge_header(env, ihdr)
+            queue_paths.push(resolved)
+            queue_hdrs.push(ihdr)
+        }
+
+        mut mi = 0
+        while mi < hdr.import_mods.len() {
+            let mname = hdr.import_mods.get(mi)
+            mi = mi + 1
+            let mod_dir = find_module_dir(mname, entry_dir)
+            if mod_dir == "" { continue }
+            let mod_files = hl_collect_dir_arx_cached(mod_dir, cache)
+            mut mfi = 0
+            while mfi < mod_files.len() {
+                let mf = bpath_normalize(mod_files.get(mfi))
+                mfi = mfi + 1
+                if visited.has_key(mf) { continue }
+                visited.insert(mf, 1)
+                let mhdr = hl_load_header_cached(mf, docs_by_path, cache)
+                hl_merge_header(env, mhdr)
+                queue_paths.push(mf)
+                queue_hdrs.push(mhdr)
+            }
+        }
+    }
+}
+
+fn hl_scan_local_hints(ts: TokenStream, env: HlSymEnv) {
+    let n = ts.count
+    mut i = 0
+    mut prev_k = TK_EOF()
+    mut in_fn_sig = false
+    mut fn_paren_d = 0
+
+    while i < n {
+        let k = ts.kinds.get(i)
+        if k == TK_EOF() { break }
+        if k == TK_FN() || k == TK_INIT() {
+            in_fn_sig = true
+            fn_paren_d = 0
+        } else if k == TK_LPAREN() {
+            if in_fn_sig { fn_paren_d = fn_paren_d + 1 }
+        } else if k == TK_RPAREN() {
+            if in_fn_sig {
+                fn_paren_d = fn_paren_d - 1
+                if fn_paren_d <= 0 { in_fn_sig = false }
+            }
+        } else if k == TK_IDENT() {
+            let v = ts.vals.get(i)
+            let ln = ts.lines.get(i)
+            let is_decl = prev_k == TK_LET() || prev_k == TK_MUT() || prev_k == TK_CONST() || (in_fn_sig && fn_paren_d > 0)
+            if is_decl {
+                let n1 = next_nonnl_idx(ts, i)
+                if n1 < n && ts.kinds.get(n1) == TK_COLON() {
+                    let t_idx = next_nonnl_idx(ts, n1)
+                    if t_idx < n && ts.kinds.get(t_idx) == TK_IDENT() {
+                        env.ast_decl_types.insert("" + ln + "::" + v, ts.vals.get(t_idx))
+                    }
+                } else if n1 < n && ts.kinds.get(n1) == TK_EQUALS() {
+                    let r_idx = next_nonnl_idx(ts, n1)
+                    if r_idx < n {
+                        let rk = ts.kinds.get(r_idx)
+                        if rk == TK_STR() || rk == TK_STR_INTERP() {
+                            env.ast_decl_types.insert("" + ln + "::" + v, "str")
+                        } else if rk == TK_IDENT() {
+                            let rv = ts.vals.get(r_idx)
+                            if env.class_set.has_key(rv) || lsp_is_container_type(rv) {
+                                env.ast_decl_types.insert("" + ln + "::" + v, rv)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if k != TK_NEWLINE() { prev_k = k }
+        i = i + 1
+    }
+}
+
+fn hl_build_env_from_analyzer(az: Analyzer, doc_path: str) -> HlSymEnv {
+    let env = HlSymEnv()
+    mut ci = 0
+    while ci < az.cls_count {
+        let cname = az.cls_names.get(ci)
+        env.class_set.insert(cname, 1)
+        let cid = az.cls_nodes.get(ci)
+        let fg = az.la.get(cid)
+        if fg >= 0 {
+            let fc = az.ll.get(fg)
+            mut fi = 0
+            while fi < fc {
+                let fid = az.ch.get(az.ls.get(fg) + fi)
+                let fnm = az.sa.get(fid)
+                let fkey = cname + "::" + fnm
+                env.class_fields.insert(fkey, 1)
+                if !has_flag(az.ia.get(fid), FLAG_MUT()) {
+                    env.field_ro.insert(fkey, 1)
+                }
+                fi = fi + 1
+            }
+        }
+        ci = ci + 1
+    }
+    for sk in az.sig_by_key.keys() {
+        if sk.starts_with("m::") {
+            let mk = sk.slice(3, sk.len())
+            env.class_methods.insert(mk, 1)
+            let raw_idx_s = az.sig_by_key.get(sk)
+            let comma_pos = lsp_str_find(raw_idx_s, ",", 0)
+            mut sidx = 0
+            if comma_pos > 0 {
+                sidx = raw_idx_s.slice(0, comma_pos).to_i64()
+            } else {
+                sidx = raw_idx_s.to_i64()
+            }
+            if sidx >= 0 && sidx < az.sig_count && az.sig_is_static.get(sidx) == 1 {
+                env.method_static.insert(mk, 1)
+            }
+        }
+    }
+    mut ei = 0
+    while ei < az.enum_count {
+        env.enum_set.insert(az.enum_names.get(ei), 1)
+        let enode = az.enum_nodes.get(ei)
+        let vc = az.ll.get(enode)
+        mut vi = 0
+        while vi < vc {
+            let vnode = az.ch.get(az.ls.get(enode) + vi)
+            env.enum_var_set.insert(az.sa.get(vnode), 1)
+            vi = vi + 1
+        }
+        ei = ei + 1
+    }
+    mut fi = 0
+    while fi < az.fn_count {
+        env.fn_set.insert(az.sa.get(az.fn_nodes.get(fi)), 1)
+        fi = fi + 1
+    }
+    mut gi = 0
+    while gi < az.global_count {
+        let gnode = az.global_nodes.get(gi)
+        let gname = az.sa.get(gnode)
+        if az.ia.get(gnode) != 0 {
+            env.global_mut.insert(gname, 1)
+        } else {
+            env.global_ro.insert(gname, 1)
+        }
+        if az.global_types.has_key(gname) {
+            env.global_var_types.insert(gname, az.global_types.get(gname))
+        }
+        gi = gi + 1
+    }
+    mut ni = 0
+    while ni < az.ncount {
+        let nk = az.nk.get(ni)
+        if (nk == NK_VAR_DECL() || nk == NK_PARAM() || nk == NK_FOR()) && az.nf.get(ni) == doc_path {
+            let vnm = az.sa.get(ni)
+            mut vt = btype_norm(az.node_types.get(ni))
+            if vt == "" || vt == "void" { vt = btype_norm(az.sb.get(ni)) }
+            if vt != "" && vt != "void" {
+                env.ast_decl_types.insert("" + az.ln.get(ni) + "::" + vnm, vt)
+            }
+        }
+        ni = ni + 1
+    }
+    return env
+}
+
+fn hl_is_method_static_fast(env: HlSymEnv, az_opt: Analyzer, has_az: bool, cls_name: str, mname: str) -> bool {
+    let mk = cls_name + "::" + mname
+    if env.method_static.has_key(mk) { return true }
+    if !has_az { return false }
+    let sk = "m::" + mk
+    if !az_opt.sig_by_key.has_key(sk) { return false }
+    let sidx = az_opt.sig_by_key.get(sk).split(",").get(0).to_i64()
+    if sidx >= 0 && sidx < az_opt.sig_count {
+        let is_st = az_opt.sig_is_static.get(sidx) == 1
+        if is_st { env.method_static.insert(mk, 1) }
+        return is_st
     }
     return false
 }
@@ -162,7 +702,29 @@ fn push_sem_span(lines: List<i64>, cols: List<i64>, lens: List<i64>, types: List
     mods.push(smod)
 }
 
-fn split_str_interp_spans(src: str, ln1: i64, col1: i64, tlen: i64,
+fn hl_str_has_brace(src: str, line_starts: List<i64>, ln1: i64, col1: i64, tlen: i64) -> bool {
+    if ln1 <= 0 || col1 <= 0 || tlen <= 2 { return false }
+    let lidx = ln1 - 1
+    if lidx >= line_starts.len() { return false }
+    let start_pos = line_starts.get(lidx) + (col1 - 1)
+    let total = src.len()
+    mut end_pos = start_pos + tlen
+    if start_pos < 0 || start_pos >= total { return false }
+    if end_pos > total { end_pos = total }
+    mut p = start_pos
+    while p < end_pos {
+        let b = src.byte_at(p)
+        if b == 92 && p + 1 < end_pos {
+            p = p + 2
+            continue
+        }
+        if b == 123 { return true }
+        p = p + 1
+    }
+    return false
+}
+
+fn split_str_interp_spans(src: str, line_starts: List<i64>, ln1: i64, col1: i64, tlen: i64,
                           class_set: Map<str, i64>, enum_set: Map<str, i64>,
                           enum_var_set: Map<str, i64>, fn_set: Map<str, i64>,
                           cur_params: Map<str, i64>, cur_tparams: Map<str, i64>,
@@ -170,14 +732,13 @@ fn split_str_interp_spans(src: str, ln1: i64, col1: i64, tlen: i64,
                           var_types: Map<str, str>,
                           lines: List<i64>, cols: List<i64>, lens: List<i64>,
                           types: List<i64>, mods: List<i64>) {
-    // Locate 1-based line in source to extract exact raw slice
-    mut cur_ln = 1
-    mut off = 0
-    let total = src.len()
-    while cur_ln < ln1 && off < total {
-        if src.byte_at(off) == 10 { cur_ln = cur_ln + 1 }
-        off = off + 1
+    let lidx = ln1 - 1
+    if ln1 <= 0 || col1 <= 0 || lidx >= line_starts.len() {
+        push_sem_span(lines, cols, lens, types, mods, ln1, col1, tlen, ST_STRING(), 0)
+        return
     }
+    let off = line_starts.get(lidx)
+    let total = src.len()
     mut line_end = off
     while line_end < total && src.byte_at(line_end) != 10 && src.byte_at(line_end) != 13 {
         line_end = line_end + 1
@@ -302,75 +863,19 @@ fn split_str_interp_spans(src: str, ln1: i64, col1: i64, tlen: i64,
     }
 }
 
-pub fn lsp_compute_semantic_tokens(source: str, az: Analyzer, doc_path: str) -> List<i64> {
-    mut lx = Lexer(source, doc_path)
-    lx.recover_mode = true
-    lx.collect_trivia = true
-    let ts = lx.tokenize()
-    let line_starts = hl_build_line_starts(source)
-
-    // Collect symbol tables from Analyzer
-    let class_set = Map<str, i64>()
-    let enum_set = Map<str, i64>()
-    let fn_set = Map<str, i64>()
-    let enum_var_set = Map<str, i64>()
-    let global_ro = Map<str, i64>()
-    let global_mut = Map<str, i64>()
-    let ast_decl_types = Map<str, str>()
-    let global_var_types = Map<str, str>()
-
-    mut ci = 0
-    while ci < az.cls_count {
-        class_set.insert(az.cls_names.get(ci), 1)
-        ci = ci + 1
-    }
-    mut ei = 0
-    while ei < az.enum_count {
-        let ename = az.enum_names.get(ei)
-        enum_set.insert(ename, 1)
-        let enode = az.enum_nodes.get(ei)
-        let vc = az.ll.get(enode)
-        mut vi = 0
-        while vi < vc {
-            let vnode = az.ch.get(az.ls.get(enode) + vi)
-            enum_var_set.insert(az.sa.get(vnode), 1)
-            vi = vi + 1
-        }
-        ei = ei + 1
-    }
-    mut fi = 0
-    while fi < az.fn_count {
-        let fid = az.fn_nodes.get(fi)
-        fn_set.insert(az.sa.get(fid), 1)
-        fi = fi + 1
-    }
-    mut gi = 0
-    while gi < az.global_count {
-        let gnode = az.global_nodes.get(gi)
-        let gname = az.sa.get(gnode)
-        if az.ia.get(gnode) != 0 {
-            global_mut.insert(gname, 1)
-        } else {
-            global_ro.insert(gname, 1)
-        }
-        if az.global_types.has_key(gname) {
-            global_var_types.insert(gname, az.global_types.get(gname))
-        }
-        gi = gi + 1
-    }
-    mut ni = 0
-    while ni < az.ncount {
-        let nk = az.nk.get(ni)
-        if (nk == NK_VAR_DECL() || nk == NK_PARAM() || nk == NK_FOR()) && az.nf.get(ni) == doc_path {
-            let vnm = az.sa.get(ni)
-            mut vt = btype_norm(az.node_types.get(ni))
-            if vt == "" || vt == "void" { vt = btype_norm(az.sb.get(ni)) }
-            if vt != "" && vt != "void" {
-                ast_decl_types.insert("" + az.ln.get(ni) + "::" + vnm, vt)
-            }
-        }
-        ni = ni + 1
-    }
+pub fn hl_classify_ts(source: str, lx: Lexer, ts: TokenStream, line_starts: List<i64>, env: HlSymEnv) -> List<i64> {
+    let class_set = env.class_set
+    let enum_set = env.enum_set
+    let fn_set = env.fn_set
+    let enum_var_set = env.enum_var_set
+    let global_ro = env.global_ro
+    let global_mut = env.global_mut
+    let ast_decl_types = env.ast_decl_types
+    let global_var_types = env.global_var_types
+    let field_ro = env.field_ro
+    let method_static = env.method_static
+    let class_fields = env.class_fields
+    let class_methods = env.class_methods
 
     let tok_lines = List<i64>()
     let tok_cols = List<i64>()
@@ -454,17 +959,17 @@ pub fn lsp_compute_semantic_tokens(source: str, az: Analyzer, doc_path: str) -> 
         }
         if k == TK_RBRACE() {
             if fn_depth == brace_depth {
-                cur_params = Map<str, i64>()
-                ro_vars = Map<str, i64>()
-                mut_vars = Map<str, i64>()
-                var_types = Map<str, str>()
-                fn_tparams = Map<str, i64>()
+                if cur_params.len() > 0 { cur_params = Map<str, i64>() }
+                if ro_vars.len() > 0 { ro_vars = Map<str, i64>() }
+                if mut_vars.len() > 0 { mut_vars = Map<str, i64>() }
+                if var_types.len() > 0 { var_types = Map<str, str>() }
+                if fn_tparams.len() > 0 { fn_tparams = Map<str, i64>() }
                 fn_depth = -1
             }
             if cls_depth == brace_depth {
                 cls_depth = -1
                 cur_cls_name = ""
-                cls_tparams = Map<str, i64>()
+                if cls_tparams.len() > 0 { cls_tparams = Map<str, i64>() }
                 in_extend_body = false
             }
             if enum_depth == brace_depth { enum_depth = -1; in_enum_body = false }
@@ -497,11 +1002,11 @@ pub fn lsp_compute_semantic_tokens(source: str, az: Analyzer, doc_path: str) -> 
         if k == TK_SEMICOLON() {
             if pending_fn_body && prev_kind != TK_FAT_ARROW() {
                 pending_fn_body = false
-                cur_params = Map<str, i64>()
-                ro_vars = Map<str, i64>()
-                mut_vars = Map<str, i64>()
-                var_types = Map<str, str>()
-                fn_tparams = Map<str, i64>()
+                if cur_params.len() > 0 { cur_params = Map<str, i64>() }
+                if ro_vars.len() > 0 { ro_vars = Map<str, i64>() }
+                if mut_vars.len() > 0 { mut_vars = Map<str, i64>() }
+                if var_types.len() > 0 { var_types = Map<str, str>() }
+                if fn_tparams.len() > 0 { fn_tparams = Map<str, i64>() }
             }
             expect_type_depth = 0
             in_import_line = false
@@ -519,7 +1024,10 @@ pub fn lsp_compute_semantic_tokens(source: str, az: Analyzer, doc_path: str) -> 
             prev_kind = k; i = i + 1; continue
         }
         if k == TK_STR_INTERP() {
-            // Merge current local/param/global views for string interpolation
+            if !hl_str_has_brace(source, line_starts, ln, cl, tl) {
+                push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, ST_STRING(), 0)
+                prev_kind = k; i = i + 1; continue
+            }
             let combined_ro = Map<str, i64>()
             for gk in global_ro.keys() { combined_ro.insert(gk, 1) }
             for rk in ro_vars.keys() { combined_ro.insert(rk, 1) }
@@ -533,7 +1041,7 @@ pub fn lsp_compute_semantic_tokens(source: str, az: Analyzer, doc_path: str) -> 
             for gvk in global_var_types.keys() { combined_vt.insert(gvk, global_var_types.get(gvk)) }
             for lvk in var_types.keys() { combined_vt.insert(lvk, var_types.get(lvk)) }
 
-            split_str_interp_spans(source, ln, cl, tl, class_set, enum_set, enum_var_set, fn_set,
+            split_str_interp_spans(source, line_starts, ln, cl, tl, class_set, enum_set, enum_var_set, fn_set,
                                    cur_params, combined_tp, combined_ro, combined_mut, combined_vt,
                                    tok_lines, tok_cols, tok_lens, tok_types, tok_mods)
             prev_kind = k; i = i + 1; continue
@@ -551,22 +1059,22 @@ pub fn lsp_compute_semantic_tokens(source: str, az: Analyzer, doc_path: str) -> 
             if k == TK_STATIC() {
                 is_static_decl = true
             } else if k == TK_FN() {
-                cur_params = Map<str, i64>()
-                ro_vars = Map<str, i64>()
-                mut_vars = Map<str, i64>()
-                var_types = Map<str, str>()
-                fn_tparams = Map<str, i64>()
+                if cur_params.len() > 0 { cur_params = Map<str, i64>() }
+                if ro_vars.len() > 0 { ro_vars = Map<str, i64>() }
+                if mut_vars.len() > 0 { mut_vars = Map<str, i64>() }
+                if var_types.len() > 0 { var_types = Map<str, str>() }
+                if fn_tparams.len() > 0 { fn_tparams = Map<str, i64>() }
                 in_fn_sig = true
                 fn_sig_paren_depth = 0
                 pending_fn_body = false
                 pending_tparam_decl = true
                 decl_tparam_is_cls = false
             } else if k == TK_INIT() || k == TK_DROP() {
-                cur_params = Map<str, i64>()
-                ro_vars = Map<str, i64>()
-                mut_vars = Map<str, i64>()
-                var_types = Map<str, str>()
-                fn_tparams = Map<str, i64>()
+                if cur_params.len() > 0 { cur_params = Map<str, i64>() }
+                if ro_vars.len() > 0 { ro_vars = Map<str, i64>() }
+                if mut_vars.len() > 0 { mut_vars = Map<str, i64>() }
+                if var_types.len() > 0 { var_types = Map<str, str>() }
+                if fn_tparams.len() > 0 { fn_tparams = Map<str, i64>() }
                 in_fn_sig = true
                 fn_sig_paren_depth = 0
                 pending_fn_body = false
@@ -786,7 +1294,7 @@ pub fn lsp_compute_semantic_tokens(source: str, az: Analyzer, doc_path: str) -> 
                         mmod = SM_STATIC() + SM_DEFAULT_LIB()
                     } else if recv_t != "" && hl_is_builtin_receiver_type(recv_t) {
                         mmod = SM_DEFAULT_LIB()
-                    } else if recv_t != "" && class_set.has_key(recv_t) && hl_is_method_static(az, recv_t, v) {
+                    } else if recv_t != "" && class_set.has_key(recv_t) && method_static.has_key(recv_t + "::" + v) {
                         mmod = SM_STATIC()
                     } else if recv_nm != "" && class_set.has_key(recv_nm) {
                         mmod = SM_STATIC()
@@ -794,7 +1302,7 @@ pub fn lsp_compute_semantic_tokens(source: str, az: Analyzer, doc_path: str) -> 
                     push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, ST_METHOD(), mmod)
                 } else {
                     mut pmod = 0
-                    if recv_t != "" && class_set.has_key(recv_t) && hl_is_field_readonly(az, recv_t, v) {
+                    if recv_t != "" && class_set.has_key(recv_t) && field_ro.has_key(recv_t + "::" + v) {
                         pmod = SM_READONLY()
                     }
                     push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, ST_PROPERTY(), pmod)
@@ -840,7 +1348,7 @@ pub fn lsp_compute_semantic_tokens(source: str, az: Analyzer, doc_path: str) -> 
             if nxt == TK_LPAREN() || is_generic_call_tok(ts, i) {
                 if enum_var_set.has_key(v) {
                     push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, ST_ENUM_MEMBER(), 0)
-                } else if cur_cls_name != "" && az.sig_by_key.has_key("m::" + cur_cls_name + "::" + v) {
+                } else if cur_cls_name != "" && class_methods.has_key(cur_cls_name + "::" + v) {
                     push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, ST_METHOD(), 0)
                 } else {
                     push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, ST_FUNCTION(), 0)
@@ -859,9 +1367,9 @@ pub fn lsp_compute_semantic_tokens(source: str, az: Analyzer, doc_path: str) -> 
                 push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, ST_FUNCTION(), 0)
                 prev_kind = k; i = i + 1; continue
             }
-            if cur_cls_name != "" && az.cls_field_types.has_key(cur_cls_name + "::" + v) {
+            if cur_cls_name != "" && class_fields.has_key(cur_cls_name + "::" + v) {
                 mut fmod = 0
-                if hl_is_field_readonly(az, cur_cls_name, v) { fmod = SM_READONLY() }
+                if field_ro.has_key(cur_cls_name + "::" + v) { fmod = SM_READONLY() }
                 push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, ST_PROPERTY(), fmod)
                 prev_kind = k; i = i + 1; continue
             }
@@ -950,4 +1458,33 @@ pub fn lsp_compute_semantic_tokens(source: str, az: Analyzer, doc_path: str) -> 
     }
 
     return data
+}
+
+pub fn lsp_compute_semantic_tokens(source: str, az: Analyzer, doc_path: str) -> List<i64> {
+    mut lx = Lexer(source, doc_path)
+    lx.recover_mode = true
+    lx.collect_trivia = true
+    let ts = lx.tokenize()
+    let line_starts = hl_build_line_starts(source)
+    let env = hl_build_env_from_analyzer(az, doc_path)
+    return hl_classify_ts(source, lx, ts, line_starts, env)
+}
+
+pub fn lsp_compute_semantic_tokens_fast(source: str, doc_path: str, docs_by_path: Map<str, str>, cache: HlHeaderCache) -> List<i64> {
+    mut lx = Lexer(source, doc_path)
+    lx.recover_mode = true
+    lx.collect_trivia = true
+    let ts = lx.tokenize()
+    let line_starts = hl_build_line_starts(source)
+
+    let norm = bpath_normalize(doc_path)
+    let sig = hl_src_sig(source)
+    let entry_hdr = hl_extract_header_from_ts(ts, sig)
+    cache.headers.insert(norm, entry_hdr)
+
+    let env = HlSymEnv()
+    hl_merge_header(env, entry_hdr)
+    hl_collect_imports_cached(entry_hdr, norm, docs_by_path, cache, env)
+    hl_scan_local_hints(ts, env)
+    return hl_classify_ts(source, lx, ts, line_starts, env)
 }

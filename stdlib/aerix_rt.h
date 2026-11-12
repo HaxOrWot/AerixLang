@@ -105,6 +105,46 @@ static inline void arx_throw(const char* msg, int code) {
     }
 }
 
+// --- Thread-Local O(1) String Bounds Cache ---
+typedef struct {
+    const char* ptr;
+    size_t verified_len;
+    size_t exact_len;
+} Arx_StrCacheEntry;
+
+static ARX_THREAD_LOCAL Arx_StrCacheEntry arx_str_cache[8];
+static ARX_THREAD_LOCAL uint32_t arx_str_cache_next = 0;
+
+static inline void arx_str_cache_invalidate(const void* ptr) {
+    if (!ptr) return;
+    for (int i = 0; i < 8; i++) {
+        if (arx_str_cache[i].ptr == (const char*)ptr) {
+            arx_str_cache[i].ptr = NULL;
+        }
+    }
+}
+
+static inline Arx_StrCacheEntry* arx_str_cache_get(const char* s) {
+    if (arx_str_cache[0].ptr == s) return &arx_str_cache[0];
+    for (int i = 1; i < 8; i++) {
+        if (arx_str_cache[i].ptr == s) {
+            Arx_StrCacheEntry hit = arx_str_cache[i];
+            arx_str_cache[i] = arx_str_cache[0];
+            arx_str_cache[0] = hit;
+            return &arx_str_cache[0];
+        }
+    }
+    uint32_t slot = (arx_str_cache_next & 7);
+    if (slot == 0) slot = 1;
+    arx_str_cache_next++;
+    Arx_StrCacheEntry prev0 = arx_str_cache[0];
+    arx_str_cache[slot] = prev0;
+    arx_str_cache[0].ptr = s;
+    arx_str_cache[0].verified_len = 0;
+    arx_str_cache[0].exact_len = (size_t)-1;
+    return &arx_str_cache[0];
+}
+
 // --- Safe Memory Allocators ---
 static inline void* arx_alloc(size_t bytes) {
     void* ptr = malloc(bytes);
@@ -116,6 +156,7 @@ static inline void* arx_alloc(size_t bytes) {
 
 static inline void arx_free(void* ptr) {
     if (ptr) {
+        arx_str_cache_invalidate(ptr);
         free(ptr);
     }
 }
@@ -861,7 +902,15 @@ static inline int64_t arx_list_index_of_str(int64_t h, const char* query) {
 // ==========================================
 
 static inline int64_t arx_str_len(const char* s) {
-    return s ? (int64_t)strlen(s) : 0;
+    if (!s) return 0;
+    Arx_StrCacheEntry* e = arx_str_cache_get(s);
+    if (e->exact_len != (size_t)-1) {
+        return (int64_t)e->exact_len;
+    }
+    size_t tail = strlen(s + e->verified_len);
+    e->exact_len = e->verified_len + tail;
+    e->verified_len = e->exact_len;
+    return (int64_t)e->exact_len;
 }
 
 static inline const char* arx_str_copy(const char* s) {
@@ -961,13 +1010,28 @@ static inline const char* arx_str_replace(const char* s, const char* old_sub, co
 
 static inline const char* arx_str_slice(const char* s, int64_t start, int64_t end) {
     if (!s) return "";
-    int64_t len = (int64_t)strlen(s);
     if (start < 0) start = 0;
-    if (end > len) end = len;
-    if (start >= end) return "";
-    size_t slice_len = (size_t)(end - start);
+    if (end <= start) return "";
+    Arx_StrCacheEntry* e = arx_str_cache_get(s);
+    size_t uend = (size_t)end;
+    if (e->exact_len != (size_t)-1) {
+        if (uend > e->exact_len) uend = e->exact_len;
+    } else if (uend > e->verified_len) {
+        size_t p = e->verified_len;
+        while (p < uend && s[p] != '\0') {
+            p++;
+        }
+        e->verified_len = p;
+        if (s[p] == '\0') {
+            e->exact_len = p;
+        }
+        if (uend > p) uend = p;
+    }
+    size_t ustart = (size_t)start;
+    if (ustart >= uend) return "";
+    size_t slice_len = uend - ustart;
     char* res = (char*)arx_alloc(slice_len + 1);
-    memcpy(res, s + start, slice_len);
+    memcpy(res, s + ustart, slice_len);
     res[slice_len] = '\0';
     return res;
 }
@@ -2057,11 +2121,25 @@ static inline int64_t arx_args_list(void) {
 
 static inline int64_t arx_str_byte_at(const char* s, int64_t idx) {
     if (!s || idx < 0) return -1;
-    // Scan safely up to idx without calling full strlen on huge source buffers
-    for (int64_t i = 0; i <= idx; i++) {
-        if (s[i] == '\0') return -1;
+    Arx_StrCacheEntry* e = arx_str_cache_get(s);
+    size_t uidx = (size_t)idx;
+    if (uidx < e->verified_len) {
+        return (int64_t)(unsigned char)s[uidx];
     }
-    return (int64_t)(unsigned char)s[idx];
+    if (e->exact_len != (size_t)-1) {
+        return -1;
+    }
+    size_t p = e->verified_len;
+    while (p <= uidx) {
+        if (s[p] == '\0') {
+            e->verified_len = p;
+            e->exact_len = p;
+            return -1;
+        }
+        p++;
+    }
+    e->verified_len = p;
+    return (int64_t)(unsigned char)s[uidx];
 }
 
 static inline const char* arx_byte_to_str(int64_t b) {

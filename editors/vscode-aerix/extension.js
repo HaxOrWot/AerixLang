@@ -87,6 +87,7 @@ class AerixLspClient {
         this.initialized = false;
         this.openedUris = new Set();
         this.dirtyTimers = new Map();
+        this.diagTimers = new Map();
     }
 
     start() {
@@ -143,6 +144,10 @@ class AerixLspClient {
             }
         }
         if (this.onTokensRefresh) this.onTokensRefresh();
+        const activeEd = vscode.window.activeTextEditor;
+        if (activeEd && activeEd.document && activeEd.document.languageId === 'aerix') {
+            this.scheduleDiagnostics(activeEd.document, 120);
+        }
     }
 
     _openDoc(doc) {
@@ -204,8 +209,27 @@ class AerixLspClient {
                 this._changeDoc(doc);
                 if (this.onTokensRefresh) this.onTokensRefresh();
             }
-        }, 180);
+        }, 40);
         this.dirtyTimers.set(uri, { timer, doc });
+        this.scheduleDiagnostics(doc, 650);
+    }
+
+    scheduleDiagnostics(doc, delayMs = 650) {
+        const uri = doc.uri.toString();
+        const prev = this.diagTimers.get(uri);
+        if (prev) clearTimeout(prev);
+        const timer = setTimeout(async () => {
+            this.diagTimers.delete(uri);
+            await this.start();
+            if (!this.proc || !this.initialized) return;
+            await this.ensureDocSynced(doc);
+            this._send({
+                jsonrpc: '2.0',
+                method: 'aerix/diagnostics',
+                params: { textDocument: { uri } }
+            });
+        }, delayMs);
+        this.diagTimers.set(uri, timer);
     }
 
     _send(payload) {
@@ -292,6 +316,8 @@ class AerixLspClient {
     async stop() {
         for (const [, pending] of this.dirtyTimers) clearTimeout(pending.timer);
         this.dirtyTimers.clear();
+        for (const [, t] of this.diagTimers) clearTimeout(t);
+        this.diagTimers.clear();
         if (!this.proc) return;
         try {
             await this._requestRaw('shutdown', null, 2000);
@@ -318,7 +344,10 @@ function activate(context) {
     context.subscriptions.push(
         vscode.workspace.onDidOpenTextDocument((doc) => {
             if (doc.languageId === 'aerix') {
-                client.ensureDocSynced(doc).then(() => semTokensEmitter.fire());
+                client.ensureDocSynced(doc).then(() => {
+                    semTokensEmitter.fire();
+                    client.scheduleDiagnostics(doc, 120);
+                });
             }
         }),
         vscode.workspace.onDidChangeTextDocument((ev) => {
@@ -328,9 +357,15 @@ function activate(context) {
         }),
         vscode.workspace.onDidSaveTextDocument((doc) => {
             if (doc.languageId === 'aerix') {
+                const uri = doc.uri.toString();
+                const prevDiag = client.diagTimers.get(uri);
+                if (prevDiag) {
+                    clearTimeout(prevDiag);
+                    client.diagTimers.delete(uri);
+                }
                 client.ensureDocSynced(doc).then(() => {
                     client.notify('textDocument/didSave', {
-                        textDocument: { uri: doc.uri.toString() },
+                        textDocument: { uri },
                         text: doc.getText()
                     });
                     semTokensEmitter.fire();
@@ -344,6 +379,11 @@ function activate(context) {
                 if (pending) {
                     clearTimeout(pending.timer);
                     client.dirtyTimers.delete(uri);
+                }
+                const diagT = client.diagTimers.get(uri);
+                if (diagT) {
+                    clearTimeout(diagT);
+                    client.diagTimers.delete(uri);
                 }
                 client.openedUris.delete(uri);
                 client.notify('textDocument/didClose', { textDocument: { uri } });

@@ -176,8 +176,7 @@ fn lsp_publish_diagnostics(uri: str, diags_json: str) {
     lsp_send_notification("textDocument/publishDiagnostics", jb.finish())
 }
 
-fn lsp_build_semantic_tokens_json(source: str, az: Analyzer, doc_path: str) -> str {
-    let data = lsp_compute_semantic_tokens(source, az, doc_path)
+fn lsp_encode_semantic_tokens_json(data: List<i64>) -> str {
     let jb = JsonBuf()
     jb.lbrace()
     jb.key("data")
@@ -199,6 +198,7 @@ pub fn run_lsp_server() -> i64 {
 
     let uri_docs = Map<str, str>()
     let path_docs = Map<str, str>()
+    let hdr_cache = HlHeaderCache()
     mut shutting_down = false
 
     // Single-document active analysis cache
@@ -206,6 +206,12 @@ pub fn run_lsp_server() -> i64 {
     mut cached_src = ""
     mut has_cached_az = false
     mut cached_az = lsp_analyze_document("<init>.arx", "", path_docs)
+
+    // Last serialized semantic tokens cache
+    mut sem_uri = ""
+    mut sem_src = ""
+    mut sem_json = ""
+    mut sem_is_full = false
 
     while true {
         let raw_msg = lsp_read_msg_str()
@@ -241,7 +247,7 @@ pub fn run_lsp_server() -> i64 {
             return 1
         }
 
-        // Document synchronization notifications
+        // Document synchronization notifications (non-blocking O(1) so highlighting stays instant)
         if method == "textDocument/didOpen" {
             let td = jdoc.get(params, "textDocument")
             let uri = jdoc.get_str(td, "uri")
@@ -249,11 +255,9 @@ pub fn run_lsp_server() -> i64 {
             let fpath = bpath_normalize(lsp_uri_to_path(uri))
             uri_docs.insert(uri, text)
             path_docs.insert(fpath, text)
-            cached_az = lsp_analyze_document(fpath, text, path_docs)
-            cached_uri = uri
-            cached_src = text
-            has_cached_az = true
-            lsp_publish_diagnostics(uri, lsp_build_diagnostics_json(cached_az, fpath))
+            hdr_cache.invalidate(fpath)
+            if sem_uri == uri && sem_src != text { sem_uri = "" }
+            if cached_uri == uri && cached_src != text { has_cached_az = false }
             continue
         }
 
@@ -267,12 +271,32 @@ pub fn run_lsp_server() -> i64 {
                 let fpath = bpath_normalize(lsp_uri_to_path(uri))
                 uri_docs.insert(uri, text)
                 path_docs.insert(fpath, text)
-                cached_az = lsp_analyze_document(fpath, text, path_docs)
-                cached_uri = uri
-                cached_src = text
-                has_cached_az = true
-                lsp_publish_diagnostics(uri, lsp_build_diagnostics_json(cached_az, fpath))
+                hdr_cache.invalidate(fpath)
+                if sem_uri == uri && sem_src != text { sem_uri = "" }
+                if cached_uri == uri && cached_src != text { has_cached_az = false }
             }
+            continue
+        }
+
+        if method == "aerix/diagnostics" {
+            let td = jdoc.get(params, "textDocument")
+            let uri = jdoc.get_str(td, "uri")
+            let fpath = bpath_normalize(lsp_uri_to_path(uri))
+            mut src = ""
+            if uri_docs.has_key(uri) {
+                src = uri_docs.get(uri)
+            } else if File.exists(fpath) {
+                src = File.read_to_string(fpath)
+                uri_docs.insert(uri, src)
+                path_docs.insert(fpath, src)
+            }
+            if !has_cached_az || cached_uri != uri || cached_src != src {
+                cached_az = lsp_analyze_document(fpath, src, path_docs)
+                cached_uri = uri
+                cached_src = src
+                has_cached_az = true
+            }
+            lsp_publish_diagnostics(uri, lsp_build_diagnostics_json(cached_az, fpath))
             continue
         }
 
@@ -286,6 +310,7 @@ pub fn run_lsp_server() -> i64 {
                 uri_docs.insert(uri, text)
                 path_docs.insert(fpath, text)
             }
+            hdr_cache.invalidate(fpath)
             mut src = ""
             if uri_docs.has_key(uri) {
                 src = uri_docs.get(uri)
@@ -308,6 +333,8 @@ pub fn run_lsp_server() -> i64 {
             let fpath = bpath_normalize(lsp_uri_to_path(uri))
             uri_docs.remove(uri)
             path_docs.remove(fpath)
+            hdr_cache.invalidate(fpath)
+            if sem_uri == uri { sem_uri = ""; sem_src = ""; sem_json = ""; sem_is_full = false }
             if cached_uri == uri { has_cached_az = false; cached_uri = ""; cached_src = "" }
             lsp_publish_diagnostics(uri, "[]")
             continue
@@ -328,6 +355,28 @@ pub fn run_lsp_server() -> i64 {
                 path_docs.insert(fpath, src)
             }
 
+            // Fast semantic highlighting path: never blocks behind full multi-file typechecking
+            if method == "textDocument/semanticTokens/full" {
+                let az_ready = has_cached_az && cached_uri == uri && cached_src == src
+                if sem_uri == uri && sem_src == src && (sem_is_full || !az_ready) {
+                    lsp_send_response(id_raw, sem_json)
+                    continue
+                }
+                mut toks = List<i64>()
+                if az_ready {
+                    toks = lsp_compute_semantic_tokens(src, cached_az, fpath)
+                    sem_is_full = true
+                } else {
+                    toks = lsp_compute_semantic_tokens_fast(src, fpath, path_docs, hdr_cache)
+                    sem_is_full = false
+                }
+                sem_uri = uri
+                sem_src = src
+                sem_json = lsp_encode_semantic_tokens_json(toks)
+                lsp_send_response(id_raw, sem_json)
+                continue
+            }
+
             if !has_cached_az || cached_uri != uri || cached_src != src {
                 cached_az = lsp_analyze_document(fpath, src, path_docs)
                 cached_uri = uri
@@ -338,11 +387,6 @@ pub fn run_lsp_server() -> i64 {
             let pos = jdoc.get(params, "position")
             let line0 = jdoc.get_int(pos, "line", 0)
             let char0 = jdoc.get_int(pos, "character", 0)
-
-            if method == "textDocument/semanticTokens/full" {
-                lsp_send_response(id_raw, lsp_build_semantic_tokens_json(src, cached_az, fpath))
-                continue
-            }
             if method == "textDocument/completion" {
                 lsp_send_response(id_raw, lsp_build_completion_json(src, cached_az, fpath, line0, char0))
                 continue
