@@ -24,6 +24,7 @@ pub fn CKIND_SNIPPET() -> i64 { return 15 }
 pub fn CKIND_FILE() -> i64 { return 17 }
 pub fn CKIND_FOLDER() -> i64 { return 19 }
 pub fn CKIND_ENUM_MEM() -> i64 { return 20 }
+pub fn CKIND_CONSTANT() -> i64 { return 21 }
 
 // LSP SymbolKind constants
 pub fn SKIND_CLASS() -> i64 { return 5 }
@@ -1536,10 +1537,50 @@ fn lsp_is_type_position(before_word: str) -> bool {
 
 fn lsp_emit_import_completions(doc_path: str, line0: i64, prefix: str, cpos: i64, jb: JsonBuf, is_first: List<i64>) -> bool {
     let tr = prefix.trim()
-    if !tr.starts_with("import ") && !tr.starts_with("use ") { return false }
+    if !tr.starts_with("import ") && !tr.starts_with("use ") && tr != "import" && tr != "use" { return false }
     let qpos = lsp_str_find(prefix, "\"", 0)
-    if qpos < 0 { return false }
-    // Ensure cursor is inside unclosed quote
+    if qpos < 0 {
+        // Unquoted import completion: suggest standard modules, selective import snippet, and local files
+        let mods = List<str>()
+        mods.push("Math"); mods.push("Random"); mods.push("Socket"); mods.push("Time"); mods.push("Window")
+        mut mi = 0
+        while mi < mods.len() {
+            let mnm = mods.get(mi)
+            let fst = is_first.get(0) == 1
+            is_first.set(0, 0)
+            emit_comp_item_ex(jb, mnm, "", "stdlib", CKIND_MODULE(), "Aerix stdlib module `" + mnm + "`",
+                              "Standard library module `" + mnm + "`.", "", "0_" + mnm, "",
+                              -1, 0, 0, "", false, fst)
+            mi = mi + 1
+        }
+
+        let fst_snip = is_first.get(0) == 1
+        is_first.set(0, 0)
+        let lb_snip = lsp_lbrace()
+        emit_comp_item_ex(jb, lb_snip + " ... } from \"...\"", "", "selective", CKIND_SNIPPET(), "Selective import",
+                          "Import specific symbols from a module or file.", lb_snip + " $1 } from \"$2\"", "0a_selective", "",
+                          -1, 0, 0, "", false, fst_snip)
+
+        let base_dir = bpath_dirname(doc_path)
+        if base_dir != "" && Directory.exists(base_dir) {
+            let files = Directory.list_files(base_dir)
+            mut fi = 0
+            while fi < files.len() {
+                let f = bpath_basename(files.get(fi))
+                if str_ends_with_arx(f) && bpath_join(base_dir, f) != bpath_normalize(doc_path) {
+                    let ins = "\"./" + f + "\""
+                    let fst = is_first.get(0) == 1
+                    is_first.set(0, 0)
+                    emit_comp_item_ex(jb, f, "", "file", CKIND_FILE(), "Aerix source file", "Import `" + ins + "`",
+                                      ins, "1_" + f, "", -1, 0, 0, "", false, fst)
+                }
+                fi = fi + 1
+            }
+        }
+        return true
+    }
+
+    // Inside quotes: ensure cursor is inside unclosed quote
     let after_q = prefix.slice(qpos + 1, prefix.len())
     if lsp_str_find(after_q, "\"", 0) >= 0 { return false }
 
@@ -1717,6 +1758,181 @@ fn lsp_emit_postfix_completions(line0: i64, recv_start0: i64, dot_col0: i64, cpo
     }
 }
 
+fn lsp_file_matches_mod(file_path: str, mod_name: str) -> bool {
+    if mod_name == "" || file_path == "" { return false }
+    let norm = file_path.replace("\\", "/")
+    let low_f = norm.to_lower()
+    let low_m = mod_name.to_lower()
+    if low_f.contains("/modules/" + low_m + "/") || low_f.contains("/modules/" + low_m + ".arx") {
+        return true
+    }
+    let base = bpath_basename(norm)
+    let low_b = base.to_lower()
+    if low_b == low_m + ".arx" || low_b == low_m {
+        return true
+    }
+    if low_b.ends_with(".arx") && low_b.len() > 4 {
+        let stem = low_b.slice(0, low_b.len() - 4)
+        if stem == low_m { return true }
+    }
+    return false
+}
+
+fn lsp_source_module_label(file_path: str, doc_path: str) -> str {
+    if file_path == "" || file_path == doc_path { return "" }
+    let norm = file_path.replace("\\", "/")
+    let m_idx = lsp_str_find(norm, "/modules/", 0)
+    if m_idx >= 0 {
+        let sub = norm.slice(m_idx + 9, norm.len())
+        let sl_idx = lsp_str_find(sub, "/", 0)
+        if sl_idx > 0 { return sub.slice(0, sl_idx) }
+        if sub.ends_with(".arx") && sub.len() > 4 { return sub.slice(0, sub.len() - 4) }
+        return sub
+    }
+    let base = bpath_basename(norm)
+    if base.ends_with(".arx") && base.len() > 4 { return base.slice(0, base.len() - 4) }
+    return base
+}
+
+fn collect_module_or_file_completions(az: Analyzer, source: str, doc_path: str, mod_name: str,
+                                      insert_parens: bool, expected_t: str,
+                                      jb: JsonBuf, seen: Map<str, i64>, is_first_box: List<i64>) -> bool {
+    mut matched_any = false
+    let is_static_prelude = lsp_is_static_runtime(mod_name)
+
+    // 1. All functions declared in that module or file
+    mut fi = 0
+    while fi < az.fn_count {
+        let fid = az.fn_nodes.get(fi)
+        let fn_file = az.nf.get(fid)
+        if lsp_file_matches_mod(fn_file, mod_name) {
+            let fnm = az.sa.get(fid)
+            let skey = "mfn::" + fnm
+            if !seen.has_key(skey) {
+                seen.insert(skey, 1)
+                let sig = lsp_fn_signature_str(az, fid)
+                let lparts = lsp_sig_to_label_parts(sig)
+                let snip = lsp_build_call_snippet(fnm, lparts.get(0), insert_parens)
+                let rt = lparts.get(1)
+                mut fdoc = lsp_extract_doc_comments(source, doc_path, fn_file, az.ln.get(fid))
+                let src_note = "*Defined in* `" + bpath_basename(fn_file) + ":" + az.ln.get(fid) + "`"
+                if fdoc != "" { fdoc = fdoc + "\n\n" + src_note } else { fdoc = src_note }
+                let matched = lsp_type_matches(rt, expected_t)
+                mut stxt = "0_" + fnm
+                if matched { stxt = "00_" + fnm }
+                let fst = is_first_box.get(0) == 1
+                is_first_box.set(0, 0)
+                emit_comp_item_ex(jb, fnm, lparts.get(0), rt, CKIND_FUNCTION(), sig, fdoc,
+                                  snip, stxt, "", -1, 0, 0, "", matched, fst)
+                matched_any = true
+            }
+        }
+        fi = fi + 1
+    }
+
+    // 2. All classes declared in that module or file
+    mut ci = 0
+    while ci < az.cls_count {
+        let cid = az.cls_nodes.get(ci)
+        let c_file = az.nf.get(cid)
+        if lsp_file_matches_mod(c_file, mod_name) {
+            let cnm = az.cls_names.get(ci)
+            let skey = "mc::" + cnm
+            if !seen.has_key(skey) {
+                seen.insert(skey, 1)
+                mut cdoc = lsp_extract_doc_comments(source, doc_path, c_file, az.ln.get(cid))
+                let src_note = "*Defined in* `" + bpath_basename(c_file) + ":" + az.ln.get(cid) + "`"
+                if cdoc != "" { cdoc = cdoc + "\n\n" + src_note } else { cdoc = src_note }
+                let fst = is_first_box.get(0) == 1
+                is_first_box.set(0, 0)
+                emit_comp_item_ex(jb, cnm, "", "class", CKIND_CLASS(), "class " + cnm, cdoc,
+                                  "", "1_" + cnm, "", -1, 0, 0, "", false, fst)
+                matched_any = true
+            }
+        }
+        ci = ci + 1
+    }
+
+    // 3. All enums declared in that module or file
+    mut ei = 0
+    while ei < az.enum_count {
+        let eid = az.enum_nodes.get(ei)
+        let e_file = az.nf.get(eid)
+        if lsp_file_matches_mod(e_file, mod_name) {
+            let enm = az.enum_names.get(ei)
+            let skey = "me::" + enm
+            if !seen.has_key(skey) {
+                seen.insert(skey, 1)
+                mut edoc = lsp_extract_doc_comments(source, doc_path, e_file, az.ln.get(eid))
+                let src_note = "*Defined in* `" + bpath_basename(e_file) + ":" + az.ln.get(eid) + "`"
+                if edoc != "" { edoc = edoc + "\n\n" + src_note } else { edoc = src_note }
+                let fst = is_first_box.get(0) == 1
+                is_first_box.set(0, 0)
+                emit_comp_item_ex(jb, enm, "", "enum", CKIND_ENUM(), "enum " + enm, edoc,
+                                  "", "1_" + enm, "", -1, 0, 0, "", false, fst)
+                matched_any = true
+            }
+        }
+        ei = ei + 1
+    }
+
+    // 4. All constants / globals declared in that module or file
+    mut gi = 0
+    while gi < az.global_count {
+        let gid = az.global_nodes.get(gi)
+        let g_file = az.nf.get(gid)
+        if lsp_file_matches_mod(g_file, mod_name) {
+            let gnm = az.sa.get(gid)
+            let skey = "mg::" + gnm
+            if !seen.has_key(skey) {
+                seen.insert(skey, 1)
+                let gt = az.global_types.get(gnm)
+                mut gdoc = lsp_extract_doc_comments(source, doc_path, g_file, az.ln.get(gid))
+                let src_note = "*Defined in* `" + bpath_basename(g_file) + ":" + az.ln.get(gid) + "`"
+                if gdoc != "" { gdoc = gdoc + "\n\n" + src_note } else { gdoc = src_note }
+                let fst = is_first_box.get(0) == 1
+                is_first_box.set(0, 0)
+                emit_comp_item_ex(jb, gnm, "", gt, CKIND_CONSTANT(), "const " + gnm + ": " + gt, gdoc,
+                                  "", "0_" + gnm, "", -1, 0, 0, "", false, fst)
+                matched_any = true
+            }
+        }
+        gi = gi + 1
+    }
+
+    // 5. Merge built-in methods if this is a static runtime / stdlib module (e.g. Math, Random, File, etc.)
+    if is_static_prelude {
+        let bms = lsp_builtin_methods_for(mod_name)
+        mut bi = 0
+        while bi < bms.len() {
+            let entry = bms.get(bi)
+            let colon_i = lsp_str_find(entry, ":", 0)
+            let mnm = entry.slice(0, colon_i)
+            let skey = "mfn::" + mnm
+            if !seen.has_key(skey) {
+                seen.insert(skey, 1)
+                let msig = lsp_subst_generic_sig(entry, mod_name)
+                let lparts = lsp_sig_to_label_parts(msig)
+                let snip = lsp_build_call_snippet(mnm, lparts.get(0), insert_parens)
+                let rt = lparts.get(1)
+                mut mdoc = lsp_lookup_member_doc(mod_name, mnm)
+                if mdoc == "" { mdoc = "Standard `" + mod_name + "` function" }
+                let matched = lsp_type_matches(rt, expected_t)
+                mut stxt = "0_" + mnm
+                if matched { stxt = "00_" + mnm }
+                let fst = is_first_box.get(0) == 1
+                is_first_box.set(0, 0)
+                emit_comp_item_ex(jb, mnm, lparts.get(0), rt, CKIND_FUNCTION(), msig, mdoc,
+                                  snip, stxt, "", -1, 0, 0, "", matched, fst)
+                matched_any = true
+            }
+            bi = bi + 1
+        }
+    }
+
+    return matched_any
+}
+
 fn collect_class_member_completions(az: Analyzer, source: str, doc_path: str, cname: str,
                                     insert_parens: bool, expected_t: str,
                                     jb: JsonBuf, seen: Map<str, i64>, is_first_box: List<i64>) {
@@ -1871,6 +2087,11 @@ pub fn lsp_build_completion_json(source: str, az: Analyzer, doc_path: str, line0
             raw_dot_col = raw_dot_col - 1
         }
         let clean_recv = lsp_extract_receiver_before_dot(before_word, before_word.len() - 1)
+        if collect_module_or_file_completions(az, source, doc_path, clean_recv, insert_parens, expected_t, jb, seen, is_first) {
+            jb.rbrack()
+            jb.rbrace()
+            return jb.finish()
+        }
         let recv_t = lsp_infer_expr_receiver_type(az, doc_path, line0 + 1, clean_recv, source)
 
         if recv_t != "" {
@@ -1998,18 +2219,25 @@ pub fn lsp_build_completion_json(source: str, az: Analyzer, doc_path: str, line0
             let lparts = lsp_sig_to_label_parts(sig)
             let snip = lsp_build_call_snippet(fnm, lparts.get(0), insert_parens)
             let rt = lparts.get(1)
-            let same_file = az.nf.get(fid) == doc_path
-            mut fdoc = ""
-            if same_file { fdoc = lsp_extract_doc_comments(source, doc_path, doc_path, az.ln.get(fid)) }
-            let src_note = "*Defined in* `" + bpath_basename(az.nf.get(fid)) + ":" + az.ln.get(fid) + "`"
+            let fn_file = az.nf.get(fid)
+            let same_file = fn_file == doc_path
+            mut fdoc = lsp_extract_doc_comments(source, doc_path, fn_file, az.ln.get(fid))
+            let mod_lbl = lsp_source_module_label(fn_file, doc_path)
+            mut src_note = "*Defined in* `" + bpath_basename(fn_file) + ":" + az.ln.get(fid) + "`"
+            if mod_lbl != "" {
+                src_note = "*Imported from module/file* `" + mod_lbl + "` (" + bpath_basename(fn_file) + ":" + az.ln.get(fid) + ")"
+            }
             if fdoc != "" { fdoc = fdoc + "\n\n" + src_note } else { fdoc = src_note }
             let matched = lsp_type_matches(rt, expected_t)
+            mut desc = rt
+            if mod_lbl != "" { desc = rt + " (" + mod_lbl + ")" }
             mut stxt = "2_" + fnm
             if same_file { stxt = "1_" + fnm }
+            else if mod_lbl != "" { stxt = "1a_" + fnm }
             if matched { stxt = "00_" + fnm }
             let fst = is_first.get(0) == 1
             is_first.set(0, 0)
-            emit_comp_item_ex(jb, fnm, lparts.get(0), rt, CKIND_FUNCTION(), sig, fdoc,
+            emit_comp_item_ex(jb, fnm, lparts.get(0), desc, CKIND_FUNCTION(), sig, fdoc,
                               snip, stxt, "", -1, 0, 0, "", matched, fst)
         }
         fi = fi + 1
@@ -2022,7 +2250,8 @@ pub fn lsp_build_completion_json(source: str, az: Analyzer, doc_path: str, line0
         let cnm = az.cls_names.get(ci)
         if !seen.has_key("c::" + cnm) {
             seen.insert("c::" + cnm, 1)
-            let same_file = az.nf.get(cid) == doc_path
+            let c_file = az.nf.get(cid)
+            let same_file = c_file == doc_path
             mut cdetail = ""
             mut csnip = ""
             let ctor_k = "ctor::" + cnm
@@ -2033,17 +2262,23 @@ pub fn lsp_build_completion_json(source: str, az: Analyzer, doc_path: str, line0
                 cdetail = cparts.get(0)
                 csnip = lsp_build_call_snippet(cnm, cdetail, insert_parens && in_fn)
             }
-            mut cdoc = ""
-            if same_file { cdoc = lsp_extract_doc_comments(source, doc_path, doc_path, az.ln.get(cid)) }
-            let src_note = "*Defined in* `" + bpath_basename(az.nf.get(cid)) + ":" + az.ln.get(cid) + "`"
+            mut cdoc = lsp_extract_doc_comments(source, doc_path, c_file, az.ln.get(cid))
+            let mod_lbl = lsp_source_module_label(c_file, doc_path)
+            mut src_note = "*Defined in* `" + bpath_basename(c_file) + ":" + az.ln.get(cid) + "`"
+            if mod_lbl != "" {
+                src_note = "*Imported from module/file* `" + mod_lbl + "` (" + bpath_basename(c_file) + ":" + az.ln.get(cid) + ")"
+            }
             if cdoc != "" { cdoc = cdoc + "\n\n" + src_note } else { cdoc = src_note }
             let matched = lsp_type_matches(cnm, expected_t)
+            mut cdesc = "class"
+            if mod_lbl != "" { cdesc = "class (" + mod_lbl + ")" }
             mut stxt = "2_" + cnm
             if same_file { stxt = "1_" + cnm }
+            else if mod_lbl != "" { stxt = "1a_" + cnm }
             if matched { stxt = "00_" + cnm }
             let fst = is_first.get(0) == 1
             is_first.set(0, 0)
-            emit_comp_item_ex(jb, cnm, cdetail, "class", CKIND_CLASS(), "class " + cnm, cdoc,
+            emit_comp_item_ex(jb, cnm, cdetail, cdesc, CKIND_CLASS(), "class " + cnm, cdoc,
                               csnip, stxt, "", -1, 0, 0, "", matched, fst)
         }
         ci = ci + 1
@@ -2056,21 +2291,44 @@ pub fn lsp_build_completion_json(source: str, az: Analyzer, doc_path: str, line0
         let enm = az.enum_names.get(ei)
         if !seen.has_key("e::" + enm) {
             seen.insert("e::" + enm, 1)
-            let same_file = az.nf.get(eid) == doc_path
-            mut edoc = ""
-            if same_file { edoc = lsp_extract_doc_comments(source, doc_path, doc_path, az.ln.get(eid)) }
-            let src_note = "*Defined in* `" + bpath_basename(az.nf.get(eid)) + ":" + az.ln.get(eid) + "`"
+            let e_file = az.nf.get(eid)
+            let same_file = e_file == doc_path
+            mut edoc = lsp_extract_doc_comments(source, doc_path, e_file, az.ln.get(eid))
+            let mod_lbl = lsp_source_module_label(e_file, doc_path)
+            mut src_note = "*Defined in* `" + bpath_basename(e_file) + ":" + az.ln.get(eid) + "`"
+            if mod_lbl != "" {
+                src_note = "*Imported from module/file* `" + mod_lbl + "` (" + bpath_basename(e_file) + ":" + az.ln.get(eid) + ")"
+            }
             if edoc != "" { edoc = edoc + "\n\n" + src_note } else { edoc = src_note }
             let matched = lsp_type_matches(enm, expected_t)
+            mut edesc = "enum"
+            if mod_lbl != "" { edesc = "enum (" + mod_lbl + ")" }
             mut stxt = "2_" + enm
             if same_file { stxt = "1_" + enm }
+            else if mod_lbl != "" { stxt = "1a_" + enm }
             if matched { stxt = "00_" + enm }
             let fst = is_first.get(0) == 1
             is_first.set(0, 0)
-            emit_comp_item_ex(jb, enm, "", "enum", CKIND_ENUM(), "enum " + enm, edoc,
+            emit_comp_item_ex(jb, enm, "", edesc, CKIND_ENUM(), "enum " + enm, edoc,
                               "", stxt, "", -1, 0, 0, "", matched, fst)
         }
         ei = ei + 1
+    }
+
+    // Modules and imported file namespaces (e.g. Math, Random, Socket, Time, Window, helper)
+    mut nfi = 0
+    while nfi < az.nf.len() {
+        let fpath = az.nf.get(nfi)
+        let mlbl = lsp_source_module_label(fpath, doc_path)
+        if mlbl != "" && !seen.has_key("mod::" + mlbl) {
+            seen.insert("mod::" + mlbl, 1)
+            let fst = is_first.get(0) == 1
+            is_first.set(0, 0)
+            emit_comp_item_ex(jb, mlbl, "", "module", CKIND_MODULE(), "module " + mlbl,
+                              "Imported module or source file `" + mlbl + "`.\n\nType `" + mlbl + ".` to access all its functions and members.",
+                              "", "1b_" + mlbl, "", -1, 0, 0, "", false, fst)
+        }
+        nfi = nfi + 1
     }
 
     // Builtin Functions (only relevant inside function/expression bodies or untyped positions)
