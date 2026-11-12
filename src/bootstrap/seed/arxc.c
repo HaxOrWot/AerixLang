@@ -39140,7 +39140,7 @@ const char* arx_lsp_build_initialize_result(void) {
     const char* __t15779 = "aerix-lsp";
     Arx_JsonBuf_kv_str((&(jb)), __t15778, __t15779, true);
     const char* __t15780 = "version";
-    const char* __t15781 = "1.1.0-stable";
+    const char* __t15781 = "1.1.2-stable";
     Arx_JsonBuf_kv_str((&(jb)), __t15780, __t15781, false);
     Arx_JsonBuf_rbrace((&(jb)));
     Arx_JsonBuf_rbrace((&(jb)));
@@ -39894,7 +39894,7 @@ int64_t arx_main(void) {
         __t16082 = ((arx_str_compare(first, __t16083) == 0));
     }
     if (__t16082) {
-        const char* __t16084 = "Aerix Self-Hosting Bootstrap Compiler (arxc) v1.1.0-stable";
+        const char* __t16084 = "Aerix Self-Hosting Bootstrap Compiler (arxc) v1.1.2-stable";
         arx_println_str(__t16084);
         int64_t __t16085 = ((int64_t)0LL);
         return __t16085;

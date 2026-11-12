@@ -203,7 +203,7 @@ fn main() -> i64 {
 
     let first = cli_args.get(1)
     if first == "version" || first == "--version" || first == "-v" {
-        println("Aerix Self-Hosting Bootstrap Compiler (arxc) v1.1.0-stable")
+        println("Aerix Self-Hosting Bootstrap Compiler (arxc) v1.1.2-stable")
         return 0
     }
     if first == "help" || first == "--help" || first == "-h" {

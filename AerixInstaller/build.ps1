@@ -11,10 +11,9 @@ $manifest = Get-Content (Join-Path $srcDir "installer_manifest.json") -Raw | Con
 $version  = $manifest.version
 
 Write-Host "==================================================================" -ForegroundColor Cyan
-Write-Host "     AERIX C++ WINDOWS INSTALLER BUILDER (v$version)" -ForegroundColor Cyan
+Write-Host "     AERIX C# WINDOWS INSTALLER BUILDER (v$version)" -ForegroundColor Cyan
 Write-Host "==================================================================" -ForegroundColor Cyan
 
-# Clean previous staging/build artifacts
 if (Test-Path $buildDir) { Remove-Item $buildDir -Recurse -Force }
 New-Item -ItemType Directory -Path (Join-Path $stageDir "bin") -Force | Out-Null
 New-Item -ItemType Directory -Path (Join-Path $stageDir "stdlib") -Force | Out-Null
@@ -25,7 +24,7 @@ New-Item -ItemType Directory -Path (Join-Path $stageDir "docs") -Force | Out-Nul
 New-Item -ItemType Directory -Path $distDir -Force | Out-Null
 
 # 1. Compile native self-hosting compiler binaries (arxc.exe & arx.exe)
-Write-Host "[1/5] Compiling native self-hosting compiler from C99 seed..."
+Write-Host "[1/4] Compiling native self-hosting compiler from C99 seed..."
 $seedC   = Join-Path $repoRoot "src\bootstrap\seed\arxc.c"
 $stdlibI = Join-Path $repoRoot "stdlib"
 $arxcOut = Join-Path $stageDir "bin\arxc.exe"
@@ -35,7 +34,7 @@ if ($LASTEXITCODE -ne 0) { throw "Failed to compile arxc.exe from seed" }
 Copy-Item $arxcOut $arxOut -Force
 
 # 2. Stage runtime header, standard modules, extension, icons, docs
-Write-Host "[2/5] Staging stdlib, modules, extension, icons, and docs..."
+Write-Host "[2/4] Staging stdlib, modules, extension, icons, and docs..."
 Copy-Item (Join-Path $repoRoot "stdlib\aerix_rt.h") (Join-Path $stageDir "stdlib\aerix_rt.h") -Force
 Copy-Item (Join-Path $repoRoot "modules\*") (Join-Path $stageDir "modules") -Recurse -Force
 
@@ -54,39 +53,51 @@ Copy-Item (Join-Path $repoRoot "USER.md") (Join-Path $stageDir "docs\USER.md") -
 Copy-Item (Join-Path $repoRoot "GUIDE.md") (Join-Path $stageDir "docs\GUIDE.md") -Force
 Copy-Item (Join-Path $repoRoot "LICENSE") (Join-Path $stageDir "LICENSE") -Force
 
-# 3. Build C++ payload packager and compress staged tree
-Write-Host "[3/5] Building C++ packager and compressing ARXP payload..."
-$packagerExe = Join-Path $buildDir "packager.exe"
-$payloadBin  = Join-Path $buildDir "payload.bin"
-& g++ -std=c++17 -O2 -Wall -Wextra (Join-Path $srcDir "packager.cpp") -o "$packagerExe" -lz
-if ($LASTEXITCODE -ne 0) { throw "Failed to compile packager.cpp" }
-& "$packagerExe" "$stageDir" "$payloadBin"
-if ($LASTEXITCODE -ne 0) { throw "Failed to pack payload" }
+# 3. Compress staged tree into embedded AerixPayload.zip
+Write-Host "[3/4] Compressing AerixPayload.zip..."
+$payloadZip = Join-Path $buildDir "AerixPayload.zip"
+Add-Type -AssemblyName System.IO.Compression
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+[System.IO.Compression.ZipFile]::CreateFromDirectory($stageDir, $payloadZip, [System.IO.Compression.CompressionLevel]::Optimal, $false)
+$zipMB = [Math]::Round((Get-Item $payloadZip).Length / 1MB, 2)
+Write-Host "  [OK] Packed AerixPayload.zip ($zipMB MB)"
 
-# 4. Compile Win32 resources
-Write-Host "[4/5] Compiling Win32 resources (icons, bitmaps, manifest, payload)..."
-$resObj = Join-Path $buildDir "resources.o"
-Push-Location $srcDir
-try {
-    & windres --input-format=rc --output-format=coff -I "$srcDir" "resources.rc" "$resObj"
-    if ($LASTEXITCODE -ne 0) { throw "windres failed" }
-} finally {
-    Pop-Location
-}
-
-# 5. Compile C++ Win32 Setup executable
-Write-Host "[5/5] Compiling standalone C++ setup executable..."
+# 4. Compile standalone C# Setup executable via built-in .NET Framework csc.exe
+Write-Host "[4/4] Compiling standalone C# setup executable..."
 Get-ChildItem $distDir -Filter "AerixSetup-*.exe" | Where-Object { $_.Name -ne "AerixSetup-$version.exe" } | Remove-Item -Force
 $setupExe = Join-Path $distDir "AerixSetup-$version.exe"
-& g++ -std=c++17 -O2 -Wall -Wextra `
-    -DUNICODE -D_UNICODE -D_WIN32_WINNT=0x0A00 -DWINVER=0x0A00 `
-    (Join-Path $srcDir "setup_main.cpp") `
-    (Join-Path $srcDir "installer_engine.cpp") `
-    "$resObj" `
-    -o "$setupExe" `
-    -mwindows -static -static-libgcc -static-libstdc++ `
-    -lz -lcomctl32 -lshell32 -lole32 -luuid -ladvapi32 -lgdi32 -luser32 -lshlwapi
-if ($LASTEXITCODE -ne 0) { throw "Failed to compile setup executable" }
+
+$fwDir = Join-Path $env:windir "Microsoft.NET\Framework64\v4.0.30319"
+$csc   = Join-Path $fwDir "csc.exe"
+if (-not (Test-Path $csc)) { throw "Missing .NET Framework C# compiler: $csc" }
+
+$appIcon     = Join-Path $installerDir "assets\aerix.ico"
+$brandPng    = Join-Path $repoRoot "editors\vscode-aerix\icons\aerix-icon.png"
+$appManifest = Join-Path $srcDir "app.manifest"
+$licenseFile = Join-Path $repoRoot "LICENSE"
+$manifestRes = Join-Path $srcDir "installer_manifest.json"
+
+& $csc /nologo /target:winexe /platform:x64 /optimize+ /warnaserror `
+    /out:"$setupExe" `
+    /win32icon:"$appIcon" `
+    /win32manifest:"$appManifest" `
+    /reference:"$fwDir\System.dll" `
+    /reference:"$fwDir\System.Core.dll" `
+    /reference:"$fwDir\System.Drawing.dll" `
+    /reference:"$fwDir\System.Windows.Forms.dll" `
+    /reference:"$fwDir\System.IO.Compression.dll" `
+    /reference:"$fwDir\System.IO.Compression.FileSystem.dll" `
+    /resource:"$payloadZip,AerixPayload.zip" `
+    /resource:"$licenseFile,LICENSE" `
+    /resource:"$appIcon,aerix.ico" `
+    /resource:"$brandPng,aerix-icon.png" `
+    /resource:"$manifestRes,installer_manifest.json" `
+    (Join-Path $srcDir "AssemblyInfo.cs") `
+    (Join-Path $srcDir "InstallerEngine.cs") `
+    (Join-Path $srcDir "SetupForm.cs") `
+    (Join-Path $srcDir "Program.cs")
+
+if ($LASTEXITCODE -ne 0) { throw "Failed to compile C# setup executable" }
 
 $sizeMB = [Math]::Round((Get-Item $setupExe).Length / 1MB, 2)
 $hash   = (Get-FileHash $setupExe -Algorithm SHA256).Hash

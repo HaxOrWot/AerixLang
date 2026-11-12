@@ -1,39 +1,36 @@
-# AerixSetup — Native C++ Windows Installer (`AerixInstaller`)
+# Aerix C# Windows Installer (`AerixSetup`)
 
-Standalone, zero-dependency **C++17 / Win32 GUI** installer and uninstaller for the **Aerix Native Systems Programming Language (`1.1.0-stable`)**.
+Standalone, zero-SDK **C# / WinForms (.NET Framework 4.x)** installer and uninstaller for the **Aerix Native Systems Programming Language (`1.1.2-stable`)**.
 
-## Overview
+## Architecture
 
-Replaces the legacy Python/Inno Setup pipeline with a self-contained native C++ executable (`AerixSetup-1.1.0-stable.exe`) that embeds a zlib-compressed `ARXP` payload of the self-hosting native compiler (`arx.exe` / `arxc.exe`), `stdlib/aerix_rt.h`, standard `modules/`, icons, documentation, and the packaged `aerix-1.1.0-stable.vsix` editor extension.
+Compiles directly with the built-in Windows `.NET Framework v4.0.30319\csc.exe` into a self-contained single-file setup executable (`AerixSetup-1.1.2-stable.exe`) that embeds:
+- `AerixPayload.zip` (native PE32+ compiler `arx.exe` & `arxc.exe`, `stdlib/aerix_rt.h`, `modules/`, icons, docs, unpacked extension fallback, and `aerix-1.1.2-stable.vsix`)
+- `LICENSE`, `aerix.ico`, and `installer_manifest.json`
 
-## Structure
+### Source Files (`src/`)
+- `Program.cs` — CLI flag handling (`/S`, `--silent`, `--uninstall`, `--dir=...`, `--no-env`, `--no-assoc`, `--no-ide`, `--no-verify`) and GUI entrypoint
+- `InstallerEngine.cs` — ZIP extraction with locked-binary safe swaps, legacy `~/.aerix/bin` sync, `HKCU\Environment` & `App Paths` setup, `.arx` Explorer associations/icons, stale extension pruning, multi-IDE VSIX deployment (`VS Code`, `VS Code Insiders`, `Antigravity`, `Antigravity IDE`, `Cursor`, `Windsurf`), live compiler smoke test, and clean uninstall + self-delete
+- `SetupForm.cs` — Dark-obsidian / cyan GDI+ styled multi-step Windows setup & uninstall wizard
+- `AssemblyInfo.cs`, `app.manifest`, `installer_manifest.json` — Version metadata, DPI awareness, and packaging manifest
 
-- `src/setup_main.cpp` — 6-page native Win32 Setup Wizard UI + silent CLI mode + uninstall flow
-- `src/installer_engine.hpp` / `src/installer_engine.cpp` — `ARXP` zlib payload extraction, `HKCU\Environment` setup (`AERIX_HOME`, `AERIX_STDLIB`, `AERIX_STDLIB_PATH`, `AERIX_MODULE_PATH`, `Path`), `.arx` Explorer file associations & context menus, Add/Remove Programs registration, IDE extension deployment, and uninstaller cleanup
-- `src/packager.cpp` — Deterministic C++17 asset packager creating `build/payload.bin`
-- `src/resources.rc`, `src/resource.h`, `src/app.manifest` — Icons, wizard bitmaps, MIT `LICENSE`, DPI/UTF-8 manifest, and embedded `payload.bin`
-- `src/installer_manifest.json` — Version and staged payload specification
-- `build.ps1` — Builds native compiler seed binaries, `packager.exe`, `payload.bin`, and `dist/AerixSetup-1.1.0-stable.exe`
-
-## Building
-
-Requires GCC / G++ / windres (e.g. MinGW-w64 UCRT64 with `zlib`):
+## Build
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\AerixInstaller\build.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\AerixInstaller\build.ps1
 ```
 
-Output: `AerixInstaller/dist/AerixSetup-1.1.0-stable.exe`
+Output: `AerixInstaller/dist/AerixSetup-1.1.2-stable.exe`
 
-## Silent / Automated Usage
+## Silent / CLI Usage
 
 ```powershell
-# Install silently to custom directory without touching registry or IDE extensions
-.\AerixInstaller\dist\AerixSetup-1.1.0-stable.exe --silent --dir="C:\Tools\Aerix" --no-path --no-assoc --no-vscode --no-antigravity
+# Custom non-interactive install
+.\AerixInstaller\dist\AerixSetup-1.1.2-stable.exe --silent --dir="C:\Tools\Aerix" --no-env --no-assoc --no-ide --no-verify
 
-# Standard interactive GUI wizard
-.\AerixInstaller\dist\AerixSetup-1.1.0-stable.exe
+# Interactive GUI setup
+.\AerixInstaller\dist\AerixSetup-1.1.2-stable.exe
 
-# Silent uninstall (or invoke installed Uninstall.exe)
-.\Uninstall.exe --uninstall --silent
+# Silent uninstall
+"%LOCALAPPDATA%\Programs\Aerix\Uninstall.exe" --uninstall --silent
 ```
