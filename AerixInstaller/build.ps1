@@ -29,7 +29,7 @@ $seedC   = Join-Path $repoRoot "src\bootstrap\seed\arxc.c"
 $stdlibI = Join-Path $repoRoot "stdlib"
 $arxcOut = Join-Path $stageDir "bin\arxc.exe"
 $arxOut  = Join-Path $stageDir "bin\arx.exe"
-& gcc -std=c99 -O2 -Wno-unused-function -I "$stdlibI" "$seedC" -o "$arxcOut" -lm
+& gcc -std=c99 -O2 -static -Wno-unused-function -I "$stdlibI" "$seedC" -o "$arxcOut" -lm
 if ($LASTEXITCODE -ne 0) { throw "Failed to compile arxc.exe from seed" }
 Copy-Item $arxcOut $arxOut -Force
 
