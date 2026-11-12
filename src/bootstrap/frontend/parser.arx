@@ -843,12 +843,13 @@ pub class Parser {
             let t = self.adv()
             let pth = self.tok_vals.get(t)
             self.load_file(pth)
+            let base = bpath_basename(pth)
+            mut stem = base
+            if stem.ends_with(".arx") && stem.len() > 4 { stem = stem.slice(0, stem.len() - 4) }
+            self.mod_aliases.insert(stem, stem)
             if self.match_k(TK_AS()) {
                 let atok = self.expect_k(TK_IDENT(), "Expected alias identifier after 'as'")
                 let alias_nm = self.tok_vals.get(atok)
-                let base = bpath_basename(pth)
-                mut stem = base
-                if stem.ends_with(".arx") && stem.len() > 4 { stem = stem.slice(0, stem.len() - 4) }
                 self.mod_aliases.insert(alias_nm, stem)
                 self.mod_aliases.insert(alias_nm, pth)
             }
@@ -859,6 +860,13 @@ pub class Parser {
             let t = self.adv()
             let mod_name = self.tok_vals.get(t)
             self.load_module(mod_name)
+            self.mod_aliases.insert(mod_name, mod_name)
+            if mod_name.len() > 0 {
+                let cap_mod = mod_name.slice(0, 1).to_upper() + mod_name.slice(1, mod_name.len())
+                self.mod_aliases.insert(cap_mod, mod_name)
+                let low_mod = mod_name.slice(0, 1).to_lower() + mod_name.slice(1, mod_name.len())
+                self.mod_aliases.insert(low_mod, mod_name)
+            }
             if self.match_k(TK_AS()) {
                 let atok = self.expect_k(TK_IDENT(), "Expected alias identifier after 'as'")
                 let alias_nm = self.tok_vals.get(atok)

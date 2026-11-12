@@ -90,7 +90,7 @@ pub class NativeCodegen {
     pub global_offs: Map<str, i64>       // global var -> .data offset
     pub global_nodes: List<i64>
     pub fn_externs: Map<str, str>
-    pub extern_iats: Map<i64, i64>
+    pub extern_iats: Map<str, i64>
 
     // Per-function compilation state (lexical variable stack for shadowing/blocks)
     pub scope_names: List<str>
@@ -139,7 +139,7 @@ pub class NativeCodegen {
         self.global_offs = Map<str, i64>()
         self.global_nodes = List<i64>()
         self.fn_externs = az.fn_externs
-        self.extern_iats = Map<i64, i64>()
+        self.extern_iats = Map<str, i64>()
 
         self.scope_names = List<str>()
         self.scope_offs = List<i64>()
@@ -165,6 +165,7 @@ pub class NativeCodegen {
     }
 
     priv fn child_at(gid: i64, idx: i64) -> i64 {
+        if gid < 0 { return -1 }
         return self.ch.get(self.ls.get(gid) + idx)
     }
 
@@ -253,7 +254,8 @@ pub class NativeCodegen {
                         let dll = parts.get(0)
                         let sym = parts.get(1)
                         let iat_off = self.pe.add_import(dll, sym)
-                        self.extern_iats.insert(nid, iat_off)
+                        self.extern_iats.insert(fname, iat_off)
+                        self.extern_iats.insert("arx_" + fname, iat_off)
                     }
                 }
             }
@@ -1790,8 +1792,8 @@ pub class NativeCodegen {
             }
 
             // User class instance or static method call resolved by Analyzer
-            if fn_node >= 0 {
-                let ckind = self.az.call_kinds.get(nid)
+            let ckind = self.az.call_kinds.get(nid)
+            if fn_node >= 0 && ckind != CK_CTOR() {
                 let is_st = has_flag(self.ia.get(fn_node), FLAG_STATIC())
                 let is_method = (ckind == CK_METHOD())
                 let margs = List<i64>()
@@ -1804,6 +1806,15 @@ pub class NativeCodegen {
                 mut k = 0
                 while k < arg_temps.len() { margs.push(arg_temps.get(k)); k = k + 1 }
                 self.emit_default_args_if_needed(fn_node, arg_temps.len(), margs)
+                let fn_name = self.sa.get(fn_node)
+                if self.extern_iats.has_key(fn_name) {
+                    self.emit_call_with_temps(self.extern_iats.get(fn_name), true, margs)
+                    return
+                }
+                if self.extern_iats.has_key("arx_" + fn_name) {
+                    self.emit_call_with_temps(self.extern_iats.get("arx_" + fn_name), true, margs)
+                    return
+                }
                 self.emit_call_with_temps(self.rt.lbl(self.fn_symbol_name(fn_node)), false, margs)
                 return
             }
@@ -1844,8 +1855,13 @@ pub class NativeCodegen {
             mut k = 0
             while k < arg_temps.len() { fargs.push(arg_temps.get(k)); k = k + 1 }
             self.emit_default_args_if_needed(fn_node, arg_temps.len(), fargs)
-            if self.extern_iats.has_key(fn_node) {
-                self.emit_call_with_temps(self.extern_iats.get(fn_node), true, fargs)
+            let fn_name = self.sa.get(fn_node)
+            if self.extern_iats.has_key(fn_name) {
+                self.emit_call_with_temps(self.extern_iats.get(fn_name), true, fargs)
+                return
+            }
+            if self.extern_iats.has_key("arx_" + fn_name) {
+                self.emit_call_with_temps(self.extern_iats.get("arx_" + fn_name), true, fargs)
                 return
             }
             self.emit_call_with_temps(self.rt.lbl(self.fn_symbol_name(fn_node)), false, fargs)
@@ -1853,6 +1869,10 @@ pub class NativeCodegen {
         }
 
         if tgt != "" {
+            if self.extern_iats.has_key(tgt) {
+                self.emit_call_with_temps(self.extern_iats.get(tgt), true, arg_temps)
+                return
+            }
             if tgt == "sqrt" { self.emit_call_with_temps(self.rt.lbl("__rt_math_sqrt"), false, arg_temps); return }
             if tgt == "pow" { self.emit_call_with_temps(self.rt.lbl("__rt_math_pow"), false, arg_temps); return }
             if tgt == "sin" { self.emit_call_with_temps(self.rt.lbl("__rt_math_sin"), false, arg_temps); return }
@@ -1868,12 +1888,15 @@ pub class NativeCodegen {
     }
 
     priv fn emit_default_args_if_needed(fn_node: i64, provided_cnt: i64, out_args: List<i64>) {
+        if fn_node < 0 { return }
         let a = self.asm
         let pg = self.la.get(fn_node)
+        if pg < 0 { return }
         let pc = self.child_count(pg)
         mut pi = provided_cnt
         while pi < pc {
             let pid = self.child_at(pg, pi)
+            if pid < 0 { break }
             let def_id = self.la.get(pid)
             if def_id >= 0 {
                 self.emit_expr(def_id)

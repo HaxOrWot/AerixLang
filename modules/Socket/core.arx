@@ -3,11 +3,34 @@
 // Low-level Winsock2 Interop and Socket Lifecycle Management
 // ==============================================================================
 
+import "./constants.arx"
+
 #[extern("ws2_32.dll", "WSAStartup")]
 pub fn wsa_startup(version: i64, lp_wsa_data: i64) -> i64;
 
 #[extern("ws2_32.dll", "WSACleanup")]
 pub fn wsa_cleanup() -> i64;
+
+#[extern("ws2_32.dll", "socket")]
+pub fn socket(af: i64, sock_type: i64, protocol: i64) -> i64;
+
+#[extern("ws2_32.dll", "connect")]
+pub fn connect(s: i64, addr: str, namelen: i64) -> i64;
+
+#[extern("ws2_32.dll", "bind")]
+pub fn bind(s: i64, addr: str, namelen: i64) -> i64;
+
+#[extern("ws2_32.dll", "listen")]
+pub fn listen(s: i64, backlog: i64) -> i64;
+
+#[extern("ws2_32.dll", "accept")]
+pub fn accept(s: i64, addr: i64, addrlen: i64) -> i64;
+
+#[extern("ws2_32.dll", "send")]
+pub fn send(s: i64, buf: str, len: i64, flags: i64) -> i64;
+
+#[extern("ws2_32.dll", "recv")]
+pub fn recv(s: i64, buf: str, len: i64, flags: i64) -> i64;
 
 #[extern("ws2_32.dll", "closesocket")]
 pub fn closesocket(s: i64) -> i64;
@@ -15,10 +38,75 @@ pub fn closesocket(s: i64) -> i64;
 #[extern("ws2_32.dll", "WSAGetLastError")]
 pub fn wsa_get_last_error() -> i64;
 
+#[extern("ws2_32.dll", "inet_addr")]
+pub fn inet_addr(cp: str) -> i64;
+
+#[extern("ws2_32.dll", "htons")]
+pub fn htons(hostshort: i64) -> i64;
+
+#[extern("ws2_32.dll", "ntohs")]
+pub fn ntohs(netshort: i64) -> i64;
+
+#[extern("msvcrt.dll", "calloc")]
+pub fn mem_calloc(count: i64, size: i64) -> i64;
+
+#[extern("msvcrt.dll", "free")]
+pub fn mem_free(ptr: i64) -> void;
+
+// Initialize Winsock 2.2 subsystem
+pub fn socket_init() -> bool {
+    let wsadata_buf = mem_calloc(1, 512);
+    let res = wsa_startup(514, wsadata_buf);
+    mem_free(wsadata_buf);
+    return res == 0;
+}
+
+// Clean up Winsock subsystem
+pub fn socket_cleanup() -> void {
+    wsa_cleanup();
+}
+
 pub fn last_error() -> i64 {
     return wsa_get_last_error();
 }
 
-pub fn cleanup() -> void {
-    wsa_cleanup();
+pub fn create_tcp_socket() -> i64 {
+    socket_init();
+    return socket(AF_INET(), SOCK_STREAM(), IPPROTO_TCP());
+}
+
+pub fn create_udp_socket() -> i64 {
+    socket_init();
+    return socket(AF_INET(), SOCK_DGRAM(), IPPROTO_UDP());
+}
+
+// Constructs a 16-byte sockaddr_in binary structure for IPv4
+pub fn make_sockaddr_in(ip: str, port: i64) -> str {
+    let bb = ByteBuffer();
+    // sin_family: AF_INET = 2 (little-endian: 0x02, 0x00)
+    bb.write_u8(2);
+    bb.write_u8(0);
+
+    // sin_port: network byte order (big-endian)
+    let p_net = htons(port);
+    bb.write_u8(p_net & 255);
+    bb.write_u8((p_net >> 8) & 255);
+
+    // sin_addr: IPv4 4-byte packed address
+    let addr = inet_addr(ip);
+    bb.write_u8(addr & 255);
+    bb.write_u8((addr >> 8) & 255);
+    bb.write_u8((addr >> 16) & 255);
+    bb.write_u8((addr >> 24) & 255);
+
+    // sin_zero[8] pad
+    mut i = 0;
+    while i < 8 {
+        bb.write_u8(0);
+        i = i + 1;
+    }
+
+    let out_str = bb.to_str();
+    bb.free();
+    return out_str;
 }

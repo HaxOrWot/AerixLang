@@ -1,0 +1,35 @@
+// ==============================================================================
+// Aerix Standard Library: Window::Metrics
+// Display resolution, virtual monitors, and DPI metrics.
+// ==============================================================================
+
+#[extern("user32.dll", "GetSystemMetrics")]
+pub fn get_system_metrics(nIndex: i64) -> i64;
+
+// Primary screen dimensions
+pub fn screen_width() -> i64 {
+    return get_system_metrics(0);
+}
+
+pub fn screen_height() -> i64 {
+    return get_system_metrics(1);
+}
+
+// Full virtual desktop (spanning all multi-monitors)
+pub fn virtual_screen_width() -> i64 {
+    return get_system_metrics(78);
+}
+
+pub fn virtual_screen_height() -> i64 {
+    return get_system_metrics(79);
+}
+
+// Display monitor count
+pub fn monitor_count() -> i64 {
+    return get_system_metrics(80);
+}
+
+// Mouse present flag
+pub fn mouse_present() -> bool {
+    return get_system_metrics(19) != 0;
+}

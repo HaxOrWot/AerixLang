@@ -1,0 +1,154 @@
+// ==============================================================================
+// Aerix Standard Modules: Time::Date
+// Calendar calculations, local system time, DateTime struct, and duration formatting.
+// ==============================================================================
+
+#[extern("kernel32.dll", "GetLocalTime")]
+pub fn get_local_time(lp_system_time: str) -> void;
+
+pub class DateTime {
+    pub year: i64
+    pub month: i64
+    pub day: i64
+    pub hour: i64
+    pub minute: i64
+    pub second: i64
+    pub millisecond: i64
+
+    init() {
+        self.year = 1970
+        self.month = 1
+        self.day = 1
+        self.hour = 0
+        self.minute = 0
+        self.second = 0
+        self.millisecond = 0
+    }
+
+    pub fn format_iso() -> str {
+        mut m_str = self.month as str
+        if self.month < 10 { m_str = "0" + m_str }
+
+        mut d_str = self.day as str
+        if self.day < 10 { d_str = "0" + d_str }
+
+        mut h_str = self.hour as str
+        if self.hour < 10 { h_str = "0" + h_str }
+
+        mut min_str = self.minute as str
+        if self.minute < 10 { min_str = "0" + min_str }
+
+        mut s_str = self.second as str
+        if self.second < 10 { s_str = "0" + s_str }
+
+        return (self.year as str) + "-" + m_str + "-" + d_str + " " + h_str + ":" + min_str + ":" + s_str
+    }
+}
+
+pub fn from_epoch(secs: i64) -> DateTime {
+    let dt = DateTime()
+    if secs <= 0 {
+        return dt
+    }
+    let s = secs % 60
+    let rem_m = secs / 60
+    let m = rem_m % 60
+    let rem_h = rem_m / 60
+    let h = rem_h % 24
+    mut days = rem_h / 24
+
+    dt.second = s
+    dt.minute = m
+    dt.hour = h
+
+    mut y = 1970
+    loop {
+        mut diy = 365
+        if is_leap_year(y) {
+            diy = 366
+        }
+        if days < diy {
+            break
+        }
+        days = days - diy
+        y = y + 1
+    }
+    dt.year = y
+
+    mut mon = 1
+    while mon <= 12 {
+        let dim = days_in_month(y, mon)
+        if days < dim {
+            break
+        }
+        days = days - dim
+        mon = mon + 1
+    }
+    dt.month = mon
+    dt.day = days + 1
+    return dt
+}
+
+pub fn from_epoch_ms(ms: i64) -> DateTime {
+    let dt = from_epoch(ms / 1000)
+    dt.millisecond = ms % 1000
+    return dt
+}
+
+pub fn now_local() -> DateTime {
+    return from_epoch(c_time(0))
+}
+
+pub fn now_utc() -> DateTime {
+    return from_epoch(c_time(0))
+}
+
+pub fn now_string() -> str {
+    let dt = now_local()
+    return dt.format_iso()
+}
+
+pub fn is_leap_year(year: i64) -> bool {
+    if (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0) {
+        return true
+    }
+    return false
+}
+
+pub fn days_in_month(year: i64, month: i64) -> i64 {
+    if month == 2 {
+        if is_leap_year(year) {
+            return 29
+        }
+        return 28
+    }
+    if month == 4 || month == 6 || month == 9 || month == 11 {
+        return 30
+    }
+    return 31
+}
+
+pub fn format_duration_ms(ms: i64) -> str {
+    if ms < 0 {
+        return "00:00.000"
+    }
+    let total_secs = ms / 1000
+    let m = total_secs / 60
+    let s = total_secs % 60
+    let rem_ms = ms % 1000
+
+    mut m_str = m as str
+    if m < 10 { m_str = "0" + m_str }
+
+    mut s_str = s as str
+    if s < 10 { s_str = "0" + s_str }
+
+    mut ms_str = rem_ms as str
+    if rem_ms < 10 {
+        ms_str = "00" + ms_str
+    } else if rem_ms < 100 {
+        ms_str = "0" + ms_str
+    }
+
+    return m_str + ":" + s_str + "." + ms_str
+}

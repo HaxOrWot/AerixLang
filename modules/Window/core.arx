@@ -1,6 +1,6 @@
 // ==============================================================================
 // Aerix Standard Library: Window::Core
-// Native Windows Dialogs, Audio Alerts, and System Notifications
+// Native Windows Dialogs, Audio Alerts, Window Handles, and Console Controls
 // ==============================================================================
 
 #[extern("user32.dll", "MessageBoxA")]
@@ -8,6 +8,34 @@ pub fn message_box(hwnd: i64, text: str, caption: str, utype: i64) -> i64;
 
 #[extern("kernel32.dll", "Beep")]
 pub fn beep(freq: i64, duration_ms: i64) -> i64;
+
+#[extern("user32.dll", "MessageBeep")]
+pub fn message_beep(uType: i64) -> i32;
+
+#[extern("kernel32.dll", "SetConsoleTitleA")]
+pub fn set_console_title(title: str) -> i32;
+
+#[extern("user32.dll", "GetForegroundWindow")]
+pub fn get_foreground_window() -> i64;
+
+#[extern("user32.dll", "GetWindowTextA")]
+pub fn get_window_text(hwnd: i64, lpString: str, nMaxCount: i64) -> i64;
+
+#[extern("user32.dll", "FlashWindow")]
+pub fn flash_window(hwnd: i64, bInvert: i32) -> i32;
+
+pub fn get_active_window_title() -> str {
+    let hwnd = get_foreground_window();
+    if hwnd == 0 {
+        return "";
+    }
+    let buf = " ".repeat(256);
+    let len = get_window_text(hwnd, buf, 256);
+    if len <= 0 {
+        return "";
+    }
+    return buf.slice(0, len);
+}
 
 pub fn alert(title: str, message: str) -> void {
     // MB_OK (0x0) | MB_ICONINFORMATION (0x40)
@@ -28,4 +56,10 @@ pub fn confirm(title: str, message: str) -> bool {
     // MB_OKCANCEL (0x1) | MB_ICONQUESTION (0x20)
     let res = message_box(0, message, title, 33);
     return res == 1;
+}
+
+pub fn prompt_yes_no(title: str, message: str) -> bool {
+    // MB_YESNO (0x4) | MB_ICONQUESTION (0x20)
+    let res = message_box(0, message, title, 36);
+    return res == 6; // IDYES = 6
 }

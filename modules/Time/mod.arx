@@ -1,6 +1,8 @@
 // ==============================================================================
 // Aerix Standard Library: Time
-// High-resolution clocks, millisecond timers, and thread delays.
+// High-resolution clocks, millisecond timers, thread delays, stopwatches, and dates.
 // ==============================================================================
 
 import "./core.arx"
+import "./stopwatch.arx"
+import "./date.arx"

@@ -49,6 +49,7 @@ pub class Analyzer {
     pub c_inc_count: i64
     pub mod_aliases: Map<str, str>
     pub item_aliases: Map<str, str>
+    pub loaded_mods: Map<str, i64>
 
     // Monomorphized generic registries
     pub gen_list_types: List<str>
@@ -158,6 +159,7 @@ pub class Analyzer {
         self.c_inc_count = p.c_inc_count
         self.mod_aliases = p.mod_aliases
         self.item_aliases = p.item_aliases
+        self.loaded_mods = p.loaded_mods
         self.fn_externs = p.fn_externs
 
         self.gen_list_types = List<str>()
@@ -1562,7 +1564,7 @@ pub class Analyzer {
                     t = name
                 } else if self.enum_idx_map.has_key(name) {
                     t = name
-                } else if self.mod_aliases.has_key(name) || self.item_aliases.has_key(name) {
+                } else if self.mod_aliases.has_key(name) || self.item_aliases.has_key(name) || self.loaded_mods.has_key(name) {
                     t = "module"
                 } else if self.sig_by_key.has_key("fn::" + name) || self.is_builtin_ident(name) {
                     t = "i64"
@@ -2090,9 +2092,11 @@ pub class Analyzer {
                                 if self.cls_idx_map.has_key(lookup_target) {
                                     let ctor_sig = self.find_best_overload("ctor::" + lookup_target, arg_types, ac)
                                     self.call_kinds.set(nid, CK_CTOR())
-                                    self.call_targets.set(nid, lookup_target)
                                     if ctor_sig >= 0 {
+                                        self.call_targets.set(nid, self.sig_cnames.get(ctor_sig))
                                         self.call_fn_nodes.set(nid, self.sig_nodes.get(ctor_sig))
+                                    } else {
+                                        self.call_targets.set(nid, "Arx_" + lookup_target + "_init")
                                     }
                                     self.node_types.set(nid, lookup_target)
                                     return lookup_target

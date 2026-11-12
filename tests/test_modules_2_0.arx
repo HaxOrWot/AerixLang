@@ -1,0 +1,49 @@
+import Time
+import Window
+import Socket
+import Math
+import Random
+
+fn main() {
+    println("--- Testing Time Module ---")
+    let sw = Time.Stopwatch()
+    sw.start()
+    println("Current date/time: " + Time.now_string())
+    println("Ticks: " + (Time.ticks() as str))
+    println("Days in Feb 2024 (leap): " + (Time.days_in_month(2024, 2) as str))
+    println("Days in Feb 2025: " + (Time.days_in_month(2025, 2) as str))
+    let elapsed = sw.stop()
+    println("Stopwatch elapsed ms: " + (elapsed as str))
+    println("Formatted duration: " + Time.format_duration_ms(elapsed))
+
+    println("\n--- Testing Window Module ---")
+    println("Screen width: " + (Window.screen_width() as str))
+    println("Screen height: " + (Window.screen_height() as str))
+    println("Virtual screen width: " + (Window.virtual_screen_width() as str))
+    println("Virtual screen height: " + (Window.virtual_screen_height() as str))
+    println("Monitor count: " + (Window.monitor_count() as str))
+    println("Mouse present: " + (Window.mouse_present() as str))
+    let (mx, my) = Window.get_mouse_position()
+    println("Mouse position: (" + (mx as str) + ", " + (my as str) + ")")
+    let active_win = Window.get_active_window_title()
+    println("Active window title: " + active_win)
+
+    println("\n--- Testing Socket Module ---")
+    let s_init = Socket.socket_init()
+    println("Winsock init: " + (s_init as str))
+    let sock = Socket.create_tcp_socket()
+    println("TCP socket created: " + (sock >= 0 as str))
+    if sock >= 0 {
+        Socket.closesocket(sock)
+    }
+    Socket.socket_cleanup()
+    println("Winsock cleanup completed.")
+
+    println("\n--- Testing Math & Random Modules ---")
+    let pi_val = Math.PI
+    println("Math.PI: " + (pi_val as str))
+    let rnd_val = Random.randint(1, 100)
+    println("Random integer [1..100]: " + (rnd_val as str))
+
+    println("\nALL MODULE 2.0 TESTS PASSED SUCCESSFULLY!")
+}

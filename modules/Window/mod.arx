@@ -1,6 +1,8 @@
 // ==============================================================================
 // Aerix Standard Library: Window
-// Native OS Windowing, Dialogs, Message Boxes, and UI Interaction
+// Native OS Windowing, Dialogs, Message Boxes, System Metrics, and Input State
 // ==============================================================================
 
 import "./core.arx"
+import "./metrics.arx"
+import "./input.arx"
