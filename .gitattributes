@@ -1,0 +1,8 @@
+# GitHub Linguist classification rules
+# Mark compiler-generated C99 bootstrap seed as generated so GitHub language stats reflect hand-written source
+src/bootstrap/seed/** linguist-generated=true
+
+# Exclude packaged extension archives and compiled executables from language statistics
+*.vsix linguist-vendored
+*.exe linguist-vendored
+AerixInstaller/dist/** linguist-vendored
