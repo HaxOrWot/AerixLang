@@ -6,10 +6,9 @@
 #include <shlobj.h>
 #include <zlib.h>
 
-#include <algorithm>
-#include <cctype>
 #include <cstdint>
 #include <cstring>
+#include <cwctype>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
