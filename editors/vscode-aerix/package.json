@@ -53,7 +53,14 @@
     ],
     "configurationDefaults": {
       "[aerix]": {
-        "editor.semanticHighlighting.enabled": true
+        "editor.semanticHighlighting.enabled": true,
+        "editor.quickSuggestions": {
+          "other": "on",
+          "comments": "off",
+          "strings": "on"
+        },
+        "editor.suggest.showStatusBar": true,
+        "editor.parameterHints.enabled": true
       }
     },
     "semanticTokenScopes": [
