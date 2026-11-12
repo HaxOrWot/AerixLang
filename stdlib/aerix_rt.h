@@ -2032,6 +2032,15 @@ static inline int64_t arx_args_count(void) {
 
 static inline const char* arx_args_get(int64_t idx) {
     if (!arx_cli_argv || idx < 0 || idx >= (int64_t)arx_cli_argc) return "";
+#if defined(_WIN32) || defined(_WIN64)
+    if (idx == 0) {
+        static char arx_exe_path_buf[MAX_PATH];
+        DWORD exe_len = GetModuleFileNameA(NULL, arx_exe_path_buf, MAX_PATH);
+        if (exe_len > 0 && exe_len < MAX_PATH) {
+            return arx_exe_path_buf;
+        }
+    }
+#endif
     return arx_cli_argv[idx] ? arx_cli_argv[idx] : "";
 }
 
