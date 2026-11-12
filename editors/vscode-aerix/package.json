@@ -13,9 +13,6 @@
     "url": "https://github.com/aerix-lang/aerix"
   },
   "main": "./extension.js",
-  "activationEvents": [
-    "workspaceContains:**/*.arx"
-  ],
   "categories": [
     "Programming Languages",
     "Snippets"
@@ -47,6 +44,11 @@
         }
       }
     ],
+    "configurationDefaults": {
+      "[aerix]": {
+        "editor.semanticHighlighting.enabled": true
+      }
+    },
     "configuration": {
       "title": "Aerix",
       "properties": {

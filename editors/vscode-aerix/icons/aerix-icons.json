@@ -1,0 +1,10 @@
+{
+  "iconDefinitions": {
+    "_aerix_file": {
+      "iconPath": "./aerix-icon.svg"
+    }
+  },
+  "fileExtensions": {
+    "arx": "_aerix_file"
+  }
+}

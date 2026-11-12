@@ -75,25 +75,35 @@ function toDocSymbol(s) {
 }
 
 class AerixLspClient {
-    constructor(diagnostics, output) {
+    constructor(diagnostics, output, onTokensRefresh) {
         this.diagnostics = diagnostics;
         this.output = output;
+        this.onTokensRefresh = onTokensRefresh;
         this.proc = null;
         this.nextId = 1;
         this.pending = new Map();
         this.rxBuf = Buffer.alloc(0);
         this.ready = null;
+        this.initialized = false;
+        this.openedUris = new Set();
+        this.dirtyTimers = new Map();
     }
 
     start() {
         if (this.ready) return this.ready;
-        this.ready = this._spawnAndInit();
+        this.ready = this._spawnAndInit().catch((err) => {
+            this.output.appendLine(`[Aerix LSP] Init error: ${err && err.message ? err.message : err}`);
+            this.ready = null;
+            this.initialized = false;
+        });
         return this.ready;
     }
 
     async _spawnAndInit() {
         const bin = resolveAerixBinary();
         this.output.appendLine(`[Aerix LSP] Starting: ${bin} lsp`);
+        this.initialized = false;
+        this.openedUris.clear();
         const proc = cp.spawn(bin, ['lsp'], { stdio: ['pipe', 'pipe', 'pipe'] });
         this.proc = proc;
 
@@ -105,6 +115,8 @@ class AerixLspClient {
             this.pending.clear();
             this.proc = null;
             this.ready = null;
+            this.initialized = false;
+            this.openedUris.clear();
         });
         proc.on('error', (err) => {
             this.output.appendLine(`[Aerix LSP] Failed to start '${bin}': ${err.message}`);
@@ -112,27 +124,88 @@ class AerixLspClient {
             this.pending.clear();
             this.proc = null;
             this.ready = null;
+            this.initialized = false;
+            this.openedUris.clear();
         });
 
         const folders = vscode.workspace.workspaceFolders;
-        await this.request('initialize', {
+        await this._requestRaw('initialize', {
             processId: process.pid,
             rootUri: folders && folders.length ? folders[0].uri.toString() : null,
             capabilities: {}
-        });
-        this.notify('initialized', {});
+        }, 15000);
+        this._send({ jsonrpc: '2.0', method: 'initialized', params: {} });
+        this.initialized = true;
+
         for (const doc of vscode.workspace.textDocuments) {
             if (doc.languageId === 'aerix') {
-                this.notify('textDocument/didOpen', {
-                    textDocument: {
-                        uri: doc.uri.toString(),
-                        languageId: 'aerix',
-                        version: doc.version,
-                        text: doc.getText()
-                    }
-                });
+                this._openDoc(doc);
             }
         }
+        if (this.onTokensRefresh) this.onTokensRefresh();
+    }
+
+    _openDoc(doc) {
+        const uri = doc.uri.toString();
+        this.openedUris.add(uri);
+        this._send({
+            jsonrpc: '2.0',
+            method: 'textDocument/didOpen',
+            params: {
+                textDocument: {
+                    uri,
+                    languageId: 'aerix',
+                    version: doc.version,
+                    text: doc.getText()
+                }
+            }
+        });
+    }
+
+    _changeDoc(doc) {
+        const uri = doc.uri.toString();
+        if (!this.openedUris.has(uri)) {
+            this._openDoc(doc);
+            return;
+        }
+        this._send({
+            jsonrpc: '2.0',
+            method: 'textDocument/didChange',
+            params: {
+                textDocument: { uri, version: doc.version },
+                contentChanges: [{ text: doc.getText() }]
+            }
+        });
+    }
+
+    async ensureDocSynced(doc) {
+        await this.start();
+        if (!this.proc || !this.initialized) return false;
+        const uri = doc.uri.toString();
+        const pending = this.dirtyTimers.get(uri);
+        if (pending) {
+            clearTimeout(pending.timer);
+            this.dirtyTimers.delete(uri);
+            this._changeDoc(pending.doc);
+        } else if (!this.openedUris.has(uri)) {
+            this._openDoc(doc);
+        }
+        return true;
+    }
+
+    scheduleDocChange(doc) {
+        const uri = doc.uri.toString();
+        const prev = this.dirtyTimers.get(uri);
+        if (prev) clearTimeout(prev.timer);
+        const timer = setTimeout(async () => {
+            this.dirtyTimers.delete(uri);
+            await this.start();
+            if (this.proc && this.initialized) {
+                this._changeDoc(doc);
+                if (this.onTokensRefresh) this.onTokensRefresh();
+            }
+        }, 180);
+        this.dirtyTimers.set(uri, { timer, doc });
     }
 
     _send(payload) {
@@ -142,17 +215,15 @@ class AerixLspClient {
         this.proc.stdin.write(`Content-Length: ${bytes}\r\n\r\n${json}`, 'utf8');
     }
 
-    async request(method, params) {
-        if (!this.proc && method !== 'initialize') {
-            await this.start();
-        }
-        if (!this.proc) return null;
+    _requestRaw(method, params, timeoutMs = 30000) {
+        if (!this.proc) return Promise.resolve(null);
         const id = this.nextId++;
         return new Promise((resolve) => {
             const timer = setTimeout(() => {
                 this.pending.delete(id);
+                this.output.appendLine(`[Aerix LSP] Request timeout (${timeoutMs}ms): ${method}`);
                 resolve(null);
-            }, 5000);
+            }, timeoutMs);
             this.pending.set(id, {
                 resolve: (val) => {
                     clearTimeout(timer);
@@ -163,8 +234,16 @@ class AerixLspClient {
         });
     }
 
-    notify(method, params) {
-        if (!this.proc) return;
+    async request(method, params, doc) {
+        await this.start();
+        if (!this.proc || !this.initialized) return null;
+        if (doc) await this.ensureDocSynced(doc);
+        return this._requestRaw(method, params, 30000);
+    }
+
+    async notify(method, params) {
+        await this.start();
+        if (!this.proc || !this.initialized) return;
         this._send({ jsonrpc: '2.0', method, params });
     }
 
@@ -211,66 +290,77 @@ class AerixLspClient {
     }
 
     async stop() {
+        for (const [, pending] of this.dirtyTimers) clearTimeout(pending.timer);
+        this.dirtyTimers.clear();
         if (!this.proc) return;
         try {
-            await this.request('shutdown', null);
-            this.notify('exit', null);
+            await this._requestRaw('shutdown', null, 2000);
+            this._send({ jsonrpc: '2.0', method: 'exit', params: null });
         } catch {
             // ignore
         }
         if (this.proc) this.proc.kill();
         this.proc = null;
+        this.initialized = false;
+        this.openedUris.clear();
     }
 }
 
 function activate(context) {
     const diagnostics = vscode.languages.createDiagnosticCollection('aerix');
     const output = vscode.window.createOutputChannel('Aerix Language Server');
-    const client = new AerixLspClient(diagnostics, output);
+    const semTokensEmitter = new vscode.EventEmitter();
+    const client = new AerixLspClient(diagnostics, output, () => semTokensEmitter.fire());
     client.start();
 
-    context.subscriptions.push(diagnostics, output, { dispose: () => client.stop() });
+    context.subscriptions.push(diagnostics, output, semTokensEmitter, { dispose: () => client.stop() });
 
     context.subscriptions.push(
         vscode.workspace.onDidOpenTextDocument((doc) => {
             if (doc.languageId === 'aerix') {
-                client.start().then(() => client.notify('textDocument/didOpen', {
-                    textDocument: { uri: doc.uri.toString(), languageId: 'aerix', version: doc.version, text: doc.getText() }
-                }));
+                client.ensureDocSynced(doc).then(() => semTokensEmitter.fire());
             }
         }),
         vscode.workspace.onDidChangeTextDocument((ev) => {
             if (ev.document.languageId === 'aerix') {
-                client.start().then(() => client.notify('textDocument/didChange', {
-                    textDocument: { uri: ev.document.uri.toString(), version: ev.document.version },
-                    contentChanges: [{ text: ev.document.getText() }]
-                }));
+                client.scheduleDocChange(ev.document);
             }
         }),
         vscode.workspace.onDidSaveTextDocument((doc) => {
             if (doc.languageId === 'aerix') {
-                client.start().then(() => client.notify('textDocument/didSave', {
-                    textDocument: { uri: doc.uri.toString() },
-                    text: doc.getText()
-                }));
+                client.ensureDocSynced(doc).then(() => {
+                    client.notify('textDocument/didSave', {
+                        textDocument: { uri: doc.uri.toString() },
+                        text: doc.getText()
+                    });
+                    semTokensEmitter.fire();
+                });
             }
         }),
         vscode.workspace.onDidCloseTextDocument((doc) => {
             if (doc.languageId === 'aerix') {
-                client.notify('textDocument/didClose', { textDocument: { uri: doc.uri.toString() } });
+                const uri = doc.uri.toString();
+                const pending = client.dirtyTimers.get(uri);
+                if (pending) {
+                    clearTimeout(pending.timer);
+                    client.dirtyTimers.delete(uri);
+                }
+                client.openedUris.delete(uri);
+                client.notify('textDocument/didClose', { textDocument: { uri } });
                 diagnostics.delete(doc.uri);
             }
         })
     );
 
-    const sel = { language: 'aerix', scheme: 'file' };
+    const sel = { language: 'aerix' };
 
     context.subscriptions.push(
         vscode.languages.registerDocumentSemanticTokensProvider(sel, {
+            onDidChangeSemanticTokens: semTokensEmitter.event,
             async provideDocumentSemanticTokens(doc) {
                 const res = await client.request('textDocument/semanticTokens/full', {
                     textDocument: { uri: doc.uri.toString() }
-                });
+                }, doc);
                 if (!res || !Array.isArray(res.data)) return new vscode.SemanticTokens(new Uint32Array(0));
                 return new vscode.SemanticTokens(new Uint32Array(res.data));
             }
@@ -281,7 +371,7 @@ function activate(context) {
                 const res = await client.request('textDocument/completion', {
                     textDocument: { uri: doc.uri.toString() },
                     position: toLspPos(pos)
-                });
+                }, doc);
                 const items = res && Array.isArray(res.items) ? res.items : (Array.isArray(res) ? res : []);
                 return items.map((it) => {
                     const ci = new vscode.CompletionItem(it.label, it.kind || vscode.CompletionItemKind.Text);
@@ -300,7 +390,7 @@ function activate(context) {
                 const res = await client.request('textDocument/hover', {
                     textDocument: { uri: doc.uri.toString() },
                     position: toLspPos(pos)
-                });
+                }, doc);
                 if (!res || !res.contents) return null;
                 const val = typeof res.contents === 'string' ? res.contents : (res.contents.value || '');
                 return val ? new vscode.Hover(new vscode.MarkdownString(val)) : null;
@@ -312,7 +402,7 @@ function activate(context) {
                 const res = await client.request('textDocument/signatureHelp', {
                     textDocument: { uri: doc.uri.toString() },
                     position: toLspPos(pos)
-                });
+                }, doc);
                 if (!res || !Array.isArray(res.signatures)) return null;
                 const sh = new vscode.SignatureHelp();
                 sh.activeSignature = res.activeSignature || 0;
@@ -331,7 +421,7 @@ function activate(context) {
                 const res = await client.request('textDocument/definition', {
                     textDocument: { uri: doc.uri.toString() },
                     position: toLspPos(pos)
-                });
+                }, doc);
                 if (!res || !res.uri) return null;
                 return new vscode.Location(vscode.Uri.parse(res.uri), toVsRange(res.range));
             }
@@ -341,7 +431,7 @@ function activate(context) {
             async provideDocumentSymbols(doc) {
                 const res = await client.request('textDocument/documentSymbol', {
                     textDocument: { uri: doc.uri.toString() }
-                });
+                }, doc);
                 return Array.isArray(res) ? res.map(toDocSymbol) : [];
             }
         }),
@@ -350,7 +440,7 @@ function activate(context) {
             async provideInlayHints(doc) {
                 const res = await client.request('textDocument/inlayHint', {
                     textDocument: { uri: doc.uri.toString() }
-                });
+                }, doc);
                 if (!Array.isArray(res)) return [];
                 return res.map((h) => {
                     const hint = new vscode.InlayHint(
@@ -369,7 +459,7 @@ function activate(context) {
             async provideCodeLenses(doc) {
                 const res = await client.request('textDocument/codeLens', {
                     textDocument: { uri: doc.uri.toString() }
-                });
+                }, doc);
                 if (!Array.isArray(res)) return [];
                 return res.map((l) => new vscode.CodeLens(toVsRange(l.range), {
                     title: (l.command && l.command.title) || '▶ Run Program',
@@ -383,7 +473,7 @@ function activate(context) {
             async provideDocumentFormattingEdits(doc) {
                 const res = await client.request('textDocument/formatting', {
                     textDocument: { uri: doc.uri.toString() }
-                });
+                }, doc);
                 if (!Array.isArray(res)) return [];
                 return res.map((e) => vscode.TextEdit.replace(toVsRange(e.range), e.newText || ''));
             }
