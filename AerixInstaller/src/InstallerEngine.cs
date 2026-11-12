@@ -3,10 +3,13 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
+using System.Net;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Threading;
+using System.Web.Script.Serialization;
 using Microsoft.Win32;
 
 namespace AerixSetup
@@ -44,6 +47,25 @@ namespace AerixSetup
         public string SmokeTestSummary = "";
         public int ExtractedFiles;
         public readonly List<string> InstalledEditors = new List<string>();
+    }
+
+    public sealed class StableReleaseInfo
+    {
+        public string TagName = "";
+        public string Version = "";
+        public string SetupAssetName = "";
+        public string SetupDownloadUrl = "";
+        public long SetupSize;
+    }
+
+    public sealed class UpdateResult
+    {
+        public bool Success;
+        public bool Updated;
+        public bool UpdateAvailable;
+        public string CurrentVersion = "";
+        public string LatestVersion = "";
+        public string Message = "";
     }
 
     public delegate void ProgressHandler(int percent, string status, string logLine);
@@ -320,6 +342,7 @@ namespace AerixSetup
                 }
 
                 // Clean up leftover .old executables from prior locked swaps when possible
+                CleanupStaleBackups(root);
                 CleanupStaleBackups(Path.Combine(root, "bin"));
 
                 // Sync legacy ~/.aerix/bin if present so an older user-local binary doesn't shadow PATH
@@ -1017,6 +1040,392 @@ namespace AerixSetup
         private static void Report(ProgressHandler h, int pct, string status, string logLine)
         {
             if (h != null) h(pct, status, logLine);
+        }
+
+        private const string GitHubReleasesApiUrl = "https://api.github.com/repos/HaxOrWot/AerixLang/releases?per_page=20";
+
+        public static void WriteUpdaterLog(string msg)
+        {
+            try
+            {
+                string localApp = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+                if (string.IsNullOrEmpty(localApp)) return;
+                string dir = Path.Combine(localApp, "Aerix");
+                Directory.CreateDirectory(dir);
+                string logPath = Path.Combine(dir, "updater.log");
+                if (File.Exists(logPath) && new FileInfo(logPath).Length > 65536)
+                {
+                    try { File.Delete(logPath); } catch { }
+                }
+                string line = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + " " + msg + Environment.NewLine;
+                File.AppendAllText(logPath, line, Encoding.UTF8);
+            }
+            catch
+            {
+            }
+        }
+
+        private static void TouchUpdateCheckStamp(string latestVersion)
+        {
+            try
+            {
+                string localApp = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+                if (string.IsNullOrEmpty(localApp)) return;
+                string dir = Path.Combine(localApp, "Aerix");
+                Directory.CreateDirectory(dir);
+                string stampPath = Path.Combine(dir, "last_update_check");
+                File.WriteAllText(stampPath, DateTime.UtcNow.Ticks + "|" + (latestVersion ?? "") + Environment.NewLine, Encoding.UTF8);
+            }
+            catch
+            {
+            }
+        }
+
+        public static string GetInstalledVersionFromDisk(string installDir)
+        {
+            try
+            {
+                if (!string.IsNullOrWhiteSpace(installDir))
+                {
+                    string arxExe = Path.Combine(TrimTrailingSlashes(installDir), "bin", "arx.exe");
+                    if (File.Exists(arxExe))
+                    {
+                        string outTxt = RunCapture(arxExe, "version", TrimTrailingSlashes(installDir), 8000);
+                        Match m = Regex.Match(outTxt ?? "", "v([0-9]+\\.[0-9]+\\.[0-9]+[^\\s]*)");
+                        if (m.Success) return m.Groups[1].Value;
+                    }
+                }
+            }
+            catch
+            {
+            }
+
+            try
+            {
+                using (RegistryKey key = Registry.CurrentUser.OpenSubKey(UninstallRegPath, false))
+                {
+                    if (key != null)
+                    {
+                        object dv = key.GetValue("DisplayVersion");
+                        if (dv != null && !string.IsNullOrWhiteSpace(dv.ToString()))
+                        {
+                            return dv.ToString().Trim().TrimStart('v', 'V');
+                        }
+                    }
+                }
+            }
+            catch
+            {
+            }
+
+            return GetVersion();
+        }
+
+        private static void ParseSemVer(string raw, out int major, out int minor, out int patch, out string preTag)
+        {
+            major = 0; minor = 0; patch = 0; preTag = "";
+            if (string.IsNullOrWhiteSpace(raw)) return;
+            string s = raw.Trim();
+            if (s.StartsWith("v", StringComparison.OrdinalIgnoreCase)) s = s.Substring(1);
+            int dash = s.IndexOf('-');
+            string core = dash >= 0 ? s.Substring(0, dash) : s;
+            preTag = dash >= 0 ? s.Substring(dash + 1).Trim().ToLowerInvariant() : "";
+            string[] parts = core.Split('.');
+            if (parts.Length > 0) int.TryParse(parts[0], out major);
+            if (parts.Length > 1) int.TryParse(parts[1], out minor);
+            if (parts.Length > 2) int.TryParse(parts[2], out patch);
+        }
+
+        private static int TagStabilityRank(string tag)
+        {
+            if (string.IsNullOrEmpty(tag) || tag == "stable") return 3;
+            if (tag.StartsWith("rc")) return 2;
+            if (tag.StartsWith("beta") || tag.StartsWith("pre")) return 1;
+            return 0;
+        }
+
+        public static int CompareVersions(string a, string b)
+        {
+            int aMaj, aMin, aPat, bMaj, bMin, bPat;
+            string aTag, bTag;
+            ParseSemVer(a, out aMaj, out aMin, out aPat, out aTag);
+            ParseSemVer(b, out bMaj, out bMin, out bPat, out bTag);
+            if (aMaj != bMaj) return aMaj.CompareTo(bMaj);
+            if (aMin != bMin) return aMin.CompareTo(bMin);
+            if (aPat != bPat) return aPat.CompareTo(bPat);
+            return TagStabilityRank(aTag).CompareTo(TagStabilityRank(bTag));
+        }
+
+        private static bool BoolVal(Dictionary<string, object> dict, string key)
+        {
+            object v;
+            if (dict != null && dict.TryGetValue(key, out v) && v is bool) return (bool)v;
+            return false;
+        }
+
+        private static string StrVal(Dictionary<string, object> dict, string key)
+        {
+            object v;
+            if (dict != null && dict.TryGetValue(key, out v) && v != null) return v.ToString();
+            return "";
+        }
+
+        public static StableReleaseInfo FetchLatestStableRelease()
+        {
+            ServicePointManager.SecurityProtocol |= (SecurityProtocolType)3072 | SecurityProtocolType.Tls | SecurityProtocolType.Tls11;
+            string json = "";
+            HttpWebRequest req = (HttpWebRequest)WebRequest.Create(GitHubReleasesApiUrl);
+            req.Method = "GET";
+            req.UserAgent = "AerixSetup-Updater";
+            req.Accept = "application/vnd.github+json";
+            req.Timeout = 15000;
+            req.ReadWriteTimeout = 15000;
+            using (HttpWebResponse resp = (HttpWebResponse)req.GetResponse())
+            using (Stream st = resp.GetResponseStream())
+            using (StreamReader sr = new StreamReader(st, Encoding.UTF8))
+            {
+                json = sr.ReadToEnd();
+            }
+
+            var ser = new JavaScriptSerializer();
+            object[] releases = ser.DeserializeObject(json) as object[];
+            if (releases == null) return null;
+
+            StableReleaseInfo best = null;
+            foreach (object item in releases)
+            {
+                var rel = item as Dictionary<string, object>;
+                if (rel == null) continue;
+                if (BoolVal(rel, "draft") || BoolVal(rel, "prerelease")) continue;
+
+                string tag = StrVal(rel, "tag_name");
+                if (string.IsNullOrWhiteSpace(tag)) continue;
+                string lowTag = tag.ToLowerInvariant();
+                if (lowTag.EndsWith("-pre") || lowTag.EndsWith("-alpha") || lowTag.EndsWith("-beta") || lowTag.Contains("-rc"))
+                {
+                    continue;
+                }
+
+                object assetsObj;
+                if (!rel.TryGetValue("assets", out assetsObj)) continue;
+                object[] assets = assetsObj as object[];
+                if (assets == null) continue;
+
+                string assetName = "";
+                string downloadUrl = "";
+                long assetSize = 0;
+
+                foreach (object ao in assets)
+                {
+                    var asset = ao as Dictionary<string, object>;
+                    if (asset == null) continue;
+                    string name = StrVal(asset, "name");
+                    string url = StrVal(asset, "browser_download_url");
+                    if (string.IsNullOrEmpty(name) || string.IsNullOrEmpty(url)) continue;
+                    if (!name.StartsWith("AerixSetup-", StringComparison.OrdinalIgnoreCase) ||
+                        !name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+
+                    bool isStableAsset = name.IndexOf("-stable.exe", StringComparison.OrdinalIgnoreCase) >= 0;
+                    if (string.IsNullOrEmpty(downloadUrl) || isStableAsset)
+                    {
+                        assetName = name;
+                        downloadUrl = url;
+                        object szObj;
+                        if (asset.TryGetValue("size", out szObj) && szObj != null)
+                        {
+                            long.TryParse(szObj.ToString(), out assetSize);
+                        }
+                        if (isStableAsset) break;
+                    }
+                }
+
+                if (string.IsNullOrEmpty(downloadUrl)) continue;
+                string ver = tag.Trim().TrimStart('v', 'V');
+                if (best == null || CompareVersions(ver, best.Version) > 0)
+                {
+                    best = new StableReleaseInfo
+                    {
+                        TagName = tag,
+                        Version = ver,
+                        SetupAssetName = assetName,
+                        SetupDownloadUrl = downloadUrl,
+                        SetupSize = assetSize
+                    };
+                }
+            }
+            return best;
+        }
+
+        public static UpdateResult RunAutoUpdate(bool checkOnly, bool force, string installDirOverride, ProgressHandler progress)
+        {
+            var res = new UpdateResult();
+            Mutex mtx = null;
+            bool acquired = false;
+            string tempDir = null;
+            try
+            {
+                try
+                {
+                    mtx = new Mutex(false, @"Local\AerixLangAutoUpdater");
+                    acquired = mtx.WaitOne(checkOnly ? 1000 : 3000);
+                }
+                catch (AbandonedMutexException)
+                {
+                    acquired = true;
+                }
+                catch
+                {
+                    acquired = true;
+                }
+
+                if (!acquired)
+                {
+                    res.Success = true;
+                    res.Message = "Another Aerix update is already running.";
+                    return res;
+                }
+
+                string targetDir = TrimTrailingSlashes(installDirOverride);
+                if (string.IsNullOrEmpty(targetDir))
+                {
+                    targetDir = ResolveInstalledDirFromRegistry();
+                }
+                if (string.IsNullOrEmpty(targetDir))
+                {
+                    string selfExe = Assembly.GetExecutingAssembly().Location;
+                    if (!string.IsNullOrEmpty(selfExe) && File.Exists(Path.Combine(Path.GetDirectoryName(selfExe), "bin", "arx.exe")))
+                    {
+                        targetDir = Path.GetDirectoryName(selfExe);
+                    }
+                    else
+                    {
+                        targetDir = GetDefaultInstallDir();
+                    }
+                }
+                targetDir = Path.GetFullPath(TrimTrailingSlashes(targetDir));
+
+                res.CurrentVersion = GetInstalledVersionFromDisk(targetDir);
+                Report(progress, 10, "Checking GitHub for latest stable release...", "Current version: v" + res.CurrentVersion);
+
+                StableReleaseInfo latest = FetchLatestStableRelease();
+                if (latest == null)
+                {
+                    res.Success = false;
+                    res.Message = "No stable Aerix release with Windows installer found on GitHub.";
+                    WriteUpdaterLog("Check failed: " + res.Message);
+                    return res;
+                }
+
+                res.LatestVersion = latest.Version;
+                TouchUpdateCheckStamp(latest.Version);
+
+                int cmp = CompareVersions(latest.Version, res.CurrentVersion);
+                res.UpdateAvailable = cmp > 0;
+                if (cmp <= 0 && !force)
+                {
+                    res.Success = true;
+                    res.Updated = false;
+                    res.Message = string.Format("Aerix is already up to date (v{0}).", res.CurrentVersion);
+                    Report(progress, 100, res.Message, res.Message);
+                    return res;
+                }
+
+                if (checkOnly)
+                {
+                    res.Success = true;
+                    res.Updated = false;
+                    res.Message = string.Format("Update available: v{0} -> v{1} ({2})", res.CurrentVersion, res.LatestVersion, latest.SetupAssetName);
+                    Report(progress, 100, res.Message, res.Message);
+                    return res;
+                }
+
+                tempDir = Path.Combine(Path.GetTempPath(), "AerixUpdate_" + DateTime.UtcNow.Ticks);
+                Directory.CreateDirectory(tempDir);
+                string setupPath = Path.Combine(tempDir, latest.SetupAssetName);
+
+                Report(progress, 25, "Downloading " + latest.SetupAssetName + "...", latest.SetupDownloadUrl);
+                ServicePointManager.SecurityProtocol |= (SecurityProtocolType)3072 | SecurityProtocolType.Tls | SecurityProtocolType.Tls11;
+                using (var wc = new WebClient())
+                {
+                    wc.Headers.Add("User-Agent", "AerixSetup-Updater");
+                    wc.DownloadFile(latest.SetupDownloadUrl, setupPath);
+                }
+
+                var fi = new FileInfo(setupPath);
+                if (!fi.Exists || fi.Length < 100000)
+                {
+                    res.Success = false;
+                    res.Message = "Downloaded installer is incomplete or corrupted.";
+                    WriteUpdaterLog("Download invalid: size=" + (fi.Exists ? fi.Length : 0));
+                    return res;
+                }
+                using (FileStream fs = File.OpenRead(setupPath))
+                {
+                    if (fs.ReadByte() != 0x4D || fs.ReadByte() != 0x5A)
+                    {
+                        res.Success = false;
+                        res.Message = "Downloaded update file is not a valid Windows executable.";
+                        WriteUpdaterLog("Invalid PE header for " + setupPath);
+                        return res;
+                    }
+                }
+
+                Report(progress, 65, "Installing Aerix v" + latest.Version + "...", "Running silent installer into " + targetDir);
+                string args = string.Format("--silent \"--dir={0}\"", targetDir);
+                var psi = new ProcessStartInfo(setupPath, args);
+                psi.CreateNoWindow = true;
+                psi.UseShellExecute = false;
+                psi.WindowStyle = ProcessWindowStyle.Hidden;
+                using (Process p = Process.Start(psi))
+                {
+                    if (p == null || !p.WaitForExit(180000))
+                    {
+                        res.Success = false;
+                        res.Message = "Timed out applying Aerix update.";
+                        WriteUpdaterLog(res.Message);
+                        return res;
+                    }
+                    if (p.ExitCode != 0)
+                    {
+                        res.Success = false;
+                        res.Message = "Installer exited with code " + p.ExitCode + ".";
+                        WriteUpdaterLog(res.Message);
+                        return res;
+                    }
+                }
+
+                res.Success = true;
+                res.Updated = true;
+                res.Message = string.Format("Updated Aerix from v{0} to v{1}.", res.CurrentVersion, latest.Version);
+                WriteUpdaterLog(res.Message);
+                Report(progress, 100, res.Message, res.Message);
+                return res;
+            }
+            catch (Exception ex)
+            {
+                res.Success = false;
+                res.Message = ex.Message;
+                WriteUpdaterLog("Update exception: " + ex.Message);
+                return res;
+            }
+            finally
+            {
+                if (!string.IsNullOrEmpty(tempDir))
+                {
+                    try { Directory.Delete(tempDir, true); } catch { }
+                }
+                if (mtx != null)
+                {
+                    if (acquired)
+                    {
+                        try { mtx.ReleaseMutex(); } catch { }
+                    }
+                    mtx.Dispose();
+                }
+            }
         }
     }
 }

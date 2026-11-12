@@ -16,6 +16,10 @@ namespace AerixSetup
         {
             bool silent = false;
             bool uninstall = false;
+            bool updateMode = false;
+            bool checkUpdateOnly = false;
+            bool forceUpdate = false;
+            bool quietUpdate = false;
             var opts = new InstallOptions();
 
             string selfExe = Assembly.GetExecutingAssembly().Location;
@@ -38,6 +42,25 @@ namespace AerixSetup
                     else if (low == "--uninstall" || low == "/uninstall")
                     {
                         uninstall = true;
+                    }
+                    else if (low == "--update" || low == "/update")
+                    {
+                        updateMode = true;
+                        uninstall = false;
+                    }
+                    else if (low == "--check-update" || low == "/check-update")
+                    {
+                        updateMode = true;
+                        checkUpdateOnly = true;
+                        uninstall = false;
+                    }
+                    else if (low == "--force" || low == "/force")
+                    {
+                        forceUpdate = true;
+                    }
+                    else if (low == "--quiet" || low == "/quiet")
+                    {
+                        quietUpdate = true;
                     }
                     else if (low.StartsWith("--dir="))
                     {
@@ -62,9 +85,34 @@ namespace AerixSetup
                 }
             }
 
+            if (updateMode)
+            {
+                if (!quietUpdate && !Console.IsOutputRedirected) AttachConsole(-1);
+                UpdateResult res = InstallerEngine.RunAutoUpdate(
+                    checkUpdateOnly,
+                    forceUpdate,
+                    opts.InstallDir,
+                    delegate(int pct, string status, string logLine)
+                    {
+                        if (!quietUpdate) Console.WriteLine("[{0}%] {1}", pct, status);
+                    });
+                if (!quietUpdate)
+                {
+                    if (!res.Success)
+                    {
+                        Console.Error.WriteLine("Update error: " + res.Message);
+                    }
+                    else
+                    {
+                        Console.WriteLine(res.Message);
+                    }
+                }
+                return res.Success ? 0 : 1;
+            }
+
             if (silent)
             {
-                AttachConsole(-1);
+                if (!Console.IsOutputRedirected) AttachConsole(-1);
                 if (uninstall)
                 {
                     string target = InstallerEngine.ResolveInstalledDirFromRegistry();

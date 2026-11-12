@@ -99,6 +99,12 @@
           "type": "string",
           "default": "",
           "description": "Path to the Aerix compiler/LSP binary (arx / arxc). Leave empty to auto-detect on PATH, %LOCALAPPDATA%\\Programs\\Aerix\\bin, or ~/.aerix/bin."
+        },
+        "aerix.autoUpdate": {
+          "type": "string",
+          "enum": ["auto", "prompt", "off"],
+          "default": "auto",
+          "description": "Automatically check for and install the latest stable Aerix release from GitHub."
         }
       }
     },
@@ -139,6 +145,12 @@
         "title": "Run WebAssembly in Browser (Live)",
         "category": "Aerix",
         "icon": "$(browser)"
+      },
+      {
+        "command": "aerix.checkUpdates",
+        "title": "Check for Updates (Latest Stable)",
+        "category": "Aerix",
+        "icon": "$(cloud-download)"
       }
     ],
     "menus": {

@@ -87,6 +87,7 @@ $manifestRes = Join-Path $srcDir "installer_manifest.json"
     /reference:"$fwDir\System.Windows.Forms.dll" `
     /reference:"$fwDir\System.IO.Compression.dll" `
     /reference:"$fwDir\System.IO.Compression.FileSystem.dll" `
+    /reference:"$fwDir\System.Web.Extensions.dll" `
     /resource:"$payloadZip,AerixPayload.zip" `
     /resource:"$licenseFile,LICENSE" `
     /resource:"$appIcon,aerix.ico" `

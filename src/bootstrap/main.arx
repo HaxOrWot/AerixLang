@@ -19,8 +19,61 @@ fn print_usage() {
     println("  arxc emit-c <file.arx> [-o <out.c>]")
     println("  arxc check <file.arx>")
     println("  arxc lsp")
+    println("  arxc update [--check] [--force]")
     println("  arxc <file.arx> [-o <out>]")
     println("  arxc version")
+}
+
+fn resolve_updater_exe() -> str {
+    let env_home = Env.get("AERIX_HOME")
+    if env_home != "" {
+        let p = bpath_join(bpath_normalize(env_home), "Uninstall.exe")
+        if File.exists(p) { return p }
+    }
+    let self_exe = bpath_normalize(Env.arg(0))
+    if self_exe != "" && self_exe != "." {
+        let bin_dir = bpath_dirname(self_exe)
+        let root_dir = bpath_dirname(bin_dir)
+        let p2 = bpath_join(root_dir, "Uninstall.exe")
+        if File.exists(p2) { return p2 }
+    }
+    if File.exists("C:/Aerix/Uninstall.exe") {
+        return "C:/Aerix/Uninstall.exe"
+    }
+    return ""
+}
+
+fn maybe_trigger_bg_update() {
+    if Env.os_name() != "windows" { return }
+    let u = resolve_updater_exe()
+    if u != "" {
+        let win_u = u.replace("/", "\\")
+        arx_autoupdate_bg_trigger(win_u)
+    }
+}
+
+fn cmd_update(check_only: bool, force: bool) -> i64 {
+    if Env.os_name() != "windows" {
+        eprintln("error: built-in self-updater currently supports Windows installations only.")
+        return 1
+    }
+    let u = resolve_updater_exe()
+    if u == "" {
+        eprintln("error: Aerix updater (Uninstall.exe) was not found in this installation.")
+        eprintln("  = help: install via AerixSetup-*.exe from https://github.com/HaxOrWot/AerixLang/releases")
+        return 1
+    }
+    let win_u = u.replace("/", "\\")
+    mut cmd = quote_shell_arg(win_u)
+    if check_only {
+        cmd = cmd + " --check-update"
+    } else {
+        cmd = cmd + " --update"
+    }
+    if force {
+        cmd = cmd + " --force"
+    }
+    return Process.execute(cmd)
 }
 
 fn strip_arx_ext(p: str) -> str {
@@ -336,6 +389,7 @@ fn main() -> i64 {
     let first = cli_args.get(1)
     if first == "version" || first == "--version" || first == "-v" {
         println("Aerix Self-Hosting Bootstrap Compiler (arxc) v1.1.2-stable")
+        maybe_trigger_bg_update()
         return 0
     }
     if first == "help" || first == "--help" || first == "-h" {
@@ -344,6 +398,21 @@ fn main() -> i64 {
     }
     if first == "lsp" {
         return run_lsp_server()
+    }
+    if first == "update" || first == "upgrade" {
+        mut upd_check = false
+        mut upd_force = false
+        mut ui = 2
+        while ui < cli_argc {
+            let ua = cli_args.get(ui)
+            if ua == "--check" || ua == "-c" {
+                upd_check = true
+            } else if ua == "--force" || ua == "-f" {
+                upd_force = true
+            }
+            ui = ui + 1
+        }
+        return cmd_update(upd_check, upd_force)
     }
 
     mut mode = ""
@@ -399,6 +468,8 @@ fn main() -> i64 {
         print_usage()
         return 1
     }
+
+    maybe_trigger_bg_update()
 
     if mode == "check" {
         return cmd_check(input_file)

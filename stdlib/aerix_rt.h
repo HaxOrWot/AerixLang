@@ -2706,6 +2706,66 @@ static inline int64_t arx_bin_free(int64_t bh) {
     return 0;
 }
 
+static inline int64_t arx_autoupdate_bg_trigger(const char* uninst_exe) {
+#if defined(_WIN32) || defined(_WIN64)
+    if (!uninst_exe || !*uninst_exe) return 0;
+    const char* no_upd = getenv("AERIX_NO_AUTOUPDATE");
+    if (no_upd && (strcmp(no_upd, "1") == 0 || strcmp(no_upd, "true") == 0)) return 0;
+    const char* ci = getenv("CI");
+    if (ci && *ci) return 0;
+    const char* gha = getenv("GITHUB_ACTIONS");
+    if (gha && *gha) return 0;
+
+    DWORD uattr = GetFileAttributesA(uninst_exe);
+    if (uattr == INVALID_FILE_ATTRIBUTES || (uattr & FILE_ATTRIBUTE_DIRECTORY)) return 0;
+
+    const char* local_app = getenv("LOCALAPPDATA");
+    if (!local_app || !*local_app) return 0;
+
+    char state_dir[MAX_PATH];
+    char stamp_path[MAX_PATH];
+    snprintf(state_dir, sizeof(state_dir), "%s\\Aerix", local_app);
+    snprintf(stamp_path, sizeof(stamp_path), "%s\\Aerix\\last_update_check", local_app);
+
+    FILETIME ft_now;
+    GetSystemTimeAsFileTime(&ft_now);
+    uint64_t now64 = ((uint64_t)ft_now.dwHighDateTime << 32) | (uint64_t)ft_now.dwLowDateTime;
+    const uint64_t twelve_hours_100ns = 12ULL * 3600ULL * 10000000ULL;
+
+    WIN32_FILE_ATTRIBUTE_DATA fad;
+    if (GetFileAttributesExA(stamp_path, GetFileExInfoStandard, &fad)) {
+        uint64_t mtime64 = ((uint64_t)fad.ftLastWriteTime.dwHighDateTime << 32) | (uint64_t)fad.ftLastWriteTime.dwLowDateTime;
+        if (now64 >= mtime64 && (now64 - mtime64) < twelve_hours_100ns) {
+            return 0;
+        }
+    }
+
+    CreateDirectoryA(state_dir, NULL);
+    FILE* sf = fopen(stamp_path, "wb");
+    if (sf) {
+        fwrite("1\n", 1, 2, sf);
+        fclose(sf);
+    }
+
+    char cmd[MAX_PATH + 64];
+    snprintf(cmd, sizeof(cmd), "\"%s\" --update --silent --quiet", uninst_exe);
+    STARTUPINFOA si;
+    PROCESS_INFORMATION pi;
+    ZeroMemory(&si, sizeof(si));
+    si.cb = sizeof(si);
+    ZeroMemory(&pi, sizeof(pi));
+    if (CreateProcessA(NULL, cmd, NULL, NULL, FALSE, DETACHED_PROCESS | CREATE_NO_WINDOW, NULL, NULL, &si, &pi)) {
+        CloseHandle(pi.hProcess);
+        CloseHandle(pi.hThread);
+        return 1;
+    }
+    return 0;
+#else
+    (void)uninst_exe;
+    return 0;
+#endif
+}
+
 #endif // AERIX_RT_H
 
 

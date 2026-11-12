@@ -8,6 +8,7 @@
 const vscode = require('vscode');
 const cp = require('child_process');
 const fs = require('fs');
+const https = require('https');
 const os = require('os');
 const path = require('path');
 
@@ -105,6 +106,24 @@ class AerixLspClient {
             this.initialized = false;
         });
         return this.ready;
+    }
+
+    stop() {
+        const proc = this.proc;
+        this.proc = null;
+        this.ready = null;
+        this.initialized = false;
+        this.openedUris.clear();
+        for (const [, p] of this.pending) p.resolve(null);
+        this.pending.clear();
+        if (proc) {
+            try { proc.kill(); } catch (_) {}
+        }
+    }
+
+    restart() {
+        this.stop();
+        return this.start();
     }
 
     async _spawnAndInit() {
@@ -760,8 +779,257 @@ function activate(context) {
         vscode.commands.registerCommand('aerix.serveWasm', async (uri) => {
             const p = await prepareDocPath(uri);
             if (p) runInTerm(`wasm "${p}" --serve`);
+        }),
+        vscode.commands.registerCommand('aerix.checkUpdates', () => {
+            checkAndApplyUpdates(context, client, output, true);
         })
     );
+
+    scheduleAutoUpdateCheck(context, client, output);
+}
+
+const GITHUB_RELEASES_API = 'https://api.github.com/repos/HaxOrWot/AerixLang/releases?per_page=15';
+const AUTO_UPDATE_INTERVAL_MS = 6 * 60 * 60 * 1000;
+let aerixUpdateInFlight = false;
+
+function parseSemverParts(raw) {
+    const s = String(raw || '').trim().replace(/^v/i, '');
+    const dash = s.indexOf('-');
+    const core = dash >= 0 ? s.slice(0, dash) : s;
+    const tag = dash >= 0 ? s.slice(dash + 1).trim().toLowerCase() : '';
+    const nums = core.split('.').map((n) => parseInt(n, 10) || 0);
+    let rank = 0;
+    if (!tag || tag === 'stable') rank = 3;
+    else if (tag.startsWith('rc')) rank = 2;
+    else if (tag.startsWith('beta') || tag.startsWith('pre')) rank = 1;
+    return [nums[0] || 0, nums[1] || 0, nums[2] || 0, rank];
+}
+
+function compareSemver(a, b) {
+    const pa = parseSemverParts(a);
+    const pb = parseSemverParts(b);
+    for (let i = 0; i < 4; i++) {
+        if (pa[i] !== pb[i]) return pa[i] - pb[i];
+    }
+    return 0;
+}
+
+function httpsGetText(url, redirectsLeft = 5) {
+    return new Promise((resolve, reject) => {
+        const req = https.get(url, {
+            headers: {
+                'User-Agent': 'Aerix-VSCode-Updater',
+                'Accept': 'application/vnd.github+json'
+            },
+            timeout: 12000
+        }, (res) => {
+            if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location && redirectsLeft > 0) {
+                res.resume();
+                httpsGetText(res.headers.location, redirectsLeft - 1).then(resolve, reject);
+                return;
+            }
+            if (res.statusCode !== 200) {
+                res.resume();
+                reject(new Error(`HTTP ${res.statusCode}`));
+                return;
+            }
+            const chunks = [];
+            res.on('data', (c) => chunks.push(c));
+            res.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
+        });
+        req.on('timeout', () => { req.destroy(new Error('Request timed out')); });
+        req.on('error', reject);
+    });
+}
+
+function downloadFileWithRedirects(url, destPath, redirectsLeft = 5) {
+    return new Promise((resolve, reject) => {
+        const req = https.get(url, {
+            headers: { 'User-Agent': 'Aerix-VSCode-Updater' },
+            timeout: 60000
+        }, (res) => {
+            if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location && redirectsLeft > 0) {
+                res.resume();
+                downloadFileWithRedirects(res.headers.location, destPath, redirectsLeft - 1).then(resolve, reject);
+                return;
+            }
+            if (res.statusCode !== 200) {
+                res.resume();
+                reject(new Error(`Download failed (HTTP ${res.statusCode})`));
+                return;
+            }
+            const out = fs.createWriteStream(destPath);
+            res.pipe(out);
+            out.on('finish', () => out.close(() => resolve(destPath)));
+            out.on('error', reject);
+        });
+        req.on('timeout', () => { req.destroy(new Error('Download timed out')); });
+        req.on('error', reject);
+    });
+}
+
+function getInstalledAerixVersion(bin) {
+    return new Promise((resolve) => {
+        cp.execFile(bin, ['version'], { timeout: 5000 }, (err, stdout) => {
+            if (err || !stdout) {
+                resolve('');
+                return;
+            }
+            const m = String(stdout).match(/v([0-9]+\.[0-9]+\.[0-9]+[^\s]*)/);
+            resolve(m ? m[1] : '');
+        });
+    });
+}
+
+function resolveUninstallExe(bin) {
+    const cands = [];
+    if (bin && bin !== 'arx') {
+        cands.push(path.join(path.dirname(path.dirname(bin)), 'Uninstall.exe'));
+    }
+    if (process.env.AERIX_HOME) {
+        cands.push(path.join(process.env.AERIX_HOME, 'Uninstall.exe'));
+    }
+    if (process.env.LOCALAPPDATA) {
+        cands.push(path.join(process.env.LOCALAPPDATA, 'Programs', 'Aerix', 'Uninstall.exe'));
+    }
+    cands.push('C:\\Aerix\\Uninstall.exe');
+    for (const c of cands) {
+        if (fs.existsSync(c)) return c;
+    }
+    return '';
+}
+
+async function fetchLatestStableRelease() {
+    const raw = await httpsGetText(GITHUB_RELEASES_API);
+    const list = JSON.parse(raw);
+    if (!Array.isArray(list)) return null;
+    let best = null;
+    for (const rel of list) {
+        if (!rel || rel.draft || rel.prerelease) continue;
+        const tag = String(rel.tag_name || '').trim();
+        const low = tag.toLowerCase();
+        if (!tag || low.endsWith('-pre') || low.endsWith('-alpha') || low.endsWith('-beta') || low.includes('-rc')) {
+            continue;
+        }
+        const assets = Array.isArray(rel.assets) ? rel.assets : [];
+        let setupAsset = assets.find((a) => a && /^AerixSetup-.*-stable\.exe$/i.test(String(a.name || '')));
+        if (!setupAsset) {
+            setupAsset = assets.find((a) => a && /^AerixSetup-.*\.exe$/i.test(String(a.name || '')));
+        }
+        if (!setupAsset || !setupAsset.browser_download_url) continue;
+        const ver = tag.replace(/^v/i, '');
+        if (!best || compareSemver(ver, best.version) > 0) {
+            best = {
+                tagName: tag,
+                version: ver,
+                assetName: setupAsset.name,
+                downloadUrl: setupAsset.browser_download_url
+            };
+        }
+    }
+    return best;
+}
+
+function execAsync(exe, args) {
+    return new Promise((resolve, reject) => {
+        cp.execFile(exe, args, { timeout: 180000, windowsHide: true }, (err, stdout, stderr) => {
+            if (err) {
+                reject(new Error((stderr || stdout || err.message || 'Update failed').trim()));
+                return;
+            }
+            resolve((stdout || '').trim());
+        });
+    });
+}
+
+function scheduleAutoUpdateCheck(context, client, output) {
+    if (process.platform !== 'win32') return;
+    const mode = vscode.workspace.getConfiguration('aerix').get('autoUpdate', 'auto');
+    if (mode === 'off') return;
+    const lastCheck = context.globalState.get('aerix.lastUpdateCheckMs', 0);
+    if (Date.now() - lastCheck < AUTO_UPDATE_INTERVAL_MS) return;
+    const timer = setTimeout(() => {
+        checkAndApplyUpdates(context, client, output, false).catch(() => {});
+    }, 4500);
+    context.subscriptions.push({ dispose: () => clearTimeout(timer) });
+}
+
+async function checkAndApplyUpdates(context, client, output, isManual) {
+    if (process.platform !== 'win32') {
+        if (isManual) vscode.window.showInformationMessage('Aerix auto-updater is currently Windows-only.');
+        return;
+    }
+    if (aerixUpdateInFlight) {
+        if (isManual) vscode.window.showInformationMessage('An Aerix update check is already running.');
+        return;
+    }
+    aerixUpdateInFlight = true;
+    try {
+        await context.globalState.update('aerix.lastUpdateCheckMs', Date.now());
+        const bin = resolveAerixBinary();
+        const currentVer = await getInstalledAerixVersion(bin);
+        const latest = await fetchLatestStableRelease();
+        if (!latest) {
+            if (isManual) vscode.window.showInformationMessage('No stable Aerix release found on GitHub.');
+            return;
+        }
+        if (currentVer && compareSemver(latest.version, currentVer) <= 0) {
+            if (isManual) vscode.window.showInformationMessage(`Aerix is already up to date (v${currentVer}).`);
+            return;
+        }
+
+        const mode = vscode.workspace.getConfiguration('aerix').get('autoUpdate', 'auto');
+        if (!isManual && mode === 'prompt') {
+            const pick = await vscode.window.showInformationMessage(
+                `Aerix v${latest.version} is available (installed: ${currentVer ? 'v' + currentVer : 'unknown'}). Update now?`,
+                'Update Now',
+                'Later'
+            );
+            if (pick !== 'Update Now') return;
+        }
+
+        await vscode.window.withProgress({
+            location: vscode.ProgressLocation.Notification,
+            title: `Updating Aerix to v${latest.version}...`,
+            cancellable: false
+        }, async (progress) => {
+            output.appendLine(`[Aerix Updater] Updating ${currentVer || '?'} -> ${latest.version}...`);
+            client.stop();
+            const uninst = resolveUninstallExe(bin);
+            if (uninst) {
+                progress.report({ message: 'Downloading & installing latest stable release...' });
+                await execAsync(uninst, ['--update', '--silent', '--quiet']);
+            } else {
+                progress.report({ message: `Downloading ${latest.assetName}...` });
+                const tmpExe = path.join(os.tmpdir(), latest.assetName);
+                await downloadFileWithRedirects(latest.downloadUrl, tmpExe);
+                progress.report({ message: 'Running silent installer...' });
+                try {
+                    await execAsync(tmpExe, ['--silent']);
+                } finally {
+                    try { fs.unlinkSync(tmpExe); } catch (_) {}
+                }
+            }
+            progress.report({ message: 'Restarting Aerix LSP...' });
+            await client.restart();
+        });
+
+        const reloadChoice = await vscode.window.showInformationMessage(
+            `Aerix auto-updated to v${latest.version}! Reload window if extension features were updated.`,
+            'Reload Window',
+            'OK'
+        );
+        if (reloadChoice === 'Reload Window') {
+            await vscode.commands.executeCommand('workbench.action.reloadWindow');
+        }
+    } catch (err) {
+        output.appendLine(`[Aerix Updater] Error: ${err && err.message ? err.message : err}`);
+        if (isManual) {
+            vscode.window.showErrorMessage(`Aerix update check failed: ${err && err.message ? err.message : err}`);
+        }
+    } finally {
+        aerixUpdateInFlight = false;
+    }
 }
 
 function deactivate() {}
