@@ -102,7 +102,8 @@ fn lsp_build_initialize_result() -> str {
     jb.str_val("parameter"); jb.comma()
     jb.str_val("variable"); jb.comma()
     jb.str_val("namespace"); jb.comma()
-    jb.str_val("macro")
+    jb.str_val("macro"); jb.comma()
+    jb.str_val("typeParameter")
     jb.rbrack()
     jb.comma()
     jb.key("tokenModifiers")
@@ -111,7 +112,8 @@ fn lsp_build_initialize_result() -> str {
     jb.str_val("definition"); jb.comma()
     jb.str_val("readonly"); jb.comma()
     jb.str_val("static"); jb.comma()
-    jb.str_val("defaultLibrary")
+    jb.str_val("defaultLibrary"); jb.comma()
+    jb.str_val("documentation")
     jb.rbrack()
     jb.rbrace()
     jb.kv_bool("full", true, false)
@@ -141,6 +143,7 @@ fn lsp_build_initialize_result() -> str {
 
     jb.kv_bool("hoverProvider", true, false)
     jb.kv_bool("definitionProvider", true, false)
+    jb.kv_bool("typeDefinitionProvider", true, false)
     jb.kv_bool("documentSymbolProvider", true, false)
     jb.kv_bool("inlayHintProvider", true, false)
     jb.kv_bool("documentFormattingProvider", true, false)
@@ -354,6 +357,10 @@ pub fn run_lsp_server() -> i64 {
             }
             if method == "textDocument/definition" {
                 lsp_send_response(id_raw, lsp_build_definition_json(src, cached_az, fpath, line0, char0))
+                continue
+            }
+            if method == "textDocument/typeDefinition" {
+                lsp_send_response(id_raw, lsp_build_type_definition_json(src, cached_az, fpath, line0, char0))
                 continue
             }
             if method == "textDocument/documentSymbol" {

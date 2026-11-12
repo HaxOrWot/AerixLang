@@ -24,6 +24,7 @@ pub fn ST_PARAMETER() -> i64 { return 12 }
 pub fn ST_VARIABLE() -> i64 { return 13 }
 pub fn ST_NAMESPACE() -> i64 { return 14 }
 pub fn ST_MACRO() -> i64 { return 15 }
+pub fn ST_TYPE_PARAM() -> i64 { return 16 }
 
 // Semantic Token Modifier bitmasks
 pub fn SM_DECL() -> i64 { return 1 }
@@ -31,6 +32,7 @@ pub fn SM_DEF() -> i64 { return 2 }
 pub fn SM_READONLY() -> i64 { return 4 }
 pub fn SM_STATIC() -> i64 { return 8 }
 pub fn SM_DEFAULT_LIB() -> i64 { return 16 }
+pub fn SM_DOC() -> i64 { return 32 }
 
 fn is_keyword_token_kind(k: i64) -> bool {
     if k == TK_BOOL() || k == TK_NULL() { return true }
@@ -38,7 +40,75 @@ fn is_keyword_token_kind(k: i64) -> bool {
 }
 
 fn is_operator_token_kind(k: i64) -> bool {
-    return k >= 80 && k <= 116
+    if k == TK_DOT() { return false }
+    return k >= 80 && k <= 115
+}
+
+fn hl_build_line_starts(src: str) -> List<i64> {
+    let starts = List<i64>()
+    starts.push(0)
+    let n = src.len()
+    mut i = 0
+    while i < n {
+        if src.byte_at(i) == 10 {
+            starts.push(i + 1)
+        }
+        i = i + 1
+    }
+    return starts
+}
+
+fn hl_comment_is_doc(src: str, line_starts: List<i64>, ln1: i64, col1: i64, tlen: i64) -> bool {
+    if ln1 <= 0 || col1 <= 0 || tlen < 3 { return false }
+    let lidx = ln1 - 1
+    if lidx >= line_starts.len() { return false }
+    let off = line_starts.get(lidx) + (col1 - 1)
+    if off < 0 || off + 2 >= src.len() { return false }
+    let b0 = src.byte_at(off)
+    let b1 = src.byte_at(off + 1)
+    let b2 = src.byte_at(off + 2)
+    // /// or //! or /**
+    if b0 == 47 && b1 == 47 && (b2 == 47 || b2 == 33) { return true }
+    if b0 == 47 && b1 == 42 && b2 == 42 && tlen > 4 { return true }
+    return false
+}
+
+fn hl_strip_container_base(t: str) -> str {
+    let lt = lsp_str_find(t, "<", 0)
+    if lt > 0 { return t.slice(0, lt) }
+    return t
+}
+
+fn hl_is_builtin_receiver_type(rt: str) -> bool {
+    let base = hl_strip_container_base(rt)
+    return rt == "str" || lsp_is_container_type(base)
+}
+
+fn hl_is_field_readonly(az: Analyzer, cls_name: str, field_name: str) -> bool {
+    if !az.cls_idx_map.has_key(cls_name) { return false }
+    let cid = az.cls_nodes.get(az.cls_idx_map.get(cls_name))
+    let fg = az.la.get(cid)
+    if fg < 0 { return false }
+    let fc = az.ll.get(fg)
+    mut fi = 0
+    while fi < fc {
+        let fid = az.ch.get(az.ls.get(fg) + fi)
+        if az.sa.get(fid) == field_name {
+            return !has_flag(az.ia.get(fid), FLAG_MUT())
+        }
+        fi = fi + 1
+    }
+    return false
+}
+
+fn hl_is_method_static(az: Analyzer, cls_name: str, mname: str) -> bool {
+    let sk = "m::" + cls_name + "::" + mname
+    if !az.sig_by_key.has_key(sk) { return false }
+    let sidx = az.sig_by_key.get(sk).split(",").get(0).to_i64()
+    if sidx >= 0 && sidx < az.sig_count {
+        return az.sig_is_static.get(sidx) == 1
+    }
+    return false
 }
 
 fn next_sig_kind(ts: TokenStream, idx: i64) -> i64 {
@@ -94,8 +164,10 @@ fn push_sem_span(lines: List<i64>, cols: List<i64>, lens: List<i64>, types: List
 
 fn split_str_interp_spans(src: str, ln1: i64, col1: i64, tlen: i64,
                           class_set: Map<str, i64>, enum_set: Map<str, i64>,
-                          fn_set: Map<str, i64>, cur_params: Map<str, i64>,
-                          readonly_vars: Map<str, i64>,
+                          enum_var_set: Map<str, i64>, fn_set: Map<str, i64>,
+                          cur_params: Map<str, i64>, cur_tparams: Map<str, i64>,
+                          ro_vars: Map<str, i64>, mut_vars: Map<str, i64>,
+                          var_types: Map<str, str>,
                           lines: List<i64>, cols: List<i64>, lens: List<i64>,
                           types: List<i64>, mods: List<i64>) {
     // Locate 1-based line in source to extract exact raw slice
@@ -127,11 +199,9 @@ fn split_str_interp_spans(src: str, ln1: i64, col1: i64, tlen: i64,
             continue
         }
         if b == 123 {
-            // Literal prefix up to '{'
             if p > seg_start {
                 push_sem_span(lines, cols, lens, types, mods, ln1, col1 + (seg_start - start_pos), p - seg_start, ST_STRING(), 0)
             }
-            // Brace '{'
             push_sem_span(lines, cols, lens, types, mods, ln1, col1 + (p - start_pos), 1, ST_OPERATOR(), 0)
             mut q = p + 1
             mut depth = 1
@@ -159,28 +229,54 @@ fn split_str_interp_spans(src: str, ln1: i64, col1: i64, tlen: i64,
                     let c_abs = inner_col + (ic - 1)
                     if ik == TK_INT() || ik == TK_FLOAT() {
                         push_sem_span(lines, cols, lens, types, mods, ln1, c_abs, il, ST_NUMBER(), 0)
+                    } else if ik == TK_STR() || ik == TK_CHAR() {
+                        push_sem_span(lines, cols, lens, types, mods, ln1, c_abs, il, ST_STRING(), 0)
                     } else if is_keyword_token_kind(ik) {
                         push_sem_span(lines, cols, lens, types, mods, ln1, c_abs, il, ST_KEYWORD(), 0)
                     } else if is_operator_token_kind(ik) {
                         push_sem_span(lines, cols, lens, types, mods, ln1, c_abs, il, ST_OPERATOR(), 0)
                     } else if ik == TK_IDENT() {
+                        let inxt = next_sig_kind(its, ii)
                         if ii > 0 && (its.kinds.get(ii - 1) == TK_DOT() || its.kinds.get(ii - 1) == TK_QDOT()) {
-                            if next_sig_kind(its, ii) == TK_LPAREN() {
-                                push_sem_span(lines, cols, lens, types, mods, ln1, c_abs, il, ST_METHOD(), 0)
+                            if ii >= 2 && enum_set.has_key(its.vals.get(ii - 2)) {
+                                push_sem_span(lines, cols, lens, types, mods, ln1, c_abs, il, ST_ENUM_MEMBER(), SM_STATIC())
+                            } else if inxt == TK_LPAREN() {
+                                mut mmod = 0
+                                if ii >= 2 {
+                                    let recv_v = its.vals.get(ii - 2)
+                                    if lsp_is_static_runtime(recv_v) {
+                                        mmod = SM_STATIC() + SM_DEFAULT_LIB()
+                                    } else if var_types.has_key(recv_v) && hl_is_builtin_receiver_type(var_types.get(recv_v)) {
+                                        mmod = SM_DEFAULT_LIB()
+                                    }
+                                }
+                                push_sem_span(lines, cols, lens, types, mods, ln1, c_abs, il, ST_METHOD(), mmod)
                             } else {
                                 push_sem_span(lines, cols, lens, types, mods, ln1, c_abs, il, ST_PROPERTY(), 0)
                             }
                         } else if cur_params.has_key(iv) {
-                            push_sem_span(lines, cols, lens, types, mods, ln1, c_abs, il, ST_PARAMETER(), 0)
-                        } else if next_sig_kind(its, ii) == TK_LPAREN() {
-                            push_sem_span(lines, cols, lens, types, mods, ln1, c_abs, il, ST_FUNCTION(), 0)
+                            push_sem_span(lines, cols, lens, types, mods, ln1, c_abs, il, ST_PARAMETER(), SM_READONLY())
+                        } else if cur_tparams.has_key(iv) {
+                            push_sem_span(lines, cols, lens, types, mods, ln1, c_abs, il, ST_TYPE_PARAM(), 0)
+                        } else if lsp_is_primitive_type(iv) || lsp_is_container_type(iv) {
+                            push_sem_span(lines, cols, lens, types, mods, ln1, c_abs, il, ST_TYPE(), SM_DEFAULT_LIB())
                         } else if class_set.has_key(iv) {
                             push_sem_span(lines, cols, lens, types, mods, ln1, c_abs, il, ST_CLASS(), 0)
                         } else if enum_set.has_key(iv) {
                             push_sem_span(lines, cols, lens, types, mods, ln1, c_abs, il, ST_ENUM(), 0)
-                        } else if fn_set.has_key(iv) || lsp_is_builtin_fn(iv) {
+                        } else if lsp_is_static_runtime(iv) {
+                            push_sem_span(lines, cols, lens, types, mods, ln1, c_abs, il, ST_NAMESPACE(), SM_DEFAULT_LIB())
+                        } else if lsp_is_builtin_fn(iv) {
+                            push_sem_span(lines, cols, lens, types, mods, ln1, c_abs, il, ST_FUNCTION(), SM_DEFAULT_LIB())
+                        } else if inxt == TK_LPAREN() {
+                            if enum_var_set.has_key(iv) {
+                                push_sem_span(lines, cols, lens, types, mods, ln1, c_abs, il, ST_ENUM_MEMBER(), 0)
+                            } else {
+                                push_sem_span(lines, cols, lens, types, mods, ln1, c_abs, il, ST_FUNCTION(), 0)
+                            }
+                        } else if fn_set.has_key(iv) {
                             push_sem_span(lines, cols, lens, types, mods, ln1, c_abs, il, ST_FUNCTION(), 0)
-                        } else if readonly_vars.has_key(iv) {
+                        } else if ro_vars.has_key(iv) && !mut_vars.has_key(iv) {
                             push_sem_span(lines, cols, lens, types, mods, ln1, c_abs, il, ST_VARIABLE(), SM_READONLY())
                         } else {
                             push_sem_span(lines, cols, lens, types, mods, ln1, c_abs, il, ST_VARIABLE(), 0)
@@ -211,12 +307,17 @@ pub fn lsp_compute_semantic_tokens(source: str, az: Analyzer, doc_path: str) -> 
     lx.recover_mode = true
     lx.collect_trivia = true
     let ts = lx.tokenize()
+    let line_starts = hl_build_line_starts(source)
 
     // Collect symbol tables from Analyzer
     let class_set = Map<str, i64>()
     let enum_set = Map<str, i64>()
     let fn_set = Map<str, i64>()
     let enum_var_set = Map<str, i64>()
+    let global_ro = Map<str, i64>()
+    let global_mut = Map<str, i64>()
+    let ast_decl_types = Map<str, str>()
+    let global_var_types = Map<str, str>()
 
     mut ci = 0
     while ci < az.cls_count {
@@ -243,6 +344,33 @@ pub fn lsp_compute_semantic_tokens(source: str, az: Analyzer, doc_path: str) -> 
         fn_set.insert(az.sa.get(fid), 1)
         fi = fi + 1
     }
+    mut gi = 0
+    while gi < az.global_count {
+        let gnode = az.global_nodes.get(gi)
+        let gname = az.sa.get(gnode)
+        if az.ia.get(gnode) != 0 {
+            global_mut.insert(gname, 1)
+        } else {
+            global_ro.insert(gname, 1)
+        }
+        if az.global_types.has_key(gname) {
+            global_var_types.insert(gname, az.global_types.get(gname))
+        }
+        gi = gi + 1
+    }
+    mut ni = 0
+    while ni < az.ncount {
+        let nk = az.nk.get(ni)
+        if (nk == NK_VAR_DECL() || nk == NK_PARAM() || nk == NK_FOR()) && az.nf.get(ni) == doc_path {
+            let vnm = az.sa.get(ni)
+            mut vt = btype_norm(az.node_types.get(ni))
+            if vt == "" || vt == "void" { vt = btype_norm(az.sb.get(ni)) }
+            if vt != "" && vt != "void" {
+                ast_decl_types.insert("" + az.ln.get(ni) + "::" + vnm, vt)
+            }
+        }
+        ni = ni + 1
+    }
 
     let tok_lines = List<i64>()
     let tok_cols = List<i64>()
@@ -250,10 +378,14 @@ pub fn lsp_compute_semantic_tokens(source: str, az: Analyzer, doc_path: str) -> 
     let tok_types = List<i64>()
     let tok_mods = List<i64>()
 
-    // Track contextual state during single linear pass
+    // Per-function & class contextual state
     mut cur_params = Map<str, i64>()
-    mut readonly_vars = Map<str, i64>()
+    mut ro_vars = Map<str, i64>()
     mut mut_vars = Map<str, i64>()
+    mut var_types = Map<str, str>()
+    mut cls_tparams = Map<str, i64>()
+    mut fn_tparams = Map<str, i64>()
+    mut cur_cls_name = ""
     mut brace_depth = 0
     mut cls_depth = -1
     mut enum_depth = -1
@@ -262,8 +394,14 @@ pub fn lsp_compute_semantic_tokens(source: str, az: Analyzer, doc_path: str) -> 
     mut fn_sig_paren_depth = 0
     mut pending_fn_body = false
     mut in_enum_body = false
+    mut in_extend_body = false
     mut in_attr = false
     mut in_import_line = false
+    mut in_decl_tparams = false
+    mut pending_tparam_decl = false
+    mut decl_tparam_is_cls = false
+    mut is_static_decl = false
+    mut is_mut_param = false
     mut expect_type_depth = 0
 
     mut prev_kind = TK_EOF()
@@ -278,14 +416,11 @@ pub fn lsp_compute_semantic_tokens(source: str, az: Analyzer, doc_path: str) -> 
         if k == TK_EOF() { break }
         if k == TK_NEWLINE() {
             in_import_line = false
-            if pending_fn_body && prev_kind != TK_FAT_ARROW() && prev_kind != TK_ARROW() {
-                // e.g. declaration-only or signature
-                if expect_type_depth <= 0 {
-                    // Wait until LBRACE or next stmt
-                }
-            }
-            if expect_type_depth <= 0 && !in_fn_sig && !pending_fn_body {
-                // Keep fn params until '}' if in body
+            is_static_decl = false
+            in_decl_tparams = false
+            pending_tparam_decl = false
+            if prev_kind != TK_COMMA() && prev_kind != TK_ARROW() && prev_kind != TK_COLON() && expect_type_depth == 1 {
+                expect_type_depth = 0
             }
             i = i + 1
             continue
@@ -303,7 +438,7 @@ pub fn lsp_compute_semantic_tokens(source: str, az: Analyzer, doc_path: str) -> 
             prev_kind = k; i = i + 1; continue
         }
 
-        // Update brace / paren state
+        // Update brace / paren / generic-decl state
         if k == TK_LBRACE() {
             brace_depth = brace_depth + 1
             if pending_fn_body {
@@ -312,14 +447,26 @@ pub fn lsp_compute_semantic_tokens(source: str, az: Analyzer, doc_path: str) -> 
             }
             expect_type_depth = 0
             in_import_line = false
+            in_decl_tparams = false
+            pending_tparam_decl = false
+            is_static_decl = false
             prev_kind = k; i = i + 1; continue
         }
         if k == TK_RBRACE() {
             if fn_depth == brace_depth {
                 cur_params = Map<str, i64>()
+                ro_vars = Map<str, i64>()
+                mut_vars = Map<str, i64>()
+                var_types = Map<str, str>()
+                fn_tparams = Map<str, i64>()
                 fn_depth = -1
             }
-            if cls_depth == brace_depth { cls_depth = -1 }
+            if cls_depth == brace_depth {
+                cls_depth = -1
+                cur_cls_name = ""
+                cls_tparams = Map<str, i64>()
+                in_extend_body = false
+            }
             if enum_depth == brace_depth { enum_depth = -1; in_enum_body = false }
             brace_depth = brace_depth - 1
             if brace_depth < 0 { brace_depth = 0 }
@@ -329,12 +476,16 @@ pub fn lsp_compute_semantic_tokens(source: str, az: Analyzer, doc_path: str) -> 
         if k == TK_LPAREN() {
             if in_fn_sig {
                 fn_sig_paren_depth = fn_sig_paren_depth + 1
+                is_mut_param = false
             }
+            pending_tparam_decl = false
+            in_decl_tparams = false
             prev_kind = k; i = i + 1; continue
         }
         if k == TK_RPAREN() {
             if in_fn_sig {
                 fn_sig_paren_depth = fn_sig_paren_depth - 1
+                is_mut_param = false
                 if fn_sig_paren_depth <= 0 {
                     in_fn_sig = false
                     pending_fn_body = true
@@ -347,9 +498,14 @@ pub fn lsp_compute_semantic_tokens(source: str, az: Analyzer, doc_path: str) -> 
             if pending_fn_body && prev_kind != TK_FAT_ARROW() {
                 pending_fn_body = false
                 cur_params = Map<str, i64>()
+                ro_vars = Map<str, i64>()
+                mut_vars = Map<str, i64>()
+                var_types = Map<str, str>()
+                fn_tparams = Map<str, i64>()
             }
             expect_type_depth = 0
             in_import_line = false
+            is_static_decl = false
             prev_kind = k; i = i + 1; continue
         }
 
@@ -363,7 +519,22 @@ pub fn lsp_compute_semantic_tokens(source: str, az: Analyzer, doc_path: str) -> 
             prev_kind = k; i = i + 1; continue
         }
         if k == TK_STR_INTERP() {
-            split_str_interp_spans(source, ln, cl, tl, class_set, enum_set, fn_set, cur_params, readonly_vars,
+            // Merge current local/param/global views for string interpolation
+            let combined_ro = Map<str, i64>()
+            for gk in global_ro.keys() { combined_ro.insert(gk, 1) }
+            for rk in ro_vars.keys() { combined_ro.insert(rk, 1) }
+            let combined_mut = Map<str, i64>()
+            for gm in global_mut.keys() { combined_mut.insert(gm, 1) }
+            for mk in mut_vars.keys() { combined_mut.insert(mk, 1) }
+            let combined_tp = Map<str, i64>()
+            for ctk in cls_tparams.keys() { combined_tp.insert(ctk, 1) }
+            for ftk in fn_tparams.keys() { combined_tp.insert(ftk, 1) }
+            let combined_vt = Map<str, str>()
+            for gvk in global_var_types.keys() { combined_vt.insert(gvk, global_var_types.get(gvk)) }
+            for lvk in var_types.keys() { combined_vt.insert(lvk, var_types.get(lvk)) }
+
+            split_str_interp_spans(source, ln, cl, tl, class_set, enum_set, enum_var_set, fn_set,
+                                   cur_params, combined_tp, combined_ro, combined_mut, combined_vt,
                                    tok_lines, tok_cols, tok_lens, tok_types, tok_mods)
             prev_kind = k; i = i + 1; continue
         }
@@ -377,25 +548,42 @@ pub fn lsp_compute_semantic_tokens(source: str, az: Analyzer, doc_path: str) -> 
             prev_kind = k; i = i + 1; continue
         }
         if is_keyword_token_kind(k) {
-            if k == TK_FN() {
+            if k == TK_STATIC() {
+                is_static_decl = true
+            } else if k == TK_FN() {
                 cur_params = Map<str, i64>()
+                ro_vars = Map<str, i64>()
+                mut_vars = Map<str, i64>()
+                var_types = Map<str, str>()
+                fn_tparams = Map<str, i64>()
                 in_fn_sig = true
                 fn_sig_paren_depth = 0
                 pending_fn_body = false
-            } else if k == TK_INIT() {
+                pending_tparam_decl = true
+                decl_tparam_is_cls = false
+            } else if k == TK_INIT() || k == TK_DROP() {
                 cur_params = Map<str, i64>()
+                ro_vars = Map<str, i64>()
+                mut_vars = Map<str, i64>()
+                var_types = Map<str, str>()
+                fn_tparams = Map<str, i64>()
                 in_fn_sig = true
                 fn_sig_paren_depth = 0
                 pending_fn_body = false
+                if k == TK_INIT() || k == TK_DROP() {
+                    push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, ST_METHOD(), SM_DECL())
+                    prev_kind = k; i = i + 1; continue
+                }
+            } else if k == TK_MUT() && in_fn_sig {
+                is_mut_param = true
             } else if k == TK_ARROW() || k == TK_AS() {
-                expect_type_depth = 1
-            } else if k == TK_COLON() {
                 expect_type_depth = 1
             } else if k == TK_EXTENDS() || k == TK_IMPLEMENTS() || k == TK_EXTEND() {
                 expect_type_depth = 1
+                if k == TK_EXTEND() { in_extend_body = true }
             }
-            if k == TK_SELF() || k == TK_SUPER() {
-                push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, ST_KEYWORD(), 0)
+            if k == TK_BOOL() || k == TK_NULL() {
+                push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, ST_KEYWORD(), SM_READONLY())
             } else {
                 push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, ST_KEYWORD(), 0)
             }
@@ -405,22 +593,39 @@ pub fn lsp_compute_semantic_tokens(source: str, az: Analyzer, doc_path: str) -> 
             expect_type_depth = 1
             prev_kind = k; i = i + 1; continue
         }
+        if k == TK_COMMA() {
+            if in_fn_sig {
+                expect_type_depth = 0
+                is_mut_param = false
+            }
+            prev_kind = k; i = i + 1; continue
+        }
         if k == TK_ARROW() {
             expect_type_depth = 1
             push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, ST_OPERATOR(), 0)
             prev_kind = k; i = i + 1; continue
         }
-        if k == TK_EQUALS() || k == TK_FAT_ARROW() || k == TK_COMMA() {
-            if k == TK_EQUALS() || k == TK_FAT_ARROW() { expect_type_depth = 0 }
-            if k == TK_COMMA() && in_fn_sig { expect_type_depth = 0 }
+        if k == TK_EQUALS() || k == TK_FAT_ARROW() {
+            expect_type_depth = 0
             push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, ST_OPERATOR(), 0)
             prev_kind = k; i = i + 1; continue
         }
         if is_operator_token_kind(k) {
+            if k == TK_LT() && pending_tparam_decl {
+                in_decl_tparams = true
+                pending_tparam_decl = false
+                prev_kind = k; i = i + 1; continue
+            }
+            if k == TK_GT() && in_decl_tparams {
+                in_decl_tparams = false
+                prev_kind = k; i = i + 1; continue
+            }
             if k == TK_LT() && expect_type_depth > 0 {
                 expect_type_depth = expect_type_depth + 1
+                prev_kind = k; i = i + 1; continue
             } else if k == TK_GT() && expect_type_depth > 1 {
                 expect_type_depth = expect_type_depth - 1
+                prev_kind = k; i = i + 1; continue
             }
             push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, ST_OPERATOR(), 0)
             prev_kind = k; i = i + 1; continue
@@ -430,18 +635,44 @@ pub fn lsp_compute_semantic_tokens(source: str, az: Analyzer, doc_path: str) -> 
         if k == TK_IDENT() {
             let nxt = next_sig_kind(ts, i)
 
+            // 0. Generic type parameter declaration inside class Foo<T> or fn bar<T>
+            if in_decl_tparams {
+                if decl_tparam_is_cls {
+                    cls_tparams.insert(v, 1)
+                } else {
+                    fn_tparams.insert(v, 1)
+                }
+                push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, ST_TYPE_PARAM(), SM_DECL())
+                prev_kind = k; i = i + 1; continue
+            }
+
             // 1. Declaration sites
             if prev_kind == TK_FN() {
-                if cls_depth > 0 && brace_depth >= cls_depth {
-                    push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, ST_METHOD(), SM_DECL())
+                mut fn_mod = SM_DECL()
+                if is_static_decl { fn_mod = fn_mod + SM_STATIC() }
+                is_static_decl = false
+                if (cls_depth > 0 && brace_depth >= cls_depth) || in_extend_body {
+                    push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, ST_METHOD(), fn_mod)
                 } else {
-                    push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, ST_FUNCTION(), SM_DECL())
+                    push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, ST_FUNCTION(), fn_mod)
                 }
+                prev_kind = k; i = i + 1; continue
+            }
+            if prev_kind == TK_CEXTERN() {
+                push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, ST_FUNCTION(), SM_DECL() + SM_DEFAULT_LIB())
                 prev_kind = k; i = i + 1; continue
             }
             if prev_kind == TK_CLASS() || prev_kind == TK_STRUCT() {
                 cls_depth = brace_depth + 1
+                cur_cls_name = v
+                cls_tparams = Map<str, i64>()
+                pending_tparam_decl = true
+                decl_tparam_is_cls = true
                 push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, ST_CLASS(), SM_DECL())
+                prev_kind = k; i = i + 1; continue
+            }
+            if prev_kind == TK_TRAIT() {
+                push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, ST_TYPE(), SM_DECL())
                 prev_kind = k; i = i + 1; continue
             }
             if prev_kind == TK_ENUM() {
@@ -450,8 +681,8 @@ pub fn lsp_compute_semantic_tokens(source: str, az: Analyzer, doc_path: str) -> 
                 push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, ST_ENUM(), SM_DECL())
                 prev_kind = k; i = i + 1; continue
             }
-            if in_enum_body && brace_depth == enum_depth && fn_sig_paren_depth == 0 {
-                if nxt == TK_LPAREN() || nxt == TK_COMMA() || nxt == TK_RBRACE() {
+            if in_enum_body && brace_depth == enum_depth && fn_sig_paren_depth == 0 && expect_type_depth == 0 {
+                if nxt == TK_LPAREN() || nxt == TK_COMMA() || nxt == TK_RBRACE() || nxt == TK_NEWLINE() {
                     push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, ST_ENUM_MEMBER(), SM_DECL())
                     prev_kind = k; i = i + 1; continue
                 }
@@ -461,17 +692,41 @@ pub fn lsp_compute_semantic_tokens(source: str, az: Analyzer, doc_path: str) -> 
                 prev_kind = k; i = i + 1; continue
             }
             if prev_kind == TK_LET() || prev_kind == TK_CONST() {
-                readonly_vars.insert(v, 1)
-                push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, ST_VARIABLE(), SM_DECL() + SM_READONLY())
+                mut vmod = SM_DECL() + SM_READONLY()
+                if prev_kind == TK_CONST() || fn_depth < 0 { vmod = vmod + SM_STATIC() }
+                if fn_depth >= 0 {
+                    ro_vars.insert(v, 1)
+                } else {
+                    global_ro.insert(v, 1)
+                }
+                let dkey = "" + ln + "::" + v
+                if ast_decl_types.has_key(dkey) {
+                    var_types.insert(v, ast_decl_types.get(dkey))
+                }
+                push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, ST_VARIABLE(), vmod)
                 prev_kind = k; i = i + 1; continue
             }
             if prev_kind == TK_MUT() && (!in_fn_sig) {
-                mut_vars.insert(v, 1)
-                push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, ST_VARIABLE(), SM_DECL())
+                mut mmod = SM_DECL()
+                if fn_depth < 0 { mmod = mmod + SM_STATIC() }
+                if fn_depth >= 0 {
+                    mut_vars.insert(v, 1)
+                } else {
+                    global_mut.insert(v, 1)
+                }
+                let dkey = "" + ln + "::" + v
+                if ast_decl_types.has_key(dkey) {
+                    var_types.insert(v, ast_decl_types.get(dkey))
+                }
+                push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, ST_VARIABLE(), mmod)
                 prev_kind = k; i = i + 1; continue
             }
             if prev_kind == TK_CATCH() || prev_kind == TK_FOR() {
-                readonly_vars.insert(v, 1)
+                ro_vars.insert(v, 1)
+                let dkey = "" + ln + "::" + v
+                if ast_decl_types.has_key(dkey) {
+                    var_types.insert(v, ast_decl_types.get(dkey))
+                }
                 push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, ST_VARIABLE(), SM_DECL() + SM_READONLY())
                 prev_kind = k; i = i + 1; continue
             }
@@ -479,36 +734,85 @@ pub fn lsp_compute_semantic_tokens(source: str, az: Analyzer, doc_path: str) -> 
             // Parameter declaration inside fn(...) or init(...)
             if in_fn_sig && fn_sig_paren_depth > 0 && expect_type_depth == 0 {
                 cur_params.insert(v, 1)
-                push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, ST_PARAMETER(), SM_DECL())
+                let dkey = "" + ln + "::" + v
+                if ast_decl_types.has_key(dkey) {
+                    var_types.insert(v, ast_decl_types.get(dkey))
+                }
+                mut pmod = SM_DECL()
+                if !is_mut_param { pmod = pmod + SM_READONLY() }
+                is_mut_param = false
+                push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, ST_PARAMETER(), pmod)
                 prev_kind = k; i = i + 1; continue
             }
 
             // Field / prop declaration inside class body (outside methods)
             if cls_depth > 0 && brace_depth == cls_depth && expect_type_depth == 0 && nxt == TK_COLON() {
-                push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, ST_PROPERTY(), SM_DECL())
+                mut fmod = SM_DECL()
+                if is_static_decl { fmod = fmod + SM_STATIC() }
+                if prev_kind != TK_MUT() { fmod = fmod + SM_READONLY() }
+                is_static_decl = false
+                push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, ST_PROPERTY(), fmod)
                 prev_kind = k; i = i + 1; continue
             }
 
             // 2. Member access (.member or ?.member)
             if prev_kind == TK_DOT() || prev_kind == TK_QDOT() {
-                if enum_var_set.has_key(v) && (nxt != TK_LPAREN()) {
-                    // Check if previous identifier before '.' was an enum
-                    if i >= 2 && enum_set.has_key(ts.vals.get(i - 2)) {
-                        push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, ST_ENUM_MEMBER(), 0)
-                        prev_kind = k; i = i + 1; continue
+                mut recv_nm = ""
+                if i >= 2 {
+                    let pk2 = ts.kinds.get(i - 2)
+                    if pk2 == TK_IDENT() || pk2 == TK_SELF() {
+                        recv_nm = ts.vals.get(i - 2)
+                    }
+                }
+                if recv_nm != "" && enum_set.has_key(recv_nm) {
+                    push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, ST_ENUM_MEMBER(), SM_STATIC())
+                    prev_kind = k; i = i + 1; continue
+                }
+                mut recv_t = ""
+                if recv_nm == "self" {
+                    recv_t = cur_cls_name
+                } else if recv_nm != "" {
+                    if lsp_is_static_runtime(recv_nm) || class_set.has_key(recv_nm) {
+                        recv_t = recv_nm
+                    } else if var_types.has_key(recv_nm) {
+                        recv_t = var_types.get(recv_nm)
+                    } else if global_var_types.has_key(recv_nm) {
+                        recv_t = global_var_types.get(recv_nm)
                     }
                 }
                 if nxt == TK_LPAREN() {
-                    push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, ST_METHOD(), 0)
+                    mut mmod = 0
+                    if recv_nm != "" && lsp_is_static_runtime(recv_nm) {
+                        mmod = SM_STATIC() + SM_DEFAULT_LIB()
+                    } else if recv_t != "" && hl_is_builtin_receiver_type(recv_t) {
+                        mmod = SM_DEFAULT_LIB()
+                    } else if recv_t != "" && class_set.has_key(recv_t) && hl_is_method_static(az, recv_t, v) {
+                        mmod = SM_STATIC()
+                    } else if recv_nm != "" && class_set.has_key(recv_nm) {
+                        mmod = SM_STATIC()
+                    }
+                    push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, ST_METHOD(), mmod)
                 } else {
-                    push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, ST_PROPERTY(), 0)
+                    mut pmod = 0
+                    if recv_t != "" && class_set.has_key(recv_t) && hl_is_field_readonly(az, recv_t, v) {
+                        pmod = SM_READONLY()
+                    }
+                    push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, ST_PROPERTY(), pmod)
                 }
                 prev_kind = k; i = i + 1; continue
             }
 
-            // 3. Type position or known symbol types
+            // 3. Type position, type params & known symbol types
+            if cls_tparams.has_key(v) || fn_tparams.has_key(v) {
+                push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, ST_TYPE_PARAM(), 0)
+                prev_kind = k; i = i + 1; continue
+            }
             if lsp_is_primitive_type(v) || lsp_is_container_type(v) {
-                push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, ST_TYPE(), SM_DEFAULT_LIB())
+                if lsp_is_container_type(v) && expect_type_depth == 0 && (nxt == TK_LPAREN() || nxt == TK_LT()) {
+                    push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, ST_CLASS(), SM_DEFAULT_LIB())
+                } else {
+                    push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, ST_TYPE(), SM_DEFAULT_LIB())
+                }
                 prev_kind = k; i = i + 1; continue
             }
             if class_set.has_key(v) {
@@ -536,6 +840,8 @@ pub fn lsp_compute_semantic_tokens(source: str, az: Analyzer, doc_path: str) -> 
             if nxt == TK_LPAREN() || is_generic_call_tok(ts, i) {
                 if enum_var_set.has_key(v) {
                     push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, ST_ENUM_MEMBER(), 0)
+                } else if cur_cls_name != "" && az.sig_by_key.has_key("m::" + cur_cls_name + "::" + v) {
+                    push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, ST_METHOD(), 0)
                 } else {
                     push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, ST_FUNCTION(), 0)
                 }
@@ -553,8 +859,22 @@ pub fn lsp_compute_semantic_tokens(source: str, az: Analyzer, doc_path: str) -> 
                 push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, ST_FUNCTION(), 0)
                 prev_kind = k; i = i + 1; continue
             }
-            if readonly_vars.has_key(v) && !mut_vars.has_key(v) {
+            if cur_cls_name != "" && az.cls_field_types.has_key(cur_cls_name + "::" + v) {
+                mut fmod = 0
+                if hl_is_field_readonly(az, cur_cls_name, v) { fmod = SM_READONLY() }
+                push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, ST_PROPERTY(), fmod)
+                prev_kind = k; i = i + 1; continue
+            }
+            if ro_vars.has_key(v) && !mut_vars.has_key(v) {
                 push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, ST_VARIABLE(), SM_READONLY())
+                prev_kind = k; i = i + 1; continue
+            }
+            if !mut_vars.has_key(v) && global_ro.has_key(v) {
+                push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, ST_VARIABLE(), SM_READONLY() + SM_STATIC())
+                prev_kind = k; i = i + 1; continue
+            }
+            if global_mut.has_key(v) && !mut_vars.has_key(v) && !ro_vars.has_key(v) {
+                push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, ST_VARIABLE(), SM_STATIC())
                 prev_kind = k; i = i + 1; continue
             }
             push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, ST_VARIABLE(), 0)
@@ -593,11 +913,15 @@ pub fn lsp_compute_semantic_tokens(source: str, az: Analyzer, doc_path: str) -> 
         mut etyp = 0
         mut emod = 0
         if pick_comment {
-            eln = lx.com_lines.get(ci2) - 1
-            ecl = lx.com_cols.get(ci2) - 1
+            let raw_ln = lx.com_lines.get(ci2)
+            let raw_cl = lx.com_cols.get(ci2)
             elen = lx.com_lens.get(ci2)
+            eln = raw_ln - 1
+            ecl = raw_cl - 1
             etyp = ST_COMMENT()
-            emod = 0
+            if hl_comment_is_doc(source, line_starts, raw_ln, raw_cl, elen) {
+                emod = SM_DOC()
+            }
             ci2 = ci2 + 1
         } else {
             eln = tok_lines.get(ti)

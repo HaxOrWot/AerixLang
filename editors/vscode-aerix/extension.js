@@ -14,11 +14,11 @@ const path = require('path');
 const TOKEN_TYPES = [
     'comment', 'keyword', 'string', 'number', 'operator',
     'type', 'class', 'enum', 'enumMember', 'function',
-    'method', 'property', 'parameter', 'variable', 'namespace', 'macro'
+    'method', 'property', 'parameter', 'variable', 'namespace', 'macro', 'typeParameter'
 ];
 
 const TOKEN_MODIFIERS = [
-    'declaration', 'definition', 'readonly', 'static', 'defaultLibrary'
+    'declaration', 'definition', 'readonly', 'static', 'defaultLibrary', 'documentation'
 ];
 
 const SEMANTIC_LEGEND = new vscode.SemanticTokensLegend(TOKEN_TYPES, TOKEN_MODIFIERS);
@@ -393,7 +393,10 @@ function activate(context) {
                 }, doc);
                 if (!res || !res.contents) return null;
                 const val = typeof res.contents === 'string' ? res.contents : (res.contents.value || '');
-                return val ? new vscode.Hover(new vscode.MarkdownString(val)) : null;
+                if (!val) return null;
+                const md = new vscode.MarkdownString(val);
+                md.isTrusted = true;
+                return new vscode.Hover(md);
             }
         }),
 
@@ -422,7 +425,28 @@ function activate(context) {
                     textDocument: { uri: doc.uri.toString() },
                     position: toLspPos(pos)
                 }, doc);
-                if (!res || !res.uri) return null;
+                if (!res) return null;
+                if (Array.isArray(res)) {
+                    const locs = res.filter((r) => r && r.uri).map((r) => new vscode.Location(vscode.Uri.parse(r.uri), toVsRange(r.range)));
+                    return locs.length ? locs : null;
+                }
+                if (!res.uri) return null;
+                return new vscode.Location(vscode.Uri.parse(res.uri), toVsRange(res.range));
+            }
+        }),
+
+        vscode.languages.registerTypeDefinitionProvider(sel, {
+            async provideTypeDefinition(doc, pos) {
+                const res = await client.request('textDocument/typeDefinition', {
+                    textDocument: { uri: doc.uri.toString() },
+                    position: toLspPos(pos)
+                }, doc);
+                if (!res) return null;
+                if (Array.isArray(res)) {
+                    const locs = res.filter((r) => r && r.uri).map((r) => new vscode.Location(vscode.Uri.parse(r.uri), toVsRange(r.range)));
+                    return locs.length ? locs : null;
+                }
+                if (!res.uri) return null;
                 return new vscode.Location(vscode.Uri.parse(res.uri), toVsRange(res.range));
             }
         }),

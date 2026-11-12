@@ -49,6 +49,26 @@
         "editor.semanticHighlighting.enabled": true
       }
     },
+    "semanticTokenScopes": [
+      {
+        "language": "aerix",
+        "scopes": {
+          "comment.documentation": ["comment.block.documentation.aerix", "comment.line.documentation.aerix"],
+          "variable.readonly": ["variable.other.constant.aerix"],
+          "variable.readonly.static": ["variable.other.constant.aerix"],
+          "property.readonly": ["variable.other.property.aerix"],
+          "enumMember.static": ["variable.other.enummember.aerix"],
+          "typeParameter": ["entity.name.type.parameter.aerix"],
+          "function.defaultLibrary": ["support.function.builtin.aerix"],
+          "method.defaultLibrary": ["support.function.aerix"],
+          "method.static.defaultLibrary": ["support.function.aerix"],
+          "namespace.defaultLibrary": ["support.class.aerix"],
+          "type.defaultLibrary": ["support.type.primitive.aerix", "storage.type.aerix"],
+          "class.defaultLibrary": ["support.class.aerix"],
+          "macro": ["meta.attribute.aerix", "entity.name.function.decorator.aerix"]
+        }
+      }
+    ],
     "configuration": {
       "title": "Aerix",
       "properties": {
