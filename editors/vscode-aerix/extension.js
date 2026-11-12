@@ -304,11 +304,16 @@ class AerixLspClient {
         }
         if (msg.method === 'textDocument/publishDiagnostics' && msg.params) {
             const uri = vscode.Uri.parse(msg.params.uri);
-            const list = (msg.params.diagnostics || []).map((d) => new vscode.Diagnostic(
-                toVsRange(d.range),
-                d.message || 'Aerix error',
-                d.severity === 2 ? vscode.DiagnosticSeverity.Warning : vscode.DiagnosticSeverity.Error
-            ));
+            const list = (msg.params.diagnostics || []).map((d) => {
+                const diag = new vscode.Diagnostic(
+                    toVsRange(d.range),
+                    d.message || 'Aerix error',
+                    d.severity === 2 ? vscode.DiagnosticSeverity.Warning : vscode.DiagnosticSeverity.Error
+                );
+                if (d.code !== undefined && d.code !== null && d.code !== '') diag.code = d.code;
+                diag.source = d.source || 'aerix';
+                return diag;
+            });
             this.diagnostics.set(uri, list);
         }
     }
@@ -659,7 +664,37 @@ function activate(context) {
                     return new vscode.FoldingRange(f.startLine || 0, f.endLine || 0, kind);
                 });
             }
-        })
+        }),
+
+        vscode.languages.registerCodeActionsProvider(sel, {
+            async provideCodeActions(doc, range, context) {
+                const res = await client.request('textDocument/codeAction', {
+                    textDocument: { uri: doc.uri.toString() },
+                    range: {
+                        start: toLspPos(range.start),
+                        end: toLspPos(range.end)
+                    },
+                    context: { diagnostics: [] }
+                }, doc);
+                if (!Array.isArray(res)) return [];
+                return res.map((ca) => {
+                    const action = new vscode.CodeAction(ca.title || 'Apply fix', vscode.CodeActionKind.QuickFix);
+                    action.isPreferred = Boolean(ca.isPreferred);
+                    if (ca.edit && ca.edit.changes) {
+                        const edit = new vscode.WorkspaceEdit();
+                        for (const [uriStr, edits] of Object.entries(ca.edit.changes)) {
+                            if (!Array.isArray(edits)) continue;
+                            const targetUri = vscode.Uri.parse(uriStr);
+                            for (const e of edits) {
+                                edit.replace(targetUri, toVsRange(e.range), e.newText != null ? e.newText : '');
+                            }
+                        }
+                        action.edit = edit;
+                    }
+                    return action;
+                });
+            }
+        }, { providedCodeActionKinds: [vscode.CodeActionKind.QuickFix] })
     );
 
     // Commands
