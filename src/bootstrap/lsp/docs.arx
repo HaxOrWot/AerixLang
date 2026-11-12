@@ -133,7 +133,8 @@ pub fn lsp_is_container_type(w: str) -> bool {
 }
 
 pub fn lsp_is_static_runtime(w: str) -> bool {
-    return w == "File" || w == "Directory" || w == "Env" || w == "Process" || w == "Math" || w == "Random"
+    return w == "File" || w == "Directory" || w == "Env" || w == "Process" ||
+           w == "Math" || w == "Random" || w == "Socket" || w == "Time" || w == "Window"
 }
 
 pub fn lsp_is_builtin_fn(w: str) -> bool {
@@ -179,6 +180,7 @@ pub fn lsp_type_list() -> List<str> {
     ts.push("List"); ts.push("Map"); ts.push("Set"); ts.push("Stack"); ts.push("Queue"); ts.push("Deque")
     ts.push("ByteBuffer"); ts.push("String"); ts.push("Channel"); ts.push("LinearArena")
     ts.push("File"); ts.push("Directory"); ts.push("Env"); ts.push("Process"); ts.push("Math"); ts.push("Random")
+    ts.push("Socket"); ts.push("Time"); ts.push("Window")
     return ts
 }
 

@@ -149,11 +149,24 @@ pub fn find_stdlib_dir() -> str {
     if env_std != "" && File.exists(bpath_join(env_std, "aerix_rt.h")) {
         return bpath_normalize(env_std)
     }
+    let env_std2 = Env.get("AERIX_STDLIB")
+    if env_std2 != "" && File.exists(bpath_join(env_std2, "aerix_rt.h")) {
+        return bpath_normalize(env_std2)
+    }
+    let env_home = Env.get("AERIX_HOME")
+    if env_home != "" {
+        let cand_home = bpath_join(env_home, "stdlib")
+        if File.exists(bpath_join(cand_home, "aerix_rt.h")) { return cand_home }
+    }
     let cwd = bpath_normalize(Env.cwd())
     let cands = List<str>()
     cands.push(bpath_join(cwd, "stdlib"))
     cands.push(bpath_join(cwd, "../stdlib"))
-    mut count = 2
+    cands.push("C:/Aerix/stdlib")
+    let local_app = Env.get("LOCALAPPDATA")
+    if local_app != "" {
+        cands.push(bpath_join(local_app, "Programs/Aerix/stdlib"))
+    }
     let exe_path = Env.arg(0)
     if exe_path != "" {
         let exe_dir = bpath_dirname(exe_path)
@@ -161,10 +174,9 @@ pub fn find_stdlib_dir() -> str {
         cands.push(bpath_join(exe_dir, "../stdlib"))
         cands.push(bpath_join(exe_dir, "../../stdlib"))
         cands.push(bpath_join(exe_dir, "../../../stdlib"))
-        count = 6
     }
     mut i = 0
-    while i < count {
+    while i < cands.len() {
         let cand = cands.get(i)
         if File.exists(bpath_join(cand, "aerix_rt.h")) {
             return cand
@@ -180,6 +192,11 @@ pub fn find_module_dir(mod_name: str, entry_dir: str) -> str {
         let cand_env = bpath_join(env_mp, mod_name)
         if Directory.exists(cand_env) { return cand_env }
     }
+    let env_home = Env.get("AERIX_HOME")
+    if env_home != "" {
+        let cand_home = bpath_join(bpath_join(env_home, "modules"), mod_name)
+        if Directory.exists(cand_home) { return cand_home }
+    }
     let cands = List<str>()
     let cwd = bpath_normalize(Env.cwd())
     cands.push(bpath_join(entry_dir, "modules/" + mod_name))
@@ -187,18 +204,21 @@ pub fn find_module_dir(mod_name: str, entry_dir: str) -> str {
     cands.push(bpath_join(entry_dir, "../../modules/" + mod_name))
     cands.push(bpath_join(cwd, "modules/" + mod_name))
     cands.push(bpath_join(cwd, "../modules/" + mod_name))
+    cands.push("C:/Aerix/modules/" + mod_name)
+    let local_app = Env.get("LOCALAPPDATA")
+    if local_app != "" {
+        cands.push(bpath_join(local_app, "Programs/Aerix/modules/" + mod_name))
+    }
     let exe_path = Env.arg(0)
-    mut count = 5
     if exe_path != "" {
         let exe_dir = bpath_dirname(exe_path)
         cands.push(bpath_join(exe_dir, "modules/" + mod_name))
         cands.push(bpath_join(exe_dir, "../modules/" + mod_name))
         cands.push(bpath_join(exe_dir, "../../modules/" + mod_name))
         cands.push(bpath_join(exe_dir, "../../../modules/" + mod_name))
-        count = 9
     }
     mut i = 0
-    while i < count {
+    while i < cands.len() {
         let c = cands.get(i)
         if Directory.exists(c) { return c }
         i = i + 1
