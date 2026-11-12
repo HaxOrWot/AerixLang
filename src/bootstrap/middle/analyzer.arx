@@ -29,8 +29,15 @@ pub class Analyzer {
     pub ls: List<i64>
     pub ll: List<i64>
     pub ln: List<i64>
+    pub nc: List<i64>
+    pub nf: List<str>
     pub ch: List<i64>
     pub ncount: i64
+    pub err_files: List<str>
+    pub err_lines: List<i64>
+    pub err_cols: List<i64>
+    pub err_msgs: List<str>
+    pub err_count: i64
     pub root_decls: List<i64>
     pub root_count: i64
     pub c_includes: List<str>
@@ -119,8 +126,15 @@ pub class Analyzer {
         self.ls = p.ls
         self.ll = p.ll
         self.ln = p.ln
+        self.nc = p.nc
+        self.nf = p.nf
         self.ch = p.ch
         self.ncount = p.ncount
+        self.err_files = p.err_files
+        self.err_lines = p.err_lines
+        self.err_cols = p.err_cols
+        self.err_msgs = p.err_msgs
+        self.err_count = p.err_count
         self.root_decls = p.root_decls
         self.root_count = p.root_count
         self.c_includes = p.c_includes
@@ -977,40 +991,42 @@ pub class Analyzer {
             let iter_id = self.la.get(nid)
             mut elem_t = "i64"
             mut iter_kind_tag = "__range__"
-            let ik = self.nk.get(iter_id)
-            if ik == NK_RANGE() {
-                self.analyze_expr(self.la.get(iter_id))
-                self.analyze_expr(self.ra.get(iter_id))
-                self.node_types.set(iter_id, "__range__")
-                elem_t = "i64"
-                iter_kind_tag = "__range__"
-            } else {
-                mut raw_it = iter_id
-                if ik == NK_CALL() {
-                    let cal = self.la.get(iter_id)
-                    if self.nk.get(cal) == NK_IDENT() && self.sa.get(cal) == "enumerate" && self.child_count(iter_id) == 1 {
-                        raw_it = self.child_at(iter_id, 0)
-                    }
-                }
-                let it_t = self.analyze_expr(raw_it)
-                if raw_it != iter_id {
-                    self.node_types.set(iter_id, it_t)
-                }
-                if btype_is_list(it_t) || btype_is_set(it_t) {
-                    elem_t = btype_list_elem(it_t)
-                    iter_kind_tag = it_t
-                } else if btype_is_fixed_arr(it_t) {
-                    elem_t = btype_arr_elem(it_t)
-                    iter_kind_tag = it_t
-                } else if btype_is_slice(it_t) {
-                    elem_t = btype_slice_elem(it_t)
-                    iter_kind_tag = it_t
-                } else if btype_is_str(it_t) {
-                    elem_t = "char"
-                    iter_kind_tag = "str"
-                } else {
+            if iter_id >= 0 {
+                let ik = self.nk.get(iter_id)
+                if ik == NK_RANGE() {
+                    self.analyze_expr(self.la.get(iter_id))
+                    self.analyze_expr(self.ra.get(iter_id))
+                    self.node_types.set(iter_id, "__range__")
                     elem_t = "i64"
-                    iter_kind_tag = it_t
+                    iter_kind_tag = "__range__"
+                } else {
+                    mut raw_it = iter_id
+                    if ik == NK_CALL() {
+                        let cal = self.la.get(iter_id)
+                        if cal >= 0 && self.nk.get(cal) == NK_IDENT() && self.sa.get(cal) == "enumerate" && self.child_count(iter_id) == 1 {
+                            raw_it = self.child_at(iter_id, 0)
+                        }
+                    }
+                    let it_t = self.analyze_expr(raw_it)
+                    if raw_it != iter_id {
+                        self.node_types.set(iter_id, it_t)
+                    }
+                    if btype_is_list(it_t) || btype_is_set(it_t) {
+                        elem_t = btype_list_elem(it_t)
+                        iter_kind_tag = it_t
+                    } else if btype_is_fixed_arr(it_t) {
+                        elem_t = btype_arr_elem(it_t)
+                        iter_kind_tag = it_t
+                    } else if btype_is_slice(it_t) {
+                        elem_t = btype_slice_elem(it_t)
+                        iter_kind_tag = it_t
+                    } else if btype_is_str(it_t) {
+                        elem_t = "char"
+                        iter_kind_tag = "str"
+                    } else {
+                        elem_t = "i64"
+                        iter_kind_tag = it_t
+                    }
                 }
             }
             self.node_ext.set(nid, elem_t + "|" + iter_kind_tag)
@@ -1113,7 +1129,7 @@ pub class Analyzer {
         if pk == NK_MEMBER() {
             let lhs = self.la.get(pat_id)
             let mem = self.sa.get(pat_id)
-            if self.nk.get(lhs) == NK_IDENT() {
+            if lhs >= 0 && self.nk.get(lhs) == NK_IDENT() {
                 let ename = self.sa.get(lhs)
                 let vkey = ename + "::" + mem
                 if self.enum_var_tag.has_key(vkey) {
@@ -1127,11 +1143,11 @@ pub class Analyzer {
             let cal = self.la.get(pat_id)
             mut ename = subj_t
             mut vname = ""
-            if self.nk.get(cal) == NK_IDENT() {
+            if cal >= 0 && self.nk.get(cal) == NK_IDENT() {
                 vname = self.sa.get(cal)
-            } else if self.nk.get(cal) == NK_MEMBER() {
+            } else if cal >= 0 && self.nk.get(cal) == NK_MEMBER() {
                 let lhs = self.la.get(cal)
-                if self.nk.get(lhs) == NK_IDENT() { ename = self.sa.get(lhs) }
+                if lhs >= 0 && self.nk.get(lhs) == NK_IDENT() { ename = self.sa.get(lhs) }
                 vname = self.sa.get(cal)
             }
             let vkey = ename + "::" + vname
@@ -1149,13 +1165,15 @@ pub class Analyzer {
                     if i < fc {
                         ft = btype_norm(self.sb.get(self.child_at(vnode, i)))
                     }
-                    if self.nk.get(arg_id) == NK_IDENT() {
-                        let bind_name = self.sa.get(arg_id)
-                        if bind_name != "_" {
-                            self.scope_def(bind_name, ft)
+                    if arg_id >= 0 {
+                        if self.nk.get(arg_id) == NK_IDENT() {
+                            let bind_name = self.sa.get(arg_id)
+                            if bind_name != "_" {
+                                self.scope_def(bind_name, ft)
+                            }
                         }
+                        self.node_types.set(arg_id, ft)
                     }
-                    self.node_types.set(arg_id, ft)
                     i = i + 1
                 }
                 return
@@ -1563,7 +1581,7 @@ pub class Analyzer {
                 self.node_types.set(nid, "f64")
                 return "f64"
             }
-            if name == "arx_prng_get_state" || name == "arx_prng_next_i64" {
+            if name == "arx_prng_get_state" || name == "arx_prng_next_i64" || name == "arx_lsp_init_stdio" || name == "arx_lsp_read_start" || name == "arx_lsp_read_byte" || name == "arx_lsp_write_msg" {
                 self.call_kinds.set(nid, CK_NORMAL())
                 self.call_targets.set(nid, name)
                 self.node_types.set(nid, "i64")

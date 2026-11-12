@@ -19,6 +19,8 @@
 
 #if defined(_WIN32) || defined(_WIN64)
     #include <windows.h>
+    #include <io.h>
+    #include <fcntl.h>
     typedef HANDLE arx_thread_t;
 #else
     #include <pthread.h>
@@ -2453,6 +2455,97 @@ static inline const char* arx_os_name(void) {
 #else
     return "linux";
 #endif
+}
+
+// --- Native Binary Stdio Transport for Language Server Protocol (LSP) ---
+static char* g_arx_lsp_rx_buf = NULL;
+static int64_t g_arx_lsp_rx_len = 0;
+static int64_t g_arx_lsp_rx_cap = 0;
+static bool g_arx_lsp_stdio_ready = false;
+
+static inline int64_t arx_lsp_init_stdio(void) {
+    if (!g_arx_lsp_stdio_ready) {
+#if defined(_WIN32) || defined(_WIN64)
+        _setmode(_fileno(stdin), _O_BINARY);
+        _setmode(_fileno(stdout), _O_BINARY);
+#endif
+        setvbuf(stdout, NULL, _IONBF, 0);
+        g_arx_lsp_stdio_ready = true;
+    }
+    return 0;
+}
+
+static inline int64_t arx_lsp_read_start(void) {
+    arx_lsp_init_stdio();
+    int64_t content_len = -1;
+    char hdr[1024];
+    for (;;) {
+        size_t pos = 0;
+        int c = EOF;
+        while (pos + 1 < sizeof(hdr)) {
+            c = fgetc(stdin);
+            if (c == EOF) {
+                if (pos == 0) return -1;
+                break;
+            }
+            if (c == '\n') break;
+            if (c != '\r') hdr[pos++] = (char)c;
+        }
+        hdr[pos] = '\0';
+        if (pos == 0) {
+            if (c == EOF) return -1;
+            if (content_len >= 0) break;
+            continue;
+        }
+        // Case-insensitive match for "content-length:"
+        const char* prefix = "content-length:";
+        bool match = true;
+        for (size_t k = 0; k < 15; k++) {
+            if (tolower((unsigned char)hdr[k]) != (unsigned char)prefix[k]) {
+                match = false;
+                break;
+            }
+        }
+        if (match) {
+            const char* p = hdr + 15;
+            while (*p == ' ' || *p == '\t') p++;
+            content_len = (int64_t)strtoll(p, NULL, 10);
+        }
+    }
+    if (content_len < 0) return -1;
+    if (content_len + 1 > g_arx_lsp_rx_cap) {
+        int64_t new_cap = content_len + 1024;
+        char* nb = (char*)realloc(g_arx_lsp_rx_buf, (size_t)new_cap);
+        if (!nb) return -1;
+        g_arx_lsp_rx_buf = nb;
+        g_arx_lsp_rx_cap = new_cap;
+    }
+    int64_t got = 0;
+    while (got < content_len) {
+        size_t chunk = fread(g_arx_lsp_rx_buf + got, 1, (size_t)(content_len - got), stdin);
+        if (chunk == 0) return -1;
+        got += (int64_t)chunk;
+    }
+    g_arx_lsp_rx_buf[content_len] = '\0';
+    g_arx_lsp_rx_len = content_len;
+    return content_len;
+}
+
+static inline int64_t arx_lsp_read_byte(int64_t idx) {
+    if (!g_arx_lsp_rx_buf || idx < 0 || idx >= g_arx_lsp_rx_len) return 0;
+    return (int64_t)(unsigned char)g_arx_lsp_rx_buf[idx];
+}
+
+static inline int64_t arx_lsp_write_msg(const char* body) {
+    arx_lsp_init_stdio();
+    const char* s = body ? body : "";
+    size_t len = strlen(s);
+    fprintf(stdout, "Content-Length: %zu\r\n\r\n", len);
+    if (len > 0) {
+        fwrite(s, 1, len, stdout);
+    }
+    fflush(stdout);
+    return 0;
 }
 
 #endif // AERIX_RT_H

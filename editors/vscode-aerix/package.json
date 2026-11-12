@@ -18,8 +18,7 @@
   ],
   "categories": [
     "Programming Languages",
-    "Snippets",
-    "Themes"
+    "Snippets"
   ],
   "keywords": [
     "aerix",
@@ -48,13 +47,16 @@
         }
       }
     ],
-    "grammars": [
-      {
-        "language": "aerix",
-        "scopeName": "source.aerix",
-        "path": "./syntaxes/aerix.tmLanguage.json"
+    "configuration": {
+      "title": "Aerix",
+      "properties": {
+        "aerix.executablePath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to the Aerix compiler/LSP binary (arx / arxc). Leave empty to auto-detect on PATH or in ~/.aerix/bin."
+        }
       }
-    ],
+    },
     "snippets": [
       {
         "language": "aerix",

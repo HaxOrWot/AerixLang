@@ -1,0 +1,386 @@
+// Aerix Native LSP — JSON-RPC 2.0 Language Server Daemon (arx lsp)
+
+import "../middle/paths.arx"
+import "../middle/analyzer.arx"
+import "./json.arx"
+import "./docs.arx"
+import "./highlight.arx"
+import "./features.arx"
+
+fn lsp_read_msg_str() -> str {
+    let n = arx_lsp_read_start()
+    if n < 0 { return "" }
+    if n == 0 { return "" }
+    let bb = ByteBuffer()
+    mut i = 0
+    while i < n {
+        bb.write_u8(arx_lsp_read_byte(i))
+        i = i + 1
+    }
+    let msg = bb.to_str()
+    bb.free()
+    return msg
+}
+
+fn lsp_send_response(id_raw: str, result_raw: str) {
+    let jb = JsonBuf()
+    jb.lbrace()
+    jb.kv_str("jsonrpc", "2.0", true)
+    jb.kv_raw("id", id_raw, false)
+    jb.kv_raw("result", result_raw, false)
+    jb.rbrace()
+    let payload = jb.finish()
+    arx_lsp_write_msg(payload)
+}
+
+fn lsp_send_error(id_raw: str, code: i64, msg: str) {
+    let jb = JsonBuf()
+    jb.lbrace()
+    jb.kv_str("jsonrpc", "2.0", true)
+    jb.kv_raw("id", id_raw, false)
+    jb.comma()
+    jb.key("error")
+    jb.lbrace()
+    jb.kv_int("code", code, true)
+    jb.kv_str("message", msg, false)
+    jb.rbrace()
+    jb.rbrace()
+    let payload = jb.finish()
+    arx_lsp_write_msg(payload)
+}
+
+fn lsp_send_notification(method: str, params_raw: str) {
+    let jb = JsonBuf()
+    jb.lbrace()
+    jb.kv_str("jsonrpc", "2.0", true)
+    jb.kv_str("method", method, false)
+    jb.kv_raw("params", params_raw, false)
+    jb.rbrace()
+    let payload = jb.finish()
+    arx_lsp_write_msg(payload)
+}
+
+fn lsp_build_initialize_result() -> str {
+    let jb = JsonBuf()
+    jb.lbrace()
+
+    jb.key("capabilities")
+    jb.lbrace()
+
+    // Text document sync (Full = 1)
+    jb.key("textDocumentSync")
+    jb.lbrace()
+    jb.kv_bool("openClose", true, true)
+    jb.kv_int("change", 1, false)
+    jb.comma()
+    jb.key("save")
+    jb.lbrace()
+    jb.kv_bool("includeText", true, true)
+    jb.rbrace()
+    jb.rbrace()
+
+    // Semantic tokens for compiler-accurate highlighting
+    jb.comma()
+    jb.key("semanticTokensProvider")
+    jb.lbrace()
+    jb.key("legend")
+    jb.lbrace()
+    jb.key("tokenTypes")
+    jb.lbrack()
+    jb.str_val("comment"); jb.comma()
+    jb.str_val("keyword"); jb.comma()
+    jb.str_val("string"); jb.comma()
+    jb.str_val("number"); jb.comma()
+    jb.str_val("operator"); jb.comma()
+    jb.str_val("type"); jb.comma()
+    jb.str_val("class"); jb.comma()
+    jb.str_val("enum"); jb.comma()
+    jb.str_val("enumMember"); jb.comma()
+    jb.str_val("function"); jb.comma()
+    jb.str_val("method"); jb.comma()
+    jb.str_val("property"); jb.comma()
+    jb.str_val("parameter"); jb.comma()
+    jb.str_val("variable"); jb.comma()
+    jb.str_val("namespace"); jb.comma()
+    jb.str_val("macro")
+    jb.rbrack()
+    jb.comma()
+    jb.key("tokenModifiers")
+    jb.lbrack()
+    jb.str_val("declaration"); jb.comma()
+    jb.str_val("definition"); jb.comma()
+    jb.str_val("readonly"); jb.comma()
+    jb.str_val("static"); jb.comma()
+    jb.str_val("defaultLibrary")
+    jb.rbrack()
+    jb.rbrace()
+    jb.kv_bool("full", true, false)
+    jb.rbrace()
+
+    // Completion
+    jb.comma()
+    jb.key("completionProvider")
+    jb.lbrace()
+    jb.kv_bool("resolveProvider", false, true)
+    jb.comma()
+    jb.key("triggerCharacters")
+    jb.lbrack()
+    jb.str_val("."); jb.comma(); jb.str_val(">"); jb.comma(); jb.str_val(":")
+    jb.rbrack()
+    jb.rbrace()
+
+    // Signature help
+    jb.comma()
+    jb.key("signatureHelpProvider")
+    jb.lbrace()
+    jb.key("triggerCharacters")
+    jb.lbrack()
+    jb.str_val("("); jb.comma(); jb.str_val(",")
+    jb.rbrack()
+    jb.rbrace()
+
+    jb.kv_bool("hoverProvider", true, false)
+    jb.kv_bool("definitionProvider", true, false)
+    jb.kv_bool("documentSymbolProvider", true, false)
+    jb.kv_bool("inlayHintProvider", true, false)
+    jb.kv_bool("documentFormattingProvider", true, false)
+
+    jb.comma()
+    jb.key("codeLensProvider")
+    jb.lbrace()
+    jb.kv_bool("resolveProvider", false, true)
+    jb.rbrace()
+
+    jb.rbrace() // end capabilities
+
+    jb.comma()
+    jb.key("serverInfo")
+    jb.lbrace()
+    jb.kv_str("name", "aerix-lsp", true)
+    jb.kv_str("version", "1.1.0-stable", false)
+    jb.rbrace()
+
+    jb.rbrace()
+    return jb.finish()
+}
+
+fn lsp_publish_diagnostics(uri: str, diags_json: str) {
+    let jb = JsonBuf()
+    jb.lbrace()
+    jb.kv_str("uri", uri, true)
+    jb.kv_raw("diagnostics", diags_json, false)
+    jb.rbrace()
+    lsp_send_notification("textDocument/publishDiagnostics", jb.finish())
+}
+
+fn lsp_build_semantic_tokens_json(source: str, az: Analyzer, doc_path: str) -> str {
+    let data = lsp_compute_semantic_tokens(source, az, doc_path)
+    let jb = JsonBuf()
+    jb.lbrace()
+    jb.key("data")
+    jb.lbrack()
+    let n = data.len()
+    mut i = 0
+    while i < n {
+        if i > 0 { jb.comma() }
+        jb.int_val(data.get(i))
+        i = i + 1
+    }
+    jb.rbrack()
+    jb.rbrace()
+    return jb.finish()
+}
+
+pub fn run_lsp_server() -> i64 {
+    arx_lsp_init_stdio()
+
+    let uri_docs = Map<str, str>()
+    let path_docs = Map<str, str>()
+    mut shutting_down = false
+
+    // Single-document active analysis cache
+    mut cached_uri = ""
+    mut cached_src = ""
+    mut has_cached_az = false
+    mut cached_az = lsp_analyze_document("<init>.arx", "", path_docs)
+
+    while true {
+        let raw_msg = lsp_read_msg_str()
+        if raw_msg == "" {
+            break
+        }
+
+        mut jdoc = JsonDoc(raw_msg)
+        let root = jdoc.parse_value()
+        if root < 0 { continue }
+
+        let method = jdoc.get_str(root, "method")
+        let id_node = jdoc.get(root, "id")
+        let has_id = id_node >= 0
+        mut id_raw = "null"
+        if has_id { id_raw = jdoc.raw_repr(id_node) }
+        let params = jdoc.get(root, "params")
+
+        if method == "initialize" {
+            lsp_send_response(id_raw, lsp_build_initialize_result())
+            continue
+        }
+        if method == "initialized" {
+            continue
+        }
+        if method == "shutdown" {
+            shutting_down = true
+            lsp_send_response(id_raw, "null")
+            continue
+        }
+        if method == "exit" {
+            if shutting_down { return 0 }
+            return 1
+        }
+
+        // Document synchronization notifications
+        if method == "textDocument/didOpen" {
+            let td = jdoc.get(params, "textDocument")
+            let uri = jdoc.get_str(td, "uri")
+            let text = jdoc.get_str(td, "text")
+            let fpath = bpath_normalize(lsp_uri_to_path(uri))
+            uri_docs.insert(uri, text)
+            path_docs.insert(fpath, text)
+            cached_az = lsp_analyze_document(fpath, text, path_docs)
+            cached_uri = uri
+            cached_src = text
+            has_cached_az = true
+            lsp_publish_diagnostics(uri, lsp_build_diagnostics_json(cached_az, fpath))
+            continue
+        }
+
+        if method == "textDocument/didChange" {
+            let td = jdoc.get(params, "textDocument")
+            let uri = jdoc.get_str(td, "uri")
+            let changes = jdoc.get(params, "contentChanges")
+            if jdoc.arr_len(changes) > 0 {
+                let c0 = jdoc.arr_get(changes, 0)
+                let text = jdoc.get_str(c0, "text")
+                let fpath = bpath_normalize(lsp_uri_to_path(uri))
+                uri_docs.insert(uri, text)
+                path_docs.insert(fpath, text)
+                cached_az = lsp_analyze_document(fpath, text, path_docs)
+                cached_uri = uri
+                cached_src = text
+                has_cached_az = true
+                lsp_publish_diagnostics(uri, lsp_build_diagnostics_json(cached_az, fpath))
+            }
+            continue
+        }
+
+        if method == "textDocument/didSave" {
+            let td = jdoc.get(params, "textDocument")
+            let uri = jdoc.get_str(td, "uri")
+            let fpath = bpath_normalize(lsp_uri_to_path(uri))
+            let txt_id = jdoc.get(params, "text")
+            if txt_id >= 0 {
+                let text = jdoc.svals.get(txt_id)
+                uri_docs.insert(uri, text)
+                path_docs.insert(fpath, text)
+            }
+            mut src = ""
+            if uri_docs.has_key(uri) {
+                src = uri_docs.get(uri)
+            } else if File.exists(fpath) {
+                src = File.read_to_string(fpath)
+                uri_docs.insert(uri, src)
+                path_docs.insert(fpath, src)
+            }
+            cached_az = lsp_analyze_document(fpath, src, path_docs)
+            cached_uri = uri
+            cached_src = src
+            has_cached_az = true
+            lsp_publish_diagnostics(uri, lsp_build_diagnostics_json(cached_az, fpath))
+            continue
+        }
+
+        if method == "textDocument/didClose" {
+            let td = jdoc.get(params, "textDocument")
+            let uri = jdoc.get_str(td, "uri")
+            let fpath = bpath_normalize(lsp_uri_to_path(uri))
+            uri_docs.remove(uri)
+            path_docs.remove(fpath)
+            if cached_uri == uri { has_cached_az = false; cached_uri = ""; cached_src = "" }
+            lsp_publish_diagnostics(uri, "[]")
+            continue
+        }
+
+        // Request handlers requiring textDocument
+        if method.starts_with("textDocument/") && has_id {
+            let td = jdoc.get(params, "textDocument")
+            let uri = jdoc.get_str(td, "uri")
+            let fpath = bpath_normalize(lsp_uri_to_path(uri))
+
+            mut src = ""
+            if uri_docs.has_key(uri) {
+                src = uri_docs.get(uri)
+            } else if File.exists(fpath) {
+                src = File.read_to_string(fpath)
+                uri_docs.insert(uri, src)
+                path_docs.insert(fpath, src)
+            }
+
+            if !has_cached_az || cached_uri != uri || cached_src != src {
+                cached_az = lsp_analyze_document(fpath, src, path_docs)
+                cached_uri = uri
+                cached_src = src
+                has_cached_az = true
+            }
+
+            let pos = jdoc.get(params, "position")
+            let line0 = jdoc.get_int(pos, "line", 0)
+            let char0 = jdoc.get_int(pos, "character", 0)
+
+            if method == "textDocument/semanticTokens/full" {
+                lsp_send_response(id_raw, lsp_build_semantic_tokens_json(src, cached_az, fpath))
+                continue
+            }
+            if method == "textDocument/completion" {
+                lsp_send_response(id_raw, lsp_build_completion_json(src, cached_az, fpath, line0, char0))
+                continue
+            }
+            if method == "textDocument/hover" {
+                lsp_send_response(id_raw, lsp_build_hover_json(src, cached_az, fpath, line0, char0))
+                continue
+            }
+            if method == "textDocument/signatureHelp" {
+                lsp_send_response(id_raw, lsp_build_signature_help_json(src, cached_az, fpath, line0, char0))
+                continue
+            }
+            if method == "textDocument/definition" {
+                lsp_send_response(id_raw, lsp_build_definition_json(src, cached_az, fpath, line0, char0))
+                continue
+            }
+            if method == "textDocument/documentSymbol" {
+                lsp_send_response(id_raw, lsp_build_document_symbols_json(cached_az, fpath))
+                continue
+            }
+            if method == "textDocument/inlayHint" {
+                lsp_send_response(id_raw, lsp_build_inlay_hints_json(src, cached_az, fpath))
+                continue
+            }
+            if method == "textDocument/codeLens" {
+                lsp_send_response(id_raw, lsp_build_code_lens_json(cached_az, fpath))
+                continue
+            }
+            if method == "textDocument/formatting" {
+                lsp_send_response(id_raw, lsp_build_formatting_json(src))
+                continue
+            }
+
+            lsp_send_response(id_raw, "null")
+            continue
+        }
+
+        if has_id {
+            lsp_send_error(id_raw, -32601, "Method not supported: " + method)
+        }
+    }
+
+    return 0
+}

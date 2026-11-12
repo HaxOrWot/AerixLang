@@ -1,0 +1,424 @@
+// Aerix Native LSP — Builtin Documentation, URI Helpers, & Language Catalog
+
+import "./json.arx"
+
+pub fn lsp_hex_upper(v: i64) -> i64 {
+    if v < 10 { return 48 + v }
+    return 65 + (v - 10)
+}
+
+pub fn lsp_hex_val(b: i64) -> i64 {
+    if b >= 48 && b <= 57 { return b - 48 }
+    if b >= 65 && b <= 70 { return b - 55 }
+    if b >= 97 && b <= 102 { return b - 87 }
+    return -1
+}
+
+pub fn lsp_uri_to_path(uri: str) -> str {
+    mut raw = uri
+    if raw.starts_with("file:///") {
+        raw = raw.slice(8, raw.len())
+        if raw.len() >= 2 {
+            // Check Windows drive letter like C:/ vs POSIX path
+            let is_win_drive = raw.len() >= 3 && raw.byte_at(1) == 58
+            let is_enc_drive = raw.len() >= 5 && raw.byte_at(1) == 37 && raw.byte_at(2) == 51 && (raw.byte_at(3) == 65 || raw.byte_at(3) == 97)
+            if !is_win_drive && !is_enc_drive {
+                raw = "/" + raw
+            }
+        }
+    } else if raw.starts_with("file://") {
+        raw = raw.slice(7, raw.len())
+    }
+
+    let bb = ByteBuffer()
+    let n = raw.len()
+    mut i = 0
+    while i < n {
+        let b = raw.byte_at(i)
+        if b == 37 && i + 2 < n {
+            let h0 = lsp_hex_val(raw.byte_at(i + 1))
+            let h1 = lsp_hex_val(raw.byte_at(i + 2))
+            if h0 >= 0 && h1 >= 0 {
+                bb.write_u8(h0 * 16 + h1)
+                i = i + 3
+                continue
+            }
+        }
+        bb.write_u8(b)
+        i = i + 1
+    }
+    let decoded = bb.to_str()
+    bb.free()
+    return decoded.replace("\\", "/")
+}
+
+pub fn lsp_path_to_uri(path: str) -> str {
+    let norm = path.replace("\\", "/")
+    let bb = ByteBuffer()
+    bb.write_str("file://")
+    if !norm.starts_with("/") {
+        bb.write_u8(47)
+    }
+    let n = norm.len()
+    mut i = 0
+    while i < n {
+        let b = norm.byte_at(i)
+        if b == 32 {
+            bb.write_str("%20")
+        } else if b == 58 && i == 1 {
+            bb.write_str("%3A")
+        } else {
+            bb.write_u8(b)
+        }
+        i = i + 1
+    }
+    let out = bb.to_str()
+    bb.free()
+    return out
+}
+
+pub fn lsp_str_find(s: str, sub: str, start: i64 = 0) -> i64 {
+    let n = s.len()
+    let m = sub.len()
+    if m == 0 { return start }
+    if m > n { return -1 }
+    mut i = start
+    if i < 0 { i = 0 }
+    while i <= n - m {
+        mut match_ok = true
+        mut j = 0
+        while j < m {
+            if s.byte_at(i + j) != sub.byte_at(j) {
+                match_ok = false
+                break
+            }
+            j = j + 1
+        }
+        if match_ok { return i }
+        i = i + 1
+    }
+    return -1
+}
+
+pub fn lsp_is_ident_char(b: i64) -> bool {
+    if b >= 65 && b <= 90 { return true }
+    if b >= 97 && b <= 122 { return true }
+    if b >= 48 && b <= 57 { return true }
+    return b == 95
+}
+
+pub fn lsp_is_keyword(w: str) -> bool {
+    return w == "fn" || w == "let" || w == "mut" || w == "const" || w == "class" || w == "struct" ||
+           w == "enum" || w == "trait" || w == "type" || w == "init" || w == "drop" || w == "if" ||
+           w == "else" || w == "elif" || w == "match" || w == "for" || w == "in" || w == "while" ||
+           w == "loop" || w == "break" || w == "continue" || w == "return" || w == "spawn" ||
+           w == "try" || w == "catch" || w == "finally" || w == "throw" || w == "self" || w == "super" ||
+           w == "pub" || w == "priv" || w == "prot" || w == "static" || w == "virtual" || w == "override" ||
+           w == "abstract" || w == "new" || w == "delete" || w == "extends" || w == "implements" ||
+           w == "prop" || w == "op" || w == "extend" || w == "guard" || w == "defer" || w == "unsafe" ||
+           w == "sizeof" || w == "as" || w == "use" || w == "import" || w == "from" || w == "cinclude" ||
+           w == "cextern" || w == "true" || w == "false" || w == "null" || w == "get" || w == "set"
+}
+
+pub fn lsp_is_primitive_type(w: str) -> bool {
+    return w == "i8" || w == "i16" || w == "i32" || w == "i64" || w == "int" ||
+           w == "u8" || w == "u16" || w == "u32" || w == "u64" || w == "uint" ||
+           w == "usize" || w == "isize" || w == "f32" || w == "f64" || w == "float" ||
+           w == "f32x4" || w == "f64x2" || w == "bool" || w == "char" || w == "str" || w == "void"
+}
+
+pub fn lsp_is_container_type(w: str) -> bool {
+    return w == "List" || w == "Map" || w == "Set" || w == "Stack" || w == "Queue" ||
+           w == "Deque" || w == "ByteBuffer" || w == "String" || w == "Channel" || w == "LinearArena"
+}
+
+pub fn lsp_is_static_runtime(w: str) -> bool {
+    return w == "File" || w == "Directory" || w == "Env" || w == "Process" || w == "Math" || w == "Random"
+}
+
+pub fn lsp_is_builtin_fn(w: str) -> bool {
+    return w == "println" || w == "print" || w == "eprintln" || w == "input" || w == "read_line" ||
+           w == "to_string" || w == "chr" || w == "ord" || w == "len" || w == "parse_int" ||
+           w == "parse_float" || w == "panic" || w == "abort" || w == "exit" || w == "assert" ||
+           w == "assert_eq" || w == "typeof" || w == "sqrt" || w == "sin" || w == "cos" || w == "tan" ||
+           w == "pow" || w == "floor" || w == "ceil" || w == "round" || w == "log" || w == "exp" ||
+           w == "abs" || w == "min" || w == "max" || w == "enumerate" || w == "arx_free" ||
+           w == "arx_channel_new" || w == "arx_channel_send" || w == "arx_channel_recv" ||
+           w == "arx_channel_close" || w == "arx_channel_free" || w == "arx_thread_join" ||
+           w == "arx_sleep_ms" || w == "arx_time_now" || w == "arx_prng_seed" ||
+           w == "arx_prng_next_i64" || w == "arx_prng_next_f64"
+}
+
+pub fn lsp_keyword_list() -> List<str> {
+    let ks = List<str>()
+    ks.push("fn"); ks.push("let"); ks.push("mut"); ks.push("const")
+    ks.push("class"); ks.push("struct"); ks.push("enum"); ks.push("trait")
+    ks.push("init"); ks.push("drop"); ks.push("prop"); ks.push("op"); ks.push("extend")
+    ks.push("if"); ks.push("else"); ks.push("elif"); ks.push("match")
+    ks.push("for"); ks.push("in"); ks.push("while"); ks.push("loop")
+    ks.push("break"); ks.push("continue"); ks.push("return")
+    ks.push("guard"); ks.push("defer"); ks.push("spawn")
+    ks.push("try"); ks.push("catch"); ks.push("finally"); ks.push("throw")
+    ks.push("pub"); ks.push("priv"); ks.push("prot"); ks.push("static")
+    ks.push("virtual"); ks.push("override"); ks.push("abstract")
+    ks.push("extends"); ks.push("implements"); ks.push("self"); ks.push("super")
+    ks.push("new"); ks.push("as"); ks.push("sizeof"); ks.push("unsafe")
+    ks.push("import"); ks.push("from"); ks.push("use")
+    ks.push("cinclude"); ks.push("cextern")
+    ks.push("true"); ks.push("false"); ks.push("null")
+    return ks
+}
+
+pub fn lsp_type_list() -> List<str> {
+    let ts = List<str>()
+    ts.push("i8"); ts.push("i16"); ts.push("i32"); ts.push("i64"); ts.push("int")
+    ts.push("u8"); ts.push("u16"); ts.push("u32"); ts.push("u64"); ts.push("uint")
+    ts.push("usize"); ts.push("isize")
+    ts.push("f32"); ts.push("f64"); ts.push("float"); ts.push("f32x4"); ts.push("f64x2")
+    ts.push("bool"); ts.push("char"); ts.push("str"); ts.push("void")
+    ts.push("List"); ts.push("Map"); ts.push("Set"); ts.push("Stack"); ts.push("Queue"); ts.push("Deque")
+    ts.push("ByteBuffer"); ts.push("String"); ts.push("Channel"); ts.push("LinearArena")
+    ts.push("File"); ts.push("Directory"); ts.push("Env"); ts.push("Process")
+    return ts
+}
+
+pub fn lsp_builtin_fn_list() -> List<str> {
+    let bs = List<str>()
+    bs.push("println"); bs.push("print"); bs.push("eprintln")
+    bs.push("input"); bs.push("read_line"); bs.push("to_string")
+    bs.push("parse_int"); bs.push("parse_float"); bs.push("chr"); bs.push("ord"); bs.push("len")
+    bs.push("assert"); bs.push("assert_eq"); bs.push("panic"); bs.push("abort"); bs.push("exit")
+    bs.push("typeof"); bs.push("enumerate"); bs.push("arx_time_now"); bs.push("arx_sleep_ms")
+    bs.push("arx_thread_join"); bs.push("arx_channel_new"); bs.push("arx_channel_send")
+    bs.push("arx_channel_recv"); bs.push("arx_channel_close"); bs.push("arx_channel_free")
+    return bs
+}
+
+pub fn lsp_lookup_doc(w: str) -> str {
+    if w == "fn" { return "**Keyword `fn`** — Defines a function or method.\n\nSupports expression bodies (`=> expr`) and default/named arguments." }
+    if w == "let" { return "**Keyword `let`** — Declares an immutable local or global binding." }
+    if w == "mut" { return "**Keyword `mut`** — Declares a mutable binding or mutable parameter." }
+    if w == "const" { return "**Keyword `const`** — Declares a compile-time constant." }
+    if w == "class" { return "**Keyword `class`** — Value/object struct with methods, constructors (`init`), destructors (`drop`), inheritance (`extends`), and traits (`implements`)." }
+    if w == "struct" { return "**Keyword `struct`** — Zero-overhead aggregate struct declaration." }
+    if w == "enum" { return "**Keyword `enum`** — Tagged algebraic union with optional per-variant payload fields." }
+    if w == "trait" { return "**Keyword `trait`** — Interface contract enforced at compile time." }
+    if w == "extend" { return "**Keyword `extend`** — Adds methods directly to an existing class or primitive type." }
+    if w == "prop" { return "**Keyword `prop`** — Reactive property with custom `get` and `set` accessors." }
+    if w == "op" { return "**Keyword `op`** — Operator overloading inside a `class` definition." }
+    if w == "guard" { return "**Keyword `guard`** — Early-exit assertion: `guard cond else {{ return }}`." }
+    if w == "defer" { return "**Keyword `defer`** — Schedules cleanup statement in LIFO order on scope exit." }
+    if w == "match" { return "**Keyword `match`** — Exhaustive pattern matching on enums and values with destructuring." }
+    if w == "spawn" { return "**Keyword `spawn`** — Launches an OS worker thread returning a thread handle (`i64`)." }
+    if w == "try" { return "**Keyword `try`** — Structured exception handling frame (`try ... catch err ... finally ...`)." }
+    if w == "catch" { return "**Keyword `catch`** — Captures thrown exception strings from a `try` block." }
+    if w == "finally" { return "**Keyword `finally`** — Cleanup block executed regardless of whether an exception was thrown." }
+    if w == "throw" { return "**Keyword `throw`** — Raises a runtime exception string to the nearest enclosing `try` frame." }
+    if w == "init" { return "**Constructor `init(...)`** — Initializes an instance of the enclosing class." }
+    if w == "drop" { return "**Destructor `drop()`** — Deterministic RAII cleanup invoked when the instance leaves scope." }
+    if w == "cinclude" { return "**C Interop `cinclude`** — Includes a native C header directly into generated C99 output." }
+    if w == "cextern" { return "**C Interop `cextern`** — Binds an external C symbol signature." }
+    if w == "as" { return "**Operator `as`** — Explicit value cast (`expr as T`)." }
+    if w == "sizeof" { return "**Builtin `sizeof(T)`** — Evaluates C byte size of type `T`." }
+
+    // Primitives & Builtins
+    if w == "i8" { return "**Primitive `i8`** — Signed 8-bit integer (`int8_t`, 1 byte)." }
+    if w == "i16" { return "**Primitive `i16`** — Signed 16-bit integer (`int16_t`, 2 bytes)." }
+    if w == "i32" { return "**Primitive `i32`** — Signed 32-bit integer (`int32_t`, 4 bytes)." }
+    if w == "i64" || w == "int" { return "**Primitive `" + w + "`** — Signed 64-bit integer (`int64_t`, 8 bytes)." }
+    if w == "u8" { return "**Primitive `u8`** — Unsigned 8-bit integer (`uint8_t`, 1 byte)." }
+    if w == "u16" { return "**Primitive `u16`** — Unsigned 16-bit integer (`uint16_t`, 2 bytes)." }
+    if w == "u32" { return "**Primitive `u32`** — Unsigned 32-bit integer (`uint32_t`, 4 bytes)." }
+    if w == "u64" || w == "uint" { return "**Primitive `" + w + "`** — Unsigned 64-bit integer (`uint64_t`, 8 bytes)." }
+    if w == "usize" { return "**Primitive `usize`** — Pointer-width unsigned integer (`size_t`)." }
+    if w == "isize" { return "**Primitive `isize`** — Pointer-width signed integer (`intptr_t`)." }
+    if w == "f32" { return "**Primitive `f32`** — 32-bit IEEE 754 float (`float`)." }
+    if w == "f64" || w == "float" { return "**Primitive `" + w + "`** — 64-bit IEEE 754 double (`double`)." }
+    if w == "f32x4" { return "**SIMD `f32x4`** — 128-bit 4-lane single precision hardware vector." }
+    if w == "f64x2" { return "**SIMD `f64x2`** — 128-bit 2-lane double precision hardware vector." }
+    if w == "bool" { return "**Primitive `bool`** — Boolean (`true` or `false`, 1 byte)." }
+    if w == "char" { return "**Primitive `char`** — 8-bit character literal (`char`)." }
+    if w == "str" { return "**Primitive `str`** — UTF-8 string slice (`const char*`) with `.len()`, `.slice()`, `.split()`, `.replace()`." }
+    if w == "void" { return "**Type `void`** — Absence of a return value." }
+
+    // Container / Runtime Types
+    if w == "List" { return "**Container `List<T>`** — Contiguous growable dynamic array (`push`, `pop`, `get`, `set`, `len`, `slice`, `contains`, `sort`, `free`)." }
+    if w == "Map" { return "**Container `Map<K, V>`** — Open-addressing hash map (`insert`, `get`, `has_key`, `remove`, `keys`, `values`, `len`)." }
+    if w == "Set" { return "**Container `Set<T>`** — Hash set (`add`, `has`, `remove`, `union`, `intersection`, `difference`, `to_list`, `len`)." }
+    if w == "Stack" { return "**Container `Stack<T>`** — LIFO stack (`push`, `pop`, `peek`, `len`, `is_empty`)." }
+    if w == "Queue" { return "**Container `Queue<T>`** — FIFO queue (`push`, `pop`, `peek`, `len`, `is_empty`)." }
+    if w == "Deque" { return "**Container `Deque<T>`** — Double-ended ring buffer (`push_back`, `push_front`, `pop_back`, `pop_front`, `len`)." }
+    if w == "ByteBuffer" { return "**Runtime `ByteBuffer`** — Dynamic byte stream (`write_u8`, `write_str`, `write_i32_le`, `read_u8`, `to_str`, `len`, `free`)." }
+    if w == "String" { return "**Runtime `String`** — Mutable owned string (`append`, `trim`, `to_upper`, `to_lower`, `replace`, `split`, `as_str`)." }
+    if w == "Channel" { return "**Concurrency `Channel<T>`** — Thread-safe bounded MPMC channel (`send`, `recv`, `close`)." }
+    if w == "File" { return "**Stdlib `File`** — Static file I/O (`exists`, `read_to_string`, `write_string`, `append_string`, `remove`, `copy`)." }
+    if w == "Directory" { return "**Stdlib `Directory`** — Static filesystem utilities (`exists`, `create`, `list_files`, `list_dirs`)." }
+    if w == "Env" { return "**Stdlib `Env`** — Process environment (`args`, `arg_count`, `get`, `set`, `cwd`, `os_name`, `exit`)." }
+    if w == "Process" { return "**Stdlib `Process`** — Subprocess runner (`execute`, `run_capture`)." }
+
+    // Builtin functions
+    if w == "println" { return "**Builtin `println(val)`** — Prints value followed by newline to stdout." }
+    if w == "print" { return "**Builtin `print(val)`** — Prints value without trailing newline." }
+    if w == "eprintln" { return "**Builtin `eprintln(val)`** — Prints formatted text to stderr." }
+    if w == "input" { return "**Builtin `input(prompt: str = \"\") -> str`** — Reads a line from stdin." }
+    if w == "read_line" { return "**Builtin `read_line() -> str`** — Reads a line from stdin." }
+    if w == "to_string" { return "**Builtin `to_string(val) -> str`** — Converts value to string." }
+    if w == "parse_int" { return "**Builtin `parse_int(s: str) -> i64`** — Parses base-10 string to `i64`." }
+    if w == "parse_float" { return "**Builtin `parse_float(s: str) -> f64`** — Parses string to `f64`." }
+    if w == "assert" { return "**Builtin `assert(cond: bool)`** — Aborts program if condition is false." }
+    if w == "assert_eq" { return "**Builtin `assert_eq(a, b)`** — Aborts program if `a != b`." }
+    if w == "panic" { return "**Builtin `panic(msg: str)`** — Prints panic message to stderr and exits." }
+    if w == "exit" { return "**Builtin `exit(code: i64)`** — Terminates current process with status code." }
+    if w == "arx_time_now" { return "**Builtin `arx_time_now() -> f64`** — High-resolution monotonic clock in seconds." }
+    if w == "arx_sleep_ms" { return "**Builtin `arx_sleep_ms(ms: i64)`** — Sleeps current thread for `ms` milliseconds." }
+    if w == "arx_thread_join" { return "**Builtin `arx_thread_join(handle: i64)`** — Waits for spawned thread completion." }
+    return ""
+}
+
+pub fn lsp_builtin_methods_for(recv_t: str) -> List<str> {
+    let ms = List<str>()
+    if recv_t == "str" {
+        ms.push("len:() -> i64")
+        ms.push("is_empty:() -> bool")
+        ms.push("byte_at:(idx: i64) -> i64")
+        ms.push("char_at:(idx: i64) -> char")
+        ms.push("slice:(start: i64, end: i64) -> str")
+        ms.push("contains:(q: str) -> bool")
+        ms.push("starts_with:(pfx: str) -> bool")
+        ms.push("ends_with:(sfx: str) -> bool")
+        ms.push("replace:(old_s: str, new_s: str) -> str")
+        ms.push("split:(delim: str) -> List<str>")
+        ms.push("trim:() -> str")
+        ms.push("to_upper:() -> str")
+        ms.push("to_lower:() -> str")
+        ms.push("to_i64:() -> i64")
+        ms.push("to_f64:() -> f64")
+        return ms
+    }
+    if recv_t == "ByteBuffer" {
+        ms.push("write_u8:(b: i64) -> void")
+        ms.push("write_i32_le:(v: i64) -> void")
+        ms.push("write_i32_be:(v: i64) -> void")
+        ms.push("write_f64_le:(v: f64) -> void")
+        ms.push("write_str:(s: str) -> void")
+        ms.push("read_u8:() -> i64")
+        ms.push("read_i32_le:() -> i64")
+        ms.push("read_i32_be:() -> i64")
+        ms.push("to_str:() -> str")
+        ms.push("seek:(off: i64) -> void")
+        ms.push("pos:() -> i64")
+        ms.push("len:() -> i64")
+        ms.push("reset:() -> void")
+        ms.push("free:() -> void")
+        return ms
+    }
+    if recv_t == "String" {
+        ms.push("append:(s: str) -> void")
+        ms.push("as_str:() -> str")
+        ms.push("trim:() -> String")
+        ms.push("to_upper:() -> String")
+        ms.push("to_lower:() -> String")
+        ms.push("replace:(a: str, b: str) -> String")
+        ms.push("split:(delim: str) -> List<str>")
+        ms.push("len:() -> i64")
+        ms.push("contains:(q: str) -> bool")
+        ms.push("starts_with:(p: str) -> bool")
+        ms.push("ends_with:(s: str) -> bool")
+        return ms
+    }
+    if recv_t.starts_with("List<") {
+        ms.push("push:(val: T) -> void")
+        ms.push("pop:() -> T")
+        ms.push("get:(idx: i64) -> T")
+        ms.push("set:(idx: i64, val: T) -> void")
+        ms.push("len:() -> i64")
+        ms.push("is_empty:() -> bool")
+        ms.push("contains:(val: T) -> bool")
+        ms.push("index_of:(val: T) -> i64")
+        ms.push("insert:(idx: i64, val: T) -> void")
+        ms.push("remove_at:(idx: i64) -> T")
+        ms.push("swap_remove:(idx: i64) -> T")
+        ms.push("reverse:() -> void")
+        ms.push("sort:() -> void")
+        ms.push("slice:(s: i64, e: i64) -> List<T>")
+        ms.push("clear:() -> void")
+        ms.push("free:() -> void")
+        return ms
+    }
+    if recv_t.starts_with("Map<") {
+        ms.push("insert:(key: K, val: V) -> void")
+        ms.push("get:(key: K) -> V")
+        ms.push("has_key:(key: K) -> bool")
+        ms.push("remove:(key: K) -> bool")
+        ms.push("keys:() -> List<K>")
+        ms.push("values:() -> List<V>")
+        ms.push("len:() -> i64")
+        ms.push("is_empty:() -> bool")
+        ms.push("clear:() -> void")
+        ms.push("free:() -> void")
+        return ms
+    }
+    if recv_t.starts_with("Set<") {
+        ms.push("add:(val: T) -> bool")
+        ms.push("has:(val: T) -> bool")
+        ms.push("remove:(val: T) -> bool")
+        ms.push("to_list:() -> List<T>")
+        ms.push("union:(other: Set<T>) -> Set<T>")
+        ms.push("intersection:(other: Set<T>) -> Set<T>")
+        ms.push("difference:(other: Set<T>) -> Set<T>")
+        ms.push("len:() -> i64")
+        ms.push("is_empty:() -> bool")
+        return ms
+    }
+    if recv_t.starts_with("Stack<") || recv_t.starts_with("Queue<") {
+        ms.push("push:(val: T) -> void")
+        ms.push("pop:() -> T")
+        ms.push("peek:() -> T")
+        ms.push("len:() -> i64")
+        ms.push("is_empty:() -> bool")
+        return ms
+    }
+    if recv_t.starts_with("Deque<") {
+        ms.push("push_back:(val: T) -> void")
+        ms.push("push_front:(val: T) -> void")
+        ms.push("pop_back:() -> T")
+        ms.push("pop_front:() -> T")
+        ms.push("peek_front:() -> T")
+        ms.push("peek_back:() -> T")
+        ms.push("len:() -> i64")
+        ms.push("is_empty:() -> bool")
+        return ms
+    }
+    if recv_t == "File" {
+        ms.push("exists:(path: str) -> bool")
+        ms.push("read_to_string:(path: str) -> str")
+        ms.push("write_string:(path: str, content: str) -> bool")
+        ms.push("append_string:(path: str, content: str) -> bool")
+        ms.push("remove:(path: str) -> bool")
+        ms.push("copy:(src: str, dst: str) -> bool")
+        return ms
+    }
+    if recv_t == "Directory" {
+        ms.push("exists:(path: str) -> bool")
+        ms.push("create:(path: str) -> bool")
+        ms.push("list_files:(path: str) -> List<str>")
+        ms.push("list_dirs:(path: str) -> List<str>")
+        return ms
+    }
+    if recv_t == "Env" {
+        ms.push("args:() -> List<str>")
+        ms.push("arg_count:() -> i64")
+        ms.push("get:(name: str) -> str")
+        ms.push("set:(name: str, val: str) -> bool")
+        ms.push("cwd:() -> str")
+        ms.push("os_name:() -> str")
+        ms.push("exit:(code: i64) -> void")
+        return ms
+    }
+    if recv_t == "Process" {
+        ms.push("execute:(cmd: str) -> i64")
+        ms.push("run_capture:(cmd: str) -> str")
+        return ms
+    }
+    return ms
+}

@@ -30,9 +30,21 @@ pub class Parser {
     pub ls: List<i64>
     pub ll: List<i64>
     pub ln: List<i64>
+    pub nc: List<i64>
+    pub nf: List<str>
     pub ch: List<i64>
     pub ncount: i64
     pub chcount: i64
+
+    // LSP / Error recovery state
+    pub recover_mode: bool
+    pub err_files: List<str>
+    pub err_lines: List<i64>
+    pub err_cols: List<i64>
+    pub err_msgs: List<str>
+    pub err_count: i64
+    pub virtual_docs: Map<str, str>
+    priv last_err_pos: i64
 
     // Root program & module loader state
     pub root_decls: List<i64>
@@ -79,9 +91,20 @@ pub class Parser {
         self.ls = List<i64>()
         self.ll = List<i64>()
         self.ln = List<i64>()
+        self.nc = List<i64>()
+        self.nf = List<str>()
         self.ch = List<i64>()
         self.ncount = 0
         self.chcount = 0
+
+        self.recover_mode = false
+        self.err_files = List<str>()
+        self.err_lines = List<i64>()
+        self.err_cols = List<i64>()
+        self.err_msgs = List<str>()
+        self.err_count = 0
+        self.virtual_docs = Map<str, str>()
+        self.last_err_pos = -1
 
         self.root_decls = List<i64>()
         self.root_count = 0
@@ -121,6 +144,8 @@ pub class Parser {
         self.ls.push(0)
         self.ll.push(0)
         self.ln.push(line_num)
+        self.nc.push(self.cur_col())
+        self.nf.push(self.cur_file)
         self.ncount = id + 1
         return id
     }
@@ -144,6 +169,8 @@ pub class Parser {
         self.ls.push(start)
         self.ll.push(count)
         self.ln.push(line_num)
+        self.nc.push(self.cur_col())
+        self.nf.push(self.cur_file)
         self.ncount = id + 1
         return id
     }
@@ -249,26 +276,55 @@ pub class Parser {
         if self.pos < self.tok_count {
             return self.tok_lines.get(self.pos)
         }
+        if self.tok_count > 0 {
+            return self.tok_lines.get(self.tok_count - 1)
+        }
+        return 1
+    }
+
+    priv fn cur_col() -> i64 {
+        if self.pos < self.tok_count {
+            return self.tok_cols.get(self.pos)
+        }
         return 1
     }
 
     priv fn adv() -> i64 {
+        if self.tok_count == 0 { return 0 }
         let idx = self.pos
-        if idx < self.tok_count {
+        if idx < self.tok_count - 1 {
             self.pos = idx + 1
+            return idx
         }
-        return idx
+        self.pos = self.tok_count - 1
+        return self.tok_count - 1
     }
 
     priv fn match_k(k: i64) -> bool {
         if self.cur_kind() == k {
-            self.pos = self.pos + 1
+            self.adv()
             return true
         }
         return false
     }
 
+    priv fn record_err(ln: i64, cl: i64, msg: str) {
+        if self.err_count >= 64 { return }
+        self.err_files.push(self.cur_file)
+        self.err_lines.push(ln)
+        self.err_cols.push(cl)
+        self.err_msgs.push(msg)
+        self.err_count = self.err_count + 1
+    }
+
     priv fn fail(msg: str) {
+        if self.recover_mode {
+            if self.last_err_pos != self.pos {
+                self.last_err_pos = self.pos
+                self.record_err(self.cur_line(), self.cur_col(), msg)
+            }
+            return
+        }
         eprintln("PARSER ERROR (" + self.cur_file + ":" + self.cur_line() + "): " + msg + " [got '" + self.cur_val() + "']")
         Env.exit(1)
     }
@@ -278,7 +334,9 @@ pub class Parser {
             return self.adv()
         }
         self.fail(msg)
-        return self.pos
+        if self.tok_count == 0 { return 0 }
+        if self.pos < self.tok_count { return self.pos }
+        return self.tok_count - 1
     }
 
     priv fn skip_newlines() {
@@ -297,16 +355,25 @@ pub class Parser {
 
     pub fn load_resolved_file(file_path: str) {
         mut resolved = bpath_normalize(file_path)
-        if !File.exists(resolved) && !str_ends_with_arx(resolved) {
+        if !self.virtual_docs.has_key(resolved) && !File.exists(resolved) && !str_ends_with_arx(resolved) {
             let with_ext = resolved + ".arx"
-            if File.exists(with_ext) {
+            if self.virtual_docs.has_key(with_ext) || File.exists(with_ext) {
                 resolved = with_ext
             }
         }
         if self.loaded_files.has_key(resolved) {
             return
         }
+        if self.virtual_docs.has_key(resolved) {
+            self.loaded_files.insert(resolved, 1)
+            self.load_source(self.virtual_docs.get(resolved), resolved)
+            return
+        }
         if !File.exists(resolved) {
+            if self.recover_mode {
+                self.record_err(self.cur_line(), self.cur_col(), "Cannot find imported source file: " + resolved)
+                return
+            }
             self.fail("Cannot find imported source file: " + resolved)
         }
         self.loaded_files.insert(resolved, 1)
@@ -329,7 +396,19 @@ pub class Parser {
             self.loaded_files.insert(norm_name, 1)
         }
         mut lx = Lexer(source, norm_name)
+        lx.recover_mode = self.recover_mode
         let ts = lx.tokenize()
+        if self.recover_mode && lx.err_count > 0 {
+            mut li = 0
+            while li < lx.err_count {
+                self.err_files.push(norm_name)
+                self.err_lines.push(lx.err_lines.get(li))
+                self.err_cols.push(lx.err_cols.get(li))
+                self.err_msgs.push(lx.err_msgs.get(li))
+                self.err_count = self.err_count + 1
+                li = li + 1
+            }
+        }
 
         // Save outer parser token stream state
         let s_kinds = self.tok_kinds
@@ -340,6 +419,7 @@ pub class Parser {
         let s_pos = self.pos
         let s_file = self.cur_file
         let s_dir = self.cur_dir
+        let s_last_err = self.last_err_pos
 
         self.tok_kinds = ts.kinds
         self.tok_vals = ts.vals
@@ -349,6 +429,7 @@ pub class Parser {
         self.pos = 0
         self.cur_file = norm_name
         self.cur_dir = bpath_dirname(norm_name)
+        self.last_err_pos = -1
 
         self.parse_program_unit()
 
@@ -361,6 +442,7 @@ pub class Parser {
         self.pos = s_pos
         self.cur_file = s_file
         self.cur_dir = s_dir
+        self.last_err_pos = s_last_err
     }
 
     priv fn collect_dir_arx(dir_path: str, out_files: List<str>, count_box: List<i64>) {
@@ -390,6 +472,10 @@ pub class Parser {
         }
         let mod_dir = find_module_dir(mod_name, self.entry_dir)
         if mod_dir == "" {
+            if self.recover_mode {
+                self.record_err(self.cur_line(), self.cur_col(), "Inbuilt module '" + mod_name + "' not found")
+                return
+            }
             self.fail("Inbuilt module '" + mod_name + "' not found")
         }
         self.loaded_mods.insert(mod_name, 1)
@@ -523,9 +609,11 @@ pub class Parser {
     priv fn parse_program_unit() {
         self.skip_stmt_end()
         while self.cur_kind() != TK_EOF() {
+            let lp = self.pos
             if self.cur_kind() == TK_IMPORT() || self.cur_kind() == TK_USE() {
                 self.parse_import_stmt()
                 self.skip_stmt_end()
+                if self.pos == lp { self.adv() }
                 continue
             }
             let decl = self.parse_top_decl()
@@ -534,6 +622,7 @@ pub class Parser {
                 self.root_count = self.root_count + 1
             }
             self.skip_stmt_end()
+            if self.pos == lp { self.adv() }
         }
     }
 
@@ -751,6 +840,7 @@ pub class Parser {
         mut dtor_id = -1
 
         while self.cur_kind() != TK_RBRACE() && self.cur_kind() != TK_EOF() {
+            let lp = self.pos
             mut mflags = 0
             while true {
                 if self.match_k(TK_PUB()) {
@@ -800,8 +890,10 @@ pub class Parser {
                 f_count = f_count + 1
             } else {
                 self.fail("Unexpected token inside class body")
+                self.adv()
             }
             self.skip_stmt_end()
+            if self.pos == lp { self.adv() }
         }
         self.expect_k(TK_RBRACE(), "Expected closing brace to close class body")
 
@@ -823,6 +915,7 @@ pub class Parser {
         let vars = List<i64>()
         mut v_count = 0
         while self.cur_kind() != TK_RBRACE() && self.cur_kind() != TK_EOF() {
+            let lp = self.pos
             let v_tok = self.expect_k(TK_IDENT(), "Expected enum variant name")
             let vname = self.tok_vals.get(v_tok)
             let vln = self.tok_lines.get(v_tok)
@@ -843,6 +936,7 @@ pub class Parser {
             v_count = v_count + 1
             self.match_k(TK_COMMA())
             self.skip_stmt_end()
+            if self.pos == lp { self.adv() }
         }
         self.expect_k(TK_RBRACE(), "Expected closing brace in enum")
         return self.make_group(NK_ENUM_DEF(), ename, "", 0, -1, -1, -1, e_ln, vars, v_count)
@@ -857,6 +951,7 @@ pub class Parser {
         let methods = List<i64>()
         mut mcount = 0
         while self.cur_kind() != TK_RBRACE() && self.cur_kind() != TK_EOF() {
+            let lp = self.pos
             mut mflags = 0
             while true {
                 if self.match_k(TK_PUB()) {
@@ -872,6 +967,7 @@ pub class Parser {
             methods.push(self.parse_fn_def(mflags))
             mcount = mcount + 1
             self.skip_stmt_end()
+            if self.pos == lp { self.adv() }
         }
         self.expect_k(TK_RBRACE(), "Expected closing brace in extend")
         return self.make_group(NK_EXTEND_DEF(), tname, "", 0, -1, -1, -1, self.tok_lines.get(e_tok), methods, mcount)
@@ -886,12 +982,14 @@ pub class Parser {
         let stmts = List<i64>()
         mut scount = 0
         while self.cur_kind() != TK_RBRACE() && self.cur_kind() != TK_EOF() {
+            let lp = self.pos
             let st = self.parse_stmt()
             if st >= 0 {
                 stmts.push(st)
                 scount = scount + 1
             }
             self.skip_stmt_end()
+            if self.pos == lp { self.adv() }
         }
         self.expect_k(TK_RBRACE(), "Expected closing brace")
         return self.make_group(NK_BLOCK(), "", "", 0, -1, -1, -1, bln, stmts, scount)
@@ -1069,6 +1167,7 @@ pub class Parser {
         let cases = List<i64>()
         mut ccount = 0
         while self.cur_kind() != TK_RBRACE() && self.cur_kind() != TK_EOF() {
+            let lp = self.pos
             let pat_ln = self.cur_line()
             let pat = self.parse_expr(0)
             mut guard_id = -1
@@ -1090,6 +1189,7 @@ pub class Parser {
             ccount = ccount + 1
             self.match_k(TK_COMMA())
             self.skip_stmt_end()
+            if self.pos == lp { self.adv() }
         }
         self.expect_k(TK_RBRACE(), "Expected closing brace in match")
         return self.make_group(NK_MATCH(), "", "", 0, subj, -1, -1, mln, cases, ccount)
@@ -1166,6 +1266,7 @@ pub class Parser {
         mut count = 0
         self.skip_newlines()
         while self.cur_kind() != TK_RPAREN() && self.cur_kind() != TK_EOF() {
+            let lp = self.pos
             mut arg_name = ""
             mut arg_ln = self.cur_line()
             if self.cur_kind() == TK_IDENT() && self.peek_kind(1) == TK_EQUALS() {
@@ -1182,6 +1283,7 @@ pub class Parser {
             self.skip_newlines()
             if !self.match_k(TK_COMMA()) { break }
             self.skip_newlines()
+            if self.pos == lp { self.adv() }
         }
         self.expect_k(TK_RPAREN(), "Expected ')'")
         return count
@@ -1403,8 +1505,12 @@ pub class Parser {
                 let m_idx = self.adv()
                 return self.add_node(NK_MEMBER(), "f" + self.tok_vals.get(m_idx), "", 0, left, -1, -1, ln)
             }
-            let m_tok = self.expect_k(TK_IDENT(), "Expected member name after '.'")
-            return self.add_node(NK_MEMBER(), self.tok_vals.get(m_tok), "", 0, left, -1, -1, ln)
+            if self.cur_kind() == TK_IDENT() {
+                let m_tok = self.adv()
+                return self.add_node(NK_MEMBER(), self.tok_vals.get(m_tok), "", 0, left, -1, -1, ln)
+            }
+            self.fail("Expected member name after '.'")
+            return self.add_node(NK_MEMBER(), "", "", 0, left, -1, -1, ln)
         }
         if k == TK_LBRACKET() {
             let idx_expr = self.parse_expr(0)

@@ -8,6 +8,7 @@ import "./middle/types.arx"
 import "./middle/analyzer.arx"
 import "./backend/emitter.arx"
 import "./backend/linker.arx"
+import "./lsp/server.arx"
 
 fn print_usage() {
     println("Aerix Self-Hosting Bootstrap Compiler (arxc)")
@@ -16,6 +17,7 @@ fn print_usage() {
     println("  arxc run <file.arx> [-- <args...>]")
     println("  arxc emit-c <file.arx> [-o <out.c>]")
     println("  arxc check <file.arx>")
+    println("  arxc lsp")
     println("  arxc <file.arx> [-o <out>]")
     println("  arxc version")
 }
@@ -158,6 +160,9 @@ fn main() -> i64 {
     if first == "help" || first == "--help" || first == "-h" {
         print_usage()
         return 0
+    }
+    if first == "lsp" {
+        return run_lsp_server()
     }
 
     mut mode = ""

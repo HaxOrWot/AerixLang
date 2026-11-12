@@ -1,0 +1,1200 @@
+// Aerix Native LSP — Language Intelligence Providers
+// Provides diagnostics, completions, hover, signature help, definition, symbols, inlay hints, codeLens, and formatting.
+
+import "../frontend/tokens.arx"
+import "../frontend/lexer.arx"
+import "../frontend/ast.arx"
+import "../frontend/parser.arx"
+import "../middle/paths.arx"
+import "../middle/types.arx"
+import "../middle/analyzer.arx"
+import "./json.arx"
+import "./docs.arx"
+
+// LSP CompletionItemKind constants
+pub fn CKIND_METHOD() -> i64 { return 2 }
+pub fn CKIND_FUNCTION() -> i64 { return 3 }
+pub fn CKIND_FIELD() -> i64 { return 5 }
+pub fn CKIND_VARIABLE() -> i64 { return 6 }
+pub fn CKIND_CLASS() -> i64 { return 7 }
+pub fn CKIND_ENUM() -> i64 { return 13 }
+pub fn CKIND_KEYWORD() -> i64 { return 14 }
+pub fn CKIND_ENUM_MEM() -> i64 { return 20 }
+
+// LSP SymbolKind constants
+pub fn SKIND_CLASS() -> i64 { return 5 }
+pub fn SKIND_METHOD() -> i64 { return 6 }
+pub fn SKIND_FIELD() -> i64 { return 8 }
+pub fn SKIND_CTOR() -> i64 { return 9 }
+pub fn SKIND_ENUM() -> i64 { return 10 }
+pub fn SKIND_FUNCTION() -> i64 { return 12 }
+pub fn SKIND_VAR() -> i64 { return 13 }
+pub fn SKIND_ENUM_MEM() -> i64 { return 22 }
+
+pub fn lsp_analyze_document(doc_path: str, source: str, docs_by_path: Map<str, str>) -> Analyzer {
+    let norm = bpath_normalize(doc_path)
+    mut p = Parser(norm)
+    p.recover_mode = true
+    p.virtual_docs = docs_by_path
+    p.load_source(source, norm)
+    mut az = Analyzer(p)
+    az.analyze()
+    return az
+}
+
+pub fn lsp_get_line_text(source: str, target_line0: i64) -> str {
+    let n = source.len()
+    mut ln = 0
+    mut i = 0
+    while ln < target_line0 && i < n {
+        if source.byte_at(i) == 10 { ln = ln + 1 }
+        i = i + 1
+    }
+    let st = i
+    while i < n && source.byte_at(i) != 10 && source.byte_at(i) != 13 {
+        i = i + 1
+    }
+    return source.slice(st, i)
+}
+
+pub fn lsp_count_lines(source: str) -> i64 {
+    let n = source.len()
+    mut cnt = 1
+    mut i = 0
+    while i < n {
+        if source.byte_at(i) == 10 { cnt = cnt + 1 }
+        i = i + 1
+    }
+    return cnt
+}
+
+pub fn lsp_word_start_at(source: str, line0: i64, char0: i64) -> i64 {
+    let line = lsp_get_line_text(source, line0)
+    let len = line.len()
+    if len == 0 { return -1 }
+    mut idx = char0
+    if idx >= len { idx = len - 1 }
+    if idx < 0 { return -1 }
+
+    if !lsp_is_ident_char(line.byte_at(idx)) && idx > 0 && lsp_is_ident_char(line.byte_at(idx - 1)) {
+        idx = idx - 1
+    }
+    if !lsp_is_ident_char(line.byte_at(idx)) {
+        return -1
+    }
+    mut st = idx
+    while st > 0 && lsp_is_ident_char(line.byte_at(st - 1)) {
+        st = st - 1
+    }
+    return st
+}
+
+pub fn lsp_word_at(source: str, line0: i64, char0: i64) -> str {
+    let line = lsp_get_line_text(source, line0)
+    let len = line.len()
+    let st = lsp_word_start_at(source, line0, char0)
+    if st < 0 { return "" }
+    mut ed = st + 1
+    while ed < len && lsp_is_ident_char(line.byte_at(ed)) {
+        ed = ed + 1
+    }
+    return line.slice(st, ed)
+}
+
+fn lsp_find_node_col0(source: str, ln1: i64, name: str) -> i64 {
+    if ln1 <= 0 || name == "" { return 0 }
+    let line = lsp_get_line_text(source, ln1 - 1)
+    let pos = lsp_str_find(line, name, 0)
+    if pos >= 0 { return pos }
+    return 0
+}
+
+fn lsp_format_params(az: Analyzer, fn_nid: i64) -> str {
+    let pg = az.la.get(fn_nid)
+    if pg < 0 { return "" }
+    let pc = az.ll.get(pg)
+    let bb = ByteBuffer()
+    mut i = 0
+    while i < pc {
+        if i > 0 { bb.write_str(", ") }
+        let pid = az.ch.get(az.ls.get(pg) + i)
+        bb.write_str(az.sa.get(pid))
+        bb.write_str(": ")
+        bb.write_str(btype_norm(az.sb.get(pid)))
+        i = i + 1
+    }
+    let out = bb.to_str()
+    bb.free()
+    return out
+}
+
+fn lsp_fn_signature_str(az: Analyzer, fn_nid: i64) -> str {
+    let k = az.nk.get(fn_nid)
+    let params = lsp_format_params(az, fn_nid)
+    if k == NK_INIT_DEF() {
+        return "init(" + params + ")"
+    }
+    let nm = az.sa.get(fn_nid)
+    let rt = btype_norm(az.sb.get(fn_nid))
+    return "fn " + nm + "(" + params + ") -> " + rt
+}
+
+fn lsp_find_class_node(az: Analyzer, cname: str) -> i64 {
+    if !az.cls_idx_map.has_key(cname) { return -1 }
+    return az.cls_nodes.get(az.cls_idx_map.get(cname))
+}
+
+fn lsp_find_enum_node(az: Analyzer, ename: str) -> i64 {
+    if !az.enum_idx_map.has_key(ename) { return -1 }
+    return az.enum_nodes.get(az.enum_idx_map.get(ename))
+}
+
+fn lsp_enclosing_class_at(az: Analyzer, doc_path: str, line1: i64) -> str {
+    mut best_cls = ""
+    mut best_line = -1
+    mut ci = 0
+    while ci < az.cls_count {
+        let cid = az.cls_nodes.get(ci)
+        if az.nf.get(cid) == doc_path {
+            let cln = az.ln.get(cid)
+            if cln <= line1 && cln > best_line {
+                best_line = cln
+                best_cls = az.sa.get(cid)
+            }
+        }
+        ci = ci + 1
+    }
+    return best_cls
+}
+
+fn lsp_resolve_var_type(az: Analyzer, doc_path: str, line1: i64, name: str) -> str {
+    if name == "self" {
+        return lsp_enclosing_class_at(az, doc_path, line1)
+    }
+    // Check globals
+    if az.global_types.has_key(name) {
+        return az.global_types.get(name)
+    }
+    // Search AST var/param/for declarations in current file (closest <= line1)
+    mut best_type = ""
+    mut best_ln = -1
+    mut i = 0
+    while i < az.ncount {
+        let k = az.nk.get(i)
+        if (k == NK_VAR_DECL() || k == NK_PARAM() || k == NK_FOR()) && az.sa.get(i) == name {
+            if az.nf.get(i) == doc_path {
+                let nln = az.ln.get(i)
+                if nln <= line1 && nln >= best_ln {
+                    mut t = btype_norm(az.node_types.get(i))
+                    if t == "" || t == "void" {
+                        t = btype_norm(az.sb.get(i))
+                    }
+                    if t != "" && t != "void" {
+                        best_ln = nln
+                        best_type = t
+                    }
+                }
+            }
+        }
+        i = i + 1
+    }
+    return best_type
+}
+
+fn lsp_infer_expr_receiver_type(az: Analyzer, doc_path: str, line1: i64, expr: str) -> str {
+    let trimmed = expr.trim()
+    if trimmed == "" { return "" }
+    if trimmed == "self" {
+        return lsp_enclosing_class_at(az, doc_path, line1)
+    }
+    if lsp_is_static_runtime(trimmed) || az.cls_idx_map.has_key(trimmed) || az.enum_idx_map.has_key(trimmed) {
+        return trimmed
+    }
+    // Simple chain a.b -> look up variable a then follow member b
+    if trimmed.contains(".") {
+        let parts = trimmed.split(".")
+        if parts.len() >= 1 {
+            mut cur_t = lsp_infer_expr_receiver_type(az, doc_path, line1, parts.get(0))
+            mut pi = 1
+            while pi < parts.len() && cur_t != "" {
+                let mem = parts.get(pi).trim()
+                // Strip trailing () if call
+                mut mname = mem
+                let p_idx = lsp_str_find(mname, "(", 0)
+                if p_idx > 0 { mname = mname.slice(0, p_idx) }
+                let fkey = cur_t + "::" + mname
+                if az.cls_field_types.has_key(fkey) {
+                    cur_t = az.cls_field_types.get(fkey)
+                } else {
+                    let sig_k = "m::" + cur_t + "::" + mname
+                    if az.sig_by_key.has_key(sig_k) {
+                        let sidx = az.sig_by_key.get(sig_k).split(",").get(0).to_i64()
+                        cur_t = az.sig_rets.get(sidx)
+                    } else {
+                        cur_t = ""
+                    }
+                }
+                pi = pi + 1
+            }
+            return cur_t
+        }
+    }
+    return lsp_resolve_var_type(az, doc_path, line1, trimmed)
+}
+
+// --- 1. Diagnostics ---
+
+pub fn lsp_build_diagnostics_json(az: Analyzer, doc_path: str) -> str {
+    let jb = JsonBuf()
+    jb.lbrack()
+    mut first = true
+    mut i = 0
+    while i < az.err_count {
+        let ef = az.err_files.get(i)
+        mut ln0 = az.err_lines.get(i) - 1
+        mut cl0 = az.err_cols.get(i) - 1
+        mut msg = az.err_msgs.get(i)
+        if ef != doc_path {
+            ln0 = 0
+            cl0 = 0
+            msg = "[" + bpath_basename(ef) + ":" + az.err_lines.get(i) + "] " + msg
+        }
+        if ln0 < 0 { ln0 = 0 }
+        if cl0 < 0 { cl0 = 0 }
+
+        if !first { jb.comma() }
+        first = false
+        jb.lbrace()
+        jb.key("range")
+        jb.lbrace()
+        jb.key("start"); jb.lbrace(); jb.kv_int("line", ln0, true); jb.kv_int("character", cl0, false); jb.rbrace()
+        jb.comma()
+        jb.key("end"); jb.lbrace(); jb.kv_int("line", ln0, true); jb.kv_int("character", cl0 + 1, false); jb.rbrace()
+        jb.rbrace()
+        jb.kv_int("severity", 1, false)
+        jb.kv_str("source", "aerix", false)
+        jb.kv_str("message", msg, false)
+        jb.rbrace()
+        i = i + 1
+    }
+    jb.rbrack()
+    return jb.finish()
+}
+
+// --- 2. Completions ---
+
+fn emit_comp_item(jb: JsonBuf, label: str, kind: i64, detail: str, doc: str, insert_txt: str, first: bool) {
+    if !first { jb.comma() }
+    jb.lbrace()
+    jb.kv_str("label", label, true)
+    jb.kv_int("kind", kind, false)
+    if detail != "" { jb.kv_str("detail", detail, false) }
+    if doc != "" {
+        jb.comma()
+        jb.key("documentation")
+        jb.lbrace()
+        jb.kv_str("kind", "markdown", true)
+        jb.kv_str("value", doc, false)
+        jb.rbrace()
+    }
+    if insert_txt != "" {
+        jb.kv_str("insertText", insert_txt, false)
+        jb.kv_int("insertTextFormat", 2, false)
+    }
+    jb.rbrace()
+}
+
+fn collect_class_member_completions(az: Analyzer, cname: str, jb: JsonBuf, seen: Map<str, i64>, is_first_box: List<i64>) {
+    mut cur = cname
+    mut depth = 0
+    while cur != "" && depth < 16 {
+        let cid = lsp_find_class_node(az, cur)
+        if cid >= 0 {
+            let fg = az.la.get(cid)
+            let fc = az.ll.get(fg)
+            mut fi = 0
+            while fi < fc {
+                let fid = az.ch.get(az.ls.get(fg) + fi)
+                let fnm = az.sa.get(fid)
+                if !seen.has_key("f::" + fnm) {
+                    seen.insert("f::" + fnm, 1)
+                    let ft = btype_norm(az.sb.get(fid))
+                    let fst = is_first_box.get(0) == 1
+                    is_first_box.set(0, 0)
+                    emit_comp_item(jb, fnm, CKIND_FIELD(), fnm + ": " + ft, "Field on `" + cur + "`", "", fst)
+                }
+                fi = fi + 1
+            }
+            let mg = az.ea.get(cid)
+            let mc = az.ll.get(mg)
+            mut mi = 0
+            while mi < mc {
+                let mid = az.ch.get(az.ls.get(mg) + mi)
+                let mnm = az.sa.get(mid)
+                if !seen.has_key("m::" + mnm) {
+                    seen.insert("m::" + mnm, 1)
+                    let sig = lsp_fn_signature_str(az, mid)
+                    let fst = is_first_box.get(0) == 1
+                    is_first_box.set(0, 0)
+                    emit_comp_item(jb, mnm, CKIND_METHOD(), sig, "Method on `" + cur + "`", "", fst)
+                }
+                mi = mi + 1
+            }
+        }
+        if az.cls_base_map.has_key(cur) {
+            cur = az.cls_base_map.get(cur)
+        } else {
+            cur = ""
+        }
+        depth = depth + 1
+    }
+
+    // Extend methods targeting this type
+    mut ei = 0
+    while ei < az.ext_count {
+        let eid = az.ext_nodes.get(ei)
+        if btype_norm(az.sa.get(eid)) == cname {
+            let mc = az.ll.get(eid)
+            mut mi = 0
+            while mi < mc {
+                let mid = az.ch.get(az.ls.get(eid) + mi)
+                let mnm = az.sa.get(mid)
+                if !seen.has_key("m::" + mnm) {
+                    seen.insert("m::" + mnm, 1)
+                    let sig = lsp_fn_signature_str(az, mid)
+                    let fst = is_first_box.get(0) == 1
+                    is_first_box.set(0, 0)
+                    emit_comp_item(jb, mnm, CKIND_METHOD(), sig, "Extension method on `" + cname + "`", "", fst)
+                }
+                mi = mi + 1
+            }
+        }
+        ei = ei + 1
+    }
+}
+
+pub fn lsp_build_completion_json(source: str, az: Analyzer, doc_path: str, line0: i64, char0: i64) -> str {
+    let line = lsp_get_line_text(source, line0)
+    mut cpos = char0
+    if cpos > line.len() { cpos = line.len() }
+    if cpos < 0 { cpos = 0 }
+    let prefix = line.slice(0, cpos)
+
+    // Strip partial identifier being typed at cursor end
+    mut scan = prefix.len()
+    while scan > 0 && lsp_is_ident_char(prefix.byte_at(scan - 1)) {
+        scan = scan - 1
+    }
+    let before_word = prefix.slice(0, scan).trim()
+
+    let jb = JsonBuf()
+    jb.lbrace()
+    jb.kv_bool("isIncomplete", false, true)
+    jb.comma()
+    jb.key("items")
+    jb.lbrack()
+
+    let seen = Map<str, i64>()
+    let is_first = List<i64>()
+    is_first.push(1)
+
+    // Case 1: Member / Cascade completion after '.' / '?.' / '~>'
+    mut is_member = false
+    mut recv_expr = ""
+    if before_word.ends_with("?.") {
+        is_member = true
+        recv_expr = before_word.slice(0, before_word.len() - 2)
+    } else if before_word.ends_with("~>") {
+        is_member = true
+        recv_expr = before_word.slice(0, before_word.len() - 2)
+    } else if before_word.ends_with(".") {
+        is_member = true
+        recv_expr = before_word.slice(0, before_word.len() - 1)
+    }
+
+    if is_member {
+        // Extract rightmost simple identifier / chain token from recv_expr
+        mut rstart = recv_expr.len()
+        while rstart > 0 {
+            let b = recv_expr.byte_at(rstart - 1)
+            if lsp_is_ident_char(b) || b == 46 {
+                rstart = rstart - 1
+            } else {
+                break
+            }
+        }
+        let clean_recv = recv_expr.slice(rstart, recv_expr.len())
+        let recv_t = lsp_infer_expr_receiver_type(az, doc_path, line0 + 1, clean_recv)
+
+        if recv_t != "" {
+            if az.enum_idx_map.has_key(recv_t) {
+                let eid = lsp_find_enum_node(az, recv_t)
+                if eid >= 0 {
+                    let vc = az.ll.get(eid)
+                    mut vi = 0
+                    while vi < vc {
+                        let vid = az.ch.get(az.ls.get(eid) + vi)
+                        let vnm = az.sa.get(vid)
+                        let fst = is_first.get(0) == 1
+                        is_first.set(0, 0)
+                        emit_comp_item(jb, vnm, CKIND_ENUM_MEM(), recv_t + "." + vnm, "Enum variant", "", fst)
+                        vi = vi + 1
+                    }
+                }
+            } else if az.cls_idx_map.has_key(recv_t) {
+                collect_class_member_completions(az, recv_t, jb, seen, is_first)
+            } else {
+                let bms = lsp_builtin_methods_for(recv_t)
+                mut bi = 0
+                while bi < bms.len() {
+                    let entry = bms.get(bi)
+                    let colon_i = lsp_str_find(entry, ":", 0)
+                    let mnm = entry.slice(0, colon_i)
+                    let msig = entry.slice(colon_i + 1, entry.len())
+                    let fst = is_first.get(0) == 1
+                    is_first.set(0, 0)
+                    emit_comp_item(jb, mnm, CKIND_METHOD(), mnm + msig, "Built-in `" + recv_t + "` method", "", fst)
+                    bi = bi + 1
+                }
+            }
+        }
+        jb.rbrack()
+        jb.rbrace()
+        return jb.finish()
+    }
+
+    // Case 2: Scope + Project Symbols + Builtins + Keywords
+    // Local & Parameter declarations in current file near/above cursor
+    mut ni = 0
+    while ni < az.ncount {
+        let k = az.nk.get(ni)
+        if (k == NK_VAR_DECL() || k == NK_PARAM()) && az.nf.get(ni) == doc_path && az.ln.get(ni) <= line0 + 1 {
+            let vnm = az.sa.get(ni)
+            if vnm != "" && !seen.has_key("v::" + vnm) {
+                seen.insert("v::" + vnm, 1)
+                mut vt = btype_norm(az.node_types.get(ni))
+                if vt == "" { vt = btype_norm(az.sb.get(ni)) }
+                let fst = is_first.get(0) == 1
+                is_first.set(0, 0)
+                emit_comp_item(jb, vnm, CKIND_VARIABLE(), vnm + ": " + vt, "", "", fst)
+            }
+        }
+        ni = ni + 1
+    }
+
+    // Functions
+    mut fi = 0
+    while fi < az.fn_count {
+        let fid = az.fn_nodes.get(fi)
+        let fnm = az.sa.get(fid)
+        if fnm != "" && !seen.has_key("fn::" + fnm) {
+            seen.insert("fn::" + fnm, 1)
+            let sig = lsp_fn_signature_str(az, fid)
+            let fst = is_first.get(0) == 1
+            is_first.set(0, 0)
+            emit_comp_item(jb, fnm, CKIND_FUNCTION(), sig, "Source: `" + bpath_basename(az.nf.get(fid)) + "`", "", fst)
+        }
+        fi = fi + 1
+    }
+
+    // Classes
+    mut ci = 0
+    while ci < az.cls_count {
+        let cnm = az.cls_names.get(ci)
+        if !seen.has_key("c::" + cnm) {
+            seen.insert("c::" + cnm, 1)
+            let fst = is_first.get(0) == 1
+            is_first.set(0, 0)
+            emit_comp_item(jb, cnm, CKIND_CLASS(), "class " + cnm, "", "", fst)
+        }
+        ci = ci + 1
+    }
+
+    // Enums
+    mut ei = 0
+    while ei < az.enum_count {
+        let enm = az.enum_names.get(ei)
+        if !seen.has_key("e::" + enm) {
+            seen.insert("e::" + enm, 1)
+            let fst = is_first.get(0) == 1
+            is_first.set(0, 0)
+            emit_comp_item(jb, enm, CKIND_ENUM(), "enum " + enm, "", "", fst)
+        }
+        ei = ei + 1
+    }
+
+    // Builtin Functions
+    let bfns = lsp_builtin_fn_list()
+    mut bfi = 0
+    while bfi < bfns.len() {
+        let bnm = bfns.get(bfi)
+        if !seen.has_key("fn::" + bnm) {
+            seen.insert("fn::" + bnm, 1)
+            let fst = is_first.get(0) == 1
+            is_first.set(0, 0)
+            emit_comp_item(jb, bnm, CKIND_FUNCTION(), "builtin " + bnm, lsp_lookup_doc(bnm), "", fst)
+        }
+        bfi = bfi + 1
+    }
+
+    // Primitive & Container Types
+    let ts = lsp_type_list()
+    mut ti = 0
+    while ti < ts.len() {
+        let tnm = ts.get(ti)
+        if !seen.has_key("c::" + tnm) {
+            seen.insert("c::" + tnm, 1)
+            let fst = is_first.get(0) == 1
+            is_first.set(0, 0)
+            emit_comp_item(jb, tnm, CKIND_CLASS(), "type " + tnm, lsp_lookup_doc(tnm), "", fst)
+        }
+        ti = ti + 1
+    }
+
+    // Keywords
+    let ks = lsp_keyword_list()
+    mut ki = 0
+    while ki < ks.len() {
+        let knm = ks.get(ki)
+        let fst = is_first.get(0) == 1
+        is_first.set(0, 0)
+        emit_comp_item(jb, knm, CKIND_KEYWORD(), "keyword " + knm, lsp_lookup_doc(knm), "", fst)
+        ki = ki + 1
+    }
+
+    jb.rbrack()
+    jb.rbrace()
+    return jb.finish()
+}
+
+// --- 3. Hover ---
+
+pub fn lsp_build_hover_json(source: str, az: Analyzer, doc_path: str, line0: i64, char0: i64) -> str {
+    let line = lsp_get_line_text(source, line0)
+    let word = lsp_word_at(source, line0, char0)
+    if word == "" { return "null" }
+
+    // Check if member hover: receiver.word
+    let wpos = lsp_word_start_at(source, line0, char0)
+    mut md = ""
+
+    // 0. Receiver member hover (receiver.member)
+    if wpos >= 2 && line.byte_at(wpos - 1) == 46 {
+        mut p = wpos - 1
+        mut rs = p
+        while rs > 0 && (lsp_is_ident_char(line.byte_at(rs - 1)) || line.byte_at(rs - 1) == 46) {
+            rs = rs - 1
+        }
+        let rname = line.slice(rs, p)
+        let rt = lsp_infer_expr_receiver_type(az, doc_path, line0 + 1, rname)
+        if rt != "" {
+            let fkey = rt + "::" + word
+            if az.cls_field_types.has_key(fkey) {
+                md = "**Field** `" + rt + "." + word + ": " + az.cls_field_types.get(fkey) + "`"
+            } else {
+                let sig_k = "m::" + rt + "::" + word
+                if az.sig_by_key.has_key(sig_k) {
+                    let sidx = az.sig_by_key.get(sig_k).split(",").get(0).to_i64()
+                    md = "**Method** `" + rt + "." + lsp_fn_signature_str(az, az.sig_nodes.get(sidx)) + "`"
+                }
+            }
+        }
+        if md == "" && az.enum_idx_map.has_key(rname) {
+            md = "**Enum Variant** `" + rname + "." + word + "`"
+        }
+    }
+
+    // 1. User Class
+    if md == "" && az.cls_idx_map.has_key(word) {
+        let cid = lsp_find_class_node(az, word)
+        let bb = ByteBuffer()
+        bb.write_str("**Class `class " + word + "`**\n")
+        let fg = az.la.get(cid)
+        let fc = az.ll.get(fg)
+        if fc > 0 {
+            bb.write_str("\nFields:\n")
+            mut fi = 0
+            while fi < fc {
+                let fid = az.ch.get(az.ls.get(fg) + fi)
+                bb.write_str("- `" + az.sa.get(fid) + ": " + btype_norm(az.sb.get(fid)) + "`\n")
+                fi = fi + 1
+            }
+        }
+        let mg = az.ea.get(cid)
+        let mc = az.ll.get(mg)
+        if mc > 0 {
+            bb.write_str("\nMethods:\n")
+            mut mi = 0
+            while mi < mc {
+                let mid = az.ch.get(az.ls.get(mg) + mi)
+                bb.write_str("- `" + lsp_fn_signature_str(az, mid) + "`\n")
+                mi = mi + 1
+            }
+        }
+        md = bb.to_str()
+        bb.free()
+    }
+
+    // 2. User Enum
+    if md == "" && az.enum_idx_map.has_key(word) {
+        let eid = lsp_find_enum_node(az, word)
+        let bb = ByteBuffer()
+        bb.write_str("**Enum `enum " + word + "`**\n\nVariants:\n")
+        let vc = az.ll.get(eid)
+        mut vi = 0
+        while vi < vc {
+            let vid = az.ch.get(az.ls.get(eid) + vi)
+            bb.write_str("- `" + az.sa.get(vid) + "`\n")
+            vi = vi + 1
+        }
+        md = bb.to_str()
+        bb.free()
+    }
+
+    // 3. User Function
+    if md == "" {
+        mut fi = 0
+        while fi < az.fn_count {
+            let fid = az.fn_nodes.get(fi)
+            if az.sa.get(fid) == word {
+                md = "**Function** `" + lsp_fn_signature_str(az, fid) + "`\n\nDefined in `" + bpath_basename(az.nf.get(fid)) + ":" + az.ln.get(fid) + "`"
+                break
+            }
+            fi = fi + 1
+        }
+    }
+
+    // 4. Local / Parameter / Global
+    if md == "" {
+        let vt = lsp_resolve_var_type(az, doc_path, line0 + 1, word)
+        if vt != "" {
+            md = "**Variable** `" + word + ": " + vt + "`"
+        }
+    }
+
+    // 5. Builtin doc fallback
+    if md == "" {
+        md = lsp_lookup_doc(word)
+    }
+
+    if md == "" { return "null" }
+    let jb = JsonBuf()
+    jb.lbrace()
+    jb.key("contents")
+    jb.lbrace()
+    jb.kv_str("kind", "markdown", true)
+    jb.kv_str("value", md, false)
+    jb.rbrace()
+    jb.rbrace()
+    return jb.finish()
+}
+
+// --- 4. Signature Help ---
+
+pub fn lsp_build_signature_help_json(source: str, az: Analyzer, doc_path: str, line0: i64, char0: i64) -> str {
+    let line = lsp_get_line_text(source, line0)
+    mut cpos = char0
+    if cpos > line.len() { cpos = line.len() }
+    if cpos <= 0 { return "null" }
+
+    // Walk backward on current line tracking balanced () and string quotes
+    mut depth = 0
+    mut commas = 0
+    mut in_str = false
+    mut open_idx = -1
+    mut i = cpos - 1
+    while i >= 0 {
+        let b = line.byte_at(i)
+        if b == 34 && (i == 0 || line.byte_at(i - 1) != 92) {
+            in_str = !in_str
+        } else if !in_str {
+            if b == 41 {
+                depth = depth + 1
+            } else if b == 40 {
+                if depth == 0 {
+                    open_idx = i
+                    break
+                }
+                depth = depth - 1
+            } else if b == 44 && depth == 0 {
+                commas = commas + 1
+            }
+        }
+        i = i - 1
+    }
+    if open_idx <= 0 { return "null" }
+
+    mut end_name = open_idx
+    while end_name > 0 && (line.byte_at(end_name - 1) == 32 || line.byte_at(end_name - 1) == 9) {
+        end_name = end_name - 1
+    }
+    mut start_name = end_name
+    while start_name > 0 && lsp_is_ident_char(line.byte_at(start_name - 1)) {
+        start_name = start_name - 1
+    }
+    let callee = line.slice(start_name, end_name)
+    if callee == "" { return "null" }
+
+    // Find matching function / constructor / method AST node
+    mut fn_nid = -1
+    if start_name > 0 && line.byte_at(start_name - 1) == 46 {
+        mut rs = start_name - 1
+        while rs > 0 && (lsp_is_ident_char(line.byte_at(rs - 1)) || line.byte_at(rs - 1) == 46) {
+            rs = rs - 1
+        }
+        let rname = line.slice(rs, start_name - 1)
+        let rt = lsp_infer_expr_receiver_type(az, doc_path, line0 + 1, rname)
+        if rt != "" {
+            let sig_k = "m::" + rt + "::" + callee
+            if az.sig_by_key.has_key(sig_k) {
+                let sidx = az.sig_by_key.get(sig_k).split(",").get(0).to_i64()
+                fn_nid = az.sig_nodes.get(sidx)
+            }
+        }
+    } else if az.cls_idx_map.has_key(callee) {
+        let ctor_k = "ctor::" + callee
+        if az.sig_by_key.has_key(ctor_k) {
+            let sidx = az.sig_by_key.get(ctor_k).split(",").get(0).to_i64()
+            fn_nid = az.sig_nodes.get(sidx)
+        }
+    } else {
+        let fn_k = "fn::" + callee
+        if az.sig_by_key.has_key(fn_k) {
+            let sidx = az.sig_by_key.get(fn_k).split(",").get(0).to_i64()
+            fn_nid = az.sig_nodes.get(sidx)
+        }
+    }
+
+    if fn_nid < 0 { return "null" }
+
+    let sig_label = lsp_fn_signature_str(az, fn_nid)
+    let jb = JsonBuf()
+    jb.lbrace()
+    jb.key("signatures")
+    jb.lbrack()
+    jb.lbrace()
+    jb.kv_str("label", sig_label, true)
+    jb.comma()
+    jb.key("parameters")
+    jb.lbrack()
+    let pg = az.la.get(fn_nid)
+    if pg >= 0 {
+        let pc = az.ll.get(pg)
+        mut pi = 0
+        while pi < pc {
+            let pid = az.ch.get(az.ls.get(pg) + pi)
+            if pi > 0 { jb.comma() }
+            jb.lbrace()
+            jb.kv_str("label", az.sa.get(pid) + ": " + btype_norm(az.sb.get(pid)), true)
+            jb.rbrace()
+            pi = pi + 1
+        }
+    }
+    jb.rbrack()
+    jb.rbrace()
+    jb.rbrack()
+    jb.kv_int("activeSignature", 0, false)
+    jb.kv_int("activeParameter", commas, false)
+    jb.rbrace()
+    return jb.finish()
+}
+
+// --- 5. Go-to-Definition ---
+
+pub fn lsp_build_definition_json(source: str, az: Analyzer, doc_path: str, line0: i64, char0: i64) -> str {
+    let word = lsp_word_at(source, line0, char0)
+    if word == "" { return "null" }
+
+    mut target_nid = -1
+
+    // 1. Prefer top-level declarations & locals in current file above cursor
+    mut best_ln = -1
+    mut i = 0
+    while i < az.ncount {
+        let k = az.nk.get(i)
+        if az.sa.get(i) == word && (k == NK_VAR_DECL() || k == NK_PARAM() || k == NK_FOR()) {
+            if az.nf.get(i) == doc_path && az.ln.get(i) <= line0 + 1 && az.ln.get(i) >= best_ln {
+                best_ln = az.ln.get(i)
+                target_nid = i
+            }
+        }
+        i = i + 1
+    }
+
+    // 2. Functions
+    if target_nid < 0 {
+        mut fi = 0
+        while fi < az.fn_count {
+            let fid = az.fn_nodes.get(fi)
+            if az.sa.get(fid) == word {
+                target_nid = fid
+                break
+            }
+            fi = fi + 1
+        }
+    }
+
+    // 3. Classes
+    if target_nid < 0 && az.cls_idx_map.has_key(word) {
+        target_nid = lsp_find_class_node(az, word)
+    }
+
+    // 4. Enums
+    if target_nid < 0 && az.enum_idx_map.has_key(word) {
+        target_nid = lsp_find_enum_node(az, word)
+    }
+
+    // 5. Class methods / fields across project
+    if target_nid < 0 {
+        mut ci = 0
+        while ci < az.cls_count && target_nid < 0 {
+            let cid = az.cls_nodes.get(ci)
+            let fg = az.la.get(cid)
+            mut j = 0
+            while j < az.ll.get(fg) {
+                let fid = az.ch.get(az.ls.get(fg) + j)
+                if az.sa.get(fid) == word { target_nid = fid; break }
+                j = j + 1
+            }
+            if target_nid < 0 {
+                let mg = az.ea.get(cid)
+                mut m = 0
+                while m < az.ll.get(mg) {
+                    let mid = az.ch.get(az.ls.get(mg) + m)
+                    if az.sa.get(mid) == word { target_nid = mid; break }
+                    m = m + 1
+                }
+            }
+            ci = ci + 1
+        }
+    }
+
+    if target_nid < 0 { return "null" }
+
+    let tfile = az.nf.get(target_nid)
+    let tline1 = az.ln.get(target_nid)
+    mut tline0 = tline1 - 1
+    if tline0 < 0 { tline0 = 0 }
+    mut tcol0 = az.nc.get(target_nid) - 1
+    if tcol0 < 0 { tcol0 = 0 }
+    if tfile == doc_path {
+        tcol0 = lsp_find_node_col0(source, tline1, word)
+    } else if File.exists(tfile) {
+        let fsrc = File.read_to_string(tfile)
+        tcol0 = lsp_find_node_col0(fsrc, tline1, word)
+    }
+
+    let jb = JsonBuf()
+    jb.lbrace()
+    jb.kv_str("uri", lsp_path_to_uri(tfile), true)
+    jb.comma()
+    jb.key("range")
+    jb.lbrace()
+    jb.key("start"); jb.lbrace(); jb.kv_int("line", tline0, true); jb.kv_int("character", tcol0, false); jb.rbrace()
+    jb.comma()
+    jb.key("end"); jb.lbrace(); jb.kv_int("line", tline0, true); jb.kv_int("character", tcol0 + word.len(), false); jb.rbrace()
+    jb.rbrace()
+    jb.rbrace()
+    return jb.finish()
+}
+
+// --- 6. Document Symbols ---
+
+fn emit_symbol_range(jb: JsonBuf, ln1: i64) {
+    mut ln0 = ln1 - 1
+    if ln0 < 0 { ln0 = 0 }
+    jb.lbrace()
+    jb.key("start"); jb.lbrace(); jb.kv_int("line", ln0, true); jb.kv_int("character", 0, false); jb.rbrace()
+    jb.comma()
+    jb.key("end"); jb.lbrace(); jb.kv_int("line", ln0, true); jb.kv_int("character", 80, false); jb.rbrace()
+    jb.rbrace()
+}
+
+pub fn lsp_build_document_symbols_json(az: Analyzer, doc_path: str) -> str {
+    let jb = JsonBuf()
+    jb.lbrack()
+    mut first = true
+
+    mut ri = 0
+    while ri < az.root_count {
+        let nid = az.root_decls.get(ri)
+        if az.nf.get(nid) != doc_path {
+            ri = ri + 1
+            continue
+        }
+        let k = az.nk.get(nid)
+        let nm = az.sa.get(nid)
+        let ln1 = az.ln.get(nid)
+
+        if k == NK_FN_DEF() || k == NK_CEXTERN() {
+            if !first { jb.comma() }
+            first = false
+            jb.lbrace()
+            jb.kv_str("name", nm, true)
+            jb.kv_str("detail", lsp_fn_signature_str(az, nid), false)
+            jb.kv_int("kind", SKIND_FUNCTION(), false)
+            jb.comma(); jb.key("range"); emit_symbol_range(jb, ln1)
+            jb.comma(); jb.key("selectionRange"); emit_symbol_range(jb, ln1)
+            jb.rbrace()
+        } else if k == NK_CLASS_DEF() {
+            if !first { jb.comma() }
+            first = false
+            jb.lbrace()
+            jb.kv_str("name", nm, true)
+            jb.kv_str("detail", "class", false)
+            jb.kv_int("kind", SKIND_CLASS(), false)
+            jb.comma(); jb.key("range"); emit_symbol_range(jb, ln1)
+            jb.comma(); jb.key("selectionRange"); emit_symbol_range(jb, ln1)
+            jb.comma(); jb.key("children"); jb.lbrack()
+            mut cfirst = true
+            let fg = az.la.get(nid)
+            mut fi = 0
+            while fi < az.ll.get(fg) {
+                let fid = az.ch.get(az.ls.get(fg) + fi)
+                if !cfirst { jb.comma() }
+                cfirst = false
+                jb.lbrace()
+                jb.kv_str("name", az.sa.get(fid), true)
+                jb.kv_str("detail", btype_norm(az.sb.get(fid)), false)
+                jb.kv_int("kind", SKIND_FIELD(), false)
+                jb.comma(); jb.key("range"); emit_symbol_range(jb, az.ln.get(fid))
+                jb.comma(); jb.key("selectionRange"); emit_symbol_range(jb, az.ln.get(fid))
+                jb.rbrace()
+                fi = fi + 1
+            }
+            let cg = az.ra.get(nid)
+            mut ci = 0
+            while ci < az.ll.get(cg) {
+                let cid = az.ch.get(az.ls.get(cg) + ci)
+                if !cfirst { jb.comma() }
+                cfirst = false
+                jb.lbrace()
+                jb.kv_str("name", "init", true)
+                jb.kv_str("detail", lsp_fn_signature_str(az, cid), false)
+                jb.kv_int("kind", SKIND_CTOR(), false)
+                jb.comma(); jb.key("range"); emit_symbol_range(jb, az.ln.get(cid))
+                jb.comma(); jb.key("selectionRange"); emit_symbol_range(jb, az.ln.get(cid))
+                jb.rbrace()
+                ci = ci + 1
+            }
+            let mg = az.ea.get(nid)
+            mut mi = 0
+            while mi < az.ll.get(mg) {
+                let mid = az.ch.get(az.ls.get(mg) + mi)
+                if !cfirst { jb.comma() }
+                cfirst = false
+                jb.lbrace()
+                jb.kv_str("name", az.sa.get(mid), true)
+                jb.kv_str("detail", lsp_fn_signature_str(az, mid), false)
+                jb.kv_int("kind", SKIND_METHOD(), false)
+                jb.comma(); jb.key("range"); emit_symbol_range(jb, az.ln.get(mid))
+                jb.comma(); jb.key("selectionRange"); emit_symbol_range(jb, az.ln.get(mid))
+                jb.rbrace()
+                mi = mi + 1
+            }
+            jb.rbrack()
+            jb.rbrace()
+        } else if k == NK_ENUM_DEF() {
+            if !first { jb.comma() }
+            first = false
+            jb.lbrace()
+            jb.kv_str("name", nm, true)
+            jb.kv_str("detail", "enum", false)
+            jb.kv_int("kind", SKIND_ENUM(), false)
+            jb.comma(); jb.key("range"); emit_symbol_range(jb, ln1)
+            jb.comma(); jb.key("selectionRange"); emit_symbol_range(jb, ln1)
+            jb.comma(); jb.key("children"); jb.lbrack()
+            mut vfirst = true
+            let vc = az.ll.get(nid)
+            mut vi = 0
+            while vi < vc {
+                let vid = az.ch.get(az.ls.get(nid) + vi)
+                if !vfirst { jb.comma() }
+                vfirst = false
+                jb.lbrace()
+                jb.kv_str("name", az.sa.get(vid), true)
+                jb.kv_int("kind", SKIND_ENUM_MEM(), false)
+                jb.comma(); jb.key("range"); emit_symbol_range(jb, az.ln.get(vid))
+                jb.comma(); jb.key("selectionRange"); emit_symbol_range(jb, az.ln.get(vid))
+                jb.rbrace()
+                vi = vi + 1
+            }
+            jb.rbrack()
+            jb.rbrace()
+        } else if k == NK_VAR_DECL_GLOBAL() {
+            if !first { jb.comma() }
+            first = false
+            jb.lbrace()
+            jb.kv_str("name", nm, true)
+            jb.kv_str("detail", btype_norm(az.node_types.get(nid)), false)
+            jb.kv_int("kind", SKIND_VAR(), false)
+            jb.comma(); jb.key("range"); emit_symbol_range(jb, ln1)
+            jb.comma(); jb.key("selectionRange"); emit_symbol_range(jb, ln1)
+            jb.rbrace()
+        }
+
+        ri = ri + 1
+    }
+
+    jb.rbrack()
+    return jb.finish()
+}
+
+// --- 7. Inlay Hints ---
+
+pub fn lsp_build_inlay_hints_json(source: str, az: Analyzer, doc_path: str) -> str {
+    let jb = JsonBuf()
+    jb.lbrack()
+    mut first = true
+
+    mut i = 0
+    while i < az.ncount {
+        let k = az.nk.get(i)
+        if (k == NK_VAR_DECL() || k == NK_VAR_DECL_GLOBAL()) && az.nf.get(i) == doc_path {
+            // Only emit inferred type hint when explicit `: Type` was omitted
+            if az.sb.get(i) == "" {
+                let vnm = az.sa.get(i)
+                let vt = btype_norm(az.node_types.get(i))
+                let ln1 = az.ln.get(i)
+                if vnm != "" && vt != "" && vt != "void" && ln1 > 0 {
+                    let line = lsp_get_line_text(source, ln1 - 1)
+                    let idx = lsp_str_find(line, vnm, 0)
+                    if idx >= 0 {
+                        if !first { jb.comma() }
+                        first = false
+                        jb.lbrace()
+                        jb.key("position"); jb.lbrace(); jb.kv_int("line", ln1 - 1, true); jb.kv_int("character", idx + vnm.len(), false); jb.rbrace()
+                        jb.kv_str("label", ": " + vt, false)
+                        jb.kv_int("kind", 1, false)
+                        jb.kv_bool("paddingLeft", false, false)
+                        jb.kv_bool("paddingRight", true, false)
+                        jb.rbrace()
+                    }
+                }
+            }
+        }
+        i = i + 1
+    }
+
+    jb.rbrack()
+    return jb.finish()
+}
+
+// --- 8. CodeLens ---
+
+pub fn lsp_build_code_lens_json(az: Analyzer, doc_path: str) -> str {
+    let jb = JsonBuf()
+    jb.lbrack()
+    mut first = true
+    mut fi = 0
+    while fi < az.fn_count {
+        let fid = az.fn_nodes.get(fi)
+        if az.nf.get(fid) == doc_path && az.sa.get(fid) == "main" {
+            mut ln0 = az.ln.get(fid) - 1
+            if ln0 < 0 { ln0 = 0 }
+            if !first { jb.comma() }
+            first = false
+            jb.lbrace()
+            jb.key("range"); jb.lbrace()
+            jb.key("start"); jb.lbrace(); jb.kv_int("line", ln0, true); jb.kv_int("character", 0, false); jb.rbrace()
+            jb.comma()
+            jb.key("end"); jb.lbrace(); jb.kv_int("line", ln0, true); jb.kv_int("character", 0, false); jb.rbrace()
+            jb.rbrace()
+            jb.comma()
+            jb.key("command"); jb.lbrace()
+            jb.kv_str("title", "▶ Run Program", true)
+            jb.kv_str("command", "aerix.runFile", false)
+            jb.rbrace()
+            jb.rbrace()
+        }
+        fi = fi + 1
+    }
+    jb.rbrack()
+    return jb.finish()
+}
+
+// --- 9. Document Formatting ---
+
+pub fn lsp_format_source(source: str) -> str {
+    let lines = source.replace("\r\n", "\n").split("\n")
+    let n = lines.len()
+    let bb = ByteBuffer()
+    mut indent = 0
+    mut prev_blank = false
+
+    mut i = 0
+    while i < n {
+        let trimmed = lines.get(i).trim()
+        if trimmed == "" {
+            if !prev_blank && i + 1 < n {
+                bb.write_u8(10)
+            }
+            prev_blank = true
+            i = i + 1
+            continue
+        }
+        prev_blank = false
+
+        if trimmed.starts_with("}") || trimmed.starts_with(")") || trimmed.starts_with("]") {
+            if indent > 0 { indent = indent - 1 }
+        }
+
+        mut k = 0
+        while k < indent {
+            bb.write_str("    ")
+            k = k + 1
+        }
+        bb.write_str(trimmed)
+        bb.write_u8(10)
+
+        // Count trailing brace delta outside quotes/comments
+        mut in_str = false
+        mut delta = 0
+        let tlen = trimmed.len()
+        mut j = 0
+        while j < tlen {
+            let b = trimmed.byte_at(j)
+            if b == 92 && in_str {
+                j = j + 2
+                continue
+            }
+            if b == 34 {
+                in_str = !in_str
+            } else if !in_str {
+                if b == 47 && j + 1 < tlen && trimmed.byte_at(j + 1) == 47 {
+                    break
+                }
+                if b == 123 { delta = delta + 1 } else if b == 125 { delta = delta - 1 }
+            }
+            j = j + 1
+        }
+        if trimmed.starts_with("}") && delta < 0 {
+            delta = delta + 1
+        }
+        indent = indent + delta
+        if indent < 0 { indent = 0 }
+        i = i + 1
+    }
+    let out = bb.to_str()
+    bb.free()
+    return out
+}
+
+pub fn lsp_build_formatting_json(source: str) -> str {
+    let formatted = lsp_format_source(source)
+    let line_cnt = lsp_count_lines(source)
+    let jb = JsonBuf()
+    jb.lbrack()
+    jb.lbrace()
+    jb.key("range")
+    jb.lbrace()
+    jb.key("start"); jb.lbrace(); jb.kv_int("line", 0, true); jb.kv_int("character", 0, false); jb.rbrace()
+    jb.comma()
+    jb.key("end"); jb.lbrace(); jb.kv_int("line", line_cnt + 1, true); jb.kv_int("character", 0, false); jb.rbrace()
+    jb.rbrace()
+    jb.comma()
+    jb.kv_str("newText", formatted, true)
+    jb.rbrace()
+    jb.rbrack()
+    return jb.finish()
+}
