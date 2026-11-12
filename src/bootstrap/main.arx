@@ -20,8 +20,27 @@ fn print_usage() {
     println("  arxc check <file.arx>")
     println("  arxc lsp")
     println("  arxc update [--check] [--force] [--verbose] [--no-ide]")
+    println("  arxc vm <status|list|list-remote|install|use|remove|sync> [...]")
+    println("  arxc install <version>")
     println("  arxc <file.arx> [-o <out>]")
     println("  arxc version")
+}
+
+fn print_vm_usage() {
+    println("Aerix Version Manager (alias: arx toolchain)")
+    println("Install, cache, and switch between Aerix versions (starting from v1.1.3b)")
+    println("")
+    println("Usage:")
+    println("  arx vm [status]                  Show active version and toolchain store info")
+    println("  arx vm list | ls                 List locally installed/cached versions")
+    println("  arx vm list-remote [--all]       List available GitHub releases (>= 1.1.3b)")
+    println("      [--beta|--pre|--stable]      Filter remote list by release channel")
+    println("  arx vm install <ver|channel>     Download & install version (or latest/beta/pre/stable)")
+    println("      [--no-use] [--force] [--all] [--no-ide]")
+    println("  arx vm use <ver|channel>         Switch active toolchain (instant offline if cached)")
+    println("  arx vm remove <ver> [--force]    Delete a cached toolchain version")
+    println("  arx vm sync                      Snapshot current active toolchain into local cache")
+    println("  arx install <ver>                Shorthand for 'arx vm install <ver>'")
 }
 
 fn print_update_usage() {
@@ -95,6 +114,130 @@ fn cmd_update(check_only: bool, force: bool, verbose: bool, no_ide: bool) -> i64
     if no_ide {
         cmd = cmd + " --no-ide"
     }
+    return Process.execute(cmd)
+}
+
+fn cmd_vm(cli_args: List<str>, cli_argc: i64, start_idx: i64, default_sub: str) -> i64 {
+    if Env.os_name() != "windows" {
+        eprintln("error: Aerix Version Manager currently supports Windows installations only.")
+        return 1
+    }
+    mut sub = default_sub
+    mut idx = start_idx
+    if sub == "" {
+        if idx >= cli_argc {
+            sub = "status"
+        } else {
+            let candidate = cli_args.get(idx)
+            if candidate == "--help" || candidate == "-h" || candidate == "help" {
+                print_vm_usage()
+                return 0
+            }
+            if !candidate.starts_with("-") {
+                sub = candidate
+                idx = idx + 1
+            } else {
+                sub = "status"
+            }
+        }
+    }
+
+    mut target = ""
+    mut flag_force = false
+    mut flag_all = false
+    mut flag_no_use = false
+    mut flag_no_ide = false
+    mut flag_json = false
+    mut channel = ""
+
+    mut i = idx
+    while i < cli_argc {
+        let a = cli_args.get(i)
+        if a == "--help" || a == "-h" {
+            print_vm_usage()
+            return 0
+        } else if a == "--force" || a == "-f" {
+            flag_force = true
+        } else if a == "--all" || a == "-a" || a == "--allow-older" {
+            flag_all = true
+        } else if a == "--no-use" {
+            flag_no_use = true
+        } else if a == "--no-ide" || a == "--no-vscode" || a == "--no-antigravity" {
+            flag_no_ide = true
+        } else if a == "--json" {
+            flag_json = true
+        } else if a == "--beta" {
+            channel = "beta"
+        } else if a == "--pre" {
+            channel = "pre"
+        } else if a == "--stable" {
+            channel = "stable"
+        } else if a.starts_with("--channel=") {
+            channel = a.slice(10, a.len())
+        } else if !a.starts_with("-") && target == "" {
+            target = a
+        } else {
+            eprintln("error: unknown argument '" + a + "' for 'arx vm " + sub + "'")
+            eprintln("  = help: run 'arx vm --help' for supported options")
+            return 1
+        }
+        i = i + 1
+    }
+
+    let u = resolve_updater_exe()
+    if u == "" {
+        eprintln("error: Aerix Version Manager host (Uninstall.exe) was not found in this installation.")
+        eprintln("  = help: install via AerixSetup-*.exe from https://github.com/HaxOrWot/AerixLang/releases")
+        return 1
+    }
+    let win_u = u.replace("/", "\\")
+    mut cmd = quote_shell_arg(win_u)
+
+    if sub == "status" {
+        cmd = cmd + " --vm-status"
+    } else if sub == "sync" || sub == "pin" {
+        cmd = cmd + " --vm-sync"
+    } else if sub == "list" || sub == "ls" {
+        if flag_json {
+            cmd = cmd + " --vm-list-json"
+        } else {
+            cmd = cmd + " --vm-list"
+        }
+    } else if sub == "list-remote" || sub == "ls-remote" || sub == "available" || sub == "remote" {
+        if flag_json {
+            cmd = cmd + " --vm-remote-json"
+        } else {
+            cmd = cmd + " --vm-remote"
+        }
+    } else if sub == "install" || sub == "add" {
+        if target == "" {
+            eprintln("error: missing version for 'arx vm install' (e.g. 'arx vm install 1.1.4b')")
+            return 1
+        }
+        cmd = cmd + " " + quote_shell_arg("--vm-install=" + target)
+    } else if sub == "use" || sub == "switch" || sub == "select" {
+        if target == "" {
+            eprintln("error: missing version for 'arx vm use' (e.g. 'arx vm use 1.1.3b')")
+            return 1
+        }
+        cmd = cmd + " " + quote_shell_arg("--vm-use=" + target)
+    } else if sub == "remove" || sub == "rm" || sub == "uninstall" || sub == "delete" {
+        if target == "" {
+            eprintln("error: missing version for 'arx vm remove'")
+            return 1
+        }
+        cmd = cmd + " " + quote_shell_arg("--vm-remove=" + target)
+    } else {
+        eprintln("error: unknown version manager subcommand '" + sub + "'")
+        print_vm_usage()
+        return 1
+    }
+
+    if flag_force { cmd = cmd + " --force" }
+    if flag_all { cmd = cmd + " --all" }
+    if flag_no_use { cmd = cmd + " --no-use" }
+    if flag_no_ide { cmd = cmd + " --no-ide" }
+    if channel != "" { cmd = cmd + " --channel=" + channel }
     return Process.execute(cmd)
 }
 
@@ -410,7 +553,7 @@ fn main() -> i64 {
 
     let first = cli_args.get(1)
     if first == "version" || first == "--version" || first == "-v" {
-        println("Aerix Self-Hosting Bootstrap Compiler (arxc) v1.1.3b")
+        println("Aerix Self-Hosting Bootstrap Compiler (arxc) v1.1.4b")
         maybe_trigger_bg_update()
         return 0
     }
@@ -420,6 +563,12 @@ fn main() -> i64 {
     }
     if first == "lsp" {
         return run_lsp_server()
+    }
+    if first == "vm" || first == "toolchain" {
+        return cmd_vm(cli_args, cli_argc, 2, "")
+    }
+    if first == "install" {
+        return cmd_vm(cli_args, cli_argc, 2, "install")
     }
     if first == "update" || first == "upgrade" {
         mut upd_check = false

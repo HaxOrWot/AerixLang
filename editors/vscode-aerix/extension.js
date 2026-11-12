@@ -763,7 +763,15 @@ function activate(context) {
         return uri ? uri.fsPath : (doc ? doc.fileName : null);
     };
 
+    const vmStatusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 95);
+    vmStatusBar.command = 'aerix.switchVersion';
+    vmStatusBar.tooltip = 'Aerix Toolchain Version Manager — Click to switch or install versions';
+    vmStatusBar.text = '$(versions) Aerix';
+    vmStatusBar.show();
+    refreshAerixStatusBar(vmStatusBar);
+
     context.subscriptions.push(
+        vmStatusBar,
         vscode.commands.registerCommand('aerix.runFile', async (uri) => {
             const p = await prepareDocPath(uri);
             if (p) runInTerm(`run "${p}"`);
@@ -781,7 +789,10 @@ function activate(context) {
             if (p) runInTerm(`wasm "${p}" --serve`);
         }),
         vscode.commands.registerCommand('aerix.checkUpdates', () => {
-            checkAndApplyUpdates(context, client, output, true);
+            checkAndApplyUpdates(context, client, output, true, vmStatusBar);
+        }),
+        vscode.commands.registerCommand('aerix.switchVersion', () => {
+            switchAerixVersion(context, client, output, vmStatusBar);
         })
     );
 
@@ -965,7 +976,7 @@ function scheduleAutoUpdateCheck(context, client, output) {
     context.subscriptions.push({ dispose: () => clearTimeout(timer) });
 }
 
-async function checkAndApplyUpdates(context, client, output, isManual) {
+async function checkAndApplyUpdates(context, client, output, isManual, statusBar) {
     if (process.platform !== 'win32') {
         if (isManual) vscode.window.showInformationMessage('Aerix auto-updater is currently Windows-only.');
         return;
@@ -1023,6 +1034,7 @@ async function checkAndApplyUpdates(context, client, output, isManual) {
             }
             progress.report({ message: 'Restarting Aerix LSP...' });
             await client.restart();
+            if (statusBar) await refreshAerixStatusBar(statusBar);
         });
 
         const reloadChoice = await vscode.window.showInformationMessage(
@@ -1038,6 +1050,155 @@ async function checkAndApplyUpdates(context, client, output, isManual) {
         if (isManual) {
             vscode.window.showErrorMessage(`Aerix update check failed: ${err && err.message ? err.message : err}`);
         }
+    } finally {
+        aerixUpdateInFlight = false;
+    }
+}
+
+async function refreshAerixStatusBar(statusBar) {
+    if (!statusBar) return;
+    try {
+        const ver = await getInstalledAerixVersion(resolveAerixBinary());
+        statusBar.text = ver ? `$(versions) Aerix v${ver}` : '$(versions) Aerix';
+    } catch (_) {
+        statusBar.text = '$(versions) Aerix';
+    }
+}
+
+async function switchAerixVersion(context, client, output, statusBar) {
+    if (process.platform !== 'win32') {
+        vscode.window.showInformationMessage('Aerix Version Manager is currently Windows-only.');
+        return;
+    }
+    if (aerixUpdateInFlight) {
+        vscode.window.showInformationMessage('Another Aerix install/update operation is already running.');
+        return;
+    }
+    const bin = resolveAerixBinary();
+    const uninst = resolveUninstallExe(bin);
+    if (!uninst) {
+        vscode.window.showErrorMessage('Aerix Uninstall.exe / Version Manager host was not found. Please install Aerix first.');
+        return;
+    }
+
+    let localData = { activeVersion: '', toolchains: [] };
+    let remoteList = [];
+    let remoteError = '';
+
+    await vscode.window.withProgress({
+        location: vscode.ProgressLocation.Notification,
+        title: 'Loading Aerix versions...',
+        cancellable: false
+    }, async () => {
+        try {
+            const rawLocal = await execAsync(uninst, ['--vm-list-json']);
+            if (rawLocal && rawLocal.trim()) localData = JSON.parse(rawLocal.trim());
+        } catch (err) {
+            output.appendLine(`[Aerix VM] Local list error: ${err && err.message ? err.message : err}`);
+        }
+        try {
+            const rawRemote = await execAsync(uninst, ['--vm-remote-json']);
+            if (rawRemote && rawRemote.trim()) remoteList = JSON.parse(rawRemote.trim());
+        } catch (err) {
+            remoteError = err && err.message ? err.message : String(err);
+            output.appendLine(`[Aerix VM] Remote list unavailable (offline?): ${remoteError}`);
+        }
+    });
+
+    const cachedMap = new Map();
+    for (const tc of (localData.toolchains || [])) {
+        if (tc && tc.version) cachedMap.set(tc.version.toLowerCase(), tc);
+    }
+
+    const merged = new Map();
+    for (const tc of (localData.toolchains || [])) {
+        if (!tc || !tc.version) continue;
+        merged.set(tc.version.toLowerCase(), {
+            version: tc.version,
+            active: Boolean(tc.active),
+            cached: true,
+            channel: tc.version.toLowerCase().endsWith('b') ? 'beta' : (tc.version.toLowerCase().endsWith('p') ? 'pre' : 'stable'),
+            size: 0
+        });
+    }
+    for (const r of (Array.isArray(remoteList) ? remoteList : [])) {
+        if (!r || !r.version) continue;
+        const key = r.version.toLowerCase();
+        const existing = merged.get(key);
+        merged.set(key, {
+            version: r.version,
+            active: Boolean(r.active) || (existing ? existing.active : false),
+            cached: Boolean(r.cached) || cachedMap.has(key),
+            channel: r.channel || (existing ? existing.channel : 'stable'),
+            size: r.size || 0
+        });
+    }
+
+    const entries = Array.from(merged.values()).sort((a, b) => compareSemver(b.version, a.version));
+    if (entries.length === 0) {
+        const msg = remoteError
+            ? `No cached Aerix toolchains found and GitHub Releases could not be reached (${remoteError}).`
+            : 'No Aerix versions >= 1.1.3b were found locally or on GitHub Releases.';
+        vscode.window.showInformationMessage(msg);
+        return;
+    }
+
+    const items = entries.map((e) => {
+        const tags = [];
+        if (e.active) tags.push('$(check) active');
+        tags.push(e.cached ? 'cached (offline ready)' : 'download');
+        tags.push(e.channel);
+        if (!e.cached && e.size > 0) {
+            tags.push(`${(e.size / (1024 * 1024)).toFixed(1)} MB`);
+        }
+        return {
+            label: `v${e.version}`,
+            description: tags.join('  •  '),
+            detail: e.cached ? 'Switches immediately from local toolchain cache' : `Downloads & installs v${e.version} from GitHub Releases`,
+            version: e.version,
+            active: e.active
+        };
+    });
+
+    const picked = await vscode.window.showQuickPick(items, {
+        title: `Aerix Version Manager (current: ${localData.activeVersion ? 'v' + localData.activeVersion : 'unknown'})`,
+        placeHolder: 'Select an Aerix version (>= 1.1.3b) to install or switch to'
+    });
+    if (!picked) return;
+    if (picked.active) {
+        vscode.window.showInformationMessage(`Aerix v${picked.version} is already active.`);
+        return;
+    }
+
+    aerixUpdateInFlight = true;
+    try {
+        await vscode.window.withProgress({
+            location: vscode.ProgressLocation.Notification,
+            title: `Switching Aerix to v${picked.version}...`,
+            cancellable: false
+        }, async (progress) => {
+            output.appendLine(`[Aerix VM] Switching to v${picked.version}...`);
+            progress.report({ message: 'Stopping Aerix LSP server...' });
+            await client.stop();
+            progress.report({ message: `Activating v${picked.version}...` });
+            await execAsync(uninst, [`--vm-use=${picked.version}`, '--silent', '--quiet']);
+            progress.report({ message: 'Restarting Aerix LSP server...' });
+            await client.restart();
+            if (statusBar) await refreshAerixStatusBar(statusBar);
+        });
+
+        const reloadChoice = await vscode.window.showInformationMessage(
+            `Switched active Aerix toolchain to v${picked.version}. Reload window if extension features changed.`,
+            'Reload Window',
+            'OK'
+        );
+        if (reloadChoice === 'Reload Window') {
+            await vscode.commands.executeCommand('workbench.action.reloadWindow');
+        }
+    } catch (err) {
+        output.appendLine(`[Aerix VM] Switch failed: ${err && err.message ? err.message : err}`);
+        vscode.window.showErrorMessage(`Failed to switch Aerix to v${picked.version}: ${err && err.message ? err.message : err}`);
+        try { await client.restart(); } catch (_) {}
     } finally {
         aerixUpdateInFlight = false;
     }

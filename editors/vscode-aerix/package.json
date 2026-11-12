@@ -2,7 +2,7 @@
   "name": "aerix",
   "displayName": "Aerix Language & IntelliSense Support",
   "description": "Official language support, IntelliSense completions, hover documentation, syntax highlighting, and X file icon for Aerix (.arx).",
-  "version": "1.1.3-b",
+  "version": "1.1.4-b",
   "publisher": "aerix-lang",
   "icon": "./icons/aerix-icon.png",
   "engines": {
@@ -151,6 +151,12 @@
         "title": "Check for Updates (Latest Stable)",
         "category": "Aerix",
         "icon": "$(cloud-download)"
+      },
+      {
+        "command": "aerix.switchVersion",
+        "title": "Switch Toolchain Version (Version Manager)",
+        "category": "Aerix",
+        "icon": "$(versions)"
       }
     ],
     "menus": {

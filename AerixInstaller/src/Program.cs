@@ -1,8 +1,10 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Web.Script.Serialization;
 using System.Windows.Forms;
 
 namespace AerixSetup
@@ -105,6 +107,12 @@ namespace AerixSetup
             bool forceUpdate = false;
             bool quietUpdate = false;
             bool verboseUpdate = false;
+            string vmAction = "";
+            string vmTarget = "";
+            string vmChannel = "";
+            bool vmNoUse = false;
+            bool vmAll = false;
+            bool vmJson = false;
             var opts = new InstallOptions();
 
             string selfExe = Assembly.GetExecutingAssembly().Location;
@@ -139,6 +147,72 @@ namespace AerixSetup
                         checkUpdateOnly = true;
                         uninstall = false;
                     }
+                    else if (low == "--vm-status")
+                    {
+                        vmAction = "status";
+                        uninstall = false;
+                    }
+                    else if (low == "--vm-list")
+                    {
+                        vmAction = "list";
+                        uninstall = false;
+                    }
+                    else if (low == "--vm-list-json")
+                    {
+                        vmAction = "list";
+                        vmJson = true;
+                        uninstall = false;
+                    }
+                    else if (low == "--vm-remote")
+                    {
+                        vmAction = "remote";
+                        uninstall = false;
+                    }
+                    else if (low == "--vm-remote-json")
+                    {
+                        vmAction = "remote";
+                        vmJson = true;
+                        uninstall = false;
+                    }
+                    else if (low == "--vm-sync")
+                    {
+                        vmAction = "sync";
+                        uninstall = false;
+                    }
+                    else if (low.StartsWith("--vm-install="))
+                    {
+                        vmAction = "install";
+                        vmTarget = raw.Substring(13).Trim('"');
+                        uninstall = false;
+                    }
+                    else if (low.StartsWith("--vm-use="))
+                    {
+                        vmAction = "use";
+                        vmTarget = raw.Substring(9).Trim('"');
+                        uninstall = false;
+                    }
+                    else if (low.StartsWith("--vm-remove="))
+                    {
+                        vmAction = "remove";
+                        vmTarget = raw.Substring(12).Trim('"');
+                        uninstall = false;
+                    }
+                    else if (low.StartsWith("--channel="))
+                    {
+                        vmChannel = raw.Substring(10).Trim('"').ToLowerInvariant();
+                    }
+                    else if (low == "--no-use")
+                    {
+                        vmNoUse = true;
+                    }
+                    else if (low == "--all" || low == "--allow-older")
+                    {
+                        vmAll = true;
+                    }
+                    else if (low == "--json")
+                    {
+                        vmJson = true;
+                    }
                     else if (low == "--force" || low == "/force")
                     {
                         forceUpdate = true;
@@ -171,6 +245,239 @@ namespace AerixSetup
                     {
                         opts.RunSmokeTest = false;
                     }
+                }
+            }
+
+            if (!string.IsNullOrEmpty(vmAction))
+            {
+                bool isInteractive = false;
+                if (!quietUpdate) PrepareConsoleIo(out isInteractive);
+                bool color = !quietUpdate && !vmJson && TryEnableAnsiColor(isInteractive);
+                string cBold = color ? "\x1b[1m" : "";
+                string cCyan = color ? "\x1b[1;36m" : "";
+                string cGreen = color ? "\x1b[1;32m" : "";
+                string cYellow = color ? "\x1b[1;33m" : "";
+                string cRed = color ? "\x1b[1;31m" : "";
+                string cDim = color ? "\x1b[2m" : "";
+                string cReset = color ? "\x1b[0m" : "";
+
+                string activeDir = InstallerEngine.ResolveActiveInstallDir(opts.InstallDir);
+                string activeVer = InstallerEngine.GetInstalledVersionFromDisk(activeDir);
+                var jsSer = new JavaScriptSerializer();
+
+                if (vmAction == "status")
+                {
+                    var cached = InstallerEngine.GetCachedToolchains(activeDir, activeVer);
+                    Console.WriteLine(cCyan + "Aerix Version Manager" + cReset + cDim + " (managed minimum: v" + InstallerEngine.VmMinVersion + ")" + cReset);
+                    Console.WriteLine("  Active version : {0}v{1}{2}", cGreen, activeVer, cReset);
+                    Console.WriteLine("  Install dir    : {0}", activeDir);
+                    Console.WriteLine("  Toolchain store: {0} ({1} version(s) cached)", InstallerEngine.GetToolchainsRootDir(), cached.Count);
+                    Console.WriteLine("  Updater log    : {0}", InstallerEngine.ResolveUpdaterLogPath());
+                    Console.WriteLine();
+                    Console.WriteLine("  Commands: arx vm list | list-remote | install <ver> | use <ver> | remove <ver> | sync");
+                    return 0;
+                }
+
+                if (vmAction == "sync")
+                {
+                    bool ok = InstallerEngine.SnapshotToolchainVersion(activeDir, activeVer);
+                    if (!quietUpdate)
+                    {
+                        if (ok)
+                        {
+                            Console.WriteLine("{0}Synced{1} active Aerix v{2} into toolchain cache ({3}).",
+                                cGreen, cReset, activeVer, Path.Combine(InstallerEngine.GetToolchainsRootDir(), InstallerEngine.NormalizeVersionKey(activeVer)));
+                        }
+                        else
+                        {
+                            Console.Error.WriteLine("{0}error:{1} could not snapshot {2} (missing bin\\arx.exe).", cRed, cReset, activeDir);
+                        }
+                    }
+                    return ok ? 0 : 1;
+                }
+
+                if (vmAction == "list")
+                {
+                    var cached = InstallerEngine.GetCachedToolchains(activeDir, activeVer);
+                    if (vmJson)
+                    {
+                        var items = new List<Dictionary<string, object>>();
+                        foreach (var c in cached)
+                        {
+                            var d = new Dictionary<string, object>();
+                            d["version"] = c.Version;
+                            d["active"] = c.IsActive;
+                            d["installedAt"] = c.InstalledAt;
+                            d["path"] = c.DirectoryPath;
+                            items.Add(d);
+                        }
+                        var wrap = new Dictionary<string, object>();
+                        wrap["activeVersion"] = activeVer;
+                        wrap["installDir"] = activeDir;
+                        wrap["storeDir"] = InstallerEngine.GetToolchainsRootDir();
+                        wrap["toolchains"] = items;
+                        Console.WriteLine(jsSer.Serialize(wrap));
+                        return 0;
+                    }
+
+                    Console.WriteLine(cCyan + "Installed Aerix Toolchains" + cReset + cDim + " (" + InstallerEngine.GetToolchainsRootDir() + ")" + cReset);
+                    if (cached.Count == 0)
+                    {
+                        Console.WriteLine("  (none installed)");
+                    }
+                    else
+                    {
+                        foreach (var c in cached)
+                        {
+                            string mark = c.IsActive ? (cGreen + "* " + cReset) : "  ";
+                            string tag = c.IsActive ? (cGreen + " (active)" + cReset) : "";
+                            Console.WriteLine("  {0}{1}v{2,-14}{3} {4}{5}  [{6}]",
+                                mark, cBold, c.Version, cReset, tag,
+                                cDim + (string.IsNullOrEmpty(c.InstalledAt) ? "" : " " + c.InstalledAt) + cReset,
+                                c.DirectoryPath);
+                        }
+                    }
+                    return 0;
+                }
+
+                if (vmAction == "remote")
+                {
+                    try
+                    {
+                        List<StableReleaseInfo> rels = InstallerEngine.FetchReleases(true);
+                        var cachedList = InstallerEngine.GetCachedToolchains(activeDir, activeVer);
+                        var cachedSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                        foreach (var c in cachedList) cachedSet.Add(InstallerEngine.NormalizeVersionKey(c.Version));
+                        string normActive = InstallerEngine.NormalizeVersionKey(activeVer);
+
+                        var filtered = new List<StableReleaseInfo>();
+                        foreach (var r in rels)
+                        {
+                            if (!vmAll && InstallerEngine.CompareVersions(r.Version, InstallerEngine.VmMinVersion) < 0) continue;
+                            if (!string.IsNullOrEmpty(vmChannel) && !string.Equals(r.Channel, vmChannel, StringComparison.OrdinalIgnoreCase)) continue;
+                            filtered.Add(r);
+                        }
+
+                        if (vmJson)
+                        {
+                            var jlist = new List<Dictionary<string, object>>();
+                            foreach (var r in filtered)
+                            {
+                                string rk = InstallerEngine.NormalizeVersionKey(r.Version);
+                                var d = new Dictionary<string, object>();
+                                d["version"] = r.Version;
+                                d["tag"] = r.TagName;
+                                d["channel"] = r.Channel;
+                                d["publishedAt"] = FormatPublishedDate(r.PublishedAt);
+                                d["assetName"] = r.SetupAssetName;
+                                d["size"] = r.SetupSize;
+                                d["cached"] = cachedSet.Contains(rk);
+                                d["active"] = string.Equals(rk, normActive, StringComparison.OrdinalIgnoreCase);
+                                jlist.Add(d);
+                            }
+                            Console.WriteLine(jsSer.Serialize(jlist));
+                            return 0;
+                        }
+
+                        Console.WriteLine(cCyan + "Available Aerix Releases on GitHub" + cReset +
+                            cDim + (vmAll ? " (all versions)" : " (starting from v" + InstallerEngine.VmMinVersion + "; pass --all for legacy)") + cReset);
+                        if (filtered.Count == 0)
+                        {
+                            Console.WriteLine("  (no releases found matching criteria on GitHub yet; active/cached v{0} can still be managed offline via 'arx vm list')", activeVer);
+                        }
+                        else
+                        {
+                            foreach (var r in filtered)
+                            {
+                                string rk = InstallerEngine.NormalizeVersionKey(r.Version);
+                                bool isAct = string.Equals(rk, normActive, StringComparison.OrdinalIgnoreCase);
+                                bool isCac = cachedSet.Contains(rk);
+                                string chColor = r.Channel == "stable" ? cGreen : (r.Channel == "beta" ? cCyan : cYellow);
+                                string state = isAct ? (cGreen + " [active]" + cReset) : (isCac ? (cDim + " [installed]" + cReset) : "");
+                                Console.WriteLine("  {0}v{1,-14}{2} {3}[{4,-6}]{5}  {6}  ({7}){8}",
+                                    cBold, r.Version, cReset, chColor, r.Channel, cReset,
+                                    FormatPublishedDate(r.PublishedAt), InstallerEngine.FormatBytes(r.SetupSize), state);
+                            }
+                        }
+                        return 0;
+                    }
+                    catch (Exception ex)
+                    {
+                        if (!quietUpdate) Console.Error.WriteLine("{0}error:{1} {2}", cRed, cReset, ex.Message);
+                        return 1;
+                    }
+                }
+
+                if (vmAction == "remove")
+                {
+                    string rmMsg;
+                    bool ok = InstallerEngine.RunVmRemove(vmTarget, forceUpdate, opts.InstallDir, out rmMsg);
+                    if (!quietUpdate)
+                    {
+                        if (ok) Console.WriteLine("{0}Removed:{1} {2}", cGreen, cReset, rmMsg);
+                        else Console.Error.WriteLine("{0}error:{1} {2}", cRed, cReset, rmMsg);
+                    }
+                    return ok ? 0 : 1;
+                }
+
+                if (vmAction == "install" || vmAction == "use")
+                {
+                    if (!quietUpdate)
+                    {
+                        Console.WriteLine(cCyan + "Aerix Version Manager" + cReset +
+                            cDim + (vmAction == "use" ? " (switch)" : " (install)") + cReset);
+                        Console.WriteLine("  Target version : {0}{1}{2}", cBold, vmTarget, cReset);
+                        Console.WriteLine("  Install dir    : {0}", activeDir);
+                        Console.WriteLine();
+                    }
+
+                    bool inlineBar = false;
+                    UpdateResult vmRes = InstallerEngine.RunVmInstallOrUse(
+                        vmTarget,
+                        vmAction == "use",
+                        !vmNoUse,
+                        forceUpdate,
+                        vmAll,
+                        !opts.InstallIdeExtensions,
+                        opts.InstallDir,
+                        delegate(int pct, string status, string logLine)
+                        {
+                            if (quietUpdate) return;
+                            if (pct < 100)
+                            {
+                                if (isInteractive && logLine == "progress")
+                                {
+                                    string line = string.Format("  {0}{1}{2} {3,3}% {4}", cCyan, RenderProgressBar(pct, 22), cReset, pct, status);
+                                    Console.Write("\r" + line.PadRight(78));
+                                    inlineBar = true;
+                                }
+                                else
+                                {
+                                    if (inlineBar) { Console.WriteLine(); inlineBar = false; }
+                                    Console.WriteLine("  {0}[{1,3}%]{2} {3}", cDim, pct, cReset, status);
+                                }
+                            }
+                        });
+                    if (inlineBar) Console.WriteLine();
+
+                    if (!quietUpdate)
+                    {
+                        Console.WriteLine();
+                        if (!vmRes.Success)
+                        {
+                            Console.Error.WriteLine("{0}error:{1} {2}", cRed, cReset, vmRes.Message);
+                        }
+                        else
+                        {
+                            Console.WriteLine("  {0}Status:{1} {2} ({3:0.0}s)", cGreen, cReset, vmRes.Message, vmRes.ElapsedSeconds);
+                            if (!string.IsNullOrEmpty(vmRes.LatestVersion))
+                            {
+                                Console.WriteLine("  Active: {0}\\bin\\arx.exe (v{1})", vmRes.InstallDir, vmRes.LatestVersion);
+                            }
+                        }
+                        try { Console.Out.Flush(); Console.Error.Flush(); } catch { }
+                    }
+                    return vmRes.Success ? 0 : 1;
                 }
             }
 
