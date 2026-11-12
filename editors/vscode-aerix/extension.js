@@ -18,7 +18,7 @@ const TOKEN_TYPES = [
 ];
 
 const TOKEN_MODIFIERS = [
-    'declaration', 'definition', 'readonly', 'static', 'defaultLibrary', 'documentation'
+    'declaration', 'definition', 'readonly', 'static', 'defaultLibrary', 'documentation', 'abstract', 'controlFlow'
 ];
 
 const SEMANTIC_LEGEND = new vscode.SemanticTokensLegend(TOKEN_TYPES, TOKEN_MODIFIERS);
@@ -341,6 +341,23 @@ function activate(context) {
 
     context.subscriptions.push(diagnostics, output, semTokensEmitter, { dispose: () => client.stop() });
 
+    const statusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
+    statusBar.command = 'aerix.checkFile';
+    statusBar.text = '$(zap) Aerix';
+    const updateStatusBar = (editor) => {
+        if (editor && editor.document && editor.document.languageId === 'aerix') {
+            statusBar.tooltip = `Aerix Native LSP (${resolveAerixBinary()}) — Click to Check File`;
+            statusBar.show();
+        } else {
+            statusBar.hide();
+        }
+    };
+    updateStatusBar(vscode.window.activeTextEditor);
+    context.subscriptions.push(
+        statusBar,
+        vscode.window.onDidChangeActiveTextEditor(updateStatusBar)
+    );
+
     context.subscriptions.push(
         vscode.workspace.onDidOpenTextDocument((doc) => {
             if (doc.languageId === 'aerix') {
@@ -554,6 +571,76 @@ function activate(context) {
                 }, doc);
                 if (!Array.isArray(res)) return [];
                 return res.map((e) => vscode.TextEdit.replace(toVsRange(e.range), e.newText || ''));
+            }
+        }),
+
+        vscode.languages.registerDocumentHighlightProvider(sel, {
+            async provideDocumentHighlights(doc, pos) {
+                const res = await client.request('textDocument/documentHighlight', {
+                    textDocument: { uri: doc.uri.toString() },
+                    position: toLspPos(pos)
+                }, doc);
+                if (!Array.isArray(res)) return [];
+                return res.map((h) => new vscode.DocumentHighlight(
+                    toVsRange(h.range),
+                    h.kind === 3 ? vscode.DocumentHighlightKind.Write : vscode.DocumentHighlightKind.Read
+                ));
+            }
+        }),
+
+        vscode.languages.registerReferenceProvider(sel, {
+            async provideReferences(doc, pos, ctx) {
+                const res = await client.request('textDocument/references', {
+                    textDocument: { uri: doc.uri.toString() },
+                    position: toLspPos(pos),
+                    context: { includeDeclaration: !ctx || ctx.includeDeclaration !== false }
+                }, doc);
+                if (!Array.isArray(res)) return [];
+                return res.map((loc) => new vscode.Location(vscode.Uri.parse(loc.uri), toVsRange(loc.range)));
+            }
+        }),
+
+        vscode.languages.registerRenameProvider(sel, {
+            async prepareRename(doc, pos) {
+                const res = await client.request('textDocument/prepareRename', {
+                    textDocument: { uri: doc.uri.toString() },
+                    position: toLspPos(pos)
+                }, doc);
+                if (!res || !res.range) return undefined;
+                return { range: toVsRange(res.range), placeholder: res.placeholder || '' };
+            },
+            async provideRenameEdits(doc, pos, newName) {
+                const res = await client.request('textDocument/rename', {
+                    textDocument: { uri: doc.uri.toString() },
+                    position: toLspPos(pos),
+                    newName
+                }, doc);
+                if (!res || !res.changes) return undefined;
+                const edit = new vscode.WorkspaceEdit();
+                for (const [uriStr, edits] of Object.entries(res.changes)) {
+                    if (!Array.isArray(edits)) continue;
+                    const targetUri = vscode.Uri.parse(uriStr);
+                    for (const e of edits) {
+                        edit.replace(targetUri, toVsRange(e.range), e.newText != null ? e.newText : newName);
+                    }
+                }
+                return edit;
+            }
+        }),
+
+        vscode.languages.registerFoldingRangeProvider(sel, {
+            async provideFoldingRanges(doc) {
+                const res = await client.request('textDocument/foldingRange', {
+                    textDocument: { uri: doc.uri.toString() }
+                }, doc);
+                if (!Array.isArray(res)) return [];
+                return res.map((f) => {
+                    let kind;
+                    if (f.kind === 'comment') kind = vscode.FoldingRangeKind.Comment;
+                    else if (f.kind === 'imports') kind = vscode.FoldingRangeKind.Imports;
+                    else if (f.kind === 'region') kind = vscode.FoldingRangeKind.Region;
+                    return new vscode.FoldingRange(f.startLine || 0, f.endLine || 0, kind);
+                });
             }
         })
     );

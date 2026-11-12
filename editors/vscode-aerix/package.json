@@ -61,6 +61,8 @@
         "language": "aerix",
         "scopes": {
           "comment.documentation": ["comment.block.documentation.aerix", "comment.line.documentation.aerix"],
+          "keyword.controlFlow": ["keyword.control.aerix"],
+          "keyword.abstract": ["storage.modifier.aerix"],
           "keyword.readonly": ["constant.language.boolean.aerix", "constant.language.null.aerix"],
           "variable.readonly": ["variable.other.constant.aerix"],
           "variable.readonly.static": ["variable.other.constant.aerix"],
@@ -140,7 +142,7 @@
           "group": "navigation@1"
         },
         {
-          "command": "aerix.buildWasm",
+          "command": "aerix.checkFile",
           "when": "resourceExtname == .arx",
           "group": "navigation@2"
         }

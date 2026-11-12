@@ -34,10 +34,23 @@ pub fn SM_READONLY() -> i64 { return 4 }
 pub fn SM_STATIC() -> i64 { return 8 }
 pub fn SM_DEFAULT_LIB() -> i64 { return 16 }
 pub fn SM_DOC() -> i64 { return 32 }
+pub fn SM_ABSTRACT() -> i64 { return 64 }
+pub fn SM_CONTROL_FLOW() -> i64 { return 128 }
 
 fn is_keyword_token_kind(k: i64) -> bool {
     if k == TK_BOOL() || k == TK_NULL() { return true }
     return k >= 20 && k <= 71
+}
+
+fn hl_keyword_mod(k: i64) -> i64 {
+    if k == TK_BOOL() || k == TK_NULL() { return SM_READONLY() }
+    if (k >= 31 && k <= 45) || k == TK_GUARD() || k == TK_DEFER() || k == TK_USE() || k == TK_IMPORT() || k == TK_FROM() {
+        return SM_CONTROL_FLOW()
+    }
+    if (k >= 48 && k <= 54) || k == TK_UNSAFE() {
+        return SM_ABSTRACT()
+    }
+    return 0
 }
 
 fn is_operator_token_kind(k: i64) -> bool {
@@ -789,7 +802,7 @@ fn split_str_interp_spans(src: str, line_starts: List<i64>, ln1: i64, col1: i64,
                     } else if ik == TK_STR() || ik == TK_CHAR() {
                         push_sem_span(lines, cols, lens, types, mods, ln1, c_abs, il, ST_STRING(), 0)
                     } else if is_keyword_token_kind(ik) {
-                        push_sem_span(lines, cols, lens, types, mods, ln1, c_abs, il, ST_KEYWORD(), 0)
+                        push_sem_span(lines, cols, lens, types, mods, ln1, c_abs, il, ST_KEYWORD(), hl_keyword_mod(ik))
                     } else if is_operator_token_kind(ik) {
                         push_sem_span(lines, cols, lens, types, mods, ln1, c_abs, il, ST_OPERATOR(), 0)
                     } else if ik == TK_IDENT() {
@@ -1056,7 +1069,7 @@ pub fn hl_classify_ts(source: str, lx: Lexer, ts: TokenStream, line_starts: List
         }
         if k == TK_IMPORT() || k == TK_USE() {
             in_import_line = true
-            push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, ST_KEYWORD(), 0)
+            push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, ST_KEYWORD(), SM_CONTROL_FLOW())
             prev_kind = k; i = i + 1; continue
         }
         if is_keyword_token_kind(k) {
@@ -1094,11 +1107,7 @@ pub fn hl_classify_ts(source: str, lx: Lexer, ts: TokenStream, line_starts: List
                 expect_type_depth = 1
                 if k == TK_EXTEND() { in_extend_body = true }
             }
-            if k == TK_BOOL() || k == TK_NULL() {
-                push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, ST_KEYWORD(), SM_READONLY())
-            } else {
-                push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, ST_KEYWORD(), 0)
-            }
+            push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, ST_KEYWORD(), hl_keyword_mod(k))
             prev_kind = k; i = i + 1; continue
         }
         if k == TK_COLON() {

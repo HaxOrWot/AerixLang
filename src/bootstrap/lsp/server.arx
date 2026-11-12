@@ -113,7 +113,9 @@ fn lsp_build_initialize_result() -> str {
     jb.str_val("readonly"); jb.comma()
     jb.str_val("static"); jb.comma()
     jb.str_val("defaultLibrary"); jb.comma()
-    jb.str_val("documentation")
+    jb.str_val("documentation"); jb.comma()
+    jb.str_val("abstract"); jb.comma()
+    jb.str_val("controlFlow")
     jb.rbrack()
     jb.rbrace()
     jb.kv_bool("full", true, false)
@@ -144,9 +146,18 @@ fn lsp_build_initialize_result() -> str {
     jb.kv_bool("hoverProvider", true, false)
     jb.kv_bool("definitionProvider", true, false)
     jb.kv_bool("typeDefinitionProvider", true, false)
+    jb.kv_bool("referencesProvider", true, false)
+    jb.kv_bool("documentHighlightProvider", true, false)
     jb.kv_bool("documentSymbolProvider", true, false)
+    jb.kv_bool("foldingRangeProvider", true, false)
     jb.kv_bool("inlayHintProvider", true, false)
     jb.kv_bool("documentFormattingProvider", true, false)
+
+    jb.comma()
+    jb.key("renameProvider")
+    jb.lbrace()
+    jb.kv_bool("prepareProvider", true, true)
+    jb.rbrace()
 
     jb.comma()
     jb.key("codeLensProvider")
@@ -296,7 +307,7 @@ pub fn run_lsp_server() -> i64 {
                 cached_src = src
                 has_cached_az = true
             }
-            lsp_publish_diagnostics(uri, lsp_build_diagnostics_json(cached_az, fpath))
+            lsp_publish_diagnostics(uri, lsp_build_diagnostics_json(cached_az, fpath, src))
             continue
         }
 
@@ -323,7 +334,7 @@ pub fn run_lsp_server() -> i64 {
             cached_uri = uri
             cached_src = src
             has_cached_az = true
-            lsp_publish_diagnostics(uri, lsp_build_diagnostics_json(cached_az, fpath))
+            lsp_publish_diagnostics(uri, lsp_build_diagnostics_json(cached_az, fpath, src))
             continue
         }
 
@@ -355,7 +366,11 @@ pub fn run_lsp_server() -> i64 {
                 path_docs.insert(fpath, src)
             }
 
-            // Fast semantic highlighting path: never blocks behind full multi-file typechecking
+            // Fast semantic & structural paths: never block behind full multi-file typechecking
+            if method == "textDocument/foldingRange" {
+                lsp_send_response(id_raw, lsp_build_folding_range_json(src))
+                continue
+            }
             if method == "textDocument/semanticTokens/full" {
                 let az_ready = has_cached_az && cached_uri == uri && cached_src == src
                 if sem_uri == uri && sem_src == src && (sem_is_full || !az_ready) {
@@ -405,6 +420,25 @@ pub fn run_lsp_server() -> i64 {
             }
             if method == "textDocument/typeDefinition" {
                 lsp_send_response(id_raw, lsp_build_type_definition_json(src, cached_az, fpath, line0, char0))
+                continue
+            }
+            if method == "textDocument/documentHighlight" {
+                lsp_send_response(id_raw, lsp_build_document_highlight_json(src, cached_az, fpath, line0, char0))
+                continue
+            }
+            if method == "textDocument/references" {
+                let rctx = jdoc.get(params, "context")
+                let inc_decl = (jdoc.get_str(rctx, "includeDeclaration") != "false")
+                lsp_send_response(id_raw, lsp_build_references_json(src, cached_az, fpath, line0, char0, inc_decl, path_docs))
+                continue
+            }
+            if method == "textDocument/prepareRename" {
+                lsp_send_response(id_raw, lsp_build_prepare_rename_json(src, cached_az, fpath, line0, char0))
+                continue
+            }
+            if method == "textDocument/rename" {
+                let new_name = jdoc.get_str(params, "newName")
+                lsp_send_response(id_raw, lsp_build_rename_json(src, cached_az, fpath, line0, char0, new_name, path_docs))
                 continue
             }
             if method == "textDocument/documentSymbol" {
