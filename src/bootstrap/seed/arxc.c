@@ -48204,7 +48204,7 @@ const char* arx_lsp_build_initialize_result(void) {
     const char* __t19274 = "aerix-lsp";
     Arx_JsonBuf_kv_str((&(jb)), __t19273, __t19274, true);
     const char* __t19275 = "version";
-    const char* __t19276 = "1.1.4-stable";
+    const char* __t19276 = "1.1.5b";
     Arx_JsonBuf_kv_str((&(jb)), __t19275, __t19276, false);
     Arx_JsonBuf_rbrace((&(jb)));
     Arx_JsonBuf_rbrace((&(jb)));
@@ -49234,7 +49234,7 @@ int64_t arx_cmd_vm(Arx_List_str cli_args, int64_t cli_argc, int64_t start_idx, c
                     if (__t19671) {
                         const char* __t19673 = "";
                         if ((arx_str_compare(target, __t19673) == 0)) {
-                            const char* __t19674 = "error: missing version for 'arx vm install' (e.g. 'arx vm install 1.1.4-stable')";
+                            const char* __t19674 = "error: missing version for 'arx vm install' (e.g. 'arx vm install 1.1.5b')";
                             fprintf(stderr, "%s\n", __t19674);
                             int64_t __t19675 = ((int64_t)1LL);
                             return __t19675;
@@ -50045,7 +50045,7 @@ int64_t arx_main(void) {
         __t20060 = ((arx_str_compare(first, __t20061) == 0));
     }
     if (__t20060) {
-        const char* __t20062 = "Aerix Self-Hosting Bootstrap Compiler (arxc) v1.1.4-stable";
+        const char* __t20062 = "Aerix Self-Hosting Bootstrap Compiler (arxc) v1.1.5b";
         arx_println_str(__t20062);
         arx_maybe_trigger_bg_update();
         int64_t __t20063 = ((int64_t)0LL);
