@@ -1257,18 +1257,26 @@ int64_t arx_ST_PARAMETER(void);
 int64_t arx_ST_VARIABLE(void);
 int64_t arx_ST_NAMESPACE(void);
 int64_t arx_ST_MACRO(void);
+int64_t arx_ST_TYPE_PARAM(void);
 int64_t arx_SM_DECL(void);
 int64_t arx_SM_DEF(void);
 int64_t arx_SM_READONLY(void);
 int64_t arx_SM_STATIC(void);
 int64_t arx_SM_DEFAULT_LIB(void);
+int64_t arx_SM_DOC(void);
 bool arx_is_keyword_token_kind(int64_t k);
 bool arx_is_operator_token_kind(int64_t k);
+Arx_List_i64 arx_hl_build_line_starts(const char* src);
+bool arx_hl_comment_is_doc(const char* src, Arx_List_i64 line_starts, int64_t ln1, int64_t col1, int64_t tlen);
+const char* arx_hl_strip_container_base(const char* t);
+bool arx_hl_is_builtin_receiver_type(const char* rt);
+bool arx_hl_is_field_readonly(Arx_Analyzer az, const char* cls_name, const char* field_name);
+bool arx_hl_is_method_static(Arx_Analyzer az, const char* cls_name, const char* mname);
 int64_t arx_next_sig_kind(Arx_TokenStream ts, int64_t idx);
 int64_t arx_next_nonnl_idx(Arx_TokenStream ts, int64_t idx);
 bool arx_is_generic_call_tok(Arx_TokenStream ts, int64_t idx);
 void arx_push_sem_span(Arx_List_i64 lines, Arx_List_i64 cols, Arx_List_i64 lens, Arx_List_i64 types, Arx_List_i64 mods, int64_t ln1, int64_t col1, int64_t tlen, int64_t stype, int64_t smod);
-void arx_split_str_interp_spans(const char* src, int64_t ln1, int64_t col1, int64_t tlen, Arx_Map_str_i64 class_set, Arx_Map_str_i64 enum_set, Arx_Map_str_i64 fn_set, Arx_Map_str_i64 cur_params, Arx_Map_str_i64 readonly_vars, Arx_List_i64 lines, Arx_List_i64 cols, Arx_List_i64 lens, Arx_List_i64 types, Arx_List_i64 mods);
+void arx_split_str_interp_spans(const char* src, int64_t ln1, int64_t col1, int64_t tlen, Arx_Map_str_i64 class_set, Arx_Map_str_i64 enum_set, Arx_Map_str_i64 enum_var_set, Arx_Map_str_i64 fn_set, Arx_Map_str_i64 cur_params, Arx_Map_str_i64 cur_tparams, Arx_Map_str_i64 ro_vars, Arx_Map_str_i64 mut_vars, Arx_Map_str_str var_types, Arx_List_i64 lines, Arx_List_i64 cols, Arx_List_i64 lens, Arx_List_i64 types, Arx_List_i64 mods);
 Arx_List_i64 arx_lsp_compute_semantic_tokens(const char* source, Arx_Analyzer az, const char* doc_path);
 int64_t arx_CKIND_METHOD(void);
 int64_t arx_CKIND_FUNCTION(void);
@@ -1292,20 +1300,40 @@ int64_t arx_lsp_count_lines(const char* source);
 int64_t arx_lsp_word_start_at(const char* source, int64_t line0, int64_t char0);
 const char* arx_lsp_word_at(const char* source, int64_t line0, int64_t char0);
 int64_t arx_lsp_find_node_col0(const char* source, int64_t ln1, const char* name);
+const char* arx_lsp_read_target_source(const char* source, const char* doc_path, const char* tfile);
+const char* arx_lsp_extract_doc_comments(const char* source, const char* doc_path, const char* tfile, int64_t ln1);
+int64_t arx_lsp_block_end_line1(const char* source, int64_t decl_ln1);
 const char* arx_lsp_format_params(Arx_Analyzer az, int64_t fn_nid);
 const char* arx_lsp_fn_signature_str(Arx_Analyzer az, int64_t fn_nid);
 int64_t arx_lsp_find_class_node(Arx_Analyzer az, const char* cname);
 int64_t arx_lsp_find_enum_node(Arx_Analyzer az, const char* ename);
 const char* arx_lsp_enclosing_class_at(Arx_Analyzer az, const char* doc_path, int64_t line1);
+Arx_List_i64 arx_lsp_enclosing_fn_bounds(const char* source, Arx_Analyzer az, const char* doc_path, int64_t line1);
+int64_t arx_lsp_resolve_scoped_var_node(Arx_Analyzer az, const char* doc_path, int64_t line1, int64_t fn_start, const char* name);
 const char* arx_lsp_resolve_var_type(Arx_Analyzer az, const char* doc_path, int64_t line1, const char* name);
+const char* arx_lsp_generic_inner_arg(const char* t, int64_t arg_idx);
+const char* arx_lsp_infer_builtin_member_ret(const char* recv_t, const char* mname);
+const char* arx_lsp_extract_receiver_before_dot(const char* line, int64_t dot_pos);
+Arx_List_str arx_lsp_split_dot_chain(const char* expr);
 const char* arx_lsp_infer_expr_receiver_type(Arx_Analyzer az, const char* doc_path, int64_t line1, const char* expr);
 const char* arx_lsp_build_diagnostics_json(Arx_Analyzer az, const char* doc_path);
 void arx_emit_comp_item(Arx_JsonBuf jb, const char* label, int64_t kind, const char* detail, const char* doc, const char* insert_txt, bool first);
 void arx_collect_class_member_completions(Arx_Analyzer az, const char* cname, Arx_JsonBuf jb, Arx_Map_str_i64 seen, Arx_List_i64 is_first_box);
 const char* arx_lsp_build_completion_json(const char* source, Arx_Analyzer az, const char* doc_path, int64_t line0, int64_t char0);
+const char* arx_lsp_subst_generic_sig(const char* raw_sig, const char* recv_t);
+int64_t arx_lsp_find_class_field_node(Arx_Analyzer az, const char* cls_name, const char* field_name);
+const char* arx_lsp_find_class_method_cls(Arx_Analyzer az, const char* cls_name, const char* mname);
+int64_t arx_lsp_find_class_method_sidx(Arx_Analyzer az, const char* cls_name, const char* mname);
+const char* arx_lsp_format_enum_variant(Arx_Analyzer az, int64_t vid);
+const char* arx_lsp_resolve_import_at_cursor(const char* source, const char* doc_path, int64_t line0, int64_t char0);
+const char* arx_lsp_format_hover_block(const char* code, const char* doc, const char* loc_file, int64_t loc_line);
 const char* arx_lsp_build_hover_json(const char* source, Arx_Analyzer az, const char* doc_path, int64_t line0, int64_t char0);
 const char* arx_lsp_build_signature_help_json(const char* source, Arx_Analyzer az, const char* doc_path, int64_t line0, int64_t char0);
+void arx_lsp_emit_location_obj(Arx_JsonBuf jb, const char* tfile, int64_t tline0, int64_t tcol0, int64_t tlen);
+const char* arx_lsp_location_from_node(const char* source, const char* doc_path, Arx_Analyzer az, int64_t target_nid, const char* word);
 const char* arx_lsp_build_definition_json(const char* source, Arx_Analyzer az, const char* doc_path, int64_t line0, int64_t char0);
+const char* arx_lsp_extract_named_type_base(const char* t);
+const char* arx_lsp_build_type_definition_json(const char* source, Arx_Analyzer az, const char* doc_path, int64_t line0, int64_t char0);
 void arx_emit_symbol_range(Arx_JsonBuf jb, int64_t ln1);
 const char* arx_lsp_build_document_symbols_json(Arx_Analyzer az, const char* doc_path);
 const char* arx_lsp_build_inlay_hints_json(const char* source, Arx_Analyzer az, const char* doc_path);
@@ -31306,168 +31334,362 @@ int64_t arx_ST_MACRO(void) {
     return __t12986;
 }
 
-int64_t arx_SM_DECL(void) {
-    int64_t __t12987 = ((int64_t)1LL);
+int64_t arx_ST_TYPE_PARAM(void) {
+    int64_t __t12987 = ((int64_t)16LL);
     return __t12987;
 }
 
-int64_t arx_SM_DEF(void) {
-    int64_t __t12988 = ((int64_t)2LL);
+int64_t arx_SM_DECL(void) {
+    int64_t __t12988 = ((int64_t)1LL);
     return __t12988;
 }
 
-int64_t arx_SM_READONLY(void) {
-    int64_t __t12989 = ((int64_t)4LL);
+int64_t arx_SM_DEF(void) {
+    int64_t __t12989 = ((int64_t)2LL);
     return __t12989;
 }
 
-int64_t arx_SM_STATIC(void) {
-    int64_t __t12990 = ((int64_t)8LL);
+int64_t arx_SM_READONLY(void) {
+    int64_t __t12990 = ((int64_t)4LL);
     return __t12990;
 }
 
-int64_t arx_SM_DEFAULT_LIB(void) {
-    int64_t __t12991 = ((int64_t)16LL);
+int64_t arx_SM_STATIC(void) {
+    int64_t __t12991 = ((int64_t)8LL);
     return __t12991;
 }
 
-bool arx_is_keyword_token_kind(int64_t k) {
-    int64_t __t12992 = arx_TK_BOOL();
-    bool __t12993 = true;
-    if (!(((k) == (__t12992)))) {
-        int64_t __t12994 = arx_TK_NULL();
-        __t12993 = (((k) == (__t12994)));
-    }
-    if (__t12993) {
-        bool __t12995 = true;
-        return __t12995;
-    }
-    bool __t12996 = false;
-    if (((k) >= (((int64_t)20LL)))) {
-        __t12996 = (((k) <= (((int64_t)71LL))));
-    }
-    bool __t12997 = __t12996;
-    return __t12997;
+int64_t arx_SM_DEFAULT_LIB(void) {
+    int64_t __t12992 = ((int64_t)16LL);
+    return __t12992;
 }
 
-bool arx_is_operator_token_kind(int64_t k) {
+int64_t arx_SM_DOC(void) {
+    int64_t __t12993 = ((int64_t)32LL);
+    return __t12993;
+}
+
+bool arx_is_keyword_token_kind(int64_t k) {
+    int64_t __t12994 = arx_TK_BOOL();
+    bool __t12995 = true;
+    if (!(((k) == (__t12994)))) {
+        int64_t __t12996 = arx_TK_NULL();
+        __t12995 = (((k) == (__t12996)));
+    }
+    if (__t12995) {
+        bool __t12997 = true;
+        return __t12997;
+    }
     bool __t12998 = false;
-    if (((k) >= (((int64_t)80LL)))) {
-        __t12998 = (((k) <= (((int64_t)116LL))));
+    if (((k) >= (((int64_t)20LL)))) {
+        __t12998 = (((k) <= (((int64_t)71LL))));
     }
     bool __t12999 = __t12998;
     return __t12999;
+}
+
+bool arx_is_operator_token_kind(int64_t k) {
+    int64_t __t13000 = arx_TK_DOT();
+    if (((k) == (__t13000))) {
+        bool __t13001 = false;
+        return __t13001;
+    }
+    bool __t13002 = false;
+    if (((k) >= (((int64_t)80LL)))) {
+        __t13002 = (((k) <= (((int64_t)115LL))));
+    }
+    bool __t13003 = __t13002;
+    return __t13003;
+}
+
+Arx_List_i64 arx_hl_build_line_starts(const char* src) {
+    Arx_List_i64 __t13004 = Arx_List_i64_init();
+    Arx_List_i64 starts = __t13004;
+    Arx_List_i64_push((&(starts)), ((int64_t)0LL));
+    int64_t n = arx_str_len(src);
+    int64_t i = ((int64_t)0LL);
+    while (1) {
+        if (!(((i) < (n)))) break;
+        if (((arx_str_byte_at(src, i)) == (((int64_t)10LL)))) {
+            Arx_List_i64_push((&(starts)), ((i) + (((int64_t)1LL))));
+        }
+        i = ((i) + (((int64_t)1LL)));
+    }
+    Arx_List_i64 __t13005 = starts;
+    return __t13005;
+}
+
+bool arx_hl_comment_is_doc(const char* src, Arx_List_i64 line_starts, int64_t ln1, int64_t col1, int64_t tlen) {
+    bool __t13006 = true;
+    if (!(((ln1) <= (((int64_t)0LL))))) {
+        __t13006 = (((col1) <= (((int64_t)0LL))));
+    }
+    bool __t13007 = true;
+    if (!(__t13006)) {
+        __t13007 = (((tlen) < (((int64_t)3LL))));
+    }
+    if (__t13007) {
+        bool __t13008 = false;
+        return __t13008;
+    }
+    int64_t lidx = ((ln1) - (((int64_t)1LL)));
+    int64_t __t13009 = Arx_List_i64_len((&(line_starts)));
+    if (((lidx) >= (__t13009))) {
+        bool __t13010 = false;
+        return __t13010;
+    }
+    int64_t __t13011 = Arx_List_i64_get((&(line_starts)), lidx);
+    int64_t off = ((__t13011) + (((col1) - (((int64_t)1LL)))));
+    bool __t13012 = true;
+    if (!(((off) < (((int64_t)0LL))))) {
+        __t13012 = (((((off) + (((int64_t)2LL)))) >= (arx_str_len(src))));
+    }
+    if (__t13012) {
+        bool __t13013 = false;
+        return __t13013;
+    }
+    int64_t b0 = arx_str_byte_at(src, off);
+    int64_t b1 = arx_str_byte_at(src, ((off) + (((int64_t)1LL))));
+    int64_t b2 = arx_str_byte_at(src, ((off) + (((int64_t)2LL))));
+    bool __t13014 = false;
+    if (((b0) == (((int64_t)47LL)))) {
+        __t13014 = (((b1) == (((int64_t)47LL))));
+    }
+    bool __t13015 = false;
+    if (__t13014) {
+        bool __t13016 = true;
+        if (!(((b2) == (((int64_t)47LL))))) {
+            __t13016 = (((b2) == (((int64_t)33LL))));
+        }
+        __t13015 = (__t13016);
+    }
+    if (__t13015) {
+        bool __t13017 = true;
+        return __t13017;
+    }
+    bool __t13018 = false;
+    if (((b0) == (((int64_t)47LL)))) {
+        __t13018 = (((b1) == (((int64_t)42LL))));
+    }
+    bool __t13019 = false;
+    if (__t13018) {
+        __t13019 = (((b2) == (((int64_t)42LL))));
+    }
+    bool __t13020 = false;
+    if (__t13019) {
+        __t13020 = (((tlen) > (((int64_t)4LL))));
+    }
+    if (__t13020) {
+        bool __t13021 = true;
+        return __t13021;
+    }
+    bool __t13022 = false;
+    return __t13022;
+}
+
+const char* arx_hl_strip_container_base(const char* t) {
+    const char* __t13023 = "<";
+    int64_t __t13024 = arx_lsp_str_find(t, __t13023, ((int64_t)0LL));
+    int64_t lt = __t13024;
+    if (((lt) > (((int64_t)0LL)))) {
+        const char* __t13025 = __arx_bstr_slice(t, ((int64_t)0LL), lt);
+        const char* __t13026 = __t13025;
+        return __t13026;
+    }
+    const char* __t13027 = t;
+    return __t13027;
+}
+
+bool arx_hl_is_builtin_receiver_type(const char* rt) {
+    const char* __t13028 = arx_hl_strip_container_base(rt);
+    const char* base = __t13028;
+    const char* __t13029 = "str";
+    bool __t13030 = true;
+    if (!((arx_str_compare(rt, __t13029) == 0))) {
+        bool __t13031 = arx_lsp_is_container_type(base);
+        __t13030 = (__t13031);
+    }
+    bool __t13032 = __t13030;
+    return __t13032;
+}
+
+bool arx_hl_is_field_readonly(Arx_Analyzer az, const char* cls_name, const char* field_name) {
+    bool __t13033 = Arx_Map_str_i64_has_key((&(az.cls_idx_map)), cls_name);
+    if ((!(__t13033))) {
+        bool __t13034 = false;
+        return __t13034;
+    }
+    int64_t __t13035 = Arx_Map_str_i64_get((&(az.cls_idx_map)), cls_name);
+    int64_t __t13036 = Arx_List_i64_get((&(az.cls_nodes)), __t13035);
+    int64_t cid = __t13036;
+    int64_t __t13037 = Arx_List_i64_get((&(az.la)), cid);
+    int64_t fg = __t13037;
+    if (((fg) < (((int64_t)0LL)))) {
+        bool __t13038 = false;
+        return __t13038;
+    }
+    int64_t __t13039 = Arx_List_i64_get((&(az.ll)), fg);
+    int64_t fc = __t13039;
+    int64_t fi = ((int64_t)0LL);
+    while (1) {
+        if (!(((fi) < (fc)))) break;
+        int64_t __t13040 = Arx_List_i64_get((&(az.ls)), fg);
+        int64_t __t13041 = Arx_List_i64_get((&(az.ch)), ((__t13040) + (fi)));
+        int64_t fid = __t13041;
+        const char* __t13042 = Arx_List_str_get((&(az.sa)), fid);
+        if ((arx_str_compare(__t13042, field_name) == 0)) {
+            int64_t __t13043 = Arx_List_i64_get((&(az.ia)), fid);
+            int64_t __t13044 = arx_FLAG_MUT();
+            bool __t13045 = arx_has_flag(__t13043, __t13044);
+            bool __t13046 = (!(__t13045));
+            return __t13046;
+        }
+        fi = ((fi) + (((int64_t)1LL)));
+    }
+    bool __t13047 = false;
+    return __t13047;
+}
+
+bool arx_hl_is_method_static(Arx_Analyzer az, const char* cls_name, const char* mname) {
+    const char* __t13048 = "m::";
+    const char* __t13049 = arx_str_concat(__t13048, cls_name);
+    const char* __t13050 = "::";
+    const char* __t13051 = arx_str_concat(__t13049, __t13050);
+    const char* __t13052 = arx_str_concat(__t13051, mname);
+    const char* sk = __t13052;
+    bool __t13053 = Arx_Map_str_str_has_key((&(az.sig_by_key)), sk);
+    if ((!(__t13053))) {
+        bool __t13054 = false;
+        return __t13054;
+    }
+    const char* __t13055 = Arx_Map_str_str_get((&(az.sig_by_key)), sk);
+    const char* __t13056 = ",";
+    Arx_List_str __t13057 = __arx_bstr_split(__t13055, __t13056);
+    Arx_List_str __t13058 = __t13057;
+    const char* __t13059 = Arx_List_str_get((&__t13058), ((int64_t)0LL));
+    int64_t sidx = arx_str_to_i64(__t13059);
+    bool __t13060 = false;
+    if (((sidx) >= (((int64_t)0LL)))) {
+        __t13060 = (((sidx) < (az.sig_count)));
+    }
+    if (__t13060) {
+        int64_t __t13061 = Arx_List_i64_get((&(az.sig_is_static)), sidx);
+        bool __t13062 = ((__t13061) == (((int64_t)1LL)));
+        return __t13062;
+    }
+    bool __t13063 = false;
+    return __t13063;
 }
 
 int64_t arx_next_sig_kind(Arx_TokenStream ts, int64_t idx) {
     int64_t j = ((idx) + (((int64_t)1LL)));
     while (1) {
         if (!(((j) < (ts.count)))) break;
-        int64_t __t13000 = Arx_List_i64_get((&(ts.kinds)), j);
-        int64_t k = __t13000;
-        int64_t __t13001 = arx_TK_NEWLINE();
-        if (((k) != (__t13001))) {
-            int64_t __t13002 = k;
-            return __t13002;
+        int64_t __t13064 = Arx_List_i64_get((&(ts.kinds)), j);
+        int64_t k = __t13064;
+        int64_t __t13065 = arx_TK_NEWLINE();
+        if (((k) != (__t13065))) {
+            int64_t __t13066 = k;
+            return __t13066;
         }
         j = ((j) + (((int64_t)1LL)));
     }
-    int64_t __t13003 = arx_TK_EOF();
-    int64_t __t13004 = __t13003;
-    return __t13004;
+    int64_t __t13067 = arx_TK_EOF();
+    int64_t __t13068 = __t13067;
+    return __t13068;
 }
 
 int64_t arx_next_nonnl_idx(Arx_TokenStream ts, int64_t idx) {
     int64_t j = ((idx) + (((int64_t)1LL)));
     while (1) {
         if (!(((j) < (ts.count)))) break;
-        int64_t __t13005 = Arx_List_i64_get((&(ts.kinds)), j);
-        int64_t __t13006 = arx_TK_NEWLINE();
-        if (((__t13005) != (__t13006))) {
-            int64_t __t13007 = j;
-            return __t13007;
+        int64_t __t13069 = Arx_List_i64_get((&(ts.kinds)), j);
+        int64_t __t13070 = arx_TK_NEWLINE();
+        if (((__t13069) != (__t13070))) {
+            int64_t __t13071 = j;
+            return __t13071;
         }
         j = ((j) + (((int64_t)1LL)));
     }
-    int64_t __t13008 = ts.count;
-    return __t13008;
+    int64_t __t13072 = ts.count;
+    return __t13072;
 }
 
 bool arx_is_generic_call_tok(Arx_TokenStream ts, int64_t idx) {
-    int64_t __t13009 = arx_next_nonnl_idx(ts, idx);
-    int64_t nxt = __t13009;
-    bool __t13010 = true;
+    int64_t __t13073 = arx_next_nonnl_idx(ts, idx);
+    int64_t nxt = __t13073;
+    bool __t13074 = true;
     if (!(((nxt) >= (ts.count)))) {
-        int64_t __t13011 = Arx_List_i64_get((&(ts.kinds)), nxt);
-        int64_t __t13012 = arx_TK_LT();
-        __t13010 = (((__t13011) != (__t13012)));
+        int64_t __t13075 = Arx_List_i64_get((&(ts.kinds)), nxt);
+        int64_t __t13076 = arx_TK_LT();
+        __t13074 = (((__t13075) != (__t13076)));
     }
-    if (__t13010) {
-        bool __t13013 = false;
-        return __t13013;
+    if (__t13074) {
+        bool __t13077 = false;
+        return __t13077;
     }
     int64_t j = ((nxt) + (((int64_t)1LL)));
     int64_t depth = ((int64_t)1LL);
     while (1) {
-        bool __t13014 = false;
+        bool __t13078 = false;
         if (((j) < (ts.count))) {
-            __t13014 = (((depth) > (((int64_t)0LL))));
+            __t13078 = (((depth) > (((int64_t)0LL))));
         }
-        if (!(__t13014)) break;
-        int64_t __t13015 = Arx_List_i64_get((&(ts.kinds)), j);
-        int64_t k = __t13015;
-        int64_t __t13016 = arx_TK_LT();
-        if (((k) == (__t13016))) {
+        if (!(__t13078)) break;
+        int64_t __t13079 = Arx_List_i64_get((&(ts.kinds)), j);
+        int64_t k = __t13079;
+        int64_t __t13080 = arx_TK_LT();
+        if (((k) == (__t13080))) {
             depth = ((depth) + (((int64_t)1LL)));
         } else {
-            int64_t __t13017 = arx_TK_GT();
-            if (((k) == (__t13017))) {
+            int64_t __t13081 = arx_TK_GT();
+            if (((k) == (__t13081))) {
                 depth = ((depth) - (((int64_t)1LL)));
                 if (((depth) == (((int64_t)0LL)))) {
-                    int64_t __t13018 = arx_next_sig_kind(ts, j);
-                    int64_t __t13019 = arx_TK_LPAREN();
-                    bool __t13020 = ((__t13018) == (__t13019));
-                    return __t13020;
+                    int64_t __t13082 = arx_next_sig_kind(ts, j);
+                    int64_t __t13083 = arx_TK_LPAREN();
+                    bool __t13084 = ((__t13082) == (__t13083));
+                    return __t13084;
                 }
             } else {
-                int64_t __t13021 = arx_TK_IDENT();
-                bool __t13022 = false;
-                if (((k) != (__t13021))) {
-                    int64_t __t13023 = arx_TK_COMMA();
-                    __t13022 = (((k) != (__t13023)));
+                int64_t __t13085 = arx_TK_IDENT();
+                bool __t13086 = false;
+                if (((k) != (__t13085))) {
+                    int64_t __t13087 = arx_TK_COMMA();
+                    __t13086 = (((k) != (__t13087)));
                 }
-                bool __t13024 = false;
-                if (__t13022) {
-                    int64_t __t13025 = arx_TK_QUESTION();
-                    __t13024 = (((k) != (__t13025)));
+                bool __t13088 = false;
+                if (__t13086) {
+                    int64_t __t13089 = arx_TK_QUESTION();
+                    __t13088 = (((k) != (__t13089)));
                 }
-                bool __t13026 = false;
-                if (__t13024) {
-                    int64_t __t13027 = arx_TK_STAR();
-                    __t13026 = (((k) != (__t13027)));
+                bool __t13090 = false;
+                if (__t13088) {
+                    int64_t __t13091 = arx_TK_STAR();
+                    __t13090 = (((k) != (__t13091)));
                 }
-                if (__t13026) {
-                    bool __t13028 = false;
-                    return __t13028;
+                if (__t13090) {
+                    bool __t13092 = false;
+                    return __t13092;
                 }
             }
         }
         j = ((j) + (((int64_t)1LL)));
     }
-    bool __t13029 = false;
-    return __t13029;
+    bool __t13093 = false;
+    return __t13093;
 }
 
 void arx_push_sem_span(Arx_List_i64 lines, Arx_List_i64 cols, Arx_List_i64 lens, Arx_List_i64 types, Arx_List_i64 mods, int64_t ln1, int64_t col1, int64_t tlen, int64_t stype, int64_t smod) {
-    bool __t13030 = true;
+    bool __t13094 = true;
     if (!(((ln1) <= (((int64_t)0LL))))) {
-        __t13030 = (((col1) <= (((int64_t)0LL))));
+        __t13094 = (((col1) <= (((int64_t)0LL))));
     }
-    bool __t13031 = true;
-    if (!(__t13030)) {
-        __t13031 = (((tlen) <= (((int64_t)0LL))));
+    bool __t13095 = true;
+    if (!(__t13094)) {
+        __t13095 = (((tlen) <= (((int64_t)0LL))));
     }
-    if (__t13031) {
+    if (__t13095) {
         return;
     }
     Arx_List_i64_push((&(lines)), ((ln1) - (((int64_t)1LL))));
@@ -31477,16 +31699,16 @@ void arx_push_sem_span(Arx_List_i64 lines, Arx_List_i64 cols, Arx_List_i64 lens,
     Arx_List_i64_push((&(mods)), smod);
 }
 
-void arx_split_str_interp_spans(const char* src, int64_t ln1, int64_t col1, int64_t tlen, Arx_Map_str_i64 class_set, Arx_Map_str_i64 enum_set, Arx_Map_str_i64 fn_set, Arx_Map_str_i64 cur_params, Arx_Map_str_i64 readonly_vars, Arx_List_i64 lines, Arx_List_i64 cols, Arx_List_i64 lens, Arx_List_i64 types, Arx_List_i64 mods) {
+void arx_split_str_interp_spans(const char* src, int64_t ln1, int64_t col1, int64_t tlen, Arx_Map_str_i64 class_set, Arx_Map_str_i64 enum_set, Arx_Map_str_i64 enum_var_set, Arx_Map_str_i64 fn_set, Arx_Map_str_i64 cur_params, Arx_Map_str_i64 cur_tparams, Arx_Map_str_i64 ro_vars, Arx_Map_str_i64 mut_vars, Arx_Map_str_str var_types, Arx_List_i64 lines, Arx_List_i64 cols, Arx_List_i64 lens, Arx_List_i64 types, Arx_List_i64 mods) {
     int64_t cur_ln = ((int64_t)1LL);
     int64_t off = ((int64_t)0LL);
     int64_t total = arx_str_len(src);
     while (1) {
-        bool __t13032 = false;
+        bool __t13096 = false;
         if (((cur_ln) < (ln1))) {
-            __t13032 = (((off) < (total)));
+            __t13096 = (((off) < (total)));
         }
-        if (!(__t13032)) break;
+        if (!(__t13096)) break;
         if (((arx_str_byte_at(src, off)) == (((int64_t)10LL)))) {
             cur_ln = ((cur_ln) + (((int64_t)1LL)));
         }
@@ -31494,30 +31716,30 @@ void arx_split_str_interp_spans(const char* src, int64_t ln1, int64_t col1, int6
     }
     int64_t line_end = off;
     while (1) {
-        bool __t13033 = false;
+        bool __t13097 = false;
         if (((line_end) < (total))) {
-            __t13033 = (((arx_str_byte_at(src, line_end)) != (((int64_t)10LL))));
+            __t13097 = (((arx_str_byte_at(src, line_end)) != (((int64_t)10LL))));
         }
-        bool __t13034 = false;
-        if (__t13033) {
-            __t13034 = (((arx_str_byte_at(src, line_end)) != (((int64_t)13LL))));
+        bool __t13098 = false;
+        if (__t13097) {
+            __t13098 = (((arx_str_byte_at(src, line_end)) != (((int64_t)13LL))));
         }
-        if (!(__t13034)) break;
+        if (!(__t13098)) break;
         line_end = ((line_end) + (((int64_t)1LL)));
     }
     int64_t start_pos = ((off) + (((col1) - (((int64_t)1LL)))));
     int64_t end_pos = ((start_pos) + (tlen));
-    bool __t13035 = true;
+    bool __t13099 = true;
     if (!(((start_pos) < (((int64_t)0LL))))) {
-        __t13035 = (((start_pos) >= (total)));
+        __t13099 = (((start_pos) >= (total)));
     }
-    bool __t13036 = true;
-    if (!(__t13035)) {
-        __t13036 = (((end_pos) > (((line_end) + (((int64_t)1LL))))));
+    bool __t13100 = true;
+    if (!(__t13099)) {
+        __t13100 = (((end_pos) > (((line_end) + (((int64_t)1LL))))));
     }
-    if (__t13036) {
-        int64_t __t13037 = arx_ST_STRING();
-        arx_push_sem_span(lines, cols, lens, types, mods, ln1, col1, tlen, __t13037, ((int64_t)0LL));
+    if (__t13100) {
+        int64_t __t13101 = arx_ST_STRING();
+        arx_push_sem_span(lines, cols, lens, types, mods, ln1, col1, tlen, __t13101, ((int64_t)0LL));
         return;
     }
     if (((end_pos) > (total))) {
@@ -31528,29 +31750,29 @@ void arx_split_str_interp_spans(const char* src, int64_t ln1, int64_t col1, int6
     while (1) {
         if (!(((p) < (end_pos)))) break;
         int64_t b = arx_str_byte_at(src, p);
-        bool __t13038 = false;
+        bool __t13102 = false;
         if (((b) == (((int64_t)92LL)))) {
-            __t13038 = (((((p) + (((int64_t)1LL)))) < (end_pos)));
+            __t13102 = (((((p) + (((int64_t)1LL)))) < (end_pos)));
         }
-        if (__t13038) {
+        if (__t13102) {
             p = ((p) + (((int64_t)2LL)));
             continue;
         }
         if (((b) == (((int64_t)123LL)))) {
             if (((p) > (seg_start))) {
-                int64_t __t13039 = arx_ST_STRING();
-                arx_push_sem_span(lines, cols, lens, types, mods, ln1, ((col1) + (((seg_start) - (start_pos)))), ((p) - (seg_start)), __t13039, ((int64_t)0LL));
+                int64_t __t13103 = arx_ST_STRING();
+                arx_push_sem_span(lines, cols, lens, types, mods, ln1, ((col1) + (((seg_start) - (start_pos)))), ((p) - (seg_start)), __t13103, ((int64_t)0LL));
             }
-            int64_t __t13040 = arx_ST_OPERATOR();
-            arx_push_sem_span(lines, cols, lens, types, mods, ln1, ((col1) + (((p) - (start_pos)))), ((int64_t)1LL), __t13040, ((int64_t)0LL));
+            int64_t __t13104 = arx_ST_OPERATOR();
+            arx_push_sem_span(lines, cols, lens, types, mods, ln1, ((col1) + (((p) - (start_pos)))), ((int64_t)1LL), __t13104, ((int64_t)0LL));
             int64_t q = ((p) + (((int64_t)1LL)));
             int64_t depth = ((int64_t)1LL);
             while (1) {
-                bool __t13041 = false;
+                bool __t13105 = false;
                 if (((q) < (end_pos))) {
-                    __t13041 = (((depth) > (((int64_t)0LL))));
+                    __t13105 = (((depth) > (((int64_t)0LL))));
                 }
-                if (!(__t13041)) break;
+                if (!(__t13105)) break;
                 int64_t qb = arx_str_byte_at(src, q);
                 if (((qb) == (((int64_t)123LL)))) {
                     depth = ((depth) + (((int64_t)1LL)));
@@ -31564,121 +31786,206 @@ void arx_split_str_interp_spans(const char* src, int64_t ln1, int64_t col1, int6
                 }
             }
             if (((q) > (((p) + (((int64_t)1LL)))))) {
-                const char* __t13042 = __arx_bstr_slice(src, ((p) + (((int64_t)1LL))), q);
-                const char* inner = __t13042;
+                const char* __t13106 = __arx_bstr_slice(src, ((p) + (((int64_t)1LL))), q);
+                const char* inner = __t13106;
                 int64_t inner_col = ((col1) + (((((p) + (((int64_t)1LL)))) - (start_pos))));
-                const char* __t13043 = "<interp>";
-                Arx_Lexer __t13044 = Arx_Lexer_init(inner, __t13043);
-                Arx_Lexer ilx = __t13044;
+                const char* __t13107 = "<interp>";
+                Arx_Lexer __t13108 = Arx_Lexer_init(inner, __t13107);
+                Arx_Lexer ilx = __t13108;
                 ilx.recover_mode = true;
-                Arx_TokenStream __t13045 = Arx_Lexer_tokenize((&(ilx)));
-                Arx_TokenStream its = __t13045;
+                Arx_TokenStream __t13109 = Arx_Lexer_tokenize((&(ilx)));
+                Arx_TokenStream its = __t13109;
                 int64_t ii = ((int64_t)0LL);
                 while (1) {
                     if (!(((ii) < (its.count)))) break;
-                    int64_t __t13046 = Arx_List_i64_get((&(its.kinds)), ii);
-                    int64_t ik = __t13046;
-                    const char* __t13047 = Arx_List_str_get((&(its.vals)), ii);
-                    const char* iv = __t13047;
-                    int64_t __t13048 = Arx_List_i64_get((&(its.cols)), ii);
-                    int64_t ic = __t13048;
-                    int64_t __t13049 = Arx_List_i64_get((&(its.lens)), ii);
-                    int64_t il = __t13049;
-                    int64_t __t13050 = arx_TK_EOF();
-                    bool __t13051 = true;
-                    if (!(((ik) == (__t13050)))) {
-                        int64_t __t13052 = arx_TK_NEWLINE();
-                        __t13051 = (((ik) == (__t13052)));
+                    int64_t __t13110 = Arx_List_i64_get((&(its.kinds)), ii);
+                    int64_t ik = __t13110;
+                    const char* __t13111 = Arx_List_str_get((&(its.vals)), ii);
+                    const char* iv = __t13111;
+                    int64_t __t13112 = Arx_List_i64_get((&(its.cols)), ii);
+                    int64_t ic = __t13112;
+                    int64_t __t13113 = Arx_List_i64_get((&(its.lens)), ii);
+                    int64_t il = __t13113;
+                    int64_t __t13114 = arx_TK_EOF();
+                    bool __t13115 = true;
+                    if (!(((ik) == (__t13114)))) {
+                        int64_t __t13116 = arx_TK_NEWLINE();
+                        __t13115 = (((ik) == (__t13116)));
                     }
-                    if (__t13051) {
+                    if (__t13115) {
                         ii = ((ii) + (((int64_t)1LL)));
                         continue;
                     }
                     int64_t c_abs = ((inner_col) + (((ic) - (((int64_t)1LL)))));
-                    int64_t __t13053 = arx_TK_INT();
-                    bool __t13054 = true;
-                    if (!(((ik) == (__t13053)))) {
-                        int64_t __t13055 = arx_TK_FLOAT();
-                        __t13054 = (((ik) == (__t13055)));
+                    int64_t __t13117 = arx_TK_INT();
+                    bool __t13118 = true;
+                    if (!(((ik) == (__t13117)))) {
+                        int64_t __t13119 = arx_TK_FLOAT();
+                        __t13118 = (((ik) == (__t13119)));
                     }
-                    if (__t13054) {
-                        int64_t __t13056 = arx_ST_NUMBER();
-                        arx_push_sem_span(lines, cols, lens, types, mods, ln1, c_abs, il, __t13056, ((int64_t)0LL));
+                    if (__t13118) {
+                        int64_t __t13120 = arx_ST_NUMBER();
+                        arx_push_sem_span(lines, cols, lens, types, mods, ln1, c_abs, il, __t13120, ((int64_t)0LL));
                     } else {
-                        bool __t13057 = arx_is_keyword_token_kind(ik);
-                        if (__t13057) {
-                            int64_t __t13058 = arx_ST_KEYWORD();
-                            arx_push_sem_span(lines, cols, lens, types, mods, ln1, c_abs, il, __t13058, ((int64_t)0LL));
+                        int64_t __t13121 = arx_TK_STR();
+                        bool __t13122 = true;
+                        if (!(((ik) == (__t13121)))) {
+                            int64_t __t13123 = arx_TK_CHAR();
+                            __t13122 = (((ik) == (__t13123)));
+                        }
+                        if (__t13122) {
+                            int64_t __t13124 = arx_ST_STRING();
+                            arx_push_sem_span(lines, cols, lens, types, mods, ln1, c_abs, il, __t13124, ((int64_t)0LL));
                         } else {
-                            bool __t13059 = arx_is_operator_token_kind(ik);
-                            if (__t13059) {
-                                int64_t __t13060 = arx_ST_OPERATOR();
-                                arx_push_sem_span(lines, cols, lens, types, mods, ln1, c_abs, il, __t13060, ((int64_t)0LL));
+                            bool __t13125 = arx_is_keyword_token_kind(ik);
+                            if (__t13125) {
+                                int64_t __t13126 = arx_ST_KEYWORD();
+                                arx_push_sem_span(lines, cols, lens, types, mods, ln1, c_abs, il, __t13126, ((int64_t)0LL));
                             } else {
-                                int64_t __t13061 = arx_TK_IDENT();
-                                if (((ik) == (__t13061))) {
-                                    bool __t13062 = false;
-                                    if (((ii) > (((int64_t)0LL)))) {
-                                        int64_t __t13063 = Arx_List_i64_get((&(its.kinds)), ((ii) - (((int64_t)1LL))));
-                                        int64_t __t13064 = arx_TK_DOT();
-                                        bool __t13065 = true;
-                                        if (!(((__t13063) == (__t13064)))) {
-                                            int64_t __t13066 = Arx_List_i64_get((&(its.kinds)), ((ii) - (((int64_t)1LL))));
-                                            int64_t __t13067 = arx_TK_QDOT();
-                                            __t13065 = (((__t13066) == (__t13067)));
+                                bool __t13127 = arx_is_operator_token_kind(ik);
+                                if (__t13127) {
+                                    int64_t __t13128 = arx_ST_OPERATOR();
+                                    arx_push_sem_span(lines, cols, lens, types, mods, ln1, c_abs, il, __t13128, ((int64_t)0LL));
+                                } else {
+                                    int64_t __t13129 = arx_TK_IDENT();
+                                    if (((ik) == (__t13129))) {
+                                        int64_t __t13130 = arx_next_sig_kind(its, ii);
+                                        int64_t inxt = __t13130;
+                                        bool __t13131 = false;
+                                        if (((ii) > (((int64_t)0LL)))) {
+                                            int64_t __t13132 = Arx_List_i64_get((&(its.kinds)), ((ii) - (((int64_t)1LL))));
+                                            int64_t __t13133 = arx_TK_DOT();
+                                            bool __t13134 = true;
+                                            if (!(((__t13132) == (__t13133)))) {
+                                                int64_t __t13135 = Arx_List_i64_get((&(its.kinds)), ((ii) - (((int64_t)1LL))));
+                                                int64_t __t13136 = arx_TK_QDOT();
+                                                __t13134 = (((__t13135) == (__t13136)));
+                                            }
+                                            __t13131 = (__t13134);
                                         }
-                                        __t13062 = (__t13065);
-                                    }
-                                    if (__t13062) {
-                                        int64_t __t13068 = arx_next_sig_kind(its, ii);
-                                        int64_t __t13069 = arx_TK_LPAREN();
-                                        if (((__t13068) == (__t13069))) {
-                                            int64_t __t13070 = arx_ST_METHOD();
-                                            arx_push_sem_span(lines, cols, lens, types, mods, ln1, c_abs, il, __t13070, ((int64_t)0LL));
-                                        } else {
-                                            int64_t __t13071 = arx_ST_PROPERTY();
-                                            arx_push_sem_span(lines, cols, lens, types, mods, ln1, c_abs, il, __t13071, ((int64_t)0LL));
-                                        }
-                                    } else {
-                                        bool __t13072 = Arx_Map_str_i64_has_key((&(cur_params)), iv);
-                                        if (__t13072) {
-                                            int64_t __t13073 = arx_ST_PARAMETER();
-                                            arx_push_sem_span(lines, cols, lens, types, mods, ln1, c_abs, il, __t13073, ((int64_t)0LL));
-                                        } else {
-                                            int64_t __t13074 = arx_next_sig_kind(its, ii);
-                                            int64_t __t13075 = arx_TK_LPAREN();
-                                            if (((__t13074) == (__t13075))) {
-                                                int64_t __t13076 = arx_ST_FUNCTION();
-                                                arx_push_sem_span(lines, cols, lens, types, mods, ln1, c_abs, il, __t13076, ((int64_t)0LL));
+                                        if (__t13131) {
+                                            bool __t13137 = false;
+                                            if (((ii) >= (((int64_t)2LL)))) {
+                                                const char* __t13138 = Arx_List_str_get((&(its.vals)), ((ii) - (((int64_t)2LL))));
+                                                bool __t13139 = Arx_Map_str_i64_has_key((&(enum_set)), __t13138);
+                                                __t13137 = (__t13139);
+                                            }
+                                            if (__t13137) {
+                                                int64_t __t13140 = arx_ST_ENUM_MEMBER();
+                                                int64_t __t13141 = arx_SM_STATIC();
+                                                arx_push_sem_span(lines, cols, lens, types, mods, ln1, c_abs, il, __t13140, __t13141);
                                             } else {
-                                                bool __t13077 = Arx_Map_str_i64_has_key((&(class_set)), iv);
-                                                if (__t13077) {
-                                                    int64_t __t13078 = arx_ST_CLASS();
-                                                    arx_push_sem_span(lines, cols, lens, types, mods, ln1, c_abs, il, __t13078, ((int64_t)0LL));
-                                                } else {
-                                                    bool __t13079 = Arx_Map_str_i64_has_key((&(enum_set)), iv);
-                                                    if (__t13079) {
-                                                        int64_t __t13080 = arx_ST_ENUM();
-                                                        arx_push_sem_span(lines, cols, lens, types, mods, ln1, c_abs, il, __t13080, ((int64_t)0LL));
-                                                    } else {
-                                                        bool __t13081 = Arx_Map_str_i64_has_key((&(fn_set)), iv);
-                                                        bool __t13082 = true;
-                                                        if (!(__t13081)) {
-                                                            bool __t13083 = arx_lsp_is_builtin_fn(iv);
-                                                            __t13082 = (__t13083);
-                                                        }
-                                                        if (__t13082) {
-                                                            int64_t __t13084 = arx_ST_FUNCTION();
-                                                            arx_push_sem_span(lines, cols, lens, types, mods, ln1, c_abs, il, __t13084, ((int64_t)0LL));
+                                                int64_t __t13142 = arx_TK_LPAREN();
+                                                if (((inxt) == (__t13142))) {
+                                                    int64_t mmod = ((int64_t)0LL);
+                                                    if (((ii) >= (((int64_t)2LL)))) {
+                                                        const char* __t13143 = Arx_List_str_get((&(its.vals)), ((ii) - (((int64_t)2LL))));
+                                                        const char* recv_v = __t13143;
+                                                        bool __t13144 = arx_lsp_is_static_runtime(recv_v);
+                                                        if (__t13144) {
+                                                            int64_t __t13145 = arx_SM_STATIC();
+                                                            int64_t __t13146 = arx_SM_DEFAULT_LIB();
+                                                            mmod = ((__t13145) + (__t13146));
                                                         } else {
-                                                            bool __t13085 = Arx_Map_str_i64_has_key((&(readonly_vars)), iv);
-                                                            if (__t13085) {
-                                                                int64_t __t13086 = arx_ST_VARIABLE();
-                                                                int64_t __t13087 = arx_SM_READONLY();
-                                                                arx_push_sem_span(lines, cols, lens, types, mods, ln1, c_abs, il, __t13086, __t13087);
+                                                            bool __t13147 = Arx_Map_str_str_has_key((&(var_types)), recv_v);
+                                                            bool __t13148 = false;
+                                                            if (__t13147) {
+                                                                const char* __t13149 = Arx_Map_str_str_get((&(var_types)), recv_v);
+                                                                bool __t13150 = arx_hl_is_builtin_receiver_type(__t13149);
+                                                                __t13148 = (__t13150);
+                                                            }
+                                                            if (__t13148) {
+                                                                int64_t __t13151 = arx_SM_DEFAULT_LIB();
+                                                                mmod = __t13151;
+                                                            }
+                                                        }
+                                                    }
+                                                    int64_t __t13152 = arx_ST_METHOD();
+                                                    arx_push_sem_span(lines, cols, lens, types, mods, ln1, c_abs, il, __t13152, mmod);
+                                                } else {
+                                                    int64_t __t13153 = arx_ST_PROPERTY();
+                                                    arx_push_sem_span(lines, cols, lens, types, mods, ln1, c_abs, il, __t13153, ((int64_t)0LL));
+                                                }
+                                            }
+                                        } else {
+                                            bool __t13154 = Arx_Map_str_i64_has_key((&(cur_params)), iv);
+                                            if (__t13154) {
+                                                int64_t __t13155 = arx_ST_PARAMETER();
+                                                int64_t __t13156 = arx_SM_READONLY();
+                                                arx_push_sem_span(lines, cols, lens, types, mods, ln1, c_abs, il, __t13155, __t13156);
+                                            } else {
+                                                bool __t13157 = Arx_Map_str_i64_has_key((&(cur_tparams)), iv);
+                                                if (__t13157) {
+                                                    int64_t __t13158 = arx_ST_TYPE_PARAM();
+                                                    arx_push_sem_span(lines, cols, lens, types, mods, ln1, c_abs, il, __t13158, ((int64_t)0LL));
+                                                } else {
+                                                    bool __t13159 = arx_lsp_is_primitive_type(iv);
+                                                    bool __t13160 = true;
+                                                    if (!(__t13159)) {
+                                                        bool __t13161 = arx_lsp_is_container_type(iv);
+                                                        __t13160 = (__t13161);
+                                                    }
+                                                    if (__t13160) {
+                                                        int64_t __t13162 = arx_ST_TYPE();
+                                                        int64_t __t13163 = arx_SM_DEFAULT_LIB();
+                                                        arx_push_sem_span(lines, cols, lens, types, mods, ln1, c_abs, il, __t13162, __t13163);
+                                                    } else {
+                                                        bool __t13164 = Arx_Map_str_i64_has_key((&(class_set)), iv);
+                                                        if (__t13164) {
+                                                            int64_t __t13165 = arx_ST_CLASS();
+                                                            arx_push_sem_span(lines, cols, lens, types, mods, ln1, c_abs, il, __t13165, ((int64_t)0LL));
+                                                        } else {
+                                                            bool __t13166 = Arx_Map_str_i64_has_key((&(enum_set)), iv);
+                                                            if (__t13166) {
+                                                                int64_t __t13167 = arx_ST_ENUM();
+                                                                arx_push_sem_span(lines, cols, lens, types, mods, ln1, c_abs, il, __t13167, ((int64_t)0LL));
                                                             } else {
-                                                                int64_t __t13088 = arx_ST_VARIABLE();
-                                                                arx_push_sem_span(lines, cols, lens, types, mods, ln1, c_abs, il, __t13088, ((int64_t)0LL));
+                                                                bool __t13168 = arx_lsp_is_static_runtime(iv);
+                                                                if (__t13168) {
+                                                                    int64_t __t13169 = arx_ST_NAMESPACE();
+                                                                    int64_t __t13170 = arx_SM_DEFAULT_LIB();
+                                                                    arx_push_sem_span(lines, cols, lens, types, mods, ln1, c_abs, il, __t13169, __t13170);
+                                                                } else {
+                                                                    bool __t13171 = arx_lsp_is_builtin_fn(iv);
+                                                                    if (__t13171) {
+                                                                        int64_t __t13172 = arx_ST_FUNCTION();
+                                                                        int64_t __t13173 = arx_SM_DEFAULT_LIB();
+                                                                        arx_push_sem_span(lines, cols, lens, types, mods, ln1, c_abs, il, __t13172, __t13173);
+                                                                    } else {
+                                                                        int64_t __t13174 = arx_TK_LPAREN();
+                                                                        if (((inxt) == (__t13174))) {
+                                                                            bool __t13175 = Arx_Map_str_i64_has_key((&(enum_var_set)), iv);
+                                                                            if (__t13175) {
+                                                                                int64_t __t13176 = arx_ST_ENUM_MEMBER();
+                                                                                arx_push_sem_span(lines, cols, lens, types, mods, ln1, c_abs, il, __t13176, ((int64_t)0LL));
+                                                                            } else {
+                                                                                int64_t __t13177 = arx_ST_FUNCTION();
+                                                                                arx_push_sem_span(lines, cols, lens, types, mods, ln1, c_abs, il, __t13177, ((int64_t)0LL));
+                                                                            }
+                                                                        } else {
+                                                                            bool __t13178 = Arx_Map_str_i64_has_key((&(fn_set)), iv);
+                                                                            if (__t13178) {
+                                                                                int64_t __t13179 = arx_ST_FUNCTION();
+                                                                                arx_push_sem_span(lines, cols, lens, types, mods, ln1, c_abs, il, __t13179, ((int64_t)0LL));
+                                                                            } else {
+                                                                                bool __t13180 = Arx_Map_str_i64_has_key((&(ro_vars)), iv);
+                                                                                bool __t13181 = false;
+                                                                                if (__t13180) {
+                                                                                    bool __t13182 = Arx_Map_str_i64_has_key((&(mut_vars)), iv);
+                                                                                    __t13181 = ((!(__t13182)));
+                                                                                }
+                                                                                if (__t13181) {
+                                                                                    int64_t __t13183 = arx_ST_VARIABLE();
+                                                                                    int64_t __t13184 = arx_SM_READONLY();
+                                                                                    arx_push_sem_span(lines, cols, lens, types, mods, ln1, c_abs, il, __t13183, __t13184);
+                                                                                } else {
+                                                                                    int64_t __t13185 = arx_ST_VARIABLE();
+                                                                                    arx_push_sem_span(lines, cols, lens, types, mods, ln1, c_abs, il, __t13185, ((int64_t)0LL));
+                                                                                }
+                                                                            }
+                                                                        }
+                                                                    }
+                                                                }
                                                             }
                                                         }
                                                     }
@@ -31693,13 +32000,13 @@ void arx_split_str_interp_spans(const char* src, int64_t ln1, int64_t col1, int6
                     ii = ((ii) + (((int64_t)1LL)));
                 }
             }
-            bool __t13089 = false;
+            bool __t13186 = false;
             if (((q) < (end_pos))) {
-                __t13089 = (((arx_str_byte_at(src, q)) == (((int64_t)125LL))));
+                __t13186 = (((arx_str_byte_at(src, q)) == (((int64_t)125LL))));
             }
-            if (__t13089) {
-                int64_t __t13090 = arx_ST_OPERATOR();
-                arx_push_sem_span(lines, cols, lens, types, mods, ln1, ((col1) + (((q) - (start_pos)))), ((int64_t)1LL), __t13090, ((int64_t)0LL));
+            if (__t13186) {
+                int64_t __t13187 = arx_ST_OPERATOR();
+                arx_push_sem_span(lines, cols, lens, types, mods, ln1, ((col1) + (((q) - (start_pos)))), ((int64_t)1LL), __t13187, ((int64_t)0LL));
                 seg_start = ((q) + (((int64_t)1LL)));
                 p = ((q) + (((int64_t)1LL)));
                 continue;
@@ -31711,51 +32018,61 @@ void arx_split_str_interp_spans(const char* src, int64_t ln1, int64_t col1, int6
         p = ((p) + (((int64_t)1LL)));
     }
     if (((end_pos) > (seg_start))) {
-        int64_t __t13091 = arx_ST_STRING();
-        arx_push_sem_span(lines, cols, lens, types, mods, ln1, ((col1) + (((seg_start) - (start_pos)))), ((end_pos) - (seg_start)), __t13091, ((int64_t)0LL));
+        int64_t __t13188 = arx_ST_STRING();
+        arx_push_sem_span(lines, cols, lens, types, mods, ln1, ((col1) + (((seg_start) - (start_pos)))), ((end_pos) - (seg_start)), __t13188, ((int64_t)0LL));
     }
 }
 
 Arx_List_i64 arx_lsp_compute_semantic_tokens(const char* source, Arx_Analyzer az, const char* doc_path) {
-    Arx_Lexer __t13092 = Arx_Lexer_init(source, doc_path);
-    Arx_Lexer lx = __t13092;
+    Arx_Lexer __t13189 = Arx_Lexer_init(source, doc_path);
+    Arx_Lexer lx = __t13189;
     lx.recover_mode = true;
     lx.collect_trivia = true;
-    Arx_TokenStream __t13093 = Arx_Lexer_tokenize((&(lx)));
-    Arx_TokenStream ts = __t13093;
-    Arx_Map_str_i64 __t13094 = Arx_Map_str_i64_init();
-    Arx_Map_str_i64 class_set = __t13094;
-    Arx_Map_str_i64 __t13095 = Arx_Map_str_i64_init();
-    Arx_Map_str_i64 enum_set = __t13095;
-    Arx_Map_str_i64 __t13096 = Arx_Map_str_i64_init();
-    Arx_Map_str_i64 fn_set = __t13096;
-    Arx_Map_str_i64 __t13097 = Arx_Map_str_i64_init();
-    Arx_Map_str_i64 enum_var_set = __t13097;
+    Arx_TokenStream __t13190 = Arx_Lexer_tokenize((&(lx)));
+    Arx_TokenStream ts = __t13190;
+    Arx_List_i64 __t13191 = arx_hl_build_line_starts(source);
+    Arx_List_i64 line_starts = __t13191;
+    Arx_Map_str_i64 __t13192 = Arx_Map_str_i64_init();
+    Arx_Map_str_i64 class_set = __t13192;
+    Arx_Map_str_i64 __t13193 = Arx_Map_str_i64_init();
+    Arx_Map_str_i64 enum_set = __t13193;
+    Arx_Map_str_i64 __t13194 = Arx_Map_str_i64_init();
+    Arx_Map_str_i64 fn_set = __t13194;
+    Arx_Map_str_i64 __t13195 = Arx_Map_str_i64_init();
+    Arx_Map_str_i64 enum_var_set = __t13195;
+    Arx_Map_str_i64 __t13196 = Arx_Map_str_i64_init();
+    Arx_Map_str_i64 global_ro = __t13196;
+    Arx_Map_str_i64 __t13197 = Arx_Map_str_i64_init();
+    Arx_Map_str_i64 global_mut = __t13197;
+    Arx_Map_str_str __t13198 = Arx_Map_str_str_init();
+    Arx_Map_str_str ast_decl_types = __t13198;
+    Arx_Map_str_str __t13199 = Arx_Map_str_str_init();
+    Arx_Map_str_str global_var_types = __t13199;
     int64_t ci = ((int64_t)0LL);
     while (1) {
         if (!(((ci) < (az.cls_count)))) break;
-        const char* __t13098 = Arx_List_str_get((&(az.cls_names)), ci);
-        Arx_Map_str_i64_insert((&(class_set)), __t13098, ((int64_t)1LL));
+        const char* __t13200 = Arx_List_str_get((&(az.cls_names)), ci);
+        Arx_Map_str_i64_insert((&(class_set)), __t13200, ((int64_t)1LL));
         ci = ((ci) + (((int64_t)1LL)));
     }
     int64_t ei = ((int64_t)0LL);
     while (1) {
         if (!(((ei) < (az.enum_count)))) break;
-        const char* __t13099 = Arx_List_str_get((&(az.enum_names)), ei);
-        const char* ename = __t13099;
+        const char* __t13201 = Arx_List_str_get((&(az.enum_names)), ei);
+        const char* ename = __t13201;
         Arx_Map_str_i64_insert((&(enum_set)), ename, ((int64_t)1LL));
-        int64_t __t13100 = Arx_List_i64_get((&(az.enum_nodes)), ei);
-        int64_t enode = __t13100;
-        int64_t __t13101 = Arx_List_i64_get((&(az.ll)), enode);
-        int64_t vc = __t13101;
+        int64_t __t13202 = Arx_List_i64_get((&(az.enum_nodes)), ei);
+        int64_t enode = __t13202;
+        int64_t __t13203 = Arx_List_i64_get((&(az.ll)), enode);
+        int64_t vc = __t13203;
         int64_t vi = ((int64_t)0LL);
         while (1) {
             if (!(((vi) < (vc)))) break;
-            int64_t __t13102 = Arx_List_i64_get((&(az.ls)), enode);
-            int64_t __t13103 = Arx_List_i64_get((&(az.ch)), ((__t13102) + (vi)));
-            int64_t vnode = __t13103;
-            const char* __t13104 = Arx_List_str_get((&(az.sa)), vnode);
-            Arx_Map_str_i64_insert((&(enum_var_set)), __t13104, ((int64_t)1LL));
+            int64_t __t13204 = Arx_List_i64_get((&(az.ls)), enode);
+            int64_t __t13205 = Arx_List_i64_get((&(az.ch)), ((__t13204) + (vi)));
+            int64_t vnode = __t13205;
+            const char* __t13206 = Arx_List_str_get((&(az.sa)), vnode);
+            Arx_Map_str_i64_insert((&(enum_var_set)), __t13206, ((int64_t)1LL));
             vi = ((vi) + (((int64_t)1LL)));
         }
         ei = ((ei) + (((int64_t)1LL)));
@@ -31763,28 +32080,112 @@ Arx_List_i64 arx_lsp_compute_semantic_tokens(const char* source, Arx_Analyzer az
     int64_t fi = ((int64_t)0LL);
     while (1) {
         if (!(((fi) < (az.fn_count)))) break;
-        int64_t __t13105 = Arx_List_i64_get((&(az.fn_nodes)), fi);
-        int64_t fid = __t13105;
-        const char* __t13106 = Arx_List_str_get((&(az.sa)), fid);
-        Arx_Map_str_i64_insert((&(fn_set)), __t13106, ((int64_t)1LL));
+        int64_t __t13207 = Arx_List_i64_get((&(az.fn_nodes)), fi);
+        int64_t fid = __t13207;
+        const char* __t13208 = Arx_List_str_get((&(az.sa)), fid);
+        Arx_Map_str_i64_insert((&(fn_set)), __t13208, ((int64_t)1LL));
         fi = ((fi) + (((int64_t)1LL)));
     }
-    Arx_List_i64 __t13107 = Arx_List_i64_init();
-    Arx_List_i64 tok_lines = __t13107;
-    Arx_List_i64 __t13108 = Arx_List_i64_init();
-    Arx_List_i64 tok_cols = __t13108;
-    Arx_List_i64 __t13109 = Arx_List_i64_init();
-    Arx_List_i64 tok_lens = __t13109;
-    Arx_List_i64 __t13110 = Arx_List_i64_init();
-    Arx_List_i64 tok_types = __t13110;
-    Arx_List_i64 __t13111 = Arx_List_i64_init();
-    Arx_List_i64 tok_mods = __t13111;
-    Arx_Map_str_i64 __t13112 = Arx_Map_str_i64_init();
-    Arx_Map_str_i64 cur_params = __t13112;
-    Arx_Map_str_i64 __t13113 = Arx_Map_str_i64_init();
-    Arx_Map_str_i64 readonly_vars = __t13113;
-    Arx_Map_str_i64 __t13114 = Arx_Map_str_i64_init();
-    Arx_Map_str_i64 mut_vars = __t13114;
+    int64_t gi = ((int64_t)0LL);
+    while (1) {
+        if (!(((gi) < (az.global_count)))) break;
+        int64_t __t13209 = Arx_List_i64_get((&(az.global_nodes)), gi);
+        int64_t gnode = __t13209;
+        const char* __t13210 = Arx_List_str_get((&(az.sa)), gnode);
+        const char* gname = __t13210;
+        int64_t __t13211 = Arx_List_i64_get((&(az.ia)), gnode);
+        if (((__t13211) != (((int64_t)0LL)))) {
+            Arx_Map_str_i64_insert((&(global_mut)), gname, ((int64_t)1LL));
+        } else {
+            Arx_Map_str_i64_insert((&(global_ro)), gname, ((int64_t)1LL));
+        }
+        bool __t13212 = Arx_Map_str_str_has_key((&(az.global_types)), gname);
+        if (__t13212) {
+            const char* __t13213 = Arx_Map_str_str_get((&(az.global_types)), gname);
+            Arx_Map_str_str_insert((&(global_var_types)), gname, __t13213);
+        }
+        gi = ((gi) + (((int64_t)1LL)));
+    }
+    int64_t ni = ((int64_t)0LL);
+    while (1) {
+        if (!(((ni) < (az.ncount)))) break;
+        int64_t __t13214 = Arx_List_i64_get((&(az.nk)), ni);
+        int64_t nk = __t13214;
+        int64_t __t13215 = arx_NK_VAR_DECL();
+        bool __t13216 = true;
+        if (!(((nk) == (__t13215)))) {
+            int64_t __t13217 = arx_NK_PARAM();
+            __t13216 = (((nk) == (__t13217)));
+        }
+        bool __t13218 = true;
+        if (!(__t13216)) {
+            int64_t __t13219 = arx_NK_FOR();
+            __t13218 = (((nk) == (__t13219)));
+        }
+        bool __t13220 = false;
+        if (__t13218) {
+            const char* __t13221 = Arx_List_str_get((&(az.nf)), ni);
+            __t13220 = ((arx_str_compare(__t13221, doc_path) == 0));
+        }
+        if (__t13220) {
+            const char* __t13222 = Arx_List_str_get((&(az.sa)), ni);
+            const char* vnm = __t13222;
+            const char* __t13223 = Arx_List_str_get((&(az.node_types)), ni);
+            const char* __t13224 = arx_btype_norm(__t13223);
+            const char* vt = __t13224;
+            const char* __t13225 = "";
+            bool __t13226 = true;
+            if (!((arx_str_compare(vt, __t13225) == 0))) {
+                const char* __t13227 = "void";
+                __t13226 = ((arx_str_compare(vt, __t13227) == 0));
+            }
+            if (__t13226) {
+                const char* __t13228 = Arx_List_str_get((&(az.sb)), ni);
+                const char* __t13229 = arx_btype_norm(__t13228);
+                vt = __t13229;
+            }
+            const char* __t13230 = "";
+            bool __t13231 = false;
+            if ((arx_str_compare(vt, __t13230) != 0)) {
+                const char* __t13232 = "void";
+                __t13231 = ((arx_str_compare(vt, __t13232) != 0));
+            }
+            if (__t13231) {
+                const char* __t13233 = "";
+                int64_t __t13234 = Arx_List_i64_get((&(az.ln)), ni);
+                const char* __t13235 = arx_str_concat(__t13233, arx_cast_i64_to_str((int64_t)(__t13234)));
+                const char* __t13236 = "::";
+                const char* __t13237 = arx_str_concat(__t13235, __t13236);
+                const char* __t13238 = arx_str_concat(__t13237, vnm);
+                Arx_Map_str_str_insert((&(ast_decl_types)), __t13238, vt);
+            }
+        }
+        ni = ((ni) + (((int64_t)1LL)));
+    }
+    Arx_List_i64 __t13239 = Arx_List_i64_init();
+    Arx_List_i64 tok_lines = __t13239;
+    Arx_List_i64 __t13240 = Arx_List_i64_init();
+    Arx_List_i64 tok_cols = __t13240;
+    Arx_List_i64 __t13241 = Arx_List_i64_init();
+    Arx_List_i64 tok_lens = __t13241;
+    Arx_List_i64 __t13242 = Arx_List_i64_init();
+    Arx_List_i64 tok_types = __t13242;
+    Arx_List_i64 __t13243 = Arx_List_i64_init();
+    Arx_List_i64 tok_mods = __t13243;
+    Arx_Map_str_i64 __t13244 = Arx_Map_str_i64_init();
+    Arx_Map_str_i64 cur_params = __t13244;
+    Arx_Map_str_i64 __t13245 = Arx_Map_str_i64_init();
+    Arx_Map_str_i64 ro_vars = __t13245;
+    Arx_Map_str_i64 __t13246 = Arx_Map_str_i64_init();
+    Arx_Map_str_i64 mut_vars = __t13246;
+    Arx_Map_str_str __t13247 = Arx_Map_str_str_init();
+    Arx_Map_str_str var_types = __t13247;
+    Arx_Map_str_i64 __t13248 = Arx_Map_str_i64_init();
+    Arx_Map_str_i64 cls_tparams = __t13248;
+    Arx_Map_str_i64 __t13249 = Arx_Map_str_i64_init();
+    Arx_Map_str_i64 fn_tparams = __t13249;
+    const char* __t13250 = "";
+    const char* cur_cls_name = __t13250;
     int64_t brace_depth = ((int64_t)0LL);
     int64_t cls_depth = (-(((int64_t)1LL)));
     int64_t enum_depth = (-(((int64_t)1LL)));
@@ -31793,86 +32194,89 @@ Arx_List_i64 arx_lsp_compute_semantic_tokens(const char* source, Arx_Analyzer az
     int64_t fn_sig_paren_depth = ((int64_t)0LL);
     bool pending_fn_body = false;
     bool in_enum_body = false;
+    bool in_extend_body = false;
     bool in_attr = false;
     bool in_import_line = false;
+    bool in_decl_tparams = false;
+    bool pending_tparam_decl = false;
+    bool decl_tparam_is_cls = false;
+    bool is_static_decl = false;
+    bool is_mut_param = false;
     int64_t expect_type_depth = ((int64_t)0LL);
-    int64_t __t13115 = arx_TK_EOF();
-    int64_t prev_kind = __t13115;
+    int64_t __t13251 = arx_TK_EOF();
+    int64_t prev_kind = __t13251;
     int64_t i = ((int64_t)0LL);
     while (1) {
         if (!(((i) < (ts.count)))) break;
-        int64_t __t13116 = Arx_List_i64_get((&(ts.kinds)), i);
-        int64_t k = __t13116;
-        const char* __t13117 = Arx_List_str_get((&(ts.vals)), i);
-        const char* v = __t13117;
-        int64_t __t13118 = Arx_List_i64_get((&(ts.lines)), i);
-        int64_t ln = __t13118;
-        int64_t __t13119 = Arx_List_i64_get((&(ts.cols)), i);
-        int64_t cl = __t13119;
-        int64_t __t13120 = Arx_List_i64_get((&(ts.lens)), i);
-        int64_t tl = __t13120;
-        int64_t __t13121 = arx_TK_EOF();
-        if (((k) == (__t13121))) {
+        int64_t __t13252 = Arx_List_i64_get((&(ts.kinds)), i);
+        int64_t k = __t13252;
+        const char* __t13253 = Arx_List_str_get((&(ts.vals)), i);
+        const char* v = __t13253;
+        int64_t __t13254 = Arx_List_i64_get((&(ts.lines)), i);
+        int64_t ln = __t13254;
+        int64_t __t13255 = Arx_List_i64_get((&(ts.cols)), i);
+        int64_t cl = __t13255;
+        int64_t __t13256 = Arx_List_i64_get((&(ts.lens)), i);
+        int64_t tl = __t13256;
+        int64_t __t13257 = arx_TK_EOF();
+        if (((k) == (__t13257))) {
             break;
         }
-        int64_t __t13122 = arx_TK_NEWLINE();
-        if (((k) == (__t13122))) {
+        int64_t __t13258 = arx_TK_NEWLINE();
+        if (((k) == (__t13258))) {
             in_import_line = false;
-            bool __t13123 = false;
-            if (pending_fn_body) {
-                int64_t __t13124 = arx_TK_FAT_ARROW();
-                __t13123 = (((prev_kind) != (__t13124)));
+            is_static_decl = false;
+            in_decl_tparams = false;
+            pending_tparam_decl = false;
+            int64_t __t13259 = arx_TK_COMMA();
+            bool __t13260 = false;
+            if (((prev_kind) != (__t13259))) {
+                int64_t __t13261 = arx_TK_ARROW();
+                __t13260 = (((prev_kind) != (__t13261)));
             }
-            bool __t13125 = false;
-            if (__t13123) {
-                int64_t __t13126 = arx_TK_ARROW();
-                __t13125 = (((prev_kind) != (__t13126)));
+            bool __t13262 = false;
+            if (__t13260) {
+                int64_t __t13263 = arx_TK_COLON();
+                __t13262 = (((prev_kind) != (__t13263)));
             }
-            if (__t13125) {
-                if (((expect_type_depth) <= (((int64_t)0LL)))) {
-                }
+            bool __t13264 = false;
+            if (__t13262) {
+                __t13264 = (((expect_type_depth) == (((int64_t)1LL))));
             }
-            bool __t13127 = false;
-            if (((expect_type_depth) <= (((int64_t)0LL)))) {
-                __t13127 = ((!(in_fn_sig)));
-            }
-            bool __t13128 = false;
-            if (__t13127) {
-                __t13128 = ((!(pending_fn_body)));
-            }
-            if (__t13128) {
+            if (__t13264) {
+                expect_type_depth = ((int64_t)0LL);
             }
             i = ((i) + (((int64_t)1LL)));
             continue;
         }
-        int64_t __t13129 = arx_TK_HASH();
-        bool __t13130 = false;
-        if (((k) == (__t13129))) {
-            int64_t __t13131 = arx_next_sig_kind(ts, i);
-            int64_t __t13132 = arx_TK_LBRACKET();
-            __t13130 = (((__t13131) == (__t13132)));
+        int64_t __t13265 = arx_TK_HASH();
+        bool __t13266 = false;
+        if (((k) == (__t13265))) {
+            int64_t __t13267 = arx_next_sig_kind(ts, i);
+            int64_t __t13268 = arx_TK_LBRACKET();
+            __t13266 = (((__t13267) == (__t13268)));
         }
-        if (__t13130) {
+        if (__t13266) {
             in_attr = true;
-            int64_t __t13133 = arx_ST_MACRO();
-            arx_push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, __t13133, ((int64_t)0LL));
+            int64_t __t13269 = arx_ST_MACRO();
+            arx_push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, __t13269, ((int64_t)0LL));
             prev_kind = k;
             i = ((i) + (((int64_t)1LL)));
             continue;
         }
         if (in_attr) {
-            int64_t __t13134 = arx_ST_MACRO();
-            arx_push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, __t13134, ((int64_t)0LL));
-            int64_t __t13135 = arx_TK_RBRACKET();
-            if (((k) == (__t13135))) {
+            int64_t __t13270 = arx_ST_MACRO();
+            arx_push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, __t13270, ((int64_t)0LL));
+            int64_t __t13271 = arx_TK_RBRACKET();
+            if (((k) == (__t13271))) {
                 in_attr = false;
             }
             prev_kind = k;
             i = ((i) + (((int64_t)1LL)));
             continue;
         }
-        int64_t __t13136 = arx_TK_LBRACE();
-        if (((k) == (__t13136))) {
+        int64_t __t13272 = arx_TK_LBRACE();
+        if (((k) == (__t13272))) {
             brace_depth = ((brace_depth) + (((int64_t)1LL)));
             if (pending_fn_body) {
                 pending_fn_body = false;
@@ -31880,19 +32284,35 @@ Arx_List_i64 arx_lsp_compute_semantic_tokens(const char* source, Arx_Analyzer az
             }
             expect_type_depth = ((int64_t)0LL);
             in_import_line = false;
+            in_decl_tparams = false;
+            pending_tparam_decl = false;
+            is_static_decl = false;
             prev_kind = k;
             i = ((i) + (((int64_t)1LL)));
             continue;
         }
-        int64_t __t13137 = arx_TK_RBRACE();
-        if (((k) == (__t13137))) {
+        int64_t __t13273 = arx_TK_RBRACE();
+        if (((k) == (__t13273))) {
             if (((fn_depth) == (brace_depth))) {
-                Arx_Map_str_i64 __t13138 = Arx_Map_str_i64_init();
-                cur_params = __t13138;
+                Arx_Map_str_i64 __t13274 = Arx_Map_str_i64_init();
+                cur_params = __t13274;
+                Arx_Map_str_i64 __t13275 = Arx_Map_str_i64_init();
+                ro_vars = __t13275;
+                Arx_Map_str_i64 __t13276 = Arx_Map_str_i64_init();
+                mut_vars = __t13276;
+                Arx_Map_str_str __t13277 = Arx_Map_str_str_init();
+                var_types = __t13277;
+                Arx_Map_str_i64 __t13278 = Arx_Map_str_i64_init();
+                fn_tparams = __t13278;
                 fn_depth = (-(((int64_t)1LL)));
             }
             if (((cls_depth) == (brace_depth))) {
                 cls_depth = (-(((int64_t)1LL)));
+                const char* __t13279 = "";
+                cur_cls_name = __t13279;
+                Arx_Map_str_i64 __t13280 = Arx_Map_str_i64_init();
+                cls_tparams = __t13280;
+                in_extend_body = false;
             }
             if (((enum_depth) == (brace_depth))) {
                 enum_depth = (-(((int64_t)1LL)));
@@ -31907,19 +32327,23 @@ Arx_List_i64 arx_lsp_compute_semantic_tokens(const char* source, Arx_Analyzer az
             i = ((i) + (((int64_t)1LL)));
             continue;
         }
-        int64_t __t13139 = arx_TK_LPAREN();
-        if (((k) == (__t13139))) {
+        int64_t __t13281 = arx_TK_LPAREN();
+        if (((k) == (__t13281))) {
             if (in_fn_sig) {
                 fn_sig_paren_depth = ((fn_sig_paren_depth) + (((int64_t)1LL)));
+                is_mut_param = false;
             }
+            pending_tparam_decl = false;
+            in_decl_tparams = false;
             prev_kind = k;
             i = ((i) + (((int64_t)1LL)));
             continue;
         }
-        int64_t __t13140 = arx_TK_RPAREN();
-        if (((k) == (__t13140))) {
+        int64_t __t13282 = arx_TK_RPAREN();
+        if (((k) == (__t13282))) {
             if (in_fn_sig) {
                 fn_sig_paren_depth = ((fn_sig_paren_depth) - (((int64_t)1LL)));
+                is_mut_param = false;
                 if (((fn_sig_paren_depth) <= (((int64_t)0LL)))) {
                     in_fn_sig = false;
                     pending_fn_body = true;
@@ -31930,585 +32354,1072 @@ Arx_List_i64 arx_lsp_compute_semantic_tokens(const char* source, Arx_Analyzer az
             i = ((i) + (((int64_t)1LL)));
             continue;
         }
-        int64_t __t13141 = arx_TK_SEMICOLON();
-        if (((k) == (__t13141))) {
-            bool __t13142 = false;
+        int64_t __t13283 = arx_TK_SEMICOLON();
+        if (((k) == (__t13283))) {
+            bool __t13284 = false;
             if (pending_fn_body) {
-                int64_t __t13143 = arx_TK_FAT_ARROW();
-                __t13142 = (((prev_kind) != (__t13143)));
+                int64_t __t13285 = arx_TK_FAT_ARROW();
+                __t13284 = (((prev_kind) != (__t13285)));
             }
-            if (__t13142) {
+            if (__t13284) {
                 pending_fn_body = false;
-                Arx_Map_str_i64 __t13144 = Arx_Map_str_i64_init();
-                cur_params = __t13144;
+                Arx_Map_str_i64 __t13286 = Arx_Map_str_i64_init();
+                cur_params = __t13286;
+                Arx_Map_str_i64 __t13287 = Arx_Map_str_i64_init();
+                ro_vars = __t13287;
+                Arx_Map_str_i64 __t13288 = Arx_Map_str_i64_init();
+                mut_vars = __t13288;
+                Arx_Map_str_str __t13289 = Arx_Map_str_str_init();
+                var_types = __t13289;
+                Arx_Map_str_i64 __t13290 = Arx_Map_str_i64_init();
+                fn_tparams = __t13290;
             }
             expect_type_depth = ((int64_t)0LL);
             in_import_line = false;
+            is_static_decl = false;
             prev_kind = k;
             i = ((i) + (((int64_t)1LL)));
             continue;
         }
-        int64_t __t13145 = arx_TK_INT();
-        bool __t13146 = true;
-        if (!(((k) == (__t13145)))) {
-            int64_t __t13147 = arx_TK_FLOAT();
-            __t13146 = (((k) == (__t13147)));
+        int64_t __t13291 = arx_TK_INT();
+        bool __t13292 = true;
+        if (!(((k) == (__t13291)))) {
+            int64_t __t13293 = arx_TK_FLOAT();
+            __t13292 = (((k) == (__t13293)));
         }
-        if (__t13146) {
-            int64_t __t13148 = arx_ST_NUMBER();
-            arx_push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, __t13148, ((int64_t)0LL));
+        if (__t13292) {
+            int64_t __t13294 = arx_ST_NUMBER();
+            arx_push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, __t13294, ((int64_t)0LL));
             prev_kind = k;
             i = ((i) + (((int64_t)1LL)));
             continue;
         }
-        int64_t __t13149 = arx_TK_STR();
-        bool __t13150 = true;
-        if (!(((k) == (__t13149)))) {
-            int64_t __t13151 = arx_TK_CHAR();
-            __t13150 = (((k) == (__t13151)));
+        int64_t __t13295 = arx_TK_STR();
+        bool __t13296 = true;
+        if (!(((k) == (__t13295)))) {
+            int64_t __t13297 = arx_TK_CHAR();
+            __t13296 = (((k) == (__t13297)));
         }
-        if (__t13150) {
-            int64_t __t13152 = arx_ST_STRING();
-            arx_push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, __t13152, ((int64_t)0LL));
+        if (__t13296) {
+            int64_t __t13298 = arx_ST_STRING();
+            arx_push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, __t13298, ((int64_t)0LL));
             prev_kind = k;
             i = ((i) + (((int64_t)1LL)));
             continue;
         }
-        int64_t __t13153 = arx_TK_STR_INTERP();
-        if (((k) == (__t13153))) {
-            arx_split_str_interp_spans(source, ln, cl, tl, class_set, enum_set, fn_set, cur_params, readonly_vars, tok_lines, tok_cols, tok_lens, tok_types, tok_mods);
+        int64_t __t13299 = arx_TK_STR_INTERP();
+        if (((k) == (__t13299))) {
+            Arx_Map_str_i64 __t13300 = Arx_Map_str_i64_init();
+            Arx_Map_str_i64 combined_ro = __t13300;
+            Arx_List_str __t13301 = Arx_Map_str_i64_keys((&(global_ro)));
+            Arx_List_str __t13302 = __t13301; int64_t __t13303 = arx_list_len(__t13302.data_handle);
+            for (int64_t __t13304 = 0; __t13304 < __t13303; __t13304++) {
+                const char* gk = Arx_List_str_get(&__t13302, __t13304);
+                Arx_Map_str_i64_insert((&(combined_ro)), gk, ((int64_t)1LL));
+            }
+            Arx_List_str __t13305 = Arx_Map_str_i64_keys((&(ro_vars)));
+            Arx_List_str __t13306 = __t13305; int64_t __t13307 = arx_list_len(__t13306.data_handle);
+            for (int64_t __t13308 = 0; __t13308 < __t13307; __t13308++) {
+                const char* rk = Arx_List_str_get(&__t13306, __t13308);
+                Arx_Map_str_i64_insert((&(combined_ro)), rk, ((int64_t)1LL));
+            }
+            Arx_Map_str_i64 __t13309 = Arx_Map_str_i64_init();
+            Arx_Map_str_i64 combined_mut = __t13309;
+            Arx_List_str __t13310 = Arx_Map_str_i64_keys((&(global_mut)));
+            Arx_List_str __t13311 = __t13310; int64_t __t13312 = arx_list_len(__t13311.data_handle);
+            for (int64_t __t13313 = 0; __t13313 < __t13312; __t13313++) {
+                const char* gm = Arx_List_str_get(&__t13311, __t13313);
+                Arx_Map_str_i64_insert((&(combined_mut)), gm, ((int64_t)1LL));
+            }
+            Arx_List_str __t13314 = Arx_Map_str_i64_keys((&(mut_vars)));
+            Arx_List_str __t13315 = __t13314; int64_t __t13316 = arx_list_len(__t13315.data_handle);
+            for (int64_t __t13317 = 0; __t13317 < __t13316; __t13317++) {
+                const char* mk = Arx_List_str_get(&__t13315, __t13317);
+                Arx_Map_str_i64_insert((&(combined_mut)), mk, ((int64_t)1LL));
+            }
+            Arx_Map_str_i64 __t13318 = Arx_Map_str_i64_init();
+            Arx_Map_str_i64 combined_tp = __t13318;
+            Arx_List_str __t13319 = Arx_Map_str_i64_keys((&(cls_tparams)));
+            Arx_List_str __t13320 = __t13319; int64_t __t13321 = arx_list_len(__t13320.data_handle);
+            for (int64_t __t13322 = 0; __t13322 < __t13321; __t13322++) {
+                const char* ctk = Arx_List_str_get(&__t13320, __t13322);
+                Arx_Map_str_i64_insert((&(combined_tp)), ctk, ((int64_t)1LL));
+            }
+            Arx_List_str __t13323 = Arx_Map_str_i64_keys((&(fn_tparams)));
+            Arx_List_str __t13324 = __t13323; int64_t __t13325 = arx_list_len(__t13324.data_handle);
+            for (int64_t __t13326 = 0; __t13326 < __t13325; __t13326++) {
+                const char* ftk = Arx_List_str_get(&__t13324, __t13326);
+                Arx_Map_str_i64_insert((&(combined_tp)), ftk, ((int64_t)1LL));
+            }
+            Arx_Map_str_str __t13327 = Arx_Map_str_str_init();
+            Arx_Map_str_str combined_vt = __t13327;
+            Arx_List_str __t13328 = Arx_Map_str_str_keys((&(global_var_types)));
+            Arx_List_str __t13329 = __t13328; int64_t __t13330 = arx_list_len(__t13329.data_handle);
+            for (int64_t __t13331 = 0; __t13331 < __t13330; __t13331++) {
+                const char* gvk = Arx_List_str_get(&__t13329, __t13331);
+                const char* __t13332 = Arx_Map_str_str_get((&(global_var_types)), gvk);
+                Arx_Map_str_str_insert((&(combined_vt)), gvk, __t13332);
+            }
+            Arx_List_str __t13333 = Arx_Map_str_str_keys((&(var_types)));
+            Arx_List_str __t13334 = __t13333; int64_t __t13335 = arx_list_len(__t13334.data_handle);
+            for (int64_t __t13336 = 0; __t13336 < __t13335; __t13336++) {
+                const char* lvk = Arx_List_str_get(&__t13334, __t13336);
+                const char* __t13337 = Arx_Map_str_str_get((&(var_types)), lvk);
+                Arx_Map_str_str_insert((&(combined_vt)), lvk, __t13337);
+            }
+            arx_split_str_interp_spans(source, ln, cl, tl, class_set, enum_set, enum_var_set, fn_set, cur_params, combined_tp, combined_ro, combined_mut, combined_vt, tok_lines, tok_cols, tok_lens, tok_types, tok_mods);
             prev_kind = k;
             i = ((i) + (((int64_t)1LL)));
             continue;
         }
-        int64_t __t13154 = arx_TK_LABEL();
-        if (((k) == (__t13154))) {
-            int64_t __t13155 = arx_ST_MACRO();
-            arx_push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, __t13155, ((int64_t)0LL));
+        int64_t __t13338 = arx_TK_LABEL();
+        if (((k) == (__t13338))) {
+            int64_t __t13339 = arx_ST_MACRO();
+            arx_push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, __t13339, ((int64_t)0LL));
             prev_kind = k;
             i = ((i) + (((int64_t)1LL)));
             continue;
         }
-        int64_t __t13156 = arx_TK_IMPORT();
-        bool __t13157 = true;
-        if (!(((k) == (__t13156)))) {
-            int64_t __t13158 = arx_TK_USE();
-            __t13157 = (((k) == (__t13158)));
+        int64_t __t13340 = arx_TK_IMPORT();
+        bool __t13341 = true;
+        if (!(((k) == (__t13340)))) {
+            int64_t __t13342 = arx_TK_USE();
+            __t13341 = (((k) == (__t13342)));
         }
-        if (__t13157) {
+        if (__t13341) {
             in_import_line = true;
-            int64_t __t13159 = arx_ST_KEYWORD();
-            arx_push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, __t13159, ((int64_t)0LL));
+            int64_t __t13343 = arx_ST_KEYWORD();
+            arx_push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, __t13343, ((int64_t)0LL));
             prev_kind = k;
             i = ((i) + (((int64_t)1LL)));
             continue;
         }
-        bool __t13160 = arx_is_keyword_token_kind(k);
-        if (__t13160) {
-            int64_t __t13161 = arx_TK_FN();
-            if (((k) == (__t13161))) {
-                Arx_Map_str_i64 __t13162 = Arx_Map_str_i64_init();
-                cur_params = __t13162;
-                in_fn_sig = true;
-                fn_sig_paren_depth = ((int64_t)0LL);
-                pending_fn_body = false;
+        bool __t13344 = arx_is_keyword_token_kind(k);
+        if (__t13344) {
+            int64_t __t13345 = arx_TK_STATIC();
+            if (((k) == (__t13345))) {
+                is_static_decl = true;
             } else {
-                int64_t __t13163 = arx_TK_INIT();
-                if (((k) == (__t13163))) {
-                    Arx_Map_str_i64 __t13164 = Arx_Map_str_i64_init();
-                    cur_params = __t13164;
+                int64_t __t13346 = arx_TK_FN();
+                if (((k) == (__t13346))) {
+                    Arx_Map_str_i64 __t13347 = Arx_Map_str_i64_init();
+                    cur_params = __t13347;
+                    Arx_Map_str_i64 __t13348 = Arx_Map_str_i64_init();
+                    ro_vars = __t13348;
+                    Arx_Map_str_i64 __t13349 = Arx_Map_str_i64_init();
+                    mut_vars = __t13349;
+                    Arx_Map_str_str __t13350 = Arx_Map_str_str_init();
+                    var_types = __t13350;
+                    Arx_Map_str_i64 __t13351 = Arx_Map_str_i64_init();
+                    fn_tparams = __t13351;
                     in_fn_sig = true;
                     fn_sig_paren_depth = ((int64_t)0LL);
                     pending_fn_body = false;
+                    pending_tparam_decl = true;
+                    decl_tparam_is_cls = false;
                 } else {
-                    int64_t __t13165 = arx_TK_ARROW();
-                    bool __t13166 = true;
-                    if (!(((k) == (__t13165)))) {
-                        int64_t __t13167 = arx_TK_AS();
-                        __t13166 = (((k) == (__t13167)));
+                    int64_t __t13352 = arx_TK_INIT();
+                    bool __t13353 = true;
+                    if (!(((k) == (__t13352)))) {
+                        int64_t __t13354 = arx_TK_DROP();
+                        __t13353 = (((k) == (__t13354)));
                     }
-                    if (__t13166) {
-                        expect_type_depth = ((int64_t)1LL);
+                    if (__t13353) {
+                        Arx_Map_str_i64 __t13355 = Arx_Map_str_i64_init();
+                        cur_params = __t13355;
+                        Arx_Map_str_i64 __t13356 = Arx_Map_str_i64_init();
+                        ro_vars = __t13356;
+                        Arx_Map_str_i64 __t13357 = Arx_Map_str_i64_init();
+                        mut_vars = __t13357;
+                        Arx_Map_str_str __t13358 = Arx_Map_str_str_init();
+                        var_types = __t13358;
+                        Arx_Map_str_i64 __t13359 = Arx_Map_str_i64_init();
+                        fn_tparams = __t13359;
+                        in_fn_sig = true;
+                        fn_sig_paren_depth = ((int64_t)0LL);
+                        pending_fn_body = false;
+                        int64_t __t13360 = arx_TK_INIT();
+                        bool __t13361 = true;
+                        if (!(((k) == (__t13360)))) {
+                            int64_t __t13362 = arx_TK_DROP();
+                            __t13361 = (((k) == (__t13362)));
+                        }
+                        if (__t13361) {
+                            int64_t __t13363 = arx_ST_METHOD();
+                            int64_t __t13364 = arx_SM_DECL();
+                            arx_push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, __t13363, __t13364);
+                            prev_kind = k;
+                            i = ((i) + (((int64_t)1LL)));
+                            continue;
+                        }
                     } else {
-                        int64_t __t13168 = arx_TK_COLON();
-                        if (((k) == (__t13168))) {
-                            expect_type_depth = ((int64_t)1LL);
+                        int64_t __t13365 = arx_TK_MUT();
+                        bool __t13366 = false;
+                        if (((k) == (__t13365))) {
+                            __t13366 = (in_fn_sig);
+                        }
+                        if (__t13366) {
+                            is_mut_param = true;
                         } else {
-                            int64_t __t13169 = arx_TK_EXTENDS();
-                            bool __t13170 = true;
-                            if (!(((k) == (__t13169)))) {
-                                int64_t __t13171 = arx_TK_IMPLEMENTS();
-                                __t13170 = (((k) == (__t13171)));
+                            int64_t __t13367 = arx_TK_ARROW();
+                            bool __t13368 = true;
+                            if (!(((k) == (__t13367)))) {
+                                int64_t __t13369 = arx_TK_AS();
+                                __t13368 = (((k) == (__t13369)));
                             }
-                            bool __t13172 = true;
-                            if (!(__t13170)) {
-                                int64_t __t13173 = arx_TK_EXTEND();
-                                __t13172 = (((k) == (__t13173)));
-                            }
-                            if (__t13172) {
+                            if (__t13368) {
                                 expect_type_depth = ((int64_t)1LL);
+                            } else {
+                                int64_t __t13370 = arx_TK_EXTENDS();
+                                bool __t13371 = true;
+                                if (!(((k) == (__t13370)))) {
+                                    int64_t __t13372 = arx_TK_IMPLEMENTS();
+                                    __t13371 = (((k) == (__t13372)));
+                                }
+                                bool __t13373 = true;
+                                if (!(__t13371)) {
+                                    int64_t __t13374 = arx_TK_EXTEND();
+                                    __t13373 = (((k) == (__t13374)));
+                                }
+                                if (__t13373) {
+                                    expect_type_depth = ((int64_t)1LL);
+                                    int64_t __t13375 = arx_TK_EXTEND();
+                                    if (((k) == (__t13375))) {
+                                        in_extend_body = true;
+                                    }
+                                }
                             }
                         }
                     }
                 }
             }
-            int64_t __t13174 = arx_TK_SELF();
-            bool __t13175 = true;
-            if (!(((k) == (__t13174)))) {
-                int64_t __t13176 = arx_TK_SUPER();
-                __t13175 = (((k) == (__t13176)));
+            int64_t __t13376 = arx_TK_BOOL();
+            bool __t13377 = true;
+            if (!(((k) == (__t13376)))) {
+                int64_t __t13378 = arx_TK_NULL();
+                __t13377 = (((k) == (__t13378)));
             }
-            if (__t13175) {
-                int64_t __t13177 = arx_ST_KEYWORD();
-                arx_push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, __t13177, ((int64_t)0LL));
+            if (__t13377) {
+                int64_t __t13379 = arx_ST_KEYWORD();
+                int64_t __t13380 = arx_SM_READONLY();
+                arx_push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, __t13379, __t13380);
             } else {
-                int64_t __t13178 = arx_ST_KEYWORD();
-                arx_push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, __t13178, ((int64_t)0LL));
+                int64_t __t13381 = arx_ST_KEYWORD();
+                arx_push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, __t13381, ((int64_t)0LL));
             }
             prev_kind = k;
             i = ((i) + (((int64_t)1LL)));
             continue;
         }
-        int64_t __t13179 = arx_TK_COLON();
-        if (((k) == (__t13179))) {
+        int64_t __t13382 = arx_TK_COLON();
+        if (((k) == (__t13382))) {
             expect_type_depth = ((int64_t)1LL);
             prev_kind = k;
             i = ((i) + (((int64_t)1LL)));
             continue;
         }
-        int64_t __t13180 = arx_TK_ARROW();
-        if (((k) == (__t13180))) {
+        int64_t __t13383 = arx_TK_COMMA();
+        if (((k) == (__t13383))) {
+            if (in_fn_sig) {
+                expect_type_depth = ((int64_t)0LL);
+                is_mut_param = false;
+            }
+            prev_kind = k;
+            i = ((i) + (((int64_t)1LL)));
+            continue;
+        }
+        int64_t __t13384 = arx_TK_ARROW();
+        if (((k) == (__t13384))) {
             expect_type_depth = ((int64_t)1LL);
-            int64_t __t13181 = arx_ST_OPERATOR();
-            arx_push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, __t13181, ((int64_t)0LL));
+            int64_t __t13385 = arx_ST_OPERATOR();
+            arx_push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, __t13385, ((int64_t)0LL));
             prev_kind = k;
             i = ((i) + (((int64_t)1LL)));
             continue;
         }
-        int64_t __t13182 = arx_TK_EQUALS();
-        bool __t13183 = true;
-        if (!(((k) == (__t13182)))) {
-            int64_t __t13184 = arx_TK_FAT_ARROW();
-            __t13183 = (((k) == (__t13184)));
+        int64_t __t13386 = arx_TK_EQUALS();
+        bool __t13387 = true;
+        if (!(((k) == (__t13386)))) {
+            int64_t __t13388 = arx_TK_FAT_ARROW();
+            __t13387 = (((k) == (__t13388)));
         }
-        bool __t13185 = true;
-        if (!(__t13183)) {
-            int64_t __t13186 = arx_TK_COMMA();
-            __t13185 = (((k) == (__t13186)));
-        }
-        if (__t13185) {
-            int64_t __t13187 = arx_TK_EQUALS();
-            bool __t13188 = true;
-            if (!(((k) == (__t13187)))) {
-                int64_t __t13189 = arx_TK_FAT_ARROW();
-                __t13188 = (((k) == (__t13189)));
-            }
-            if (__t13188) {
-                expect_type_depth = ((int64_t)0LL);
-            }
-            int64_t __t13190 = arx_TK_COMMA();
-            bool __t13191 = false;
-            if (((k) == (__t13190))) {
-                __t13191 = (in_fn_sig);
-            }
-            if (__t13191) {
-                expect_type_depth = ((int64_t)0LL);
-            }
-            int64_t __t13192 = arx_ST_OPERATOR();
-            arx_push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, __t13192, ((int64_t)0LL));
+        if (__t13387) {
+            expect_type_depth = ((int64_t)0LL);
+            int64_t __t13389 = arx_ST_OPERATOR();
+            arx_push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, __t13389, ((int64_t)0LL));
             prev_kind = k;
             i = ((i) + (((int64_t)1LL)));
             continue;
         }
-        bool __t13193 = arx_is_operator_token_kind(k);
-        if (__t13193) {
-            int64_t __t13194 = arx_TK_LT();
-            bool __t13195 = false;
-            if (((k) == (__t13194))) {
-                __t13195 = (((expect_type_depth) > (((int64_t)0LL))));
+        bool __t13390 = arx_is_operator_token_kind(k);
+        if (__t13390) {
+            int64_t __t13391 = arx_TK_LT();
+            bool __t13392 = false;
+            if (((k) == (__t13391))) {
+                __t13392 = (pending_tparam_decl);
             }
-            if (__t13195) {
+            if (__t13392) {
+                in_decl_tparams = true;
+                pending_tparam_decl = false;
+                prev_kind = k;
+                i = ((i) + (((int64_t)1LL)));
+                continue;
+            }
+            int64_t __t13393 = arx_TK_GT();
+            bool __t13394 = false;
+            if (((k) == (__t13393))) {
+                __t13394 = (in_decl_tparams);
+            }
+            if (__t13394) {
+                in_decl_tparams = false;
+                prev_kind = k;
+                i = ((i) + (((int64_t)1LL)));
+                continue;
+            }
+            int64_t __t13395 = arx_TK_LT();
+            bool __t13396 = false;
+            if (((k) == (__t13395))) {
+                __t13396 = (((expect_type_depth) > (((int64_t)0LL))));
+            }
+            if (__t13396) {
                 expect_type_depth = ((expect_type_depth) + (((int64_t)1LL)));
+                prev_kind = k;
+                i = ((i) + (((int64_t)1LL)));
+                continue;
             } else {
-                int64_t __t13196 = arx_TK_GT();
-                bool __t13197 = false;
-                if (((k) == (__t13196))) {
-                    __t13197 = (((expect_type_depth) > (((int64_t)1LL))));
+                int64_t __t13397 = arx_TK_GT();
+                bool __t13398 = false;
+                if (((k) == (__t13397))) {
+                    __t13398 = (((expect_type_depth) > (((int64_t)1LL))));
                 }
-                if (__t13197) {
+                if (__t13398) {
                     expect_type_depth = ((expect_type_depth) - (((int64_t)1LL)));
+                    prev_kind = k;
+                    i = ((i) + (((int64_t)1LL)));
+                    continue;
                 }
             }
-            int64_t __t13198 = arx_ST_OPERATOR();
-            arx_push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, __t13198, ((int64_t)0LL));
+            int64_t __t13399 = arx_ST_OPERATOR();
+            arx_push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, __t13399, ((int64_t)0LL));
             prev_kind = k;
             i = ((i) + (((int64_t)1LL)));
             continue;
         }
-        int64_t __t13199 = arx_TK_IDENT();
-        if (((k) == (__t13199))) {
-            int64_t __t13200 = arx_next_sig_kind(ts, i);
-            int64_t nxt = __t13200;
-            int64_t __t13201 = arx_TK_FN();
-            if (((prev_kind) == (__t13201))) {
-                bool __t13202 = false;
-                if (((cls_depth) > (((int64_t)0LL)))) {
-                    __t13202 = (((brace_depth) >= (cls_depth)));
-                }
-                if (__t13202) {
-                    int64_t __t13203 = arx_ST_METHOD();
-                    int64_t __t13204 = arx_SM_DECL();
-                    arx_push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, __t13203, __t13204);
+        int64_t __t13400 = arx_TK_IDENT();
+        if (((k) == (__t13400))) {
+            int64_t __t13401 = arx_next_sig_kind(ts, i);
+            int64_t nxt = __t13401;
+            if (in_decl_tparams) {
+                if (decl_tparam_is_cls) {
+                    Arx_Map_str_i64_insert((&(cls_tparams)), v, ((int64_t)1LL));
                 } else {
-                    int64_t __t13205 = arx_ST_FUNCTION();
-                    int64_t __t13206 = arx_SM_DECL();
-                    arx_push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, __t13205, __t13206);
+                    Arx_Map_str_i64_insert((&(fn_tparams)), v, ((int64_t)1LL));
+                }
+                int64_t __t13402 = arx_ST_TYPE_PARAM();
+                int64_t __t13403 = arx_SM_DECL();
+                arx_push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, __t13402, __t13403);
+                prev_kind = k;
+                i = ((i) + (((int64_t)1LL)));
+                continue;
+            }
+            int64_t __t13404 = arx_TK_FN();
+            if (((prev_kind) == (__t13404))) {
+                int64_t __t13405 = arx_SM_DECL();
+                int64_t fn_mod = __t13405;
+                if (is_static_decl) {
+                    int64_t __t13406 = arx_SM_STATIC();
+                    fn_mod = ((fn_mod) + (__t13406));
+                }
+                is_static_decl = false;
+                bool __t13407 = false;
+                if (((cls_depth) > (((int64_t)0LL)))) {
+                    __t13407 = (((brace_depth) >= (cls_depth)));
+                }
+                bool __t13408 = true;
+                if (!(__t13407)) {
+                    __t13408 = (in_extend_body);
+                }
+                if (__t13408) {
+                    int64_t __t13409 = arx_ST_METHOD();
+                    arx_push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, __t13409, fn_mod);
+                } else {
+                    int64_t __t13410 = arx_ST_FUNCTION();
+                    arx_push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, __t13410, fn_mod);
                 }
                 prev_kind = k;
                 i = ((i) + (((int64_t)1LL)));
                 continue;
             }
-            int64_t __t13207 = arx_TK_CLASS();
-            bool __t13208 = true;
-            if (!(((prev_kind) == (__t13207)))) {
-                int64_t __t13209 = arx_TK_STRUCT();
-                __t13208 = (((prev_kind) == (__t13209)));
-            }
-            if (__t13208) {
-                cls_depth = ((brace_depth) + (((int64_t)1LL)));
-                int64_t __t13210 = arx_ST_CLASS();
-                int64_t __t13211 = arx_SM_DECL();
-                arx_push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, __t13210, __t13211);
+            int64_t __t13411 = arx_TK_CEXTERN();
+            if (((prev_kind) == (__t13411))) {
+                int64_t __t13412 = arx_ST_FUNCTION();
+                int64_t __t13413 = arx_SM_DECL();
+                int64_t __t13414 = arx_SM_DEFAULT_LIB();
+                arx_push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, __t13412, ((__t13413) + (__t13414)));
                 prev_kind = k;
                 i = ((i) + (((int64_t)1LL)));
                 continue;
             }
-            int64_t __t13212 = arx_TK_ENUM();
-            if (((prev_kind) == (__t13212))) {
+            int64_t __t13415 = arx_TK_CLASS();
+            bool __t13416 = true;
+            if (!(((prev_kind) == (__t13415)))) {
+                int64_t __t13417 = arx_TK_STRUCT();
+                __t13416 = (((prev_kind) == (__t13417)));
+            }
+            if (__t13416) {
+                cls_depth = ((brace_depth) + (((int64_t)1LL)));
+                cur_cls_name = v;
+                Arx_Map_str_i64 __t13418 = Arx_Map_str_i64_init();
+                cls_tparams = __t13418;
+                pending_tparam_decl = true;
+                decl_tparam_is_cls = true;
+                int64_t __t13419 = arx_ST_CLASS();
+                int64_t __t13420 = arx_SM_DECL();
+                arx_push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, __t13419, __t13420);
+                prev_kind = k;
+                i = ((i) + (((int64_t)1LL)));
+                continue;
+            }
+            int64_t __t13421 = arx_TK_TRAIT();
+            if (((prev_kind) == (__t13421))) {
+                int64_t __t13422 = arx_ST_TYPE();
+                int64_t __t13423 = arx_SM_DECL();
+                arx_push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, __t13422, __t13423);
+                prev_kind = k;
+                i = ((i) + (((int64_t)1LL)));
+                continue;
+            }
+            int64_t __t13424 = arx_TK_ENUM();
+            if (((prev_kind) == (__t13424))) {
                 enum_depth = ((brace_depth) + (((int64_t)1LL)));
                 in_enum_body = true;
-                int64_t __t13213 = arx_ST_ENUM();
-                int64_t __t13214 = arx_SM_DECL();
-                arx_push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, __t13213, __t13214);
+                int64_t __t13425 = arx_ST_ENUM();
+                int64_t __t13426 = arx_SM_DECL();
+                arx_push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, __t13425, __t13426);
                 prev_kind = k;
                 i = ((i) + (((int64_t)1LL)));
                 continue;
             }
-            bool __t13215 = false;
+            bool __t13427 = false;
             if (in_enum_body) {
-                __t13215 = (((brace_depth) == (enum_depth)));
+                __t13427 = (((brace_depth) == (enum_depth)));
             }
-            bool __t13216 = false;
-            if (__t13215) {
-                __t13216 = (((fn_sig_paren_depth) == (((int64_t)0LL))));
+            bool __t13428 = false;
+            if (__t13427) {
+                __t13428 = (((fn_sig_paren_depth) == (((int64_t)0LL))));
             }
-            if (__t13216) {
-                int64_t __t13217 = arx_TK_LPAREN();
-                bool __t13218 = true;
-                if (!(((nxt) == (__t13217)))) {
-                    int64_t __t13219 = arx_TK_COMMA();
-                    __t13218 = (((nxt) == (__t13219)));
+            bool __t13429 = false;
+            if (__t13428) {
+                __t13429 = (((expect_type_depth) == (((int64_t)0LL))));
+            }
+            if (__t13429) {
+                int64_t __t13430 = arx_TK_LPAREN();
+                bool __t13431 = true;
+                if (!(((nxt) == (__t13430)))) {
+                    int64_t __t13432 = arx_TK_COMMA();
+                    __t13431 = (((nxt) == (__t13432)));
                 }
-                bool __t13220 = true;
-                if (!(__t13218)) {
-                    int64_t __t13221 = arx_TK_RBRACE();
-                    __t13220 = (((nxt) == (__t13221)));
+                bool __t13433 = true;
+                if (!(__t13431)) {
+                    int64_t __t13434 = arx_TK_RBRACE();
+                    __t13433 = (((nxt) == (__t13434)));
                 }
-                if (__t13220) {
-                    int64_t __t13222 = arx_ST_ENUM_MEMBER();
-                    int64_t __t13223 = arx_SM_DECL();
-                    arx_push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, __t13222, __t13223);
+                bool __t13435 = true;
+                if (!(__t13433)) {
+                    int64_t __t13436 = arx_TK_NEWLINE();
+                    __t13435 = (((nxt) == (__t13436)));
+                }
+                if (__t13435) {
+                    int64_t __t13437 = arx_ST_ENUM_MEMBER();
+                    int64_t __t13438 = arx_SM_DECL();
+                    arx_push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, __t13437, __t13438);
                     prev_kind = k;
                     i = ((i) + (((int64_t)1LL)));
                     continue;
                 }
             }
             if (in_import_line) {
-                int64_t __t13224 = arx_ST_NAMESPACE();
-                arx_push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, __t13224, ((int64_t)0LL));
+                int64_t __t13439 = arx_ST_NAMESPACE();
+                arx_push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, __t13439, ((int64_t)0LL));
                 prev_kind = k;
                 i = ((i) + (((int64_t)1LL)));
                 continue;
             }
-            int64_t __t13225 = arx_TK_LET();
-            bool __t13226 = true;
-            if (!(((prev_kind) == (__t13225)))) {
-                int64_t __t13227 = arx_TK_CONST();
-                __t13226 = (((prev_kind) == (__t13227)));
+            int64_t __t13440 = arx_TK_LET();
+            bool __t13441 = true;
+            if (!(((prev_kind) == (__t13440)))) {
+                int64_t __t13442 = arx_TK_CONST();
+                __t13441 = (((prev_kind) == (__t13442)));
             }
-            if (__t13226) {
-                Arx_Map_str_i64_insert((&(readonly_vars)), v, ((int64_t)1LL));
-                int64_t __t13228 = arx_ST_VARIABLE();
-                int64_t __t13229 = arx_SM_DECL();
-                int64_t __t13230 = arx_SM_READONLY();
-                arx_push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, __t13228, ((__t13229) + (__t13230)));
-                prev_kind = k;
-                i = ((i) + (((int64_t)1LL)));
-                continue;
-            }
-            int64_t __t13231 = arx_TK_MUT();
-            bool __t13232 = false;
-            if (((prev_kind) == (__t13231))) {
-                __t13232 = ((!(in_fn_sig)));
-            }
-            if (__t13232) {
-                Arx_Map_str_i64_insert((&(mut_vars)), v, ((int64_t)1LL));
-                int64_t __t13233 = arx_ST_VARIABLE();
-                int64_t __t13234 = arx_SM_DECL();
-                arx_push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, __t13233, __t13234);
-                prev_kind = k;
-                i = ((i) + (((int64_t)1LL)));
-                continue;
-            }
-            int64_t __t13235 = arx_TK_CATCH();
-            bool __t13236 = true;
-            if (!(((prev_kind) == (__t13235)))) {
-                int64_t __t13237 = arx_TK_FOR();
-                __t13236 = (((prev_kind) == (__t13237)));
-            }
-            if (__t13236) {
-                Arx_Map_str_i64_insert((&(readonly_vars)), v, ((int64_t)1LL));
-                int64_t __t13238 = arx_ST_VARIABLE();
-                int64_t __t13239 = arx_SM_DECL();
-                int64_t __t13240 = arx_SM_READONLY();
-                arx_push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, __t13238, ((__t13239) + (__t13240)));
-                prev_kind = k;
-                i = ((i) + (((int64_t)1LL)));
-                continue;
-            }
-            bool __t13241 = false;
-            if (in_fn_sig) {
-                __t13241 = (((fn_sig_paren_depth) > (((int64_t)0LL))));
-            }
-            bool __t13242 = false;
-            if (__t13241) {
-                __t13242 = (((expect_type_depth) == (((int64_t)0LL))));
-            }
-            if (__t13242) {
-                Arx_Map_str_i64_insert((&(cur_params)), v, ((int64_t)1LL));
-                int64_t __t13243 = arx_ST_PARAMETER();
-                int64_t __t13244 = arx_SM_DECL();
-                arx_push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, __t13243, __t13244);
-                prev_kind = k;
-                i = ((i) + (((int64_t)1LL)));
-                continue;
-            }
-            bool __t13245 = false;
-            if (((cls_depth) > (((int64_t)0LL)))) {
-                __t13245 = (((brace_depth) == (cls_depth)));
-            }
-            bool __t13246 = false;
-            if (__t13245) {
-                __t13246 = (((expect_type_depth) == (((int64_t)0LL))));
-            }
-            bool __t13247 = false;
-            if (__t13246) {
-                int64_t __t13248 = arx_TK_COLON();
-                __t13247 = (((nxt) == (__t13248)));
-            }
-            if (__t13247) {
-                int64_t __t13249 = arx_ST_PROPERTY();
-                int64_t __t13250 = arx_SM_DECL();
-                arx_push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, __t13249, __t13250);
-                prev_kind = k;
-                i = ((i) + (((int64_t)1LL)));
-                continue;
-            }
-            int64_t __t13251 = arx_TK_DOT();
-            bool __t13252 = true;
-            if (!(((prev_kind) == (__t13251)))) {
-                int64_t __t13253 = arx_TK_QDOT();
-                __t13252 = (((prev_kind) == (__t13253)));
-            }
-            if (__t13252) {
-                bool __t13254 = Arx_Map_str_i64_has_key((&(enum_var_set)), v);
-                bool __t13255 = false;
-                if (__t13254) {
-                    int64_t __t13256 = arx_TK_LPAREN();
-                    __t13255 = (((nxt) != (__t13256)));
+            if (__t13441) {
+                int64_t __t13443 = arx_SM_DECL();
+                int64_t __t13444 = arx_SM_READONLY();
+                int64_t vmod = ((__t13443) + (__t13444));
+                int64_t __t13445 = arx_TK_CONST();
+                bool __t13446 = true;
+                if (!(((prev_kind) == (__t13445)))) {
+                    __t13446 = (((fn_depth) < (((int64_t)0LL))));
                 }
-                if (__t13255) {
-                    bool __t13257 = false;
-                    if (((i) >= (((int64_t)2LL)))) {
-                        const char* __t13258 = Arx_List_str_get((&(ts.vals)), ((i) - (((int64_t)2LL))));
-                        bool __t13259 = Arx_Map_str_i64_has_key((&(enum_set)), __t13258);
-                        __t13257 = (__t13259);
-                    }
-                    if (__t13257) {
-                        int64_t __t13260 = arx_ST_ENUM_MEMBER();
-                        arx_push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, __t13260, ((int64_t)0LL));
-                        prev_kind = k;
-                        i = ((i) + (((int64_t)1LL)));
-                        continue;
-                    }
+                if (__t13446) {
+                    int64_t __t13447 = arx_SM_STATIC();
+                    vmod = ((vmod) + (__t13447));
                 }
-                int64_t __t13261 = arx_TK_LPAREN();
-                if (((nxt) == (__t13261))) {
-                    int64_t __t13262 = arx_ST_METHOD();
-                    arx_push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, __t13262, ((int64_t)0LL));
+                if (((fn_depth) >= (((int64_t)0LL)))) {
+                    Arx_Map_str_i64_insert((&(ro_vars)), v, ((int64_t)1LL));
                 } else {
-                    int64_t __t13263 = arx_ST_PROPERTY();
-                    arx_push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, __t13263, ((int64_t)0LL));
+                    Arx_Map_str_i64_insert((&(global_ro)), v, ((int64_t)1LL));
+                }
+                const char* __t13448 = "";
+                const char* __t13449 = arx_str_concat(__t13448, arx_cast_i64_to_str((int64_t)(ln)));
+                const char* __t13450 = "::";
+                const char* __t13451 = arx_str_concat(__t13449, __t13450);
+                const char* __t13452 = arx_str_concat(__t13451, v);
+                const char* dkey = __t13452;
+                bool __t13453 = Arx_Map_str_str_has_key((&(ast_decl_types)), dkey);
+                if (__t13453) {
+                    const char* __t13454 = Arx_Map_str_str_get((&(ast_decl_types)), dkey);
+                    Arx_Map_str_str_insert((&(var_types)), v, __t13454);
+                }
+                int64_t __t13455 = arx_ST_VARIABLE();
+                arx_push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, __t13455, vmod);
+                prev_kind = k;
+                i = ((i) + (((int64_t)1LL)));
+                continue;
+            }
+            int64_t __t13456 = arx_TK_MUT();
+            bool __t13457 = false;
+            if (((prev_kind) == (__t13456))) {
+                __t13457 = ((!(in_fn_sig)));
+            }
+            if (__t13457) {
+                int64_t __t13458 = arx_SM_DECL();
+                int64_t mmod = __t13458;
+                if (((fn_depth) < (((int64_t)0LL)))) {
+                    int64_t __t13459 = arx_SM_STATIC();
+                    mmod = ((mmod) + (__t13459));
+                }
+                if (((fn_depth) >= (((int64_t)0LL)))) {
+                    Arx_Map_str_i64_insert((&(mut_vars)), v, ((int64_t)1LL));
+                } else {
+                    Arx_Map_str_i64_insert((&(global_mut)), v, ((int64_t)1LL));
+                }
+                const char* __t13460 = "";
+                const char* __t13461 = arx_str_concat(__t13460, arx_cast_i64_to_str((int64_t)(ln)));
+                const char* __t13462 = "::";
+                const char* __t13463 = arx_str_concat(__t13461, __t13462);
+                const char* __t13464 = arx_str_concat(__t13463, v);
+                const char* dkey = __t13464;
+                bool __t13465 = Arx_Map_str_str_has_key((&(ast_decl_types)), dkey);
+                if (__t13465) {
+                    const char* __t13466 = Arx_Map_str_str_get((&(ast_decl_types)), dkey);
+                    Arx_Map_str_str_insert((&(var_types)), v, __t13466);
+                }
+                int64_t __t13467 = arx_ST_VARIABLE();
+                arx_push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, __t13467, mmod);
+                prev_kind = k;
+                i = ((i) + (((int64_t)1LL)));
+                continue;
+            }
+            int64_t __t13468 = arx_TK_CATCH();
+            bool __t13469 = true;
+            if (!(((prev_kind) == (__t13468)))) {
+                int64_t __t13470 = arx_TK_FOR();
+                __t13469 = (((prev_kind) == (__t13470)));
+            }
+            if (__t13469) {
+                Arx_Map_str_i64_insert((&(ro_vars)), v, ((int64_t)1LL));
+                const char* __t13471 = "";
+                const char* __t13472 = arx_str_concat(__t13471, arx_cast_i64_to_str((int64_t)(ln)));
+                const char* __t13473 = "::";
+                const char* __t13474 = arx_str_concat(__t13472, __t13473);
+                const char* __t13475 = arx_str_concat(__t13474, v);
+                const char* dkey = __t13475;
+                bool __t13476 = Arx_Map_str_str_has_key((&(ast_decl_types)), dkey);
+                if (__t13476) {
+                    const char* __t13477 = Arx_Map_str_str_get((&(ast_decl_types)), dkey);
+                    Arx_Map_str_str_insert((&(var_types)), v, __t13477);
+                }
+                int64_t __t13478 = arx_ST_VARIABLE();
+                int64_t __t13479 = arx_SM_DECL();
+                int64_t __t13480 = arx_SM_READONLY();
+                arx_push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, __t13478, ((__t13479) + (__t13480)));
+                prev_kind = k;
+                i = ((i) + (((int64_t)1LL)));
+                continue;
+            }
+            bool __t13481 = false;
+            if (in_fn_sig) {
+                __t13481 = (((fn_sig_paren_depth) > (((int64_t)0LL))));
+            }
+            bool __t13482 = false;
+            if (__t13481) {
+                __t13482 = (((expect_type_depth) == (((int64_t)0LL))));
+            }
+            if (__t13482) {
+                Arx_Map_str_i64_insert((&(cur_params)), v, ((int64_t)1LL));
+                const char* __t13483 = "";
+                const char* __t13484 = arx_str_concat(__t13483, arx_cast_i64_to_str((int64_t)(ln)));
+                const char* __t13485 = "::";
+                const char* __t13486 = arx_str_concat(__t13484, __t13485);
+                const char* __t13487 = arx_str_concat(__t13486, v);
+                const char* dkey = __t13487;
+                bool __t13488 = Arx_Map_str_str_has_key((&(ast_decl_types)), dkey);
+                if (__t13488) {
+                    const char* __t13489 = Arx_Map_str_str_get((&(ast_decl_types)), dkey);
+                    Arx_Map_str_str_insert((&(var_types)), v, __t13489);
+                }
+                int64_t __t13490 = arx_SM_DECL();
+                int64_t pmod = __t13490;
+                if ((!(is_mut_param))) {
+                    int64_t __t13491 = arx_SM_READONLY();
+                    pmod = ((pmod) + (__t13491));
+                }
+                is_mut_param = false;
+                int64_t __t13492 = arx_ST_PARAMETER();
+                arx_push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, __t13492, pmod);
+                prev_kind = k;
+                i = ((i) + (((int64_t)1LL)));
+                continue;
+            }
+            bool __t13493 = false;
+            if (((cls_depth) > (((int64_t)0LL)))) {
+                __t13493 = (((brace_depth) == (cls_depth)));
+            }
+            bool __t13494 = false;
+            if (__t13493) {
+                __t13494 = (((expect_type_depth) == (((int64_t)0LL))));
+            }
+            bool __t13495 = false;
+            if (__t13494) {
+                int64_t __t13496 = arx_TK_COLON();
+                __t13495 = (((nxt) == (__t13496)));
+            }
+            if (__t13495) {
+                int64_t __t13497 = arx_SM_DECL();
+                int64_t fmod = __t13497;
+                if (is_static_decl) {
+                    int64_t __t13498 = arx_SM_STATIC();
+                    fmod = ((fmod) + (__t13498));
+                }
+                int64_t __t13499 = arx_TK_MUT();
+                if (((prev_kind) != (__t13499))) {
+                    int64_t __t13500 = arx_SM_READONLY();
+                    fmod = ((fmod) + (__t13500));
+                }
+                is_static_decl = false;
+                int64_t __t13501 = arx_ST_PROPERTY();
+                arx_push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, __t13501, fmod);
+                prev_kind = k;
+                i = ((i) + (((int64_t)1LL)));
+                continue;
+            }
+            int64_t __t13502 = arx_TK_DOT();
+            bool __t13503 = true;
+            if (!(((prev_kind) == (__t13502)))) {
+                int64_t __t13504 = arx_TK_QDOT();
+                __t13503 = (((prev_kind) == (__t13504)));
+            }
+            if (__t13503) {
+                const char* __t13505 = "";
+                const char* recv_nm = __t13505;
+                if (((i) >= (((int64_t)2LL)))) {
+                    int64_t __t13506 = Arx_List_i64_get((&(ts.kinds)), ((i) - (((int64_t)2LL))));
+                    int64_t pk2 = __t13506;
+                    int64_t __t13507 = arx_TK_IDENT();
+                    bool __t13508 = true;
+                    if (!(((pk2) == (__t13507)))) {
+                        int64_t __t13509 = arx_TK_SELF();
+                        __t13508 = (((pk2) == (__t13509)));
+                    }
+                    if (__t13508) {
+                        const char* __t13510 = Arx_List_str_get((&(ts.vals)), ((i) - (((int64_t)2LL))));
+                        recv_nm = __t13510;
+                    }
+                }
+                const char* __t13511 = "";
+                bool __t13512 = false;
+                if ((arx_str_compare(recv_nm, __t13511) != 0)) {
+                    bool __t13513 = Arx_Map_str_i64_has_key((&(enum_set)), recv_nm);
+                    __t13512 = (__t13513);
+                }
+                if (__t13512) {
+                    int64_t __t13514 = arx_ST_ENUM_MEMBER();
+                    int64_t __t13515 = arx_SM_STATIC();
+                    arx_push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, __t13514, __t13515);
+                    prev_kind = k;
+                    i = ((i) + (((int64_t)1LL)));
+                    continue;
+                }
+                const char* __t13516 = "";
+                const char* recv_t = __t13516;
+                const char* __t13517 = "self";
+                if ((arx_str_compare(recv_nm, __t13517) == 0)) {
+                    recv_t = cur_cls_name;
+                } else {
+                    const char* __t13518 = "";
+                    if ((arx_str_compare(recv_nm, __t13518) != 0)) {
+                        bool __t13519 = arx_lsp_is_static_runtime(recv_nm);
+                        bool __t13520 = true;
+                        if (!(__t13519)) {
+                            bool __t13521 = Arx_Map_str_i64_has_key((&(class_set)), recv_nm);
+                            __t13520 = (__t13521);
+                        }
+                        if (__t13520) {
+                            recv_t = recv_nm;
+                        } else {
+                            bool __t13522 = Arx_Map_str_str_has_key((&(var_types)), recv_nm);
+                            if (__t13522) {
+                                const char* __t13523 = Arx_Map_str_str_get((&(var_types)), recv_nm);
+                                recv_t = __t13523;
+                            } else {
+                                bool __t13524 = Arx_Map_str_str_has_key((&(global_var_types)), recv_nm);
+                                if (__t13524) {
+                                    const char* __t13525 = Arx_Map_str_str_get((&(global_var_types)), recv_nm);
+                                    recv_t = __t13525;
+                                }
+                            }
+                        }
+                    }
+                }
+                int64_t __t13526 = arx_TK_LPAREN();
+                if (((nxt) == (__t13526))) {
+                    int64_t mmod = ((int64_t)0LL);
+                    const char* __t13527 = "";
+                    bool __t13528 = false;
+                    if ((arx_str_compare(recv_nm, __t13527) != 0)) {
+                        bool __t13529 = arx_lsp_is_static_runtime(recv_nm);
+                        __t13528 = (__t13529);
+                    }
+                    if (__t13528) {
+                        int64_t __t13530 = arx_SM_STATIC();
+                        int64_t __t13531 = arx_SM_DEFAULT_LIB();
+                        mmod = ((__t13530) + (__t13531));
+                    } else {
+                        const char* __t13532 = "";
+                        bool __t13533 = false;
+                        if ((arx_str_compare(recv_t, __t13532) != 0)) {
+                            bool __t13534 = arx_hl_is_builtin_receiver_type(recv_t);
+                            __t13533 = (__t13534);
+                        }
+                        if (__t13533) {
+                            int64_t __t13535 = arx_SM_DEFAULT_LIB();
+                            mmod = __t13535;
+                        } else {
+                            const char* __t13536 = "";
+                            bool __t13537 = false;
+                            if ((arx_str_compare(recv_t, __t13536) != 0)) {
+                                bool __t13538 = Arx_Map_str_i64_has_key((&(class_set)), recv_t);
+                                __t13537 = (__t13538);
+                            }
+                            bool __t13539 = false;
+                            if (__t13537) {
+                                bool __t13540 = arx_hl_is_method_static(az, recv_t, v);
+                                __t13539 = (__t13540);
+                            }
+                            if (__t13539) {
+                                int64_t __t13541 = arx_SM_STATIC();
+                                mmod = __t13541;
+                            } else {
+                                const char* __t13542 = "";
+                                bool __t13543 = false;
+                                if ((arx_str_compare(recv_nm, __t13542) != 0)) {
+                                    bool __t13544 = Arx_Map_str_i64_has_key((&(class_set)), recv_nm);
+                                    __t13543 = (__t13544);
+                                }
+                                if (__t13543) {
+                                    int64_t __t13545 = arx_SM_STATIC();
+                                    mmod = __t13545;
+                                }
+                            }
+                        }
+                    }
+                    int64_t __t13546 = arx_ST_METHOD();
+                    arx_push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, __t13546, mmod);
+                } else {
+                    int64_t pmod = ((int64_t)0LL);
+                    const char* __t13547 = "";
+                    bool __t13548 = false;
+                    if ((arx_str_compare(recv_t, __t13547) != 0)) {
+                        bool __t13549 = Arx_Map_str_i64_has_key((&(class_set)), recv_t);
+                        __t13548 = (__t13549);
+                    }
+                    bool __t13550 = false;
+                    if (__t13548) {
+                        bool __t13551 = arx_hl_is_field_readonly(az, recv_t, v);
+                        __t13550 = (__t13551);
+                    }
+                    if (__t13550) {
+                        int64_t __t13552 = arx_SM_READONLY();
+                        pmod = __t13552;
+                    }
+                    int64_t __t13553 = arx_ST_PROPERTY();
+                    arx_push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, __t13553, pmod);
                 }
                 prev_kind = k;
                 i = ((i) + (((int64_t)1LL)));
                 continue;
             }
-            bool __t13264 = arx_lsp_is_primitive_type(v);
-            bool __t13265 = true;
-            if (!(__t13264)) {
-                bool __t13266 = arx_lsp_is_container_type(v);
-                __t13265 = (__t13266);
+            bool __t13554 = Arx_Map_str_i64_has_key((&(cls_tparams)), v);
+            bool __t13555 = true;
+            if (!(__t13554)) {
+                bool __t13556 = Arx_Map_str_i64_has_key((&(fn_tparams)), v);
+                __t13555 = (__t13556);
             }
-            if (__t13265) {
-                int64_t __t13267 = arx_ST_TYPE();
-                int64_t __t13268 = arx_SM_DEFAULT_LIB();
-                arx_push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, __t13267, __t13268);
+            if (__t13555) {
+                int64_t __t13557 = arx_ST_TYPE_PARAM();
+                arx_push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, __t13557, ((int64_t)0LL));
                 prev_kind = k;
                 i = ((i) + (((int64_t)1LL)));
                 continue;
             }
-            bool __t13269 = Arx_Map_str_i64_has_key((&(class_set)), v);
-            if (__t13269) {
-                int64_t __t13270 = arx_ST_CLASS();
-                arx_push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, __t13270, ((int64_t)0LL));
+            bool __t13558 = arx_lsp_is_primitive_type(v);
+            bool __t13559 = true;
+            if (!(__t13558)) {
+                bool __t13560 = arx_lsp_is_container_type(v);
+                __t13559 = (__t13560);
+            }
+            if (__t13559) {
+                bool __t13561 = arx_lsp_is_container_type(v);
+                bool __t13562 = false;
+                if (__t13561) {
+                    __t13562 = (((expect_type_depth) == (((int64_t)0LL))));
+                }
+                bool __t13563 = false;
+                if (__t13562) {
+                    int64_t __t13564 = arx_TK_LPAREN();
+                    bool __t13565 = true;
+                    if (!(((nxt) == (__t13564)))) {
+                        int64_t __t13566 = arx_TK_LT();
+                        __t13565 = (((nxt) == (__t13566)));
+                    }
+                    __t13563 = (__t13565);
+                }
+                if (__t13563) {
+                    int64_t __t13567 = arx_ST_CLASS();
+                    int64_t __t13568 = arx_SM_DEFAULT_LIB();
+                    arx_push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, __t13567, __t13568);
+                } else {
+                    int64_t __t13569 = arx_ST_TYPE();
+                    int64_t __t13570 = arx_SM_DEFAULT_LIB();
+                    arx_push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, __t13569, __t13570);
+                }
                 prev_kind = k;
                 i = ((i) + (((int64_t)1LL)));
                 continue;
             }
-            bool __t13271 = Arx_Map_str_i64_has_key((&(enum_set)), v);
-            if (__t13271) {
-                int64_t __t13272 = arx_ST_ENUM();
-                arx_push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, __t13272, ((int64_t)0LL));
+            bool __t13571 = Arx_Map_str_i64_has_key((&(class_set)), v);
+            if (__t13571) {
+                int64_t __t13572 = arx_ST_CLASS();
+                arx_push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, __t13572, ((int64_t)0LL));
                 prev_kind = k;
                 i = ((i) + (((int64_t)1LL)));
                 continue;
             }
-            bool __t13273 = arx_lsp_is_static_runtime(v);
-            if (__t13273) {
-                int64_t __t13274 = arx_ST_NAMESPACE();
-                int64_t __t13275 = arx_SM_DEFAULT_LIB();
-                arx_push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, __t13274, __t13275);
+            bool __t13573 = Arx_Map_str_i64_has_key((&(enum_set)), v);
+            if (__t13573) {
+                int64_t __t13574 = arx_ST_ENUM();
+                arx_push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, __t13574, ((int64_t)0LL));
+                prev_kind = k;
+                i = ((i) + (((int64_t)1LL)));
+                continue;
+            }
+            bool __t13575 = arx_lsp_is_static_runtime(v);
+            if (__t13575) {
+                int64_t __t13576 = arx_ST_NAMESPACE();
+                int64_t __t13577 = arx_SM_DEFAULT_LIB();
+                arx_push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, __t13576, __t13577);
                 prev_kind = k;
                 i = ((i) + (((int64_t)1LL)));
                 continue;
             }
             if (((expect_type_depth) > (((int64_t)0LL)))) {
-                int64_t __t13276 = arx_ST_TYPE();
-                arx_push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, __t13276, ((int64_t)0LL));
+                int64_t __t13578 = arx_ST_TYPE();
+                arx_push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, __t13578, ((int64_t)0LL));
                 prev_kind = k;
                 i = ((i) + (((int64_t)1LL)));
                 continue;
             }
-            bool __t13277 = arx_lsp_is_builtin_fn(v);
-            if (__t13277) {
-                int64_t __t13278 = arx_ST_FUNCTION();
-                int64_t __t13279 = arx_SM_DEFAULT_LIB();
-                arx_push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, __t13278, __t13279);
+            bool __t13579 = arx_lsp_is_builtin_fn(v);
+            if (__t13579) {
+                int64_t __t13580 = arx_ST_FUNCTION();
+                int64_t __t13581 = arx_SM_DEFAULT_LIB();
+                arx_push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, __t13580, __t13581);
                 prev_kind = k;
                 i = ((i) + (((int64_t)1LL)));
                 continue;
             }
-            int64_t __t13280 = arx_TK_LPAREN();
-            bool __t13281 = true;
-            if (!(((nxt) == (__t13280)))) {
-                bool __t13282 = arx_is_generic_call_tok(ts, i);
-                __t13281 = (__t13282);
+            int64_t __t13582 = arx_TK_LPAREN();
+            bool __t13583 = true;
+            if (!(((nxt) == (__t13582)))) {
+                bool __t13584 = arx_is_generic_call_tok(ts, i);
+                __t13583 = (__t13584);
             }
-            if (__t13281) {
-                bool __t13283 = Arx_Map_str_i64_has_key((&(enum_var_set)), v);
-                if (__t13283) {
-                    int64_t __t13284 = arx_ST_ENUM_MEMBER();
-                    arx_push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, __t13284, ((int64_t)0LL));
+            if (__t13583) {
+                bool __t13585 = Arx_Map_str_i64_has_key((&(enum_var_set)), v);
+                if (__t13585) {
+                    int64_t __t13586 = arx_ST_ENUM_MEMBER();
+                    arx_push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, __t13586, ((int64_t)0LL));
                 } else {
-                    int64_t __t13285 = arx_ST_FUNCTION();
-                    arx_push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, __t13285, ((int64_t)0LL));
+                    const char* __t13587 = "";
+                    bool __t13588 = false;
+                    if ((arx_str_compare(cur_cls_name, __t13587) != 0)) {
+                        const char* __t13589 = "m::";
+                        const char* __t13590 = arx_str_concat(__t13589, cur_cls_name);
+                        const char* __t13591 = "::";
+                        const char* __t13592 = arx_str_concat(__t13590, __t13591);
+                        const char* __t13593 = arx_str_concat(__t13592, v);
+                        bool __t13594 = Arx_Map_str_str_has_key((&(az.sig_by_key)), __t13593);
+                        __t13588 = (__t13594);
+                    }
+                    if (__t13588) {
+                        int64_t __t13595 = arx_ST_METHOD();
+                        arx_push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, __t13595, ((int64_t)0LL));
+                    } else {
+                        int64_t __t13596 = arx_ST_FUNCTION();
+                        arx_push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, __t13596, ((int64_t)0LL));
+                    }
                 }
                 prev_kind = k;
                 i = ((i) + (((int64_t)1LL)));
                 continue;
             }
-            bool __t13286 = Arx_Map_str_i64_has_key((&(cur_params)), v);
-            if (__t13286) {
-                int64_t __t13287 = arx_ST_PARAMETER();
-                arx_push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, __t13287, ((int64_t)0LL));
+            bool __t13597 = Arx_Map_str_i64_has_key((&(cur_params)), v);
+            if (__t13597) {
+                int64_t __t13598 = arx_ST_PARAMETER();
+                arx_push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, __t13598, ((int64_t)0LL));
                 prev_kind = k;
                 i = ((i) + (((int64_t)1LL)));
                 continue;
             }
-            bool __t13288 = Arx_Map_str_i64_has_key((&(enum_var_set)), v);
-            if (__t13288) {
-                int64_t __t13289 = arx_ST_ENUM_MEMBER();
-                arx_push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, __t13289, ((int64_t)0LL));
+            bool __t13599 = Arx_Map_str_i64_has_key((&(enum_var_set)), v);
+            if (__t13599) {
+                int64_t __t13600 = arx_ST_ENUM_MEMBER();
+                arx_push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, __t13600, ((int64_t)0LL));
                 prev_kind = k;
                 i = ((i) + (((int64_t)1LL)));
                 continue;
             }
-            bool __t13290 = Arx_Map_str_i64_has_key((&(fn_set)), v);
-            if (__t13290) {
-                int64_t __t13291 = arx_ST_FUNCTION();
-                arx_push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, __t13291, ((int64_t)0LL));
+            bool __t13601 = Arx_Map_str_i64_has_key((&(fn_set)), v);
+            if (__t13601) {
+                int64_t __t13602 = arx_ST_FUNCTION();
+                arx_push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, __t13602, ((int64_t)0LL));
                 prev_kind = k;
                 i = ((i) + (((int64_t)1LL)));
                 continue;
             }
-            bool __t13292 = Arx_Map_str_i64_has_key((&(readonly_vars)), v);
-            bool __t13293 = false;
-            if (__t13292) {
-                bool __t13294 = Arx_Map_str_i64_has_key((&(mut_vars)), v);
-                __t13293 = ((!(__t13294)));
+            const char* __t13603 = "";
+            bool __t13604 = false;
+            if ((arx_str_compare(cur_cls_name, __t13603) != 0)) {
+                const char* __t13605 = "::";
+                const char* __t13606 = arx_str_concat(cur_cls_name, __t13605);
+                const char* __t13607 = arx_str_concat(__t13606, v);
+                bool __t13608 = Arx_Map_str_str_has_key((&(az.cls_field_types)), __t13607);
+                __t13604 = (__t13608);
             }
-            if (__t13293) {
-                int64_t __t13295 = arx_ST_VARIABLE();
-                int64_t __t13296 = arx_SM_READONLY();
-                arx_push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, __t13295, __t13296);
+            if (__t13604) {
+                int64_t fmod = ((int64_t)0LL);
+                bool __t13609 = arx_hl_is_field_readonly(az, cur_cls_name, v);
+                if (__t13609) {
+                    int64_t __t13610 = arx_SM_READONLY();
+                    fmod = __t13610;
+                }
+                int64_t __t13611 = arx_ST_PROPERTY();
+                arx_push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, __t13611, fmod);
                 prev_kind = k;
                 i = ((i) + (((int64_t)1LL)));
                 continue;
             }
-            int64_t __t13297 = arx_ST_VARIABLE();
-            arx_push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, __t13297, ((int64_t)0LL));
+            bool __t13612 = Arx_Map_str_i64_has_key((&(ro_vars)), v);
+            bool __t13613 = false;
+            if (__t13612) {
+                bool __t13614 = Arx_Map_str_i64_has_key((&(mut_vars)), v);
+                __t13613 = ((!(__t13614)));
+            }
+            if (__t13613) {
+                int64_t __t13615 = arx_ST_VARIABLE();
+                int64_t __t13616 = arx_SM_READONLY();
+                arx_push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, __t13615, __t13616);
+                prev_kind = k;
+                i = ((i) + (((int64_t)1LL)));
+                continue;
+            }
+            bool __t13617 = Arx_Map_str_i64_has_key((&(mut_vars)), v);
+            bool __t13618 = false;
+            if ((!(__t13617))) {
+                bool __t13619 = Arx_Map_str_i64_has_key((&(global_ro)), v);
+                __t13618 = (__t13619);
+            }
+            if (__t13618) {
+                int64_t __t13620 = arx_ST_VARIABLE();
+                int64_t __t13621 = arx_SM_READONLY();
+                int64_t __t13622 = arx_SM_STATIC();
+                arx_push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, __t13620, ((__t13621) + (__t13622)));
+                prev_kind = k;
+                i = ((i) + (((int64_t)1LL)));
+                continue;
+            }
+            bool __t13623 = Arx_Map_str_i64_has_key((&(global_mut)), v);
+            bool __t13624 = false;
+            if (__t13623) {
+                bool __t13625 = Arx_Map_str_i64_has_key((&(mut_vars)), v);
+                __t13624 = ((!(__t13625)));
+            }
+            bool __t13626 = false;
+            if (__t13624) {
+                bool __t13627 = Arx_Map_str_i64_has_key((&(ro_vars)), v);
+                __t13626 = ((!(__t13627)));
+            }
+            if (__t13626) {
+                int64_t __t13628 = arx_ST_VARIABLE();
+                int64_t __t13629 = arx_SM_STATIC();
+                arx_push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, __t13628, __t13629);
+                prev_kind = k;
+                i = ((i) + (((int64_t)1LL)));
+                continue;
+            }
+            int64_t __t13630 = arx_ST_VARIABLE();
+            arx_push_sem_span(tok_lines, tok_cols, tok_lens, tok_types, tok_mods, ln, cl, tl, __t13630, ((int64_t)0LL));
         }
         prev_kind = k;
         i = ((i) + (((int64_t)1LL)));
     }
-    Arx_List_i64 __t13298 = Arx_List_i64_init();
-    Arx_List_i64 data = __t13298;
-    int64_t __t13299 = Arx_List_i64_len((&(tok_lines)));
-    int64_t t_total = __t13299;
+    Arx_List_i64 __t13631 = Arx_List_i64_init();
+    Arx_List_i64 data = __t13631;
+    int64_t __t13632 = Arx_List_i64_len((&(tok_lines)));
+    int64_t t_total = __t13632;
     int64_t c_total = lx.com_count;
     int64_t ti = ((int64_t)0LL);
     int64_t ci2 = ((int64_t)0LL);
     int64_t last_line = ((int64_t)0LL);
     int64_t last_col = ((int64_t)0LL);
     while (1) {
-        bool __t13300 = true;
+        bool __t13633 = true;
         if (!(((ti) < (t_total)))) {
-            __t13300 = (((ci2) < (c_total)));
+            __t13633 = (((ci2) < (c_total)));
         }
-        if (!(__t13300)) break;
+        if (!(__t13633)) break;
         bool pick_comment = false;
         if (((ti) >= (t_total))) {
             pick_comment = true;
         } else {
             if (((ci2) < (c_total))) {
-                int64_t __t13301 = Arx_List_i64_get((&(lx.com_lines)), ci2);
-                int64_t cln0 = ((__t13301) - (((int64_t)1LL)));
-                int64_t __t13302 = Arx_List_i64_get((&(lx.com_cols)), ci2);
-                int64_t ccl0 = ((__t13302) - (((int64_t)1LL)));
-                int64_t __t13303 = Arx_List_i64_get((&(tok_lines)), ti);
-                int64_t tln0 = __t13303;
-                int64_t __t13304 = Arx_List_i64_get((&(tok_cols)), ti);
-                int64_t tcl0 = __t13304;
-                bool __t13305 = true;
+                int64_t __t13634 = Arx_List_i64_get((&(lx.com_lines)), ci2);
+                int64_t cln0 = ((__t13634) - (((int64_t)1LL)));
+                int64_t __t13635 = Arx_List_i64_get((&(lx.com_cols)), ci2);
+                int64_t ccl0 = ((__t13635) - (((int64_t)1LL)));
+                int64_t __t13636 = Arx_List_i64_get((&(tok_lines)), ti);
+                int64_t tln0 = __t13636;
+                int64_t __t13637 = Arx_List_i64_get((&(tok_cols)), ti);
+                int64_t tcl0 = __t13637;
+                bool __t13638 = true;
                 if (!(((cln0) < (tln0)))) {
-                    bool __t13306 = false;
+                    bool __t13639 = false;
                     if (((cln0) == (tln0))) {
-                        __t13306 = (((ccl0) <= (tcl0)));
+                        __t13639 = (((ccl0) <= (tcl0)));
                     }
-                    __t13305 = (__t13306);
+                    __t13638 = (__t13639);
                 }
-                if (__t13305) {
+                if (__t13638) {
                     pick_comment = true;
                 }
             }
@@ -32519,49 +33430,55 @@ Arx_List_i64 arx_lsp_compute_semantic_tokens(const char* source, Arx_Analyzer az
         int64_t etyp = ((int64_t)0LL);
         int64_t emod = ((int64_t)0LL);
         if (pick_comment) {
-            int64_t __t13307 = Arx_List_i64_get((&(lx.com_lines)), ci2);
-            eln = ((__t13307) - (((int64_t)1LL)));
-            int64_t __t13308 = Arx_List_i64_get((&(lx.com_cols)), ci2);
-            ecl = ((__t13308) - (((int64_t)1LL)));
-            int64_t __t13309 = Arx_List_i64_get((&(lx.com_lens)), ci2);
-            elen = __t13309;
-            int64_t __t13310 = arx_ST_COMMENT();
-            etyp = __t13310;
-            emod = ((int64_t)0LL);
+            int64_t __t13640 = Arx_List_i64_get((&(lx.com_lines)), ci2);
+            int64_t raw_ln = __t13640;
+            int64_t __t13641 = Arx_List_i64_get((&(lx.com_cols)), ci2);
+            int64_t raw_cl = __t13641;
+            int64_t __t13642 = Arx_List_i64_get((&(lx.com_lens)), ci2);
+            elen = __t13642;
+            eln = ((raw_ln) - (((int64_t)1LL)));
+            ecl = ((raw_cl) - (((int64_t)1LL)));
+            int64_t __t13643 = arx_ST_COMMENT();
+            etyp = __t13643;
+            bool __t13644 = arx_hl_comment_is_doc(source, line_starts, raw_ln, raw_cl, elen);
+            if (__t13644) {
+                int64_t __t13645 = arx_SM_DOC();
+                emod = __t13645;
+            }
             ci2 = ((ci2) + (((int64_t)1LL)));
         } else {
-            int64_t __t13311 = Arx_List_i64_get((&(tok_lines)), ti);
-            eln = __t13311;
-            int64_t __t13312 = Arx_List_i64_get((&(tok_cols)), ti);
-            ecl = __t13312;
-            int64_t __t13313 = Arx_List_i64_get((&(tok_lens)), ti);
-            elen = __t13313;
-            int64_t __t13314 = Arx_List_i64_get((&(tok_types)), ti);
-            etyp = __t13314;
-            int64_t __t13315 = Arx_List_i64_get((&(tok_mods)), ti);
-            emod = __t13315;
+            int64_t __t13646 = Arx_List_i64_get((&(tok_lines)), ti);
+            eln = __t13646;
+            int64_t __t13647 = Arx_List_i64_get((&(tok_cols)), ti);
+            ecl = __t13647;
+            int64_t __t13648 = Arx_List_i64_get((&(tok_lens)), ti);
+            elen = __t13648;
+            int64_t __t13649 = Arx_List_i64_get((&(tok_types)), ti);
+            etyp = __t13649;
+            int64_t __t13650 = Arx_List_i64_get((&(tok_mods)), ti);
+            emod = __t13650;
             ti = ((ti) + (((int64_t)1LL)));
         }
-        bool __t13316 = true;
+        bool __t13651 = true;
         if (!(((eln) < (((int64_t)0LL))))) {
-            __t13316 = (((ecl) < (((int64_t)0LL))));
+            __t13651 = (((ecl) < (((int64_t)0LL))));
         }
-        bool __t13317 = true;
-        if (!(__t13316)) {
-            __t13317 = (((elen) <= (((int64_t)0LL))));
+        bool __t13652 = true;
+        if (!(__t13651)) {
+            __t13652 = (((elen) <= (((int64_t)0LL))));
         }
-        if (__t13317) {
+        if (__t13652) {
             continue;
         }
-        bool __t13318 = true;
+        bool __t13653 = true;
         if (!(((eln) < (last_line)))) {
-            bool __t13319 = false;
+            bool __t13654 = false;
             if (((eln) == (last_line))) {
-                __t13319 = (((ecl) < (last_col)));
+                __t13654 = (((ecl) < (last_col)));
             }
-            __t13318 = (__t13319);
+            __t13653 = (__t13654);
         }
-        if (__t13318) {
+        if (__t13653) {
             continue;
         }
         int64_t d_line = ((eln) - (last_line));
@@ -32577,103 +33494,103 @@ Arx_List_i64 arx_lsp_compute_semantic_tokens(const char* source, Arx_Analyzer az
         last_line = eln;
         last_col = ecl;
     }
-    Arx_List_i64 __t13320 = data;
-    return __t13320;
+    Arx_List_i64 __t13655 = data;
+    return __t13655;
 }
 
 int64_t arx_CKIND_METHOD(void) {
-    int64_t __t13321 = ((int64_t)2LL);
-    return __t13321;
+    int64_t __t13656 = ((int64_t)2LL);
+    return __t13656;
 }
 
 int64_t arx_CKIND_FUNCTION(void) {
-    int64_t __t13322 = ((int64_t)3LL);
-    return __t13322;
+    int64_t __t13657 = ((int64_t)3LL);
+    return __t13657;
 }
 
 int64_t arx_CKIND_FIELD(void) {
-    int64_t __t13323 = ((int64_t)5LL);
-    return __t13323;
+    int64_t __t13658 = ((int64_t)5LL);
+    return __t13658;
 }
 
 int64_t arx_CKIND_VARIABLE(void) {
-    int64_t __t13324 = ((int64_t)6LL);
-    return __t13324;
+    int64_t __t13659 = ((int64_t)6LL);
+    return __t13659;
 }
 
 int64_t arx_CKIND_CLASS(void) {
-    int64_t __t13325 = ((int64_t)7LL);
-    return __t13325;
+    int64_t __t13660 = ((int64_t)7LL);
+    return __t13660;
 }
 
 int64_t arx_CKIND_ENUM(void) {
-    int64_t __t13326 = ((int64_t)13LL);
-    return __t13326;
+    int64_t __t13661 = ((int64_t)13LL);
+    return __t13661;
 }
 
 int64_t arx_CKIND_KEYWORD(void) {
-    int64_t __t13327 = ((int64_t)14LL);
-    return __t13327;
+    int64_t __t13662 = ((int64_t)14LL);
+    return __t13662;
 }
 
 int64_t arx_CKIND_ENUM_MEM(void) {
-    int64_t __t13328 = ((int64_t)20LL);
-    return __t13328;
+    int64_t __t13663 = ((int64_t)20LL);
+    return __t13663;
 }
 
 int64_t arx_SKIND_CLASS(void) {
-    int64_t __t13329 = ((int64_t)5LL);
-    return __t13329;
+    int64_t __t13664 = ((int64_t)5LL);
+    return __t13664;
 }
 
 int64_t arx_SKIND_METHOD(void) {
-    int64_t __t13330 = ((int64_t)6LL);
-    return __t13330;
+    int64_t __t13665 = ((int64_t)6LL);
+    return __t13665;
 }
 
 int64_t arx_SKIND_FIELD(void) {
-    int64_t __t13331 = ((int64_t)8LL);
-    return __t13331;
+    int64_t __t13666 = ((int64_t)8LL);
+    return __t13666;
 }
 
 int64_t arx_SKIND_CTOR(void) {
-    int64_t __t13332 = ((int64_t)9LL);
-    return __t13332;
+    int64_t __t13667 = ((int64_t)9LL);
+    return __t13667;
 }
 
 int64_t arx_SKIND_ENUM(void) {
-    int64_t __t13333 = ((int64_t)10LL);
-    return __t13333;
+    int64_t __t13668 = ((int64_t)10LL);
+    return __t13668;
 }
 
 int64_t arx_SKIND_FUNCTION(void) {
-    int64_t __t13334 = ((int64_t)12LL);
-    return __t13334;
+    int64_t __t13669 = ((int64_t)12LL);
+    return __t13669;
 }
 
 int64_t arx_SKIND_VAR(void) {
-    int64_t __t13335 = ((int64_t)13LL);
-    return __t13335;
+    int64_t __t13670 = ((int64_t)13LL);
+    return __t13670;
 }
 
 int64_t arx_SKIND_ENUM_MEM(void) {
-    int64_t __t13336 = ((int64_t)22LL);
-    return __t13336;
+    int64_t __t13671 = ((int64_t)22LL);
+    return __t13671;
 }
 
 Arx_Analyzer arx_lsp_analyze_document(const char* doc_path, const char* source, Arx_Map_str_str docs_by_path) {
-    const char* __t13337 = arx_bpath_normalize(doc_path);
-    const char* norm = __t13337;
-    Arx_Parser __t13338 = Arx_Parser_init(norm);
-    Arx_Parser p = __t13338;
+    const char* __t13672 = arx_bpath_normalize(doc_path);
+    const char* norm = __t13672;
+    Arx_Parser __t13673 = Arx_Parser_init(norm);
+    Arx_Parser p = __t13673;
     p.recover_mode = true;
     p.virtual_docs = docs_by_path;
     Arx_Parser_load_source((&(p)), source, norm);
-    Arx_Analyzer __t13339 = Arx_Analyzer_init(p);
-    Arx_Analyzer az = __t13339;
+    Arx_Analyzer __t13674 = Arx_Analyzer_init(p);
+    Arx_Analyzer az = __t13674;
     Arx_Analyzer_analyze((&(az)));
-    Arx_Analyzer __t13340 = az;
-    return __t13340;
+    Arx_Analyzer __t13675 = az;
+    return __t13675;
 }
 
 const char* arx_lsp_get_line_text(const char* source, int64_t target_line0) {
@@ -32681,11 +33598,11 @@ const char* arx_lsp_get_line_text(const char* source, int64_t target_line0) {
     int64_t ln = ((int64_t)0LL);
     int64_t i = ((int64_t)0LL);
     while (1) {
-        bool __t13341 = false;
+        bool __t13676 = false;
         if (((ln) < (target_line0))) {
-            __t13341 = (((i) < (n)));
+            __t13676 = (((i) < (n)));
         }
-        if (!(__t13341)) break;
+        if (!(__t13676)) break;
         if (((arx_str_byte_at(source, i)) == (((int64_t)10LL)))) {
             ln = ((ln) + (((int64_t)1LL)));
         }
@@ -32693,20 +33610,20 @@ const char* arx_lsp_get_line_text(const char* source, int64_t target_line0) {
     }
     int64_t st = i;
     while (1) {
-        bool __t13342 = false;
+        bool __t13677 = false;
         if (((i) < (n))) {
-            __t13342 = (((arx_str_byte_at(source, i)) != (((int64_t)10LL))));
+            __t13677 = (((arx_str_byte_at(source, i)) != (((int64_t)10LL))));
         }
-        bool __t13343 = false;
-        if (__t13342) {
-            __t13343 = (((arx_str_byte_at(source, i)) != (((int64_t)13LL))));
+        bool __t13678 = false;
+        if (__t13677) {
+            __t13678 = (((arx_str_byte_at(source, i)) != (((int64_t)13LL))));
         }
-        if (!(__t13343)) break;
+        if (!(__t13678)) break;
         i = ((i) + (((int64_t)1LL)));
     }
-    const char* __t13344 = __arx_bstr_slice(source, st, i);
-    const char* __t13345 = __t13344;
-    return __t13345;
+    const char* __t13679 = __arx_bstr_slice(source, st, i);
+    const char* __t13680 = __t13679;
+    return __t13680;
 }
 
 int64_t arx_lsp_count_lines(const char* source) {
@@ -32720,296 +33637,823 @@ int64_t arx_lsp_count_lines(const char* source) {
         }
         i = ((i) + (((int64_t)1LL)));
     }
-    int64_t __t13346 = cnt;
-    return __t13346;
+    int64_t __t13681 = cnt;
+    return __t13681;
 }
 
 int64_t arx_lsp_word_start_at(const char* source, int64_t line0, int64_t char0) {
-    const char* __t13347 = arx_lsp_get_line_text(source, line0);
-    const char* line = __t13347;
+    const char* __t13682 = arx_lsp_get_line_text(source, line0);
+    const char* line = __t13682;
     int64_t len = arx_str_len(line);
     if (((len) == (((int64_t)0LL)))) {
-        int64_t __t13348 = (-(((int64_t)1LL)));
-        return __t13348;
+        int64_t __t13683 = (-(((int64_t)1LL)));
+        return __t13683;
     }
     int64_t idx = char0;
     if (((idx) >= (len))) {
         idx = ((len) - (((int64_t)1LL)));
     }
     if (((idx) < (((int64_t)0LL)))) {
-        int64_t __t13349 = (-(((int64_t)1LL)));
-        return __t13349;
+        int64_t __t13684 = (-(((int64_t)1LL)));
+        return __t13684;
     }
-    bool __t13350 = arx_lsp_is_ident_char(arx_str_byte_at(line, idx));
-    bool __t13351 = false;
-    if ((!(__t13350))) {
-        __t13351 = (((idx) > (((int64_t)0LL))));
+    bool __t13685 = arx_lsp_is_ident_char(arx_str_byte_at(line, idx));
+    bool __t13686 = false;
+    if ((!(__t13685))) {
+        __t13686 = (((idx) > (((int64_t)0LL))));
     }
-    bool __t13352 = false;
-    if (__t13351) {
-        bool __t13353 = arx_lsp_is_ident_char(arx_str_byte_at(line, ((idx) - (((int64_t)1LL)))));
-        __t13352 = (__t13353);
+    bool __t13687 = false;
+    if (__t13686) {
+        bool __t13688 = arx_lsp_is_ident_char(arx_str_byte_at(line, ((idx) - (((int64_t)1LL)))));
+        __t13687 = (__t13688);
     }
-    if (__t13352) {
+    if (__t13687) {
         idx = ((idx) - (((int64_t)1LL)));
     }
-    bool __t13354 = arx_lsp_is_ident_char(arx_str_byte_at(line, idx));
-    if ((!(__t13354))) {
-        int64_t __t13355 = (-(((int64_t)1LL)));
-        return __t13355;
+    bool __t13689 = arx_lsp_is_ident_char(arx_str_byte_at(line, idx));
+    if ((!(__t13689))) {
+        int64_t __t13690 = (-(((int64_t)1LL)));
+        return __t13690;
     }
     int64_t st = idx;
     while (1) {
-        bool __t13356 = false;
+        bool __t13691 = false;
         if (((st) > (((int64_t)0LL)))) {
-            bool __t13357 = arx_lsp_is_ident_char(arx_str_byte_at(line, ((st) - (((int64_t)1LL)))));
-            __t13356 = (__t13357);
+            bool __t13692 = arx_lsp_is_ident_char(arx_str_byte_at(line, ((st) - (((int64_t)1LL)))));
+            __t13691 = (__t13692);
         }
-        if (!(__t13356)) break;
+        if (!(__t13691)) break;
         st = ((st) - (((int64_t)1LL)));
     }
-    int64_t __t13358 = st;
-    return __t13358;
+    int64_t __t13693 = st;
+    return __t13693;
 }
 
 const char* arx_lsp_word_at(const char* source, int64_t line0, int64_t char0) {
-    const char* __t13359 = arx_lsp_get_line_text(source, line0);
-    const char* line = __t13359;
+    const char* __t13694 = arx_lsp_get_line_text(source, line0);
+    const char* line = __t13694;
     int64_t len = arx_str_len(line);
-    int64_t __t13360 = arx_lsp_word_start_at(source, line0, char0);
-    int64_t st = __t13360;
+    int64_t __t13695 = arx_lsp_word_start_at(source, line0, char0);
+    int64_t st = __t13695;
     if (((st) < (((int64_t)0LL)))) {
-        const char* __t13361 = "";
-        const char* __t13362 = __t13361;
-        return __t13362;
+        const char* __t13696 = "";
+        const char* __t13697 = __t13696;
+        return __t13697;
     }
     int64_t ed = ((st) + (((int64_t)1LL)));
     while (1) {
-        bool __t13363 = false;
+        bool __t13698 = false;
         if (((ed) < (len))) {
-            bool __t13364 = arx_lsp_is_ident_char(arx_str_byte_at(line, ed));
-            __t13363 = (__t13364);
+            bool __t13699 = arx_lsp_is_ident_char(arx_str_byte_at(line, ed));
+            __t13698 = (__t13699);
         }
-        if (!(__t13363)) break;
+        if (!(__t13698)) break;
         ed = ((ed) + (((int64_t)1LL)));
     }
-    const char* __t13365 = __arx_bstr_slice(line, st, ed);
-    const char* __t13366 = __t13365;
-    return __t13366;
+    const char* __t13700 = __arx_bstr_slice(line, st, ed);
+    const char* __t13701 = __t13700;
+    return __t13701;
 }
 
 int64_t arx_lsp_find_node_col0(const char* source, int64_t ln1, const char* name) {
-    bool __t13367 = true;
+    bool __t13702 = true;
     if (!(((ln1) <= (((int64_t)0LL))))) {
-        const char* __t13368 = "";
-        __t13367 = ((arx_str_compare(name, __t13368) == 0));
+        const char* __t13703 = "";
+        __t13702 = ((arx_str_compare(name, __t13703) == 0));
     }
-    if (__t13367) {
-        int64_t __t13369 = ((int64_t)0LL);
-        return __t13369;
+    if (__t13702) {
+        int64_t __t13704 = ((int64_t)0LL);
+        return __t13704;
     }
-    const char* __t13370 = arx_lsp_get_line_text(source, ((ln1) - (((int64_t)1LL))));
-    const char* line = __t13370;
-    int64_t __t13371 = arx_lsp_str_find(line, name, ((int64_t)0LL));
-    int64_t pos = __t13371;
-    if (((pos) >= (((int64_t)0LL)))) {
-        int64_t __t13372 = pos;
-        return __t13372;
+    const char* __t13705 = arx_lsp_get_line_text(source, ((ln1) - (((int64_t)1LL))));
+    const char* line = __t13705;
+    int64_t n = arx_str_len(line);
+    int64_t m = arx_str_len(name);
+    int64_t start = ((int64_t)0LL);
+    while (1) {
+        if (!(((start) <= (((n) - (m)))))) break;
+        int64_t __t13706 = arx_lsp_str_find(line, name, start);
+        int64_t pos = __t13706;
+        if (((pos) < (((int64_t)0LL)))) {
+            break;
+        }
+        bool __t13707 = true;
+        if (!(((pos) == (((int64_t)0LL))))) {
+            bool __t13708 = arx_lsp_is_ident_char(arx_str_byte_at(line, ((pos) - (((int64_t)1LL)))));
+            __t13707 = ((!(__t13708)));
+        }
+        bool left_ok = __t13707;
+        int64_t right_idx = ((pos) + (m));
+        bool __t13709 = true;
+        if (!(((right_idx) >= (n)))) {
+            bool __t13710 = arx_lsp_is_ident_char(arx_str_byte_at(line, right_idx));
+            __t13709 = ((!(__t13710)));
+        }
+        bool right_ok = __t13709;
+        bool __t13711 = false;
+        if (left_ok) {
+            __t13711 = (right_ok);
+        }
+        if (__t13711) {
+            int64_t __t13712 = pos;
+            return __t13712;
+        }
+        start = ((pos) + (((int64_t)1LL)));
     }
-    int64_t __t13373 = ((int64_t)0LL);
-    return __t13373;
+    int64_t __t13713 = arx_lsp_str_find(line, name, ((int64_t)0LL));
+    int64_t fallback = __t13713;
+    if (((fallback) >= (((int64_t)0LL)))) {
+        int64_t __t13714 = fallback;
+        return __t13714;
+    }
+    int64_t __t13715 = ((int64_t)0LL);
+    return __t13715;
+}
+
+const char* arx_lsp_read_target_source(const char* source, const char* doc_path, const char* tfile) {
+    if ((arx_str_compare(tfile, doc_path) == 0)) {
+        const char* __t13716 = source;
+        return __t13716;
+    }
+    const char* __t13717 = "";
+    bool __t13718 = false;
+    if ((arx_str_compare(tfile, __t13717) != 0)) {
+        bool __t13719 = Arx_File_exists(tfile);
+        __t13718 = (__t13719);
+    }
+    if (__t13718) {
+        const char* __t13720 = Arx_File_read_to_string(tfile);
+        const char* __t13721 = __t13720;
+        return __t13721;
+    }
+    const char* __t13722 = "";
+    const char* __t13723 = __t13722;
+    return __t13723;
+}
+
+const char* arx_lsp_extract_doc_comments(const char* source, const char* doc_path, const char* tfile, int64_t ln1) {
+    const char* __t13724 = arx_lsp_read_target_source(source, doc_path, tfile);
+    const char* fsrc = __t13724;
+    const char* __t13725 = "";
+    bool __t13726 = true;
+    if (!((arx_str_compare(fsrc, __t13725) == 0))) {
+        __t13726 = (((ln1) <= (((int64_t)1LL))));
+    }
+    if (__t13726) {
+        const char* __t13727 = "";
+        const char* __t13728 = __t13727;
+        return __t13728;
+    }
+    Arx_List_str __t13729 = Arx_List_str_init();
+    Arx_List_str collected = __t13729;
+    int64_t cur_ln0 = ((ln1) - (((int64_t)2LL)));
+    int64_t steps = ((int64_t)0LL);
+    while (1) {
+        bool __t13730 = false;
+        if (((cur_ln0) >= (((int64_t)0LL)))) {
+            __t13730 = (((steps) < (((int64_t)24LL))));
+        }
+        if (!(__t13730)) break;
+        const char* __t13731 = arx_lsp_get_line_text(fsrc, cur_ln0);
+        const char* raw = arx_str_trim(__t13731);
+        const char* __t13732 = "///";
+        if (arx_str_starts_with(raw, __t13732)) {
+            const char* __t13733 = __arx_bstr_slice(raw, ((int64_t)3LL), arx_str_len(raw));
+            const char* c = __t13733;
+            const char* __t13734 = " ";
+            if (arx_str_starts_with(c, __t13734)) {
+                const char* __t13735 = __arx_bstr_slice(c, ((int64_t)1LL), arx_str_len(c));
+                c = __t13735;
+            }
+            Arx_List_str_push((&(collected)), c);
+        } else {
+            const char* __t13736 = "//";
+            if (arx_str_starts_with(raw, __t13736)) {
+                const char* __t13737 = __arx_bstr_slice(raw, ((int64_t)2LL), arx_str_len(raw));
+                const char* c = __t13737;
+                const char* __t13738 = " ";
+                if (arx_str_starts_with(c, __t13738)) {
+                    const char* __t13739 = __arx_bstr_slice(c, ((int64_t)1LL), arx_str_len(c));
+                    c = __t13739;
+                }
+                Arx_List_str_push((&(collected)), c);
+            } else {
+                const char* __t13740 = "#[";
+                bool __t13741 = false;
+                if (arx_str_starts_with(raw, __t13740)) {
+                    int64_t __t13742 = Arx_List_str_len((&(collected)));
+                    __t13741 = (((__t13742) == (((int64_t)0LL))));
+                }
+                if (__t13741) {
+                } else {
+                    break;
+                }
+            }
+        }
+        cur_ln0 = ((cur_ln0) - (((int64_t)1LL)));
+        steps = ((steps) + (((int64_t)1LL)));
+    }
+    int64_t __t13743 = Arx_List_str_len((&(collected)));
+    if (((__t13743) == (((int64_t)0LL)))) {
+        const char* __t13744 = "";
+        const char* __t13745 = __t13744;
+        return __t13745;
+    }
+    Arx_ByteBuffer __t13746 = Arx_ByteBuffer_init();
+    Arx_ByteBuffer bb = __t13746;
+    int64_t __t13747 = Arx_List_str_len((&(collected)));
+    int64_t idx = ((__t13747) - (((int64_t)1LL)));
+    while (1) {
+        if (!(((idx) >= (((int64_t)0LL))))) break;
+        int64_t __t13748 = Arx_List_str_len((&(collected)));
+        if (((idx) < (((__t13748) - (((int64_t)1LL)))))) {
+            const char* __t13749 = "\n";
+            Arx_ByteBuffer_write_str((&(bb)), __t13749);
+        }
+        const char* __t13750 = Arx_List_str_get((&(collected)), idx);
+        Arx_ByteBuffer_write_str((&(bb)), __t13750);
+        idx = ((idx) - (((int64_t)1LL)));
+    }
+    const char* __t13751 = Arx_ByteBuffer_to_str((&(bb)));
+    const char* out = __t13751;
+    Arx_ByteBuffer_free((&(bb)));
+    const char* __t13752 = out;
+    return __t13752;
+}
+
+int64_t arx_lsp_block_end_line1(const char* source, int64_t decl_ln1) {
+    if (((decl_ln1) <= (((int64_t)0LL)))) {
+        int64_t __t13753 = ((int64_t)1000000LL);
+        return __t13753;
+    }
+    int64_t n = arx_str_len(source);
+    int64_t cur_ln = ((int64_t)1LL);
+    int64_t i = ((int64_t)0LL);
+    while (1) {
+        bool __t13754 = false;
+        if (((cur_ln) < (decl_ln1))) {
+            __t13754 = (((i) < (n)));
+        }
+        if (!(__t13754)) break;
+        if (((arx_str_byte_at(source, i)) == (((int64_t)10LL)))) {
+            cur_ln = ((cur_ln) + (((int64_t)1LL)));
+        }
+        i = ((i) + (((int64_t)1LL)));
+    }
+    bool seen_brace = false;
+    int64_t depth = ((int64_t)0LL);
+    bool in_str = false;
+    bool in_line_com = false;
+    bool in_blk_com = false;
+    while (1) {
+        if (!(((i) < (n)))) break;
+        int64_t b = arx_str_byte_at(source, i);
+        if (((b) == (((int64_t)10LL)))) {
+            in_line_com = false;
+            bool __t13755 = false;
+            if ((!(seen_brace))) {
+                __t13755 = (((depth) == (((int64_t)0LL))));
+            }
+            bool __t13756 = false;
+            if (__t13755) {
+                __t13756 = (((i) > (((int64_t)0LL))));
+            }
+            bool __t13757 = false;
+            if (__t13756) {
+                __t13757 = (((arx_str_byte_at(source, ((i) - (((int64_t)1LL))))) != (((int64_t)123LL))));
+            }
+            if (__t13757) {
+                int64_t j = ((i) - (((int64_t)1LL)));
+                while (1) {
+                    bool __t13758 = false;
+                    if (((j) >= (((int64_t)0LL)))) {
+                        __t13758 = (((arx_str_byte_at(source, j)) != (((int64_t)10LL))));
+                    }
+                    if (!(__t13758)) break;
+                    bool __t13759 = false;
+                    if (((j) >= (((int64_t)1LL)))) {
+                        __t13759 = (((arx_str_byte_at(source, ((j) - (((int64_t)1LL))))) == (((int64_t)61LL))));
+                    }
+                    bool __t13760 = false;
+                    if (__t13759) {
+                        __t13760 = (((arx_str_byte_at(source, j)) == (((int64_t)62LL))));
+                    }
+                    if (__t13760) {
+                        int64_t __t13761 = cur_ln;
+                        return __t13761;
+                    }
+                    j = ((j) - (((int64_t)1LL)));
+                }
+            }
+            cur_ln = ((cur_ln) + (((int64_t)1LL)));
+            i = ((i) + (((int64_t)1LL)));
+            continue;
+        }
+        if (in_line_com) {
+            i = ((i) + (((int64_t)1LL)));
+            continue;
+        }
+        if (in_blk_com) {
+            bool __t13762 = false;
+            if (((b) == (((int64_t)42LL)))) {
+                __t13762 = (((((i) + (((int64_t)1LL)))) < (n)));
+            }
+            bool __t13763 = false;
+            if (__t13762) {
+                __t13763 = (((arx_str_byte_at(source, ((i) + (((int64_t)1LL))))) == (((int64_t)47LL))));
+            }
+            if (__t13763) {
+                in_blk_com = false;
+                i = ((i) + (((int64_t)2LL)));
+                continue;
+            }
+            i = ((i) + (((int64_t)1LL)));
+            continue;
+        }
+        if (in_str) {
+            bool __t13764 = false;
+            if (((b) == (((int64_t)92LL)))) {
+                __t13764 = (((((i) + (((int64_t)1LL)))) < (n)));
+            }
+            if (__t13764) {
+                i = ((i) + (((int64_t)2LL)));
+                continue;
+            }
+            if (((b) == (((int64_t)34LL)))) {
+                in_str = false;
+            }
+            i = ((i) + (((int64_t)1LL)));
+            continue;
+        }
+        bool __t13765 = false;
+        if (((b) == (((int64_t)47LL)))) {
+            __t13765 = (((((i) + (((int64_t)1LL)))) < (n)));
+        }
+        if (__t13765) {
+            int64_t nb = arx_str_byte_at(source, ((i) + (((int64_t)1LL))));
+            if (((nb) == (((int64_t)47LL)))) {
+                in_line_com = true;
+                i = ((i) + (((int64_t)2LL)));
+                continue;
+            }
+            if (((nb) == (((int64_t)42LL)))) {
+                in_blk_com = true;
+                i = ((i) + (((int64_t)2LL)));
+                continue;
+            }
+        }
+        if (((b) == (((int64_t)34LL)))) {
+            in_str = true;
+            i = ((i) + (((int64_t)1LL)));
+            continue;
+        }
+        if (((b) == (((int64_t)123LL)))) {
+            seen_brace = true;
+            depth = ((depth) + (((int64_t)1LL)));
+        } else {
+            if (((b) == (((int64_t)125LL)))) {
+                depth = ((depth) - (((int64_t)1LL)));
+                bool __t13766 = false;
+                if (seen_brace) {
+                    __t13766 = (((depth) <= (((int64_t)0LL))));
+                }
+                if (__t13766) {
+                    int64_t __t13767 = cur_ln;
+                    return __t13767;
+                }
+            }
+        }
+        i = ((i) + (((int64_t)1LL)));
+    }
+    int64_t __t13768 = cur_ln;
+    return __t13768;
 }
 
 const char* arx_lsp_format_params(Arx_Analyzer az, int64_t fn_nid) {
-    int64_t __t13374 = Arx_List_i64_get((&(az.la)), fn_nid);
-    int64_t pg = __t13374;
+    int64_t __t13769 = Arx_List_i64_get((&(az.la)), fn_nid);
+    int64_t pg = __t13769;
     if (((pg) < (((int64_t)0LL)))) {
-        const char* __t13375 = "";
-        const char* __t13376 = __t13375;
-        return __t13376;
+        const char* __t13770 = "";
+        const char* __t13771 = __t13770;
+        return __t13771;
     }
-    int64_t __t13377 = Arx_List_i64_get((&(az.ll)), pg);
-    int64_t pc = __t13377;
-    Arx_ByteBuffer __t13378 = Arx_ByteBuffer_init();
-    Arx_ByteBuffer bb = __t13378;
+    int64_t __t13772 = Arx_List_i64_get((&(az.ll)), pg);
+    int64_t pc = __t13772;
+    Arx_ByteBuffer __t13773 = Arx_ByteBuffer_init();
+    Arx_ByteBuffer bb = __t13773;
     int64_t i = ((int64_t)0LL);
     while (1) {
         if (!(((i) < (pc)))) break;
         if (((i) > (((int64_t)0LL)))) {
-            const char* __t13379 = ", ";
-            Arx_ByteBuffer_write_str((&(bb)), __t13379);
+            const char* __t13774 = ", ";
+            Arx_ByteBuffer_write_str((&(bb)), __t13774);
         }
-        int64_t __t13380 = Arx_List_i64_get((&(az.ls)), pg);
-        int64_t __t13381 = Arx_List_i64_get((&(az.ch)), ((__t13380) + (i)));
-        int64_t pid = __t13381;
-        const char* __t13382 = Arx_List_str_get((&(az.sa)), pid);
-        Arx_ByteBuffer_write_str((&(bb)), __t13382);
-        const char* __t13383 = ": ";
-        Arx_ByteBuffer_write_str((&(bb)), __t13383);
-        const char* __t13384 = Arx_List_str_get((&(az.sb)), pid);
-        const char* __t13385 = arx_btype_norm(__t13384);
-        Arx_ByteBuffer_write_str((&(bb)), __t13385);
+        int64_t __t13775 = Arx_List_i64_get((&(az.ls)), pg);
+        int64_t __t13776 = Arx_List_i64_get((&(az.ch)), ((__t13775) + (i)));
+        int64_t pid = __t13776;
+        int64_t __t13777 = Arx_List_i64_get((&(az.ia)), pid);
+        int64_t __t13778 = arx_FLAG_MUT();
+        bool __t13779 = arx_has_flag(__t13777, __t13778);
+        if (__t13779) {
+            const char* __t13780 = "mut ";
+            Arx_ByteBuffer_write_str((&(bb)), __t13780);
+        }
+        const char* __t13781 = Arx_List_str_get((&(az.sa)), pid);
+        Arx_ByteBuffer_write_str((&(bb)), __t13781);
+        const char* __t13782 = ": ";
+        Arx_ByteBuffer_write_str((&(bb)), __t13782);
+        const char* __t13783 = Arx_List_str_get((&(az.sb)), pid);
+        const char* __t13784 = arx_btype_norm(__t13783);
+        Arx_ByteBuffer_write_str((&(bb)), __t13784);
         i = ((i) + (((int64_t)1LL)));
     }
-    const char* __t13386 = Arx_ByteBuffer_to_str((&(bb)));
-    const char* out = __t13386;
+    const char* __t13785 = Arx_ByteBuffer_to_str((&(bb)));
+    const char* out = __t13785;
     Arx_ByteBuffer_free((&(bb)));
-    const char* __t13387 = out;
-    return __t13387;
+    const char* __t13786 = out;
+    return __t13786;
 }
 
 const char* arx_lsp_fn_signature_str(Arx_Analyzer az, int64_t fn_nid) {
-    int64_t __t13388 = Arx_List_i64_get((&(az.nk)), fn_nid);
-    int64_t k = __t13388;
-    const char* __t13389 = arx_lsp_format_params(az, fn_nid);
-    const char* params = __t13389;
-    int64_t __t13390 = arx_NK_INIT_DEF();
-    if (((k) == (__t13390))) {
-        const char* __t13391 = "init(";
-        const char* __t13392 = arx_str_concat(__t13391, params);
-        const char* __t13393 = ")";
-        const char* __t13394 = arx_str_concat(__t13392, __t13393);
-        const char* __t13395 = __t13394;
-        return __t13395;
+    int64_t __t13787 = Arx_List_i64_get((&(az.nk)), fn_nid);
+    int64_t k = __t13787;
+    const char* __t13788 = arx_lsp_format_params(az, fn_nid);
+    const char* params = __t13788;
+    int64_t __t13789 = arx_NK_INIT_DEF();
+    if (((k) == (__t13789))) {
+        const char* __t13790 = "init(";
+        const char* __t13791 = arx_str_concat(__t13790, params);
+        const char* __t13792 = ")";
+        const char* __t13793 = arx_str_concat(__t13791, __t13792);
+        const char* __t13794 = __t13793;
+        return __t13794;
     }
-    const char* __t13396 = Arx_List_str_get((&(az.sa)), fn_nid);
-    const char* nm = __t13396;
-    const char* __t13397 = Arx_List_str_get((&(az.sb)), fn_nid);
-    const char* __t13398 = arx_btype_norm(__t13397);
-    const char* rt = __t13398;
-    const char* __t13399 = "fn ";
-    const char* __t13400 = arx_str_concat(__t13399, nm);
-    const char* __t13401 = "(";
-    const char* __t13402 = arx_str_concat(__t13400, __t13401);
-    const char* __t13403 = arx_str_concat(__t13402, params);
-    const char* __t13404 = ") -> ";
-    const char* __t13405 = arx_str_concat(__t13403, __t13404);
-    const char* __t13406 = arx_str_concat(__t13405, rt);
-    const char* __t13407 = __t13406;
-    return __t13407;
+    int64_t __t13795 = arx_NK_DROP_DEF();
+    if (((k) == (__t13795))) {
+        const char* __t13796 = "drop()";
+        const char* __t13797 = __t13796;
+        return __t13797;
+    }
+    const char* __t13798 = Arx_List_str_get((&(az.sa)), fn_nid);
+    const char* nm = __t13798;
+    const char* __t13799 = Arx_List_str_get((&(az.sb)), fn_nid);
+    const char* __t13800 = arx_btype_norm(__t13799);
+    const char* rt = __t13800;
+    const char* __t13801 = "";
+    const char* prefix = __t13801;
+    int64_t __t13802 = Arx_List_i64_get((&(az.ia)), fn_nid);
+    int64_t __t13803 = arx_FLAG_PUB();
+    bool __t13804 = arx_has_flag(__t13802, __t13803);
+    if (__t13804) {
+        const char* __t13805 = "pub ";
+        prefix = __t13805;
+    }
+    int64_t __t13806 = Arx_List_i64_get((&(az.ia)), fn_nid);
+    int64_t __t13807 = arx_FLAG_STATIC();
+    bool __t13808 = arx_has_flag(__t13806, __t13807);
+    if (__t13808) {
+        const char* __t13809 = "static ";
+        const char* __t13810 = arx_str_concat(prefix, __t13809);
+        prefix = __t13810;
+    }
+    const char* __t13811 = "";
+    bool __t13812 = true;
+    if (!((arx_str_compare(rt, __t13811) == 0))) {
+        const char* __t13813 = "void";
+        __t13812 = ((arx_str_compare(rt, __t13813) == 0));
+    }
+    if (__t13812) {
+        const char* __t13814 = "fn ";
+        const char* __t13815 = arx_str_concat(prefix, __t13814);
+        const char* __t13816 = arx_str_concat(__t13815, nm);
+        const char* __t13817 = "(";
+        const char* __t13818 = arx_str_concat(__t13816, __t13817);
+        const char* __t13819 = arx_str_concat(__t13818, params);
+        const char* __t13820 = ")";
+        const char* __t13821 = arx_str_concat(__t13819, __t13820);
+        const char* __t13822 = __t13821;
+        return __t13822;
+    }
+    const char* __t13823 = "fn ";
+    const char* __t13824 = arx_str_concat(prefix, __t13823);
+    const char* __t13825 = arx_str_concat(__t13824, nm);
+    const char* __t13826 = "(";
+    const char* __t13827 = arx_str_concat(__t13825, __t13826);
+    const char* __t13828 = arx_str_concat(__t13827, params);
+    const char* __t13829 = ") -> ";
+    const char* __t13830 = arx_str_concat(__t13828, __t13829);
+    const char* __t13831 = arx_str_concat(__t13830, rt);
+    const char* __t13832 = __t13831;
+    return __t13832;
 }
 
 int64_t arx_lsp_find_class_node(Arx_Analyzer az, const char* cname) {
-    bool __t13408 = Arx_Map_str_i64_has_key((&(az.cls_idx_map)), cname);
-    if ((!(__t13408))) {
-        int64_t __t13409 = (-(((int64_t)1LL)));
-        return __t13409;
+    bool __t13833 = Arx_Map_str_i64_has_key((&(az.cls_idx_map)), cname);
+    if ((!(__t13833))) {
+        int64_t __t13834 = (-(((int64_t)1LL)));
+        return __t13834;
     }
-    int64_t __t13410 = Arx_Map_str_i64_get((&(az.cls_idx_map)), cname);
-    int64_t __t13411 = Arx_List_i64_get((&(az.cls_nodes)), __t13410);
-    int64_t __t13412 = __t13411;
-    return __t13412;
+    int64_t __t13835 = Arx_Map_str_i64_get((&(az.cls_idx_map)), cname);
+    int64_t __t13836 = Arx_List_i64_get((&(az.cls_nodes)), __t13835);
+    int64_t __t13837 = __t13836;
+    return __t13837;
 }
 
 int64_t arx_lsp_find_enum_node(Arx_Analyzer az, const char* ename) {
-    bool __t13413 = Arx_Map_str_i64_has_key((&(az.enum_idx_map)), ename);
-    if ((!(__t13413))) {
-        int64_t __t13414 = (-(((int64_t)1LL)));
-        return __t13414;
+    bool __t13838 = Arx_Map_str_i64_has_key((&(az.enum_idx_map)), ename);
+    if ((!(__t13838))) {
+        int64_t __t13839 = (-(((int64_t)1LL)));
+        return __t13839;
     }
-    int64_t __t13415 = Arx_Map_str_i64_get((&(az.enum_idx_map)), ename);
-    int64_t __t13416 = Arx_List_i64_get((&(az.enum_nodes)), __t13415);
-    int64_t __t13417 = __t13416;
-    return __t13417;
+    int64_t __t13840 = Arx_Map_str_i64_get((&(az.enum_idx_map)), ename);
+    int64_t __t13841 = Arx_List_i64_get((&(az.enum_nodes)), __t13840);
+    int64_t __t13842 = __t13841;
+    return __t13842;
 }
 
 const char* arx_lsp_enclosing_class_at(Arx_Analyzer az, const char* doc_path, int64_t line1) {
-    const char* __t13418 = "";
-    const char* best_cls = __t13418;
+    const char* __t13843 = "";
+    const char* best_cls = __t13843;
     int64_t best_line = (-(((int64_t)1LL)));
     int64_t ci = ((int64_t)0LL);
     while (1) {
         if (!(((ci) < (az.cls_count)))) break;
-        int64_t __t13419 = Arx_List_i64_get((&(az.cls_nodes)), ci);
-        int64_t cid = __t13419;
-        const char* __t13420 = Arx_List_str_get((&(az.nf)), cid);
-        if ((arx_str_compare(__t13420, doc_path) == 0)) {
-            int64_t __t13421 = Arx_List_i64_get((&(az.ln)), cid);
-            int64_t cln = __t13421;
-            bool __t13422 = false;
+        int64_t __t13844 = Arx_List_i64_get((&(az.cls_nodes)), ci);
+        int64_t cid = __t13844;
+        const char* __t13845 = Arx_List_str_get((&(az.nf)), cid);
+        if ((arx_str_compare(__t13845, doc_path) == 0)) {
+            int64_t __t13846 = Arx_List_i64_get((&(az.ln)), cid);
+            int64_t cln = __t13846;
+            bool __t13847 = false;
             if (((cln) <= (line1))) {
-                __t13422 = (((cln) > (best_line)));
+                __t13847 = (((cln) > (best_line)));
             }
-            if (__t13422) {
+            if (__t13847) {
                 best_line = cln;
-                const char* __t13423 = Arx_List_str_get((&(az.sa)), cid);
-                best_cls = __t13423;
+                const char* __t13848 = Arx_List_str_get((&(az.sa)), cid);
+                best_cls = __t13848;
             }
         }
         ci = ((ci) + (((int64_t)1LL)));
     }
-    const char* __t13424 = best_cls;
-    return __t13424;
+    const char* __t13849 = "";
+    if ((arx_str_compare(best_cls, __t13849) == 0)) {
+        const char* __t13850 = "";
+        const char* __t13851 = __t13850;
+        return __t13851;
+    }
+    int64_t fi = ((int64_t)0LL);
+    while (1) {
+        if (!(((fi) < (az.fn_count)))) break;
+        int64_t __t13852 = Arx_List_i64_get((&(az.fn_nodes)), fi);
+        int64_t fid = __t13852;
+        const char* __t13853 = Arx_List_str_get((&(az.nf)), fid);
+        if ((arx_str_compare(__t13853, doc_path) == 0)) {
+            int64_t __t13854 = Arx_List_i64_get((&(az.ln)), fid);
+            int64_t fln = __t13854;
+            bool __t13855 = false;
+            if (((fln) > (best_line))) {
+                __t13855 = (((fln) <= (line1)));
+            }
+            if (__t13855) {
+                const char* __t13856 = "";
+                const char* __t13857 = __t13856;
+                return __t13857;
+            }
+        }
+        fi = ((fi) + (((int64_t)1LL)));
+    }
+    int64_t ei = ((int64_t)0LL);
+    while (1) {
+        if (!(((ei) < (az.enum_count)))) break;
+        int64_t __t13858 = Arx_List_i64_get((&(az.enum_nodes)), ei);
+        int64_t eid = __t13858;
+        const char* __t13859 = Arx_List_str_get((&(az.nf)), eid);
+        if ((arx_str_compare(__t13859, doc_path) == 0)) {
+            int64_t __t13860 = Arx_List_i64_get((&(az.ln)), eid);
+            int64_t eln = __t13860;
+            bool __t13861 = false;
+            if (((eln) > (best_line))) {
+                __t13861 = (((eln) <= (line1)));
+            }
+            if (__t13861) {
+                const char* __t13862 = "";
+                const char* __t13863 = __t13862;
+                return __t13863;
+            }
+        }
+        ei = ((ei) + (((int64_t)1LL)));
+    }
+    const char* __t13864 = best_cls;
+    return __t13864;
+}
+
+Arx_List_i64 arx_lsp_enclosing_fn_bounds(const char* source, Arx_Analyzer az, const char* doc_path, int64_t line1) {
+    Arx_List_i64 __t13865 = Arx_List_i64_init();
+    Arx_List_i64 res = __t13865;
+    int64_t best_nid = (-(((int64_t)1LL)));
+    int64_t best_start = (-(((int64_t)1LL)));
+    int64_t best_end = ((int64_t)1000000LL);
+    int64_t i = ((int64_t)0LL);
+    while (1) {
+        if (!(((i) < (az.ncount)))) break;
+        int64_t __t13866 = Arx_List_i64_get((&(az.nk)), i);
+        int64_t k = __t13866;
+        int64_t __t13867 = arx_NK_FN_DEF();
+        bool __t13868 = true;
+        if (!(((k) == (__t13867)))) {
+            int64_t __t13869 = arx_NK_INIT_DEF();
+            __t13868 = (((k) == (__t13869)));
+        }
+        bool __t13870 = true;
+        if (!(__t13868)) {
+            int64_t __t13871 = arx_NK_DROP_DEF();
+            __t13870 = (((k) == (__t13871)));
+        }
+        bool __t13872 = false;
+        if (__t13870) {
+            const char* __t13873 = Arx_List_str_get((&(az.nf)), i);
+            __t13872 = ((arx_str_compare(__t13873, doc_path) == 0));
+        }
+        if (__t13872) {
+            int64_t __t13874 = Arx_List_i64_get((&(az.ln)), i);
+            int64_t st = __t13874;
+            bool __t13875 = false;
+            if (((st) <= (line1))) {
+                __t13875 = (((st) > (best_start)));
+            }
+            if (__t13875) {
+                best_start = st;
+                best_nid = i;
+            }
+        }
+        i = ((i) + (((int64_t)1LL)));
+    }
+    bool __t13876 = false;
+    if (((best_nid) >= (((int64_t)0LL)))) {
+        const char* __t13877 = "";
+        __t13876 = ((arx_str_compare(source, __t13877) != 0));
+    }
+    if (__t13876) {
+        int64_t __t13878 = arx_lsp_block_end_line1(source, best_start);
+        best_end = __t13878;
+        if (((line1) > (best_end))) {
+            best_nid = (-(((int64_t)1LL)));
+            best_start = (-(((int64_t)1LL)));
+            best_end = (-(((int64_t)1LL)));
+        }
+    }
+    Arx_List_i64_push((&(res)), best_nid);
+    Arx_List_i64_push((&(res)), best_start);
+    Arx_List_i64_push((&(res)), best_end);
+    Arx_List_i64 __t13879 = res;
+    return __t13879;
+}
+
+int64_t arx_lsp_resolve_scoped_var_node(Arx_Analyzer az, const char* doc_path, int64_t line1, int64_t fn_start, const char* name) {
+    int64_t best_nid = (-(((int64_t)1LL)));
+    int64_t best_ln = (-(((int64_t)1LL)));
+    int64_t min_ln = ((int64_t)1LL);
+    if (((fn_start) > (((int64_t)0LL)))) {
+        min_ln = fn_start;
+    }
+    int64_t i = ((int64_t)0LL);
+    while (1) {
+        if (!(((i) < (az.ncount)))) break;
+        int64_t __t13880 = Arx_List_i64_get((&(az.nk)), i);
+        int64_t k = __t13880;
+        int64_t __t13881 = arx_NK_VAR_DECL();
+        bool __t13882 = true;
+        if (!(((k) == (__t13881)))) {
+            int64_t __t13883 = arx_NK_PARAM();
+            __t13882 = (((k) == (__t13883)));
+        }
+        bool __t13884 = true;
+        if (!(__t13882)) {
+            int64_t __t13885 = arx_NK_FOR();
+            __t13884 = (((k) == (__t13885)));
+        }
+        bool __t13886 = false;
+        if (__t13884) {
+            const char* __t13887 = Arx_List_str_get((&(az.nf)), i);
+            __t13886 = ((arx_str_compare(__t13887, doc_path) == 0));
+        }
+        if (__t13886) {
+            int64_t __t13888 = Arx_List_i64_get((&(az.ln)), i);
+            int64_t nln = __t13888;
+            bool __t13889 = false;
+            if (((nln) >= (min_ln))) {
+                __t13889 = (((nln) <= (line1)));
+            }
+            bool __t13890 = false;
+            if (__t13889) {
+                __t13890 = (((nln) >= (best_ln)));
+            }
+            if (__t13890) {
+                const char* __t13891 = Arx_List_str_get((&(az.sa)), i);
+                bool __t13892 = true;
+                if (!((arx_str_compare(__t13891, name) == 0))) {
+                    int64_t __t13893 = arx_NK_FOR();
+                    bool __t13894 = false;
+                    if (((k) == (__t13893))) {
+                        const char* __t13895 = Arx_List_str_get((&(az.sb)), i);
+                        __t13894 = ((arx_str_compare(__t13895, name) == 0));
+                    }
+                    __t13892 = (__t13894);
+                }
+                if (__t13892) {
+                    best_ln = nln;
+                    best_nid = i;
+                }
+            }
+        }
+        i = ((i) + (((int64_t)1LL)));
+    }
+    int64_t __t13896 = best_nid;
+    return __t13896;
 }
 
 const char* arx_lsp_resolve_var_type(Arx_Analyzer az, const char* doc_path, int64_t line1, const char* name) {
-    const char* __t13425 = "self";
-    if ((arx_str_compare(name, __t13425) == 0)) {
-        const char* __t13426 = arx_lsp_enclosing_class_at(az, doc_path, line1);
-        const char* __t13427 = __t13426;
-        return __t13427;
+    const char* __t13897 = "self";
+    if ((arx_str_compare(name, __t13897) == 0)) {
+        const char* __t13898 = arx_lsp_enclosing_class_at(az, doc_path, line1);
+        const char* __t13899 = __t13898;
+        return __t13899;
     }
-    bool __t13428 = Arx_Map_str_str_has_key((&(az.global_types)), name);
-    if (__t13428) {
-        const char* __t13429 = Arx_Map_str_str_get((&(az.global_types)), name);
-        const char* __t13430 = __t13429;
-        return __t13430;
+    const char* __t13900 = "super";
+    if ((arx_str_compare(name, __t13900) == 0)) {
+        const char* __t13901 = arx_lsp_enclosing_class_at(az, doc_path, line1);
+        const char* ec = __t13901;
+        const char* __t13902 = "";
+        bool __t13903 = false;
+        if ((arx_str_compare(ec, __t13902) != 0)) {
+            bool __t13904 = Arx_Map_str_str_has_key((&(az.cls_base_map)), ec);
+            __t13903 = (__t13904);
+        }
+        if (__t13903) {
+            const char* __t13905 = Arx_Map_str_str_get((&(az.cls_base_map)), ec);
+            const char* __t13906 = __t13905;
+            return __t13906;
+        }
+        const char* __t13907 = "";
+        const char* __t13908 = __t13907;
+        return __t13908;
     }
-    const char* __t13431 = "";
-    const char* best_type = __t13431;
+    const char* __t13909 = "";
+    const char* best_type = __t13909;
     int64_t best_ln = (-(((int64_t)1LL)));
     int64_t i = ((int64_t)0LL);
     while (1) {
         if (!(((i) < (az.ncount)))) break;
-        int64_t __t13432 = Arx_List_i64_get((&(az.nk)), i);
-        int64_t k = __t13432;
-        int64_t __t13433 = arx_NK_VAR_DECL();
-        bool __t13434 = true;
-        if (!(((k) == (__t13433)))) {
-            int64_t __t13435 = arx_NK_PARAM();
-            __t13434 = (((k) == (__t13435)));
+        int64_t __t13910 = Arx_List_i64_get((&(az.nk)), i);
+        int64_t k = __t13910;
+        int64_t __t13911 = arx_NK_VAR_DECL();
+        bool __t13912 = true;
+        if (!(((k) == (__t13911)))) {
+            int64_t __t13913 = arx_NK_PARAM();
+            __t13912 = (((k) == (__t13913)));
         }
-        bool __t13436 = true;
-        if (!(__t13434)) {
-            int64_t __t13437 = arx_NK_FOR();
-            __t13436 = (((k) == (__t13437)));
+        bool __t13914 = true;
+        if (!(__t13912)) {
+            int64_t __t13915 = arx_NK_FOR();
+            __t13914 = (((k) == (__t13915)));
         }
-        bool __t13438 = false;
-        if (__t13436) {
-            const char* __t13439 = Arx_List_str_get((&(az.sa)), i);
-            __t13438 = ((arx_str_compare(__t13439, name) == 0));
+        bool __t13916 = false;
+        if (__t13914) {
+            const char* __t13917 = Arx_List_str_get((&(az.nf)), i);
+            __t13916 = ((arx_str_compare(__t13917, doc_path) == 0));
         }
-        if (__t13438) {
-            const char* __t13440 = Arx_List_str_get((&(az.nf)), i);
-            if ((arx_str_compare(__t13440, doc_path) == 0)) {
-                int64_t __t13441 = Arx_List_i64_get((&(az.ln)), i);
-                int64_t nln = __t13441;
-                bool __t13442 = false;
+        if (__t13916) {
+            const char* __t13918 = Arx_List_str_get((&(az.sa)), i);
+            if ((arx_str_compare(__t13918, name) == 0)) {
+                int64_t __t13919 = Arx_List_i64_get((&(az.ln)), i);
+                int64_t nln = __t13919;
+                bool __t13920 = false;
                 if (((nln) <= (line1))) {
-                    __t13442 = (((nln) >= (best_ln)));
+                    __t13920 = (((nln) >= (best_ln)));
                 }
-                if (__t13442) {
-                    const char* __t13443 = Arx_List_str_get((&(az.node_types)), i);
-                    const char* __t13444 = arx_btype_norm(__t13443);
-                    const char* t = __t13444;
-                    const char* __t13445 = "";
-                    bool __t13446 = true;
-                    if (!((arx_str_compare(t, __t13445) == 0))) {
-                        const char* __t13447 = "void";
-                        __t13446 = ((arx_str_compare(t, __t13447) == 0));
+                if (__t13920) {
+                    const char* __t13921 = Arx_List_str_get((&(az.node_types)), i);
+                    const char* __t13922 = arx_btype_norm(__t13921);
+                    const char* t = __t13922;
+                    const char* __t13923 = "";
+                    bool __t13924 = true;
+                    if (!((arx_str_compare(t, __t13923) == 0))) {
+                        const char* __t13925 = "void";
+                        __t13924 = ((arx_str_compare(t, __t13925) == 0));
                     }
-                    if (__t13446) {
-                        const char* __t13448 = Arx_List_str_get((&(az.sb)), i);
-                        const char* __t13449 = arx_btype_norm(__t13448);
-                        t = __t13449;
+                    if (__t13924) {
+                        const char* __t13926 = Arx_List_str_get((&(az.sb)), i);
+                        const char* __t13927 = arx_btype_norm(__t13926);
+                        t = __t13927;
                     }
-                    const char* __t13450 = "";
-                    bool __t13451 = false;
-                    if ((arx_str_compare(t, __t13450) != 0)) {
-                        const char* __t13452 = "void";
-                        __t13451 = ((arx_str_compare(t, __t13452) != 0));
+                    const char* __t13928 = "";
+                    bool __t13929 = false;
+                    if ((arx_str_compare(t, __t13928) != 0)) {
+                        const char* __t13930 = "void";
+                        __t13929 = ((arx_str_compare(t, __t13930) != 0));
                     }
-                    if (__t13451) {
+                    if (__t13929) {
                         best_ln = nln;
                         best_type = t;
                     }
@@ -33018,139 +34462,1128 @@ const char* arx_lsp_resolve_var_type(Arx_Analyzer az, const char* doc_path, int6
         }
         i = ((i) + (((int64_t)1LL)));
     }
-    const char* __t13453 = best_type;
-    return __t13453;
+    const char* __t13931 = "";
+    if ((arx_str_compare(best_type, __t13931) != 0)) {
+        const char* __t13932 = best_type;
+        return __t13932;
+    }
+    const char* __t13933 = arx_lsp_enclosing_class_at(az, doc_path, line1);
+    const char* ec2 = __t13933;
+    const char* __t13934 = "";
+    if ((arx_str_compare(ec2, __t13934) != 0)) {
+        const char* walk = ec2;
+        int64_t hops = ((int64_t)0LL);
+        while (1) {
+            const char* __t13935 = "";
+            bool __t13936 = false;
+            if ((arx_str_compare(walk, __t13935) != 0)) {
+                __t13936 = (((hops) < (((int64_t)8LL))));
+            }
+            if (!(__t13936)) break;
+            const char* __t13937 = "::";
+            const char* __t13938 = arx_str_concat(walk, __t13937);
+            const char* __t13939 = arx_str_concat(__t13938, name);
+            const char* fk = __t13939;
+            bool __t13940 = Arx_Map_str_str_has_key((&(az.cls_field_types)), fk);
+            if (__t13940) {
+                const char* __t13941 = Arx_Map_str_str_get((&(az.cls_field_types)), fk);
+                const char* __t13942 = __t13941;
+                return __t13942;
+            }
+            bool __t13943 = Arx_Map_str_str_has_key((&(az.cls_base_map)), walk);
+            if (__t13943) {
+                const char* __t13944 = Arx_Map_str_str_get((&(az.cls_base_map)), walk);
+                walk = __t13944;
+            } else {
+                const char* __t13945 = "";
+                walk = __t13945;
+            }
+            hops = ((hops) + (((int64_t)1LL)));
+        }
+    }
+    bool __t13946 = Arx_Map_str_str_has_key((&(az.global_types)), name);
+    if (__t13946) {
+        const char* __t13947 = Arx_Map_str_str_get((&(az.global_types)), name);
+        const char* __t13948 = __t13947;
+        return __t13948;
+    }
+    const char* __t13949 = "";
+    const char* __t13950 = __t13949;
+    return __t13950;
+}
+
+const char* arx_lsp_generic_inner_arg(const char* t, int64_t arg_idx) {
+    const char* __t13951 = "<";
+    int64_t __t13952 = arx_lsp_str_find(t, __t13951, ((int64_t)0LL));
+    int64_t lt = __t13952;
+    if (((lt) < (((int64_t)0LL)))) {
+        const char* __t13953 = "";
+        const char* __t13954 = __t13953;
+        return __t13954;
+    }
+    int64_t n = arx_str_len(t);
+    int64_t gt = ((n) - (((int64_t)1LL)));
+    while (1) {
+        bool __t13955 = false;
+        if (((gt) > (lt))) {
+            __t13955 = (((arx_str_byte_at(t, gt)) != (((int64_t)62LL))));
+        }
+        if (!(__t13955)) break;
+        gt = ((gt) - (((int64_t)1LL)));
+    }
+    if (((gt) <= (((lt) + (((int64_t)1LL)))))) {
+        const char* __t13956 = "";
+        const char* __t13957 = __t13956;
+        return __t13957;
+    }
+    const char* __t13958 = __arx_bstr_slice(t, ((lt) + (((int64_t)1LL))), gt);
+    const char* inner = __t13958;
+    int64_t depth = ((int64_t)0LL);
+    int64_t start = ((int64_t)0LL);
+    int64_t cur_idx = ((int64_t)0LL);
+    int64_t i = ((int64_t)0LL);
+    while (1) {
+        if (!(((i) <= (arx_str_len(inner))))) break;
+        bool at_end = ((i) == (arx_str_len(inner)));
+        bool is_sep = false;
+        if ((!(at_end))) {
+            int64_t b = arx_str_byte_at(inner, i);
+            bool __t13959 = true;
+            if (!(((b) == (((int64_t)60LL))))) {
+                __t13959 = (((b) == (((int64_t)40LL))));
+            }
+            if (__t13959) {
+                depth = ((depth) + (((int64_t)1LL)));
+            } else {
+                bool __t13960 = true;
+                if (!(((b) == (((int64_t)62LL))))) {
+                    __t13960 = (((b) == (((int64_t)41LL))));
+                }
+                if (__t13960) {
+                    depth = ((depth) - (((int64_t)1LL)));
+                } else {
+                    bool __t13961 = false;
+                    if (((b) == (((int64_t)44LL)))) {
+                        __t13961 = (((depth) == (((int64_t)0LL))));
+                    }
+                    if (__t13961) {
+                        is_sep = true;
+                    }
+                }
+            }
+        }
+        bool __t13962 = true;
+        if (!(at_end)) {
+            __t13962 = (is_sep);
+        }
+        if (__t13962) {
+            if (((cur_idx) == (arg_idx))) {
+                const char* __t13963 = __arx_bstr_slice(inner, start, i);
+                const char* __t13964 = arx_str_trim(__t13963);
+                return __t13964;
+            }
+            cur_idx = ((cur_idx) + (((int64_t)1LL)));
+            start = ((i) + (((int64_t)1LL)));
+        }
+        i = ((i) + (((int64_t)1LL)));
+    }
+    const char* __t13965 = "";
+    const char* __t13966 = __t13965;
+    return __t13966;
+}
+
+const char* arx_lsp_infer_builtin_member_ret(const char* recv_t, const char* mname) {
+    const char* __t13967 = "str";
+    if ((arx_str_compare(recv_t, __t13967) == 0)) {
+        const char* __t13968 = "slice";
+        bool __t13969 = true;
+        if (!((arx_str_compare(mname, __t13968) == 0))) {
+            const char* __t13970 = "replace";
+            __t13969 = ((arx_str_compare(mname, __t13970) == 0));
+        }
+        bool __t13971 = true;
+        if (!(__t13969)) {
+            const char* __t13972 = "trim";
+            __t13971 = ((arx_str_compare(mname, __t13972) == 0));
+        }
+        bool __t13973 = true;
+        if (!(__t13971)) {
+            const char* __t13974 = "to_upper";
+            __t13973 = ((arx_str_compare(mname, __t13974) == 0));
+        }
+        bool __t13975 = true;
+        if (!(__t13973)) {
+            const char* __t13976 = "to_lower";
+            __t13975 = ((arx_str_compare(mname, __t13976) == 0));
+        }
+        if (__t13975) {
+            const char* __t13977 = "str";
+            const char* __t13978 = __t13977;
+            return __t13978;
+        }
+        const char* __t13979 = "split";
+        if ((arx_str_compare(mname, __t13979) == 0)) {
+            const char* __t13980 = "List<str>";
+            const char* __t13981 = __t13980;
+            return __t13981;
+        }
+        const char* __t13982 = "len";
+        bool __t13983 = true;
+        if (!((arx_str_compare(mname, __t13982) == 0))) {
+            const char* __t13984 = "byte_at";
+            __t13983 = ((arx_str_compare(mname, __t13984) == 0));
+        }
+        bool __t13985 = true;
+        if (!(__t13983)) {
+            const char* __t13986 = "to_i64";
+            __t13985 = ((arx_str_compare(mname, __t13986) == 0));
+        }
+        if (__t13985) {
+            const char* __t13987 = "i64";
+            const char* __t13988 = __t13987;
+            return __t13988;
+        }
+        const char* __t13989 = "to_f64";
+        if ((arx_str_compare(mname, __t13989) == 0)) {
+            const char* __t13990 = "f64";
+            const char* __t13991 = __t13990;
+            return __t13991;
+        }
+        const char* __t13992 = "is_empty";
+        bool __t13993 = true;
+        if (!((arx_str_compare(mname, __t13992) == 0))) {
+            const char* __t13994 = "contains";
+            __t13993 = ((arx_str_compare(mname, __t13994) == 0));
+        }
+        bool __t13995 = true;
+        if (!(__t13993)) {
+            const char* __t13996 = "starts_with";
+            __t13995 = ((arx_str_compare(mname, __t13996) == 0));
+        }
+        bool __t13997 = true;
+        if (!(__t13995)) {
+            const char* __t13998 = "ends_with";
+            __t13997 = ((arx_str_compare(mname, __t13998) == 0));
+        }
+        if (__t13997) {
+            const char* __t13999 = "bool";
+            const char* __t14000 = __t13999;
+            return __t14000;
+        }
+        const char* __t14001 = "";
+        const char* __t14002 = __t14001;
+        return __t14002;
+    }
+    const char* __t14003 = "ByteBuffer";
+    if ((arx_str_compare(recv_t, __t14003) == 0)) {
+        const char* __t14004 = "to_str";
+        if ((arx_str_compare(mname, __t14004) == 0)) {
+            const char* __t14005 = "str";
+            const char* __t14006 = __t14005;
+            return __t14006;
+        }
+        const char* __t14007 = "read_u8";
+        bool __t14008 = true;
+        if (!((arx_str_compare(mname, __t14007) == 0))) {
+            const char* __t14009 = "read_i32_le";
+            __t14008 = ((arx_str_compare(mname, __t14009) == 0));
+        }
+        bool __t14010 = true;
+        if (!(__t14008)) {
+            const char* __t14011 = "read_i32_be";
+            __t14010 = ((arx_str_compare(mname, __t14011) == 0));
+        }
+        bool __t14012 = true;
+        if (!(__t14010)) {
+            const char* __t14013 = "pos";
+            __t14012 = ((arx_str_compare(mname, __t14013) == 0));
+        }
+        bool __t14014 = true;
+        if (!(__t14012)) {
+            const char* __t14015 = "len";
+            __t14014 = ((arx_str_compare(mname, __t14015) == 0));
+        }
+        if (__t14014) {
+            const char* __t14016 = "i64";
+            const char* __t14017 = __t14016;
+            return __t14017;
+        }
+        const char* __t14018 = "";
+        const char* __t14019 = __t14018;
+        return __t14019;
+    }
+    const char* __t14020 = "String";
+    if ((arx_str_compare(recv_t, __t14020) == 0)) {
+        const char* __t14021 = "as_str";
+        if ((arx_str_compare(mname, __t14021) == 0)) {
+            const char* __t14022 = "str";
+            const char* __t14023 = __t14022;
+            return __t14023;
+        }
+        const char* __t14024 = "trim";
+        bool __t14025 = true;
+        if (!((arx_str_compare(mname, __t14024) == 0))) {
+            const char* __t14026 = "to_upper";
+            __t14025 = ((arx_str_compare(mname, __t14026) == 0));
+        }
+        bool __t14027 = true;
+        if (!(__t14025)) {
+            const char* __t14028 = "to_lower";
+            __t14027 = ((arx_str_compare(mname, __t14028) == 0));
+        }
+        bool __t14029 = true;
+        if (!(__t14027)) {
+            const char* __t14030 = "replace";
+            __t14029 = ((arx_str_compare(mname, __t14030) == 0));
+        }
+        if (__t14029) {
+            const char* __t14031 = "String";
+            const char* __t14032 = __t14031;
+            return __t14032;
+        }
+        const char* __t14033 = "split";
+        if ((arx_str_compare(mname, __t14033) == 0)) {
+            const char* __t14034 = "List<str>";
+            const char* __t14035 = __t14034;
+            return __t14035;
+        }
+        const char* __t14036 = "len";
+        if ((arx_str_compare(mname, __t14036) == 0)) {
+            const char* __t14037 = "i64";
+            const char* __t14038 = __t14037;
+            return __t14038;
+        }
+        const char* __t14039 = "contains";
+        bool __t14040 = true;
+        if (!((arx_str_compare(mname, __t14039) == 0))) {
+            const char* __t14041 = "starts_with";
+            __t14040 = ((arx_str_compare(mname, __t14041) == 0));
+        }
+        bool __t14042 = true;
+        if (!(__t14040)) {
+            const char* __t14043 = "ends_with";
+            __t14042 = ((arx_str_compare(mname, __t14043) == 0));
+        }
+        if (__t14042) {
+            const char* __t14044 = "bool";
+            const char* __t14045 = __t14044;
+            return __t14045;
+        }
+        const char* __t14046 = "";
+        const char* __t14047 = __t14046;
+        return __t14047;
+    }
+    const char* __t14048 = "List<";
+    if (arx_str_starts_with(recv_t, __t14048)) {
+        const char* __t14049 = arx_lsp_generic_inner_arg(recv_t, ((int64_t)0LL));
+        const char* t_elem = __t14049;
+        const char* __t14050 = "get";
+        bool __t14051 = true;
+        if (!((arx_str_compare(mname, __t14050) == 0))) {
+            const char* __t14052 = "pop";
+            __t14051 = ((arx_str_compare(mname, __t14052) == 0));
+        }
+        bool __t14053 = true;
+        if (!(__t14051)) {
+            const char* __t14054 = "remove_at";
+            __t14053 = ((arx_str_compare(mname, __t14054) == 0));
+        }
+        bool __t14055 = true;
+        if (!(__t14053)) {
+            const char* __t14056 = "swap_remove";
+            __t14055 = ((arx_str_compare(mname, __t14056) == 0));
+        }
+        if (__t14055) {
+            const char* __t14057 = t_elem;
+            return __t14057;
+        }
+        const char* __t14058 = "slice";
+        if ((arx_str_compare(mname, __t14058) == 0)) {
+            const char* __t14059 = recv_t;
+            return __t14059;
+        }
+        const char* __t14060 = "len";
+        bool __t14061 = true;
+        if (!((arx_str_compare(mname, __t14060) == 0))) {
+            const char* __t14062 = "index_of";
+            __t14061 = ((arx_str_compare(mname, __t14062) == 0));
+        }
+        if (__t14061) {
+            const char* __t14063 = "i64";
+            const char* __t14064 = __t14063;
+            return __t14064;
+        }
+        const char* __t14065 = "is_empty";
+        bool __t14066 = true;
+        if (!((arx_str_compare(mname, __t14065) == 0))) {
+            const char* __t14067 = "contains";
+            __t14066 = ((arx_str_compare(mname, __t14067) == 0));
+        }
+        if (__t14066) {
+            const char* __t14068 = "bool";
+            const char* __t14069 = __t14068;
+            return __t14069;
+        }
+        const char* __t14070 = "";
+        const char* __t14071 = __t14070;
+        return __t14071;
+    }
+    const char* __t14072 = "Map<";
+    if (arx_str_starts_with(recv_t, __t14072)) {
+        const char* __t14073 = arx_lsp_generic_inner_arg(recv_t, ((int64_t)0LL));
+        const char* k_elem = __t14073;
+        const char* __t14074 = arx_lsp_generic_inner_arg(recv_t, ((int64_t)1LL));
+        const char* v_elem = __t14074;
+        const char* __t14075 = "get";
+        if ((arx_str_compare(mname, __t14075) == 0)) {
+            const char* __t14076 = v_elem;
+            return __t14076;
+        }
+        const char* __t14077 = "keys";
+        if ((arx_str_compare(mname, __t14077) == 0)) {
+            const char* __t14078 = "List<";
+            const char* __t14079 = arx_str_concat(__t14078, k_elem);
+            const char* __t14080 = ">";
+            const char* __t14081 = arx_str_concat(__t14079, __t14080);
+            const char* __t14082 = __t14081;
+            return __t14082;
+        }
+        const char* __t14083 = "values";
+        if ((arx_str_compare(mname, __t14083) == 0)) {
+            const char* __t14084 = "List<";
+            const char* __t14085 = arx_str_concat(__t14084, v_elem);
+            const char* __t14086 = ">";
+            const char* __t14087 = arx_str_concat(__t14085, __t14086);
+            const char* __t14088 = __t14087;
+            return __t14088;
+        }
+        const char* __t14089 = "has_key";
+        bool __t14090 = true;
+        if (!((arx_str_compare(mname, __t14089) == 0))) {
+            const char* __t14091 = "remove";
+            __t14090 = ((arx_str_compare(mname, __t14091) == 0));
+        }
+        bool __t14092 = true;
+        if (!(__t14090)) {
+            const char* __t14093 = "is_empty";
+            __t14092 = ((arx_str_compare(mname, __t14093) == 0));
+        }
+        if (__t14092) {
+            const char* __t14094 = "bool";
+            const char* __t14095 = __t14094;
+            return __t14095;
+        }
+        const char* __t14096 = "len";
+        if ((arx_str_compare(mname, __t14096) == 0)) {
+            const char* __t14097 = "i64";
+            const char* __t14098 = __t14097;
+            return __t14098;
+        }
+        const char* __t14099 = "";
+        const char* __t14100 = __t14099;
+        return __t14100;
+    }
+    const char* __t14101 = "Set<";
+    if (arx_str_starts_with(recv_t, __t14101)) {
+        const char* __t14102 = arx_lsp_generic_inner_arg(recv_t, ((int64_t)0LL));
+        const char* t_elem = __t14102;
+        const char* __t14103 = "to_list";
+        if ((arx_str_compare(mname, __t14103) == 0)) {
+            const char* __t14104 = "List<";
+            const char* __t14105 = arx_str_concat(__t14104, t_elem);
+            const char* __t14106 = ">";
+            const char* __t14107 = arx_str_concat(__t14105, __t14106);
+            const char* __t14108 = __t14107;
+            return __t14108;
+        }
+        const char* __t14109 = "union";
+        bool __t14110 = true;
+        if (!((arx_str_compare(mname, __t14109) == 0))) {
+            const char* __t14111 = "intersection";
+            __t14110 = ((arx_str_compare(mname, __t14111) == 0));
+        }
+        bool __t14112 = true;
+        if (!(__t14110)) {
+            const char* __t14113 = "difference";
+            __t14112 = ((arx_str_compare(mname, __t14113) == 0));
+        }
+        if (__t14112) {
+            const char* __t14114 = recv_t;
+            return __t14114;
+        }
+        const char* __t14115 = "len";
+        if ((arx_str_compare(mname, __t14115) == 0)) {
+            const char* __t14116 = "i64";
+            const char* __t14117 = __t14116;
+            return __t14117;
+        }
+        const char* __t14118 = "add";
+        bool __t14119 = true;
+        if (!((arx_str_compare(mname, __t14118) == 0))) {
+            const char* __t14120 = "has";
+            __t14119 = ((arx_str_compare(mname, __t14120) == 0));
+        }
+        bool __t14121 = true;
+        if (!(__t14119)) {
+            const char* __t14122 = "remove";
+            __t14121 = ((arx_str_compare(mname, __t14122) == 0));
+        }
+        bool __t14123 = true;
+        if (!(__t14121)) {
+            const char* __t14124 = "is_empty";
+            __t14123 = ((arx_str_compare(mname, __t14124) == 0));
+        }
+        if (__t14123) {
+            const char* __t14125 = "bool";
+            const char* __t14126 = __t14125;
+            return __t14126;
+        }
+        const char* __t14127 = "";
+        const char* __t14128 = __t14127;
+        return __t14128;
+    }
+    const char* __t14129 = "Stack<";
+    bool __t14130 = true;
+    if (!(arx_str_starts_with(recv_t, __t14129))) {
+        const char* __t14131 = "Queue<";
+        __t14130 = (arx_str_starts_with(recv_t, __t14131));
+    }
+    bool __t14132 = true;
+    if (!(__t14130)) {
+        const char* __t14133 = "Deque<";
+        __t14132 = (arx_str_starts_with(recv_t, __t14133));
+    }
+    if (__t14132) {
+        const char* __t14134 = arx_lsp_generic_inner_arg(recv_t, ((int64_t)0LL));
+        const char* t_elem = __t14134;
+        const char* __t14135 = "pop";
+        bool __t14136 = true;
+        if (!((arx_str_compare(mname, __t14135) == 0))) {
+            const char* __t14137 = "peek";
+            __t14136 = ((arx_str_compare(mname, __t14137) == 0));
+        }
+        bool __t14138 = true;
+        if (!(__t14136)) {
+            const char* __t14139 = "pop_back";
+            __t14138 = ((arx_str_compare(mname, __t14139) == 0));
+        }
+        bool __t14140 = true;
+        if (!(__t14138)) {
+            const char* __t14141 = "pop_front";
+            __t14140 = ((arx_str_compare(mname, __t14141) == 0));
+        }
+        bool __t14142 = true;
+        if (!(__t14140)) {
+            const char* __t14143 = "peek_front";
+            __t14142 = ((arx_str_compare(mname, __t14143) == 0));
+        }
+        bool __t14144 = true;
+        if (!(__t14142)) {
+            const char* __t14145 = "peek_back";
+            __t14144 = ((arx_str_compare(mname, __t14145) == 0));
+        }
+        if (__t14144) {
+            const char* __t14146 = t_elem;
+            return __t14146;
+        }
+        const char* __t14147 = "len";
+        if ((arx_str_compare(mname, __t14147) == 0)) {
+            const char* __t14148 = "i64";
+            const char* __t14149 = __t14148;
+            return __t14149;
+        }
+        const char* __t14150 = "is_empty";
+        if ((arx_str_compare(mname, __t14150) == 0)) {
+            const char* __t14151 = "bool";
+            const char* __t14152 = __t14151;
+            return __t14152;
+        }
+        const char* __t14153 = "";
+        const char* __t14154 = __t14153;
+        return __t14154;
+    }
+    const char* __t14155 = "File";
+    if ((arx_str_compare(recv_t, __t14155) == 0)) {
+        const char* __t14156 = "read_to_string";
+        if ((arx_str_compare(mname, __t14156) == 0)) {
+            const char* __t14157 = "str";
+            const char* __t14158 = __t14157;
+            return __t14158;
+        }
+        const char* __t14159 = "exists";
+        bool __t14160 = true;
+        if (!((arx_str_compare(mname, __t14159) == 0))) {
+            const char* __t14161 = "write_string";
+            __t14160 = ((arx_str_compare(mname, __t14161) == 0));
+        }
+        bool __t14162 = true;
+        if (!(__t14160)) {
+            const char* __t14163 = "append_string";
+            __t14162 = ((arx_str_compare(mname, __t14163) == 0));
+        }
+        bool __t14164 = true;
+        if (!(__t14162)) {
+            const char* __t14165 = "remove";
+            __t14164 = ((arx_str_compare(mname, __t14165) == 0));
+        }
+        bool __t14166 = true;
+        if (!(__t14164)) {
+            const char* __t14167 = "copy";
+            __t14166 = ((arx_str_compare(mname, __t14167) == 0));
+        }
+        if (__t14166) {
+            const char* __t14168 = "bool";
+            const char* __t14169 = __t14168;
+            return __t14169;
+        }
+        const char* __t14170 = "";
+        const char* __t14171 = __t14170;
+        return __t14171;
+    }
+    const char* __t14172 = "Directory";
+    if ((arx_str_compare(recv_t, __t14172) == 0)) {
+        const char* __t14173 = "list_files";
+        bool __t14174 = true;
+        if (!((arx_str_compare(mname, __t14173) == 0))) {
+            const char* __t14175 = "list_dirs";
+            __t14174 = ((arx_str_compare(mname, __t14175) == 0));
+        }
+        if (__t14174) {
+            const char* __t14176 = "List<str>";
+            const char* __t14177 = __t14176;
+            return __t14177;
+        }
+        const char* __t14178 = "exists";
+        bool __t14179 = true;
+        if (!((arx_str_compare(mname, __t14178) == 0))) {
+            const char* __t14180 = "create";
+            __t14179 = ((arx_str_compare(mname, __t14180) == 0));
+        }
+        if (__t14179) {
+            const char* __t14181 = "bool";
+            const char* __t14182 = __t14181;
+            return __t14182;
+        }
+        const char* __t14183 = "";
+        const char* __t14184 = __t14183;
+        return __t14184;
+    }
+    const char* __t14185 = "Env";
+    if ((arx_str_compare(recv_t, __t14185) == 0)) {
+        const char* __t14186 = "args";
+        if ((arx_str_compare(mname, __t14186) == 0)) {
+            const char* __t14187 = "List<str>";
+            const char* __t14188 = __t14187;
+            return __t14188;
+        }
+        const char* __t14189 = "get";
+        bool __t14190 = true;
+        if (!((arx_str_compare(mname, __t14189) == 0))) {
+            const char* __t14191 = "cwd";
+            __t14190 = ((arx_str_compare(mname, __t14191) == 0));
+        }
+        bool __t14192 = true;
+        if (!(__t14190)) {
+            const char* __t14193 = "os_name";
+            __t14192 = ((arx_str_compare(mname, __t14193) == 0));
+        }
+        if (__t14192) {
+            const char* __t14194 = "str";
+            const char* __t14195 = __t14194;
+            return __t14195;
+        }
+        const char* __t14196 = "arg_count";
+        if ((arx_str_compare(mname, __t14196) == 0)) {
+            const char* __t14197 = "i64";
+            const char* __t14198 = __t14197;
+            return __t14198;
+        }
+        const char* __t14199 = "set";
+        if ((arx_str_compare(mname, __t14199) == 0)) {
+            const char* __t14200 = "bool";
+            const char* __t14201 = __t14200;
+            return __t14201;
+        }
+        const char* __t14202 = "";
+        const char* __t14203 = __t14202;
+        return __t14203;
+    }
+    const char* __t14204 = "Process";
+    if ((arx_str_compare(recv_t, __t14204) == 0)) {
+        const char* __t14205 = "run_capture";
+        if ((arx_str_compare(mname, __t14205) == 0)) {
+            const char* __t14206 = "str";
+            const char* __t14207 = __t14206;
+            return __t14207;
+        }
+        const char* __t14208 = "execute";
+        if ((arx_str_compare(mname, __t14208) == 0)) {
+            const char* __t14209 = "i64";
+            const char* __t14210 = __t14209;
+            return __t14210;
+        }
+        const char* __t14211 = "";
+        const char* __t14212 = __t14211;
+        return __t14212;
+    }
+    const char* __t14213 = "";
+    const char* __t14214 = __t14213;
+    return __t14214;
+}
+
+const char* arx_lsp_extract_receiver_before_dot(const char* line, int64_t dot_pos) {
+    if (((dot_pos) <= (((int64_t)0LL)))) {
+        const char* __t14215 = "";
+        const char* __t14216 = __t14215;
+        return __t14216;
+    }
+    int64_t p = dot_pos;
+    bool __t14217 = false;
+    if (((p) > (((int64_t)0LL)))) {
+        __t14217 = (((arx_str_byte_at(line, ((p) - (((int64_t)1LL))))) == (((int64_t)63LL))));
+    }
+    if (__t14217) {
+        p = ((p) - (((int64_t)1LL)));
+    }
+    int64_t i = p;
+    int64_t paren_d = ((int64_t)0LL);
+    int64_t brack_d = ((int64_t)0LL);
+    bool in_str = false;
+    while (1) {
+        if (!(((i) > (((int64_t)0LL))))) break;
+        int64_t b = arx_str_byte_at(line, ((i) - (((int64_t)1LL))));
+        if (in_str) {
+            if (((b) == (((int64_t)34LL)))) {
+                bool __t14218 = true;
+                if (!(((i) < (((int64_t)2LL))))) {
+                    __t14218 = (((arx_str_byte_at(line, ((i) - (((int64_t)2LL))))) != (((int64_t)92LL))));
+                }
+                if (__t14218) {
+                    in_str = false;
+                }
+            }
+            i = ((i) - (((int64_t)1LL)));
+            continue;
+        }
+        if (((b) == (((int64_t)34LL)))) {
+            in_str = true;
+            i = ((i) - (((int64_t)1LL)));
+            continue;
+        }
+        if (((b) == (((int64_t)41LL)))) {
+            paren_d = ((paren_d) + (((int64_t)1LL)));
+            i = ((i) - (((int64_t)1LL)));
+            continue;
+        }
+        if (((b) == (((int64_t)40LL)))) {
+            if (((paren_d) > (((int64_t)0LL)))) {
+                paren_d = ((paren_d) - (((int64_t)1LL)));
+                i = ((i) - (((int64_t)1LL)));
+                continue;
+            }
+            break;
+        }
+        if (((b) == (((int64_t)93LL)))) {
+            brack_d = ((brack_d) + (((int64_t)1LL)));
+            i = ((i) - (((int64_t)1LL)));
+            continue;
+        }
+        if (((b) == (((int64_t)91LL)))) {
+            if (((brack_d) > (((int64_t)0LL)))) {
+                brack_d = ((brack_d) - (((int64_t)1LL)));
+                i = ((i) - (((int64_t)1LL)));
+                continue;
+            }
+            break;
+        }
+        bool __t14219 = true;
+        if (!(((paren_d) > (((int64_t)0LL))))) {
+            __t14219 = (((brack_d) > (((int64_t)0LL))));
+        }
+        if (__t14219) {
+            i = ((i) - (((int64_t)1LL)));
+            continue;
+        }
+        bool __t14220 = arx_lsp_is_ident_char(b);
+        bool __t14221 = true;
+        if (!(__t14220)) {
+            __t14221 = (((b) == (((int64_t)46LL))));
+        }
+        bool __t14222 = true;
+        if (!(__t14221)) {
+            __t14222 = (((b) == (((int64_t)63LL))));
+        }
+        bool __t14223 = true;
+        if (!(__t14222)) {
+            __t14223 = (((b) == (((int64_t)60LL))));
+        }
+        bool __t14224 = true;
+        if (!(__t14223)) {
+            __t14224 = (((b) == (((int64_t)62LL))));
+        }
+        if (__t14224) {
+            i = ((i) - (((int64_t)1LL)));
+            continue;
+        }
+        break;
+    }
+    const char* __t14225 = __arx_bstr_slice(line, i, p);
+    const char* __t14226 = arx_str_trim(__t14225);
+    return __t14226;
+}
+
+Arx_List_str arx_lsp_split_dot_chain(const char* expr) {
+    Arx_List_str __t14227 = Arx_List_str_init();
+    Arx_List_str parts = __t14227;
+    int64_t n = arx_str_len(expr);
+    int64_t p = ((int64_t)0LL);
+    int64_t s = ((int64_t)0LL);
+    int64_t pd = ((int64_t)0LL);
+    int64_t bd = ((int64_t)0LL);
+    int64_t ad = ((int64_t)0LL);
+    bool in_str = false;
+    while (1) {
+        if (!(((p) < (n)))) break;
+        int64_t b = arx_str_byte_at(expr, p);
+        if (in_str) {
+            bool __t14228 = false;
+            if (((b) == (((int64_t)92LL)))) {
+                __t14228 = (((((p) + (((int64_t)1LL)))) < (n)));
+            }
+            if (__t14228) {
+                p = ((p) + (((int64_t)2LL)));
+                continue;
+            }
+            if (((b) == (((int64_t)34LL)))) {
+                in_str = false;
+            }
+            p = ((p) + (((int64_t)1LL)));
+            continue;
+        }
+        if (((b) == (((int64_t)34LL)))) {
+            in_str = true;
+            p = ((p) + (((int64_t)1LL)));
+            continue;
+        }
+        if (((b) == (((int64_t)40LL)))) {
+            pd = ((pd) + (((int64_t)1LL)));
+        } else {
+            bool __t14229 = false;
+            if (((b) == (((int64_t)41LL)))) {
+                __t14229 = (((pd) > (((int64_t)0LL))));
+            }
+            if (__t14229) {
+                pd = ((pd) - (((int64_t)1LL)));
+            } else {
+                if (((b) == (((int64_t)91LL)))) {
+                    bd = ((bd) + (((int64_t)1LL)));
+                } else {
+                    bool __t14230 = false;
+                    if (((b) == (((int64_t)93LL)))) {
+                        __t14230 = (((bd) > (((int64_t)0LL))));
+                    }
+                    if (__t14230) {
+                        bd = ((bd) - (((int64_t)1LL)));
+                    } else {
+                        if (((b) == (((int64_t)60LL)))) {
+                            ad = ((ad) + (((int64_t)1LL)));
+                        } else {
+                            bool __t14231 = false;
+                            if (((b) == (((int64_t)62LL)))) {
+                                __t14231 = (((ad) > (((int64_t)0LL))));
+                            }
+                            if (__t14231) {
+                                ad = ((ad) - (((int64_t)1LL)));
+                            } else {
+                                bool __t14232 = false;
+                                if (((b) == (((int64_t)46LL)))) {
+                                    __t14232 = (((pd) == (((int64_t)0LL))));
+                                }
+                                bool __t14233 = false;
+                                if (__t14232) {
+                                    __t14233 = (((bd) == (((int64_t)0LL))));
+                                }
+                                bool __t14234 = false;
+                                if (__t14233) {
+                                    __t14234 = (((ad) == (((int64_t)0LL))));
+                                }
+                                if (__t14234) {
+                                    int64_t seg_end = p;
+                                    bool __t14235 = false;
+                                    if (((seg_end) > (s))) {
+                                        __t14235 = (((arx_str_byte_at(expr, ((seg_end) - (((int64_t)1LL))))) == (((int64_t)63LL))));
+                                    }
+                                    if (__t14235) {
+                                        seg_end = ((seg_end) - (((int64_t)1LL)));
+                                    }
+                                    const char* __t14236 = __arx_bstr_slice(expr, s, seg_end);
+                                    Arx_List_str_push((&(parts)), arx_str_trim(__t14236));
+                                    s = ((p) + (((int64_t)1LL)));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        p = ((p) + (((int64_t)1LL)));
+    }
+    if (((s) <= (n))) {
+        const char* __t14237 = __arx_bstr_slice(expr, s, n);
+        Arx_List_str_push((&(parts)), arx_str_trim(__t14237));
+    }
+    Arx_List_str __t14238 = parts;
+    return __t14238;
 }
 
 const char* arx_lsp_infer_expr_receiver_type(Arx_Analyzer az, const char* doc_path, int64_t line1, const char* expr) {
     const char* trimmed = arx_str_trim(expr);
-    const char* __t13454 = "";
-    if ((arx_str_compare(trimmed, __t13454) == 0)) {
-        const char* __t13455 = "";
-        const char* __t13456 = __t13455;
-        return __t13456;
+    const char* __t14239 = "";
+    if ((arx_str_compare(trimmed, __t14239) == 0)) {
+        const char* __t14240 = "";
+        const char* __t14241 = __t14240;
+        return __t14241;
     }
-    const char* __t13457 = "self";
-    if ((arx_str_compare(trimmed, __t13457) == 0)) {
-        const char* __t13458 = arx_lsp_enclosing_class_at(az, doc_path, line1);
-        const char* __t13459 = __t13458;
-        return __t13459;
+    const char* __t14242 = "\"";
+    bool __t14243 = false;
+    if (arx_str_starts_with(trimmed, __t14242)) {
+        const char* __t14244 = "\"";
+        __t14243 = (arx_str_ends_with(trimmed, __t14244));
     }
-    bool __t13460 = arx_lsp_is_static_runtime(trimmed);
-    bool __t13461 = true;
-    if (!(__t13460)) {
-        bool __t13462 = Arx_Map_str_i64_has_key((&(az.cls_idx_map)), trimmed);
-        __t13461 = (__t13462);
+    if (__t14243) {
+        const char* __t14245 = "str";
+        const char* __t14246 = __t14245;
+        return __t14246;
     }
-    bool __t13463 = true;
-    if (!(__t13461)) {
-        bool __t13464 = Arx_Map_str_i64_has_key((&(az.enum_idx_map)), trimmed);
-        __t13463 = (__t13464);
+    const char* __t14247 = "self";
+    if ((arx_str_compare(trimmed, __t14247) == 0)) {
+        const char* __t14248 = arx_lsp_enclosing_class_at(az, doc_path, line1);
+        const char* __t14249 = __t14248;
+        return __t14249;
     }
-    if (__t13463) {
-        const char* __t13465 = trimmed;
-        return __t13465;
-    }
-    const char* __t13466 = ".";
-    if (arx_str_contains(trimmed, __t13466)) {
-        const char* __t13467 = ".";
-        Arx_List_str __t13468 = __arx_bstr_split(trimmed, __t13467);
-        Arx_List_str parts = __t13468;
-        int64_t __t13469 = Arx_List_str_len((&(parts)));
-        if (((__t13469) >= (((int64_t)1LL)))) {
-            const char* __t13470 = Arx_List_str_get((&(parts)), ((int64_t)0LL));
-            const char* __t13471 = arx_lsp_infer_expr_receiver_type(az, doc_path, line1, __t13470);
-            const char* cur_t = __t13471;
-            int64_t pi = ((int64_t)1LL);
-            while (1) {
-                int64_t __t13472 = Arx_List_str_len((&(parts)));
-                bool __t13473 = false;
-                if (((pi) < (__t13472))) {
-                    const char* __t13474 = "";
-                    __t13473 = ((arx_str_compare(cur_t, __t13474) != 0));
-                }
-                if (!(__t13473)) break;
-                const char* __t13475 = Arx_List_str_get((&(parts)), pi);
-                const char* mem = arx_str_trim(__t13475);
-                const char* mname = mem;
-                const char* __t13476 = "(";
-                int64_t __t13477 = arx_lsp_str_find(mname, __t13476, ((int64_t)0LL));
-                int64_t p_idx = __t13477;
-                if (((p_idx) > (((int64_t)0LL)))) {
-                    const char* __t13478 = __arx_bstr_slice(mname, ((int64_t)0LL), p_idx);
-                    mname = __t13478;
-                }
-                const char* __t13479 = "::";
-                const char* __t13480 = arx_str_concat(cur_t, __t13479);
-                const char* __t13481 = arx_str_concat(__t13480, mname);
-                const char* fkey = __t13481;
-                bool __t13482 = Arx_Map_str_str_has_key((&(az.cls_field_types)), fkey);
-                if (__t13482) {
-                    const char* __t13483 = Arx_Map_str_str_get((&(az.cls_field_types)), fkey);
-                    cur_t = __t13483;
-                } else {
-                    const char* __t13484 = "m::";
-                    const char* __t13485 = arx_str_concat(__t13484, cur_t);
-                    const char* __t13486 = "::";
-                    const char* __t13487 = arx_str_concat(__t13485, __t13486);
-                    const char* __t13488 = arx_str_concat(__t13487, mname);
-                    const char* sig_k = __t13488;
-                    bool __t13489 = Arx_Map_str_str_has_key((&(az.sig_by_key)), sig_k);
-                    if (__t13489) {
-                        const char* __t13490 = Arx_Map_str_str_get((&(az.sig_by_key)), sig_k);
-                        const char* __t13491 = ",";
-                        Arx_List_str __t13492 = __arx_bstr_split(__t13490, __t13491);
-                        Arx_List_str __t13493 = __t13492;
-                        const char* __t13494 = Arx_List_str_get((&__t13493), ((int64_t)0LL));
-                        int64_t sidx = arx_str_to_i64(__t13494);
-                        const char* __t13495 = Arx_List_str_get((&(az.sig_rets)), sidx);
-                        cur_t = __t13495;
-                    } else {
-                        const char* __t13496 = "";
-                        cur_t = __t13496;
-                    }
-                }
-                pi = ((pi) + (((int64_t)1LL)));
-            }
-            const char* __t13497 = cur_t;
-            return __t13497;
+    const char* __t14250 = "super";
+    if ((arx_str_compare(trimmed, __t14250) == 0)) {
+        const char* __t14251 = arx_lsp_enclosing_class_at(az, doc_path, line1);
+        const char* ec = __t14251;
+        const char* __t14252 = "";
+        bool __t14253 = false;
+        if ((arx_str_compare(ec, __t14252) != 0)) {
+            bool __t14254 = Arx_Map_str_str_has_key((&(az.cls_base_map)), ec);
+            __t14253 = (__t14254);
         }
+        if (__t14253) {
+            const char* __t14255 = Arx_Map_str_str_get((&(az.cls_base_map)), ec);
+            const char* __t14256 = __t14255;
+            return __t14256;
+        }
+        const char* __t14257 = "";
+        const char* __t14258 = __t14257;
+        return __t14258;
     }
-    const char* __t13498 = arx_lsp_resolve_var_type(az, doc_path, line1, trimmed);
-    const char* __t13499 = __t13498;
-    return __t13499;
+    bool __t14259 = arx_lsp_is_static_runtime(trimmed);
+    bool __t14260 = true;
+    if (!(__t14259)) {
+        bool __t14261 = Arx_Map_str_i64_has_key((&(az.cls_idx_map)), trimmed);
+        __t14260 = (__t14261);
+    }
+    bool __t14262 = true;
+    if (!(__t14260)) {
+        bool __t14263 = Arx_Map_str_i64_has_key((&(az.enum_idx_map)), trimmed);
+        __t14262 = (__t14263);
+    }
+    if (__t14262) {
+        const char* __t14264 = trimmed;
+        return __t14264;
+    }
+    Arx_List_str __t14265 = arx_lsp_split_dot_chain(trimmed);
+    Arx_List_str parts = __t14265;
+    int64_t __t14266 = Arx_List_str_len((&(parts)));
+    if (((__t14266) > (((int64_t)1LL)))) {
+        const char* __t14267 = Arx_List_str_get((&(parts)), ((int64_t)0LL));
+        const char* __t14268 = arx_lsp_infer_expr_receiver_type(az, doc_path, line1, __t14267);
+        const char* cur_t = __t14268;
+        int64_t pi = ((int64_t)1LL);
+        while (1) {
+            int64_t __t14269 = Arx_List_str_len((&(parts)));
+            bool __t14270 = false;
+            if (((pi) < (__t14269))) {
+                const char* __t14271 = "";
+                __t14270 = ((arx_str_compare(cur_t, __t14271) != 0));
+            }
+            if (!(__t14270)) break;
+            const char* __t14272 = Arx_List_str_get((&(parts)), pi);
+            const char* mem = arx_str_trim(__t14272);
+            const char* mname = mem;
+            const char* __t14273 = "(";
+            int64_t __t14274 = arx_lsp_str_find(mname, __t14273, ((int64_t)0LL));
+            int64_t p_idx = __t14274;
+            if (((p_idx) > (((int64_t)0LL)))) {
+                const char* __t14275 = __arx_bstr_slice(mname, ((int64_t)0LL), p_idx);
+                mname = arx_str_trim(__t14275);
+            }
+            const char* __t14276 = arx_lsp_infer_builtin_member_ret(cur_t, mname);
+            const char* bi_ret = __t14276;
+            const char* __t14277 = "";
+            if ((arx_str_compare(bi_ret, __t14277) != 0)) {
+                cur_t = bi_ret;
+                pi = ((pi) + (((int64_t)1LL)));
+                continue;
+            }
+            const char* __t14278 = "";
+            const char* found_t = __t14278;
+            const char* walk = cur_t;
+            int64_t hops = ((int64_t)0LL);
+            while (1) {
+                const char* __t14279 = "";
+                bool __t14280 = false;
+                if ((arx_str_compare(walk, __t14279) != 0)) {
+                    __t14280 = (((hops) < (((int64_t)8LL))));
+                }
+                if (!(__t14280)) break;
+                const char* __t14281 = "::";
+                const char* __t14282 = arx_str_concat(walk, __t14281);
+                const char* __t14283 = arx_str_concat(__t14282, mname);
+                const char* fkey = __t14283;
+                bool __t14284 = Arx_Map_str_str_has_key((&(az.cls_field_types)), fkey);
+                if (__t14284) {
+                    const char* __t14285 = Arx_Map_str_str_get((&(az.cls_field_types)), fkey);
+                    found_t = __t14285;
+                    break;
+                }
+                const char* __t14286 = "m::";
+                const char* __t14287 = arx_str_concat(__t14286, walk);
+                const char* __t14288 = "::";
+                const char* __t14289 = arx_str_concat(__t14287, __t14288);
+                const char* __t14290 = arx_str_concat(__t14289, mname);
+                const char* sig_k = __t14290;
+                bool __t14291 = Arx_Map_str_str_has_key((&(az.sig_by_key)), sig_k);
+                if (__t14291) {
+                    const char* __t14292 = Arx_Map_str_str_get((&(az.sig_by_key)), sig_k);
+                    const char* __t14293 = ",";
+                    Arx_List_str __t14294 = __arx_bstr_split(__t14292, __t14293);
+                    Arx_List_str __t14295 = __t14294;
+                    const char* __t14296 = Arx_List_str_get((&__t14295), ((int64_t)0LL));
+                    int64_t sidx = arx_str_to_i64(__t14296);
+                    const char* __t14297 = Arx_List_str_get((&(az.sig_rets)), sidx);
+                    found_t = __t14297;
+                    break;
+                }
+                bool __t14298 = Arx_Map_str_str_has_key((&(az.cls_base_map)), walk);
+                if (__t14298) {
+                    const char* __t14299 = Arx_Map_str_str_get((&(az.cls_base_map)), walk);
+                    walk = __t14299;
+                } else {
+                    const char* __t14300 = "";
+                    walk = __t14300;
+                }
+                hops = ((hops) + (((int64_t)1LL)));
+            }
+            cur_t = found_t;
+            pi = ((pi) + (((int64_t)1LL)));
+        }
+        const char* __t14301 = cur_t;
+        return __t14301;
+    }
+    const char* __t14302 = "(";
+    int64_t __t14303 = arx_lsp_str_find(trimmed, __t14302, ((int64_t)0LL));
+    int64_t p_idx2 = __t14303;
+    if (((p_idx2) > (((int64_t)0LL)))) {
+        const char* __t14304 = __arx_bstr_slice(trimmed, ((int64_t)0LL), p_idx2);
+        const char* head = arx_str_trim(__t14304);
+        const char* __t14305 = "<";
+        int64_t __t14306 = arx_lsp_str_find(head, __t14305, ((int64_t)0LL));
+        int64_t lt2 = __t14306;
+        const char* base_head = head;
+        if (((lt2) > (((int64_t)0LL)))) {
+            const char* __t14307 = __arx_bstr_slice(head, ((int64_t)0LL), lt2);
+            base_head = arx_str_trim(__t14307);
+        }
+        bool __t14308 = arx_lsp_is_container_type(base_head);
+        if (__t14308) {
+            const char* __t14309 = head;
+            return __t14309;
+        }
+        bool __t14310 = Arx_Map_str_i64_has_key((&(az.cls_idx_map)), base_head);
+        if (__t14310) {
+            const char* __t14311 = head;
+            return __t14311;
+        }
+        int64_t fi = ((int64_t)0LL);
+        while (1) {
+            if (!(((fi) < (az.fn_count)))) break;
+            int64_t __t14312 = Arx_List_i64_get((&(az.fn_nodes)), fi);
+            int64_t fid = __t14312;
+            const char* __t14313 = Arx_List_str_get((&(az.sa)), fid);
+            if ((arx_str_compare(__t14313, base_head) == 0)) {
+                const char* __t14314 = Arx_List_str_get((&(az.sb)), fid);
+                const char* __t14315 = arx_btype_norm(__t14314);
+                const char* __t14316 = __t14315;
+                return __t14316;
+            }
+            fi = ((fi) + (((int64_t)1LL)));
+        }
+        const char* __t14317 = arx_lsp_enclosing_class_at(az, doc_path, line1);
+        const char* ec3 = __t14317;
+        const char* __t14318 = "";
+        if ((arx_str_compare(ec3, __t14318) != 0)) {
+            const char* __t14319 = "m::";
+            const char* __t14320 = arx_str_concat(__t14319, ec3);
+            const char* __t14321 = "::";
+            const char* __t14322 = arx_str_concat(__t14320, __t14321);
+            const char* __t14323 = arx_str_concat(__t14322, base_head);
+            const char* sig_k2 = __t14323;
+            bool __t14324 = Arx_Map_str_str_has_key((&(az.sig_by_key)), sig_k2);
+            if (__t14324) {
+                const char* __t14325 = Arx_Map_str_str_get((&(az.sig_by_key)), sig_k2);
+                const char* __t14326 = ",";
+                Arx_List_str __t14327 = __arx_bstr_split(__t14325, __t14326);
+                Arx_List_str __t14328 = __t14327;
+                const char* __t14329 = Arx_List_str_get((&__t14328), ((int64_t)0LL));
+                int64_t sidx2 = arx_str_to_i64(__t14329);
+                const char* __t14330 = Arx_List_str_get((&(az.sig_rets)), sidx2);
+                const char* __t14331 = __t14330;
+                return __t14331;
+            }
+        }
+        const char* __t14332 = "";
+        const char* __t14333 = __t14332;
+        return __t14333;
+    }
+    const char* __t14334 = arx_lsp_resolve_var_type(az, doc_path, line1, trimmed);
+    const char* __t14335 = __t14334;
+    return __t14335;
 }
 
 const char* arx_lsp_build_diagnostics_json(Arx_Analyzer az, const char* doc_path) {
-    Arx_JsonBuf __t13500 = Arx_JsonBuf_init();
-    Arx_JsonBuf jb = __t13500;
+    Arx_JsonBuf __t14336 = Arx_JsonBuf_init();
+    Arx_JsonBuf jb = __t14336;
     Arx_JsonBuf_lbrack((&(jb)));
     bool first = true;
     int64_t i = ((int64_t)0LL);
     while (1) {
         if (!(((i) < (az.err_count)))) break;
-        const char* __t13501 = Arx_List_str_get((&(az.err_files)), i);
-        const char* ef = __t13501;
-        int64_t __t13502 = Arx_List_i64_get((&(az.err_lines)), i);
-        int64_t ln0 = ((__t13502) - (((int64_t)1LL)));
-        int64_t __t13503 = Arx_List_i64_get((&(az.err_cols)), i);
-        int64_t cl0 = ((__t13503) - (((int64_t)1LL)));
-        const char* __t13504 = Arx_List_str_get((&(az.err_msgs)), i);
-        const char* msg = __t13504;
+        const char* __t14337 = Arx_List_str_get((&(az.err_files)), i);
+        const char* ef = __t14337;
+        int64_t __t14338 = Arx_List_i64_get((&(az.err_lines)), i);
+        int64_t ln0 = ((__t14338) - (((int64_t)1LL)));
+        int64_t __t14339 = Arx_List_i64_get((&(az.err_cols)), i);
+        int64_t cl0 = ((__t14339) - (((int64_t)1LL)));
+        const char* __t14340 = Arx_List_str_get((&(az.err_msgs)), i);
+        const char* msg = __t14340;
         if ((arx_str_compare(ef, doc_path) != 0)) {
             ln0 = ((int64_t)0LL);
             cl0 = ((int64_t)0LL);
-            const char* __t13505 = "[";
-            const char* __t13506 = arx_bpath_basename(ef);
-            const char* __t13507 = arx_str_concat(__t13505, __t13506);
-            const char* __t13508 = ":";
-            const char* __t13509 = arx_str_concat(__t13507, __t13508);
-            int64_t __t13510 = Arx_List_i64_get((&(az.err_lines)), i);
-            const char* __t13511 = arx_str_concat(__t13509, arx_cast_i64_to_str((int64_t)(__t13510)));
-            const char* __t13512 = "] ";
-            const char* __t13513 = arx_str_concat(__t13511, __t13512);
-            const char* __t13514 = arx_str_concat(__t13513, msg);
-            msg = __t13514;
+            const char* __t14341 = "[";
+            const char* __t14342 = arx_bpath_basename(ef);
+            const char* __t14343 = arx_str_concat(__t14341, __t14342);
+            const char* __t14344 = ":";
+            const char* __t14345 = arx_str_concat(__t14343, __t14344);
+            int64_t __t14346 = Arx_List_i64_get((&(az.err_lines)), i);
+            const char* __t14347 = arx_str_concat(__t14345, arx_cast_i64_to_str((int64_t)(__t14346)));
+            const char* __t14348 = "] ";
+            const char* __t14349 = arx_str_concat(__t14347, __t14348);
+            const char* __t14350 = arx_str_concat(__t14349, msg);
+            msg = __t14350;
         }
         if (((ln0) < (((int64_t)0LL)))) {
             ln0 = ((int64_t)0LL);
@@ -33163,41 +35596,41 @@ const char* arx_lsp_build_diagnostics_json(Arx_Analyzer az, const char* doc_path
         }
         first = false;
         Arx_JsonBuf_lbrace((&(jb)));
-        const char* __t13515 = "range";
-        Arx_JsonBuf_key((&(jb)), __t13515);
+        const char* __t14351 = "range";
+        Arx_JsonBuf_key((&(jb)), __t14351);
         Arx_JsonBuf_lbrace((&(jb)));
-        const char* __t13516 = "start";
-        Arx_JsonBuf_key((&(jb)), __t13516);
+        const char* __t14352 = "start";
+        Arx_JsonBuf_key((&(jb)), __t14352);
         Arx_JsonBuf_lbrace((&(jb)));
-        const char* __t13517 = "line";
-        Arx_JsonBuf_kv_int((&(jb)), __t13517, ln0, true);
-        const char* __t13518 = "character";
-        Arx_JsonBuf_kv_int((&(jb)), __t13518, cl0, false);
+        const char* __t14353 = "line";
+        Arx_JsonBuf_kv_int((&(jb)), __t14353, ln0, true);
+        const char* __t14354 = "character";
+        Arx_JsonBuf_kv_int((&(jb)), __t14354, cl0, false);
         Arx_JsonBuf_rbrace((&(jb)));
         Arx_JsonBuf_comma((&(jb)));
-        const char* __t13519 = "end";
-        Arx_JsonBuf_key((&(jb)), __t13519);
+        const char* __t14355 = "end";
+        Arx_JsonBuf_key((&(jb)), __t14355);
         Arx_JsonBuf_lbrace((&(jb)));
-        const char* __t13520 = "line";
-        Arx_JsonBuf_kv_int((&(jb)), __t13520, ln0, true);
-        const char* __t13521 = "character";
-        Arx_JsonBuf_kv_int((&(jb)), __t13521, ((cl0) + (((int64_t)1LL))), false);
+        const char* __t14356 = "line";
+        Arx_JsonBuf_kv_int((&(jb)), __t14356, ln0, true);
+        const char* __t14357 = "character";
+        Arx_JsonBuf_kv_int((&(jb)), __t14357, ((cl0) + (((int64_t)1LL))), false);
         Arx_JsonBuf_rbrace((&(jb)));
         Arx_JsonBuf_rbrace((&(jb)));
-        const char* __t13522 = "severity";
-        Arx_JsonBuf_kv_int((&(jb)), __t13522, ((int64_t)1LL), false);
-        const char* __t13523 = "source";
-        const char* __t13524 = "aerix";
-        Arx_JsonBuf_kv_str((&(jb)), __t13523, __t13524, false);
-        const char* __t13525 = "message";
-        Arx_JsonBuf_kv_str((&(jb)), __t13525, msg, false);
+        const char* __t14358 = "severity";
+        Arx_JsonBuf_kv_int((&(jb)), __t14358, ((int64_t)1LL), false);
+        const char* __t14359 = "source";
+        const char* __t14360 = "aerix";
+        Arx_JsonBuf_kv_str((&(jb)), __t14359, __t14360, false);
+        const char* __t14361 = "message";
+        Arx_JsonBuf_kv_str((&(jb)), __t14361, msg, false);
         Arx_JsonBuf_rbrace((&(jb)));
         i = ((i) + (((int64_t)1LL)));
     }
     Arx_JsonBuf_rbrack((&(jb)));
-    const char* __t13526 = Arx_JsonBuf_finish((&(jb)));
-    const char* __t13527 = __t13526;
-    return __t13527;
+    const char* __t14362 = Arx_JsonBuf_finish((&(jb)));
+    const char* __t14363 = __t14362;
+    return __t14363;
 }
 
 void arx_emit_comp_item(Arx_JsonBuf jb, const char* label, int64_t kind, const char* detail, const char* doc, const char* insert_txt, bool first) {
@@ -33205,34 +35638,34 @@ void arx_emit_comp_item(Arx_JsonBuf jb, const char* label, int64_t kind, const c
         Arx_JsonBuf_comma((&(jb)));
     }
     Arx_JsonBuf_lbrace((&(jb)));
-    const char* __t13528 = "label";
-    Arx_JsonBuf_kv_str((&(jb)), __t13528, label, true);
-    const char* __t13529 = "kind";
-    Arx_JsonBuf_kv_int((&(jb)), __t13529, kind, false);
-    const char* __t13530 = "";
-    if ((arx_str_compare(detail, __t13530) != 0)) {
-        const char* __t13531 = "detail";
-        Arx_JsonBuf_kv_str((&(jb)), __t13531, detail, false);
+    const char* __t14364 = "label";
+    Arx_JsonBuf_kv_str((&(jb)), __t14364, label, true);
+    const char* __t14365 = "kind";
+    Arx_JsonBuf_kv_int((&(jb)), __t14365, kind, false);
+    const char* __t14366 = "";
+    if ((arx_str_compare(detail, __t14366) != 0)) {
+        const char* __t14367 = "detail";
+        Arx_JsonBuf_kv_str((&(jb)), __t14367, detail, false);
     }
-    const char* __t13532 = "";
-    if ((arx_str_compare(doc, __t13532) != 0)) {
+    const char* __t14368 = "";
+    if ((arx_str_compare(doc, __t14368) != 0)) {
         Arx_JsonBuf_comma((&(jb)));
-        const char* __t13533 = "documentation";
-        Arx_JsonBuf_key((&(jb)), __t13533);
+        const char* __t14369 = "documentation";
+        Arx_JsonBuf_key((&(jb)), __t14369);
         Arx_JsonBuf_lbrace((&(jb)));
-        const char* __t13534 = "kind";
-        const char* __t13535 = "markdown";
-        Arx_JsonBuf_kv_str((&(jb)), __t13534, __t13535, true);
-        const char* __t13536 = "value";
-        Arx_JsonBuf_kv_str((&(jb)), __t13536, doc, false);
+        const char* __t14370 = "kind";
+        const char* __t14371 = "markdown";
+        Arx_JsonBuf_kv_str((&(jb)), __t14370, __t14371, true);
+        const char* __t14372 = "value";
+        Arx_JsonBuf_kv_str((&(jb)), __t14372, doc, false);
         Arx_JsonBuf_rbrace((&(jb)));
     }
-    const char* __t13537 = "";
-    if ((arx_str_compare(insert_txt, __t13537) != 0)) {
-        const char* __t13538 = "insertText";
-        Arx_JsonBuf_kv_str((&(jb)), __t13538, insert_txt, false);
-        const char* __t13539 = "insertTextFormat";
-        Arx_JsonBuf_kv_int((&(jb)), __t13539, ((int64_t)2LL), false);
+    const char* __t14373 = "";
+    if ((arx_str_compare(insert_txt, __t14373) != 0)) {
+        const char* __t14374 = "insertText";
+        Arx_JsonBuf_kv_str((&(jb)), __t14374, insert_txt, false);
+        const char* __t14375 = "insertTextFormat";
+        Arx_JsonBuf_kv_int((&(jb)), __t14375, ((int64_t)2LL), false);
     }
     Arx_JsonBuf_rbrace((&(jb)));
 }
@@ -33241,135 +35674,135 @@ void arx_collect_class_member_completions(Arx_Analyzer az, const char* cname, Ar
     const char* cur = cname;
     int64_t depth = ((int64_t)0LL);
     while (1) {
-        const char* __t13540 = "";
-        bool __t13541 = false;
-        if ((arx_str_compare(cur, __t13540) != 0)) {
-            __t13541 = (((depth) < (((int64_t)16LL))));
+        const char* __t14376 = "";
+        bool __t14377 = false;
+        if ((arx_str_compare(cur, __t14376) != 0)) {
+            __t14377 = (((depth) < (((int64_t)16LL))));
         }
-        if (!(__t13541)) break;
-        int64_t __t13542 = arx_lsp_find_class_node(az, cur);
-        int64_t cid = __t13542;
+        if (!(__t14377)) break;
+        int64_t __t14378 = arx_lsp_find_class_node(az, cur);
+        int64_t cid = __t14378;
         if (((cid) >= (((int64_t)0LL)))) {
-            int64_t __t13543 = Arx_List_i64_get((&(az.la)), cid);
-            int64_t fg = __t13543;
-            int64_t __t13544 = Arx_List_i64_get((&(az.ll)), fg);
-            int64_t fc = __t13544;
+            int64_t __t14379 = Arx_List_i64_get((&(az.la)), cid);
+            int64_t fg = __t14379;
+            int64_t __t14380 = Arx_List_i64_get((&(az.ll)), fg);
+            int64_t fc = __t14380;
             int64_t fi = ((int64_t)0LL);
             while (1) {
                 if (!(((fi) < (fc)))) break;
-                int64_t __t13545 = Arx_List_i64_get((&(az.ls)), fg);
-                int64_t __t13546 = Arx_List_i64_get((&(az.ch)), ((__t13545) + (fi)));
-                int64_t fid = __t13546;
-                const char* __t13547 = Arx_List_str_get((&(az.sa)), fid);
-                const char* fnm = __t13547;
-                const char* __t13548 = "f::";
-                const char* __t13549 = arx_str_concat(__t13548, fnm);
-                bool __t13550 = Arx_Map_str_i64_has_key((&(seen)), __t13549);
-                if ((!(__t13550))) {
-                    const char* __t13551 = "f::";
-                    const char* __t13552 = arx_str_concat(__t13551, fnm);
-                    Arx_Map_str_i64_insert((&(seen)), __t13552, ((int64_t)1LL));
-                    const char* __t13553 = Arx_List_str_get((&(az.sb)), fid);
-                    const char* __t13554 = arx_btype_norm(__t13553);
-                    const char* ft = __t13554;
-                    int64_t __t13555 = Arx_List_i64_get((&(is_first_box)), ((int64_t)0LL));
-                    bool fst = ((__t13555) == (((int64_t)1LL)));
+                int64_t __t14381 = Arx_List_i64_get((&(az.ls)), fg);
+                int64_t __t14382 = Arx_List_i64_get((&(az.ch)), ((__t14381) + (fi)));
+                int64_t fid = __t14382;
+                const char* __t14383 = Arx_List_str_get((&(az.sa)), fid);
+                const char* fnm = __t14383;
+                const char* __t14384 = "f::";
+                const char* __t14385 = arx_str_concat(__t14384, fnm);
+                bool __t14386 = Arx_Map_str_i64_has_key((&(seen)), __t14385);
+                if ((!(__t14386))) {
+                    const char* __t14387 = "f::";
+                    const char* __t14388 = arx_str_concat(__t14387, fnm);
+                    Arx_Map_str_i64_insert((&(seen)), __t14388, ((int64_t)1LL));
+                    const char* __t14389 = Arx_List_str_get((&(az.sb)), fid);
+                    const char* __t14390 = arx_btype_norm(__t14389);
+                    const char* ft = __t14390;
+                    int64_t __t14391 = Arx_List_i64_get((&(is_first_box)), ((int64_t)0LL));
+                    bool fst = ((__t14391) == (((int64_t)1LL)));
                     Arx_List_i64_set((&(is_first_box)), ((int64_t)0LL), ((int64_t)0LL));
-                    int64_t __t13556 = arx_CKIND_FIELD();
-                    const char* __t13557 = ": ";
-                    const char* __t13558 = arx_str_concat(fnm, __t13557);
-                    const char* __t13559 = arx_str_concat(__t13558, ft);
-                    const char* __t13560 = "Field on `";
-                    const char* __t13561 = arx_str_concat(__t13560, cur);
-                    const char* __t13562 = "`";
-                    const char* __t13563 = arx_str_concat(__t13561, __t13562);
-                    const char* __t13564 = "";
-                    arx_emit_comp_item(jb, fnm, __t13556, __t13559, __t13563, __t13564, fst);
+                    int64_t __t14392 = arx_CKIND_FIELD();
+                    const char* __t14393 = ": ";
+                    const char* __t14394 = arx_str_concat(fnm, __t14393);
+                    const char* __t14395 = arx_str_concat(__t14394, ft);
+                    const char* __t14396 = "Field on `";
+                    const char* __t14397 = arx_str_concat(__t14396, cur);
+                    const char* __t14398 = "`";
+                    const char* __t14399 = arx_str_concat(__t14397, __t14398);
+                    const char* __t14400 = "";
+                    arx_emit_comp_item(jb, fnm, __t14392, __t14395, __t14399, __t14400, fst);
                 }
                 fi = ((fi) + (((int64_t)1LL)));
             }
-            int64_t __t13565 = Arx_List_i64_get((&(az.ea)), cid);
-            int64_t mg = __t13565;
-            int64_t __t13566 = Arx_List_i64_get((&(az.ll)), mg);
-            int64_t mc = __t13566;
+            int64_t __t14401 = Arx_List_i64_get((&(az.ea)), cid);
+            int64_t mg = __t14401;
+            int64_t __t14402 = Arx_List_i64_get((&(az.ll)), mg);
+            int64_t mc = __t14402;
             int64_t mi = ((int64_t)0LL);
             while (1) {
                 if (!(((mi) < (mc)))) break;
-                int64_t __t13567 = Arx_List_i64_get((&(az.ls)), mg);
-                int64_t __t13568 = Arx_List_i64_get((&(az.ch)), ((__t13567) + (mi)));
-                int64_t mid = __t13568;
-                const char* __t13569 = Arx_List_str_get((&(az.sa)), mid);
-                const char* mnm = __t13569;
-                const char* __t13570 = "m::";
-                const char* __t13571 = arx_str_concat(__t13570, mnm);
-                bool __t13572 = Arx_Map_str_i64_has_key((&(seen)), __t13571);
-                if ((!(__t13572))) {
-                    const char* __t13573 = "m::";
-                    const char* __t13574 = arx_str_concat(__t13573, mnm);
-                    Arx_Map_str_i64_insert((&(seen)), __t13574, ((int64_t)1LL));
-                    const char* __t13575 = arx_lsp_fn_signature_str(az, mid);
-                    const char* sig = __t13575;
-                    int64_t __t13576 = Arx_List_i64_get((&(is_first_box)), ((int64_t)0LL));
-                    bool fst = ((__t13576) == (((int64_t)1LL)));
+                int64_t __t14403 = Arx_List_i64_get((&(az.ls)), mg);
+                int64_t __t14404 = Arx_List_i64_get((&(az.ch)), ((__t14403) + (mi)));
+                int64_t mid = __t14404;
+                const char* __t14405 = Arx_List_str_get((&(az.sa)), mid);
+                const char* mnm = __t14405;
+                const char* __t14406 = "m::";
+                const char* __t14407 = arx_str_concat(__t14406, mnm);
+                bool __t14408 = Arx_Map_str_i64_has_key((&(seen)), __t14407);
+                if ((!(__t14408))) {
+                    const char* __t14409 = "m::";
+                    const char* __t14410 = arx_str_concat(__t14409, mnm);
+                    Arx_Map_str_i64_insert((&(seen)), __t14410, ((int64_t)1LL));
+                    const char* __t14411 = arx_lsp_fn_signature_str(az, mid);
+                    const char* sig = __t14411;
+                    int64_t __t14412 = Arx_List_i64_get((&(is_first_box)), ((int64_t)0LL));
+                    bool fst = ((__t14412) == (((int64_t)1LL)));
                     Arx_List_i64_set((&(is_first_box)), ((int64_t)0LL), ((int64_t)0LL));
-                    int64_t __t13577 = arx_CKIND_METHOD();
-                    const char* __t13578 = "Method on `";
-                    const char* __t13579 = arx_str_concat(__t13578, cur);
-                    const char* __t13580 = "`";
-                    const char* __t13581 = arx_str_concat(__t13579, __t13580);
-                    const char* __t13582 = "";
-                    arx_emit_comp_item(jb, mnm, __t13577, sig, __t13581, __t13582, fst);
+                    int64_t __t14413 = arx_CKIND_METHOD();
+                    const char* __t14414 = "Method on `";
+                    const char* __t14415 = arx_str_concat(__t14414, cur);
+                    const char* __t14416 = "`";
+                    const char* __t14417 = arx_str_concat(__t14415, __t14416);
+                    const char* __t14418 = "";
+                    arx_emit_comp_item(jb, mnm, __t14413, sig, __t14417, __t14418, fst);
                 }
                 mi = ((mi) + (((int64_t)1LL)));
             }
         }
-        bool __t13583 = Arx_Map_str_str_has_key((&(az.cls_base_map)), cur);
-        if (__t13583) {
-            const char* __t13584 = Arx_Map_str_str_get((&(az.cls_base_map)), cur);
-            cur = __t13584;
+        bool __t14419 = Arx_Map_str_str_has_key((&(az.cls_base_map)), cur);
+        if (__t14419) {
+            const char* __t14420 = Arx_Map_str_str_get((&(az.cls_base_map)), cur);
+            cur = __t14420;
         } else {
-            const char* __t13585 = "";
-            cur = __t13585;
+            const char* __t14421 = "";
+            cur = __t14421;
         }
         depth = ((depth) + (((int64_t)1LL)));
     }
     int64_t ei = ((int64_t)0LL);
     while (1) {
         if (!(((ei) < (az.ext_count)))) break;
-        int64_t __t13586 = Arx_List_i64_get((&(az.ext_nodes)), ei);
-        int64_t eid = __t13586;
-        const char* __t13587 = Arx_List_str_get((&(az.sa)), eid);
-        const char* __t13588 = arx_btype_norm(__t13587);
-        if ((arx_str_compare(__t13588, cname) == 0)) {
-            int64_t __t13589 = Arx_List_i64_get((&(az.ll)), eid);
-            int64_t mc = __t13589;
+        int64_t __t14422 = Arx_List_i64_get((&(az.ext_nodes)), ei);
+        int64_t eid = __t14422;
+        const char* __t14423 = Arx_List_str_get((&(az.sa)), eid);
+        const char* __t14424 = arx_btype_norm(__t14423);
+        if ((arx_str_compare(__t14424, cname) == 0)) {
+            int64_t __t14425 = Arx_List_i64_get((&(az.ll)), eid);
+            int64_t mc = __t14425;
             int64_t mi = ((int64_t)0LL);
             while (1) {
                 if (!(((mi) < (mc)))) break;
-                int64_t __t13590 = Arx_List_i64_get((&(az.ls)), eid);
-                int64_t __t13591 = Arx_List_i64_get((&(az.ch)), ((__t13590) + (mi)));
-                int64_t mid = __t13591;
-                const char* __t13592 = Arx_List_str_get((&(az.sa)), mid);
-                const char* mnm = __t13592;
-                const char* __t13593 = "m::";
-                const char* __t13594 = arx_str_concat(__t13593, mnm);
-                bool __t13595 = Arx_Map_str_i64_has_key((&(seen)), __t13594);
-                if ((!(__t13595))) {
-                    const char* __t13596 = "m::";
-                    const char* __t13597 = arx_str_concat(__t13596, mnm);
-                    Arx_Map_str_i64_insert((&(seen)), __t13597, ((int64_t)1LL));
-                    const char* __t13598 = arx_lsp_fn_signature_str(az, mid);
-                    const char* sig = __t13598;
-                    int64_t __t13599 = Arx_List_i64_get((&(is_first_box)), ((int64_t)0LL));
-                    bool fst = ((__t13599) == (((int64_t)1LL)));
+                int64_t __t14426 = Arx_List_i64_get((&(az.ls)), eid);
+                int64_t __t14427 = Arx_List_i64_get((&(az.ch)), ((__t14426) + (mi)));
+                int64_t mid = __t14427;
+                const char* __t14428 = Arx_List_str_get((&(az.sa)), mid);
+                const char* mnm = __t14428;
+                const char* __t14429 = "m::";
+                const char* __t14430 = arx_str_concat(__t14429, mnm);
+                bool __t14431 = Arx_Map_str_i64_has_key((&(seen)), __t14430);
+                if ((!(__t14431))) {
+                    const char* __t14432 = "m::";
+                    const char* __t14433 = arx_str_concat(__t14432, mnm);
+                    Arx_Map_str_i64_insert((&(seen)), __t14433, ((int64_t)1LL));
+                    const char* __t14434 = arx_lsp_fn_signature_str(az, mid);
+                    const char* sig = __t14434;
+                    int64_t __t14435 = Arx_List_i64_get((&(is_first_box)), ((int64_t)0LL));
+                    bool fst = ((__t14435) == (((int64_t)1LL)));
                     Arx_List_i64_set((&(is_first_box)), ((int64_t)0LL), ((int64_t)0LL));
-                    int64_t __t13600 = arx_CKIND_METHOD();
-                    const char* __t13601 = "Extension method on `";
-                    const char* __t13602 = arx_str_concat(__t13601, cname);
-                    const char* __t13603 = "`";
-                    const char* __t13604 = arx_str_concat(__t13602, __t13603);
-                    const char* __t13605 = "";
-                    arx_emit_comp_item(jb, mnm, __t13600, sig, __t13604, __t13605, fst);
+                    int64_t __t14436 = arx_CKIND_METHOD();
+                    const char* __t14437 = "Extension method on `";
+                    const char* __t14438 = arx_str_concat(__t14437, cname);
+                    const char* __t14439 = "`";
+                    const char* __t14440 = arx_str_concat(__t14438, __t14439);
+                    const char* __t14441 = "";
+                    arx_emit_comp_item(jb, mnm, __t14436, sig, __t14440, __t14441, fst);
                 }
                 mi = ((mi) + (((int64_t)1LL)));
             }
@@ -33379,8 +35812,8 @@ void arx_collect_class_member_completions(Arx_Analyzer az, const char* cname, Ar
 }
 
 const char* arx_lsp_build_completion_json(const char* source, Arx_Analyzer az, const char* doc_path, int64_t line0, int64_t char0) {
-    const char* __t13606 = arx_lsp_get_line_text(source, line0);
-    const char* line = __t13606;
+    const char* __t14442 = arx_lsp_get_line_text(source, line0);
+    const char* line = __t14442;
     int64_t cpos = char0;
     if (((cpos) > (arx_str_len(line)))) {
         cpos = arx_str_len(line);
@@ -33388,54 +35821,54 @@ const char* arx_lsp_build_completion_json(const char* source, Arx_Analyzer az, c
     if (((cpos) < (((int64_t)0LL)))) {
         cpos = ((int64_t)0LL);
     }
-    const char* __t13607 = __arx_bstr_slice(line, ((int64_t)0LL), cpos);
-    const char* prefix = __t13607;
+    const char* __t14443 = __arx_bstr_slice(line, ((int64_t)0LL), cpos);
+    const char* prefix = __t14443;
     int64_t scan = arx_str_len(prefix);
     while (1) {
-        bool __t13608 = false;
+        bool __t14444 = false;
         if (((scan) > (((int64_t)0LL)))) {
-            bool __t13609 = arx_lsp_is_ident_char(arx_str_byte_at(prefix, ((scan) - (((int64_t)1LL)))));
-            __t13608 = (__t13609);
+            bool __t14445 = arx_lsp_is_ident_char(arx_str_byte_at(prefix, ((scan) - (((int64_t)1LL)))));
+            __t14444 = (__t14445);
         }
-        if (!(__t13608)) break;
+        if (!(__t14444)) break;
         scan = ((scan) - (((int64_t)1LL)));
     }
-    const char* __t13610 = __arx_bstr_slice(prefix, ((int64_t)0LL), scan);
-    const char* before_word = arx_str_trim(__t13610);
-    Arx_JsonBuf __t13611 = Arx_JsonBuf_init();
-    Arx_JsonBuf jb = __t13611;
+    const char* __t14446 = __arx_bstr_slice(prefix, ((int64_t)0LL), scan);
+    const char* before_word = arx_str_trim(__t14446);
+    Arx_JsonBuf __t14447 = Arx_JsonBuf_init();
+    Arx_JsonBuf jb = __t14447;
     Arx_JsonBuf_lbrace((&(jb)));
-    const char* __t13612 = "isIncomplete";
-    Arx_JsonBuf_kv_bool((&(jb)), __t13612, false, true);
+    const char* __t14448 = "isIncomplete";
+    Arx_JsonBuf_kv_bool((&(jb)), __t14448, false, true);
     Arx_JsonBuf_comma((&(jb)));
-    const char* __t13613 = "items";
-    Arx_JsonBuf_key((&(jb)), __t13613);
+    const char* __t14449 = "items";
+    Arx_JsonBuf_key((&(jb)), __t14449);
     Arx_JsonBuf_lbrack((&(jb)));
-    Arx_Map_str_i64 __t13614 = Arx_Map_str_i64_init();
-    Arx_Map_str_i64 seen = __t13614;
-    Arx_List_i64 __t13615 = Arx_List_i64_init();
-    Arx_List_i64 is_first = __t13615;
+    Arx_Map_str_i64 __t14450 = Arx_Map_str_i64_init();
+    Arx_Map_str_i64 seen = __t14450;
+    Arx_List_i64 __t14451 = Arx_List_i64_init();
+    Arx_List_i64 is_first = __t14451;
     Arx_List_i64_push((&(is_first)), ((int64_t)1LL));
     bool is_member = false;
-    const char* __t13616 = "";
-    const char* recv_expr = __t13616;
-    const char* __t13617 = "?.";
-    if (arx_str_ends_with(before_word, __t13617)) {
+    const char* __t14452 = "";
+    const char* recv_expr = __t14452;
+    const char* __t14453 = "?.";
+    if (arx_str_ends_with(before_word, __t14453)) {
         is_member = true;
-        const char* __t13618 = __arx_bstr_slice(before_word, ((int64_t)0LL), ((arx_str_len(before_word)) - (((int64_t)2LL))));
-        recv_expr = __t13618;
+        const char* __t14454 = __arx_bstr_slice(before_word, ((int64_t)0LL), ((arx_str_len(before_word)) - (((int64_t)2LL))));
+        recv_expr = __t14454;
     } else {
-        const char* __t13619 = "~>";
-        if (arx_str_ends_with(before_word, __t13619)) {
+        const char* __t14455 = "~>";
+        if (arx_str_ends_with(before_word, __t14455)) {
             is_member = true;
-            const char* __t13620 = __arx_bstr_slice(before_word, ((int64_t)0LL), ((arx_str_len(before_word)) - (((int64_t)2LL))));
-            recv_expr = __t13620;
+            const char* __t14456 = __arx_bstr_slice(before_word, ((int64_t)0LL), ((arx_str_len(before_word)) - (((int64_t)2LL))));
+            recv_expr = __t14456;
         } else {
-            const char* __t13621 = ".";
-            if (arx_str_ends_with(before_word, __t13621)) {
+            const char* __t14457 = ".";
+            if (arx_str_ends_with(before_word, __t14457)) {
                 is_member = true;
-                const char* __t13622 = __arx_bstr_slice(before_word, ((int64_t)0LL), ((arx_str_len(before_word)) - (((int64_t)1LL))));
-                recv_expr = __t13622;
+                const char* __t14458 = __arx_bstr_slice(before_word, ((int64_t)0LL), ((arx_str_len(before_word)) - (((int64_t)1LL))));
+                recv_expr = __t14458;
             }
         }
     }
@@ -33444,82 +35877,82 @@ const char* arx_lsp_build_completion_json(const char* source, Arx_Analyzer az, c
         while (1) {
             if (!(((rstart) > (((int64_t)0LL))))) break;
             int64_t b = arx_str_byte_at(recv_expr, ((rstart) - (((int64_t)1LL))));
-            bool __t13623 = arx_lsp_is_ident_char(b);
-            bool __t13624 = true;
-            if (!(__t13623)) {
-                __t13624 = (((b) == (((int64_t)46LL))));
+            bool __t14459 = arx_lsp_is_ident_char(b);
+            bool __t14460 = true;
+            if (!(__t14459)) {
+                __t14460 = (((b) == (((int64_t)46LL))));
             }
-            if (__t13624) {
+            if (__t14460) {
                 rstart = ((rstart) - (((int64_t)1LL)));
             } else {
                 break;
             }
         }
-        const char* __t13625 = __arx_bstr_slice(recv_expr, rstart, arx_str_len(recv_expr));
-        const char* clean_recv = __t13625;
-        const char* __t13626 = arx_lsp_infer_expr_receiver_type(az, doc_path, ((line0) + (((int64_t)1LL))), clean_recv);
-        const char* recv_t = __t13626;
-        const char* __t13627 = "";
-        if ((arx_str_compare(recv_t, __t13627) != 0)) {
-            bool __t13628 = Arx_Map_str_i64_has_key((&(az.enum_idx_map)), recv_t);
-            if (__t13628) {
-                int64_t __t13629 = arx_lsp_find_enum_node(az, recv_t);
-                int64_t eid = __t13629;
+        const char* __t14461 = __arx_bstr_slice(recv_expr, rstart, arx_str_len(recv_expr));
+        const char* clean_recv = __t14461;
+        const char* __t14462 = arx_lsp_infer_expr_receiver_type(az, doc_path, ((line0) + (((int64_t)1LL))), clean_recv);
+        const char* recv_t = __t14462;
+        const char* __t14463 = "";
+        if ((arx_str_compare(recv_t, __t14463) != 0)) {
+            bool __t14464 = Arx_Map_str_i64_has_key((&(az.enum_idx_map)), recv_t);
+            if (__t14464) {
+                int64_t __t14465 = arx_lsp_find_enum_node(az, recv_t);
+                int64_t eid = __t14465;
                 if (((eid) >= (((int64_t)0LL)))) {
-                    int64_t __t13630 = Arx_List_i64_get((&(az.ll)), eid);
-                    int64_t vc = __t13630;
+                    int64_t __t14466 = Arx_List_i64_get((&(az.ll)), eid);
+                    int64_t vc = __t14466;
                     int64_t vi = ((int64_t)0LL);
                     while (1) {
                         if (!(((vi) < (vc)))) break;
-                        int64_t __t13631 = Arx_List_i64_get((&(az.ls)), eid);
-                        int64_t __t13632 = Arx_List_i64_get((&(az.ch)), ((__t13631) + (vi)));
-                        int64_t vid = __t13632;
-                        const char* __t13633 = Arx_List_str_get((&(az.sa)), vid);
-                        const char* vnm = __t13633;
-                        int64_t __t13634 = Arx_List_i64_get((&(is_first)), ((int64_t)0LL));
-                        bool fst = ((__t13634) == (((int64_t)1LL)));
+                        int64_t __t14467 = Arx_List_i64_get((&(az.ls)), eid);
+                        int64_t __t14468 = Arx_List_i64_get((&(az.ch)), ((__t14467) + (vi)));
+                        int64_t vid = __t14468;
+                        const char* __t14469 = Arx_List_str_get((&(az.sa)), vid);
+                        const char* vnm = __t14469;
+                        int64_t __t14470 = Arx_List_i64_get((&(is_first)), ((int64_t)0LL));
+                        bool fst = ((__t14470) == (((int64_t)1LL)));
                         Arx_List_i64_set((&(is_first)), ((int64_t)0LL), ((int64_t)0LL));
-                        int64_t __t13635 = arx_CKIND_ENUM_MEM();
-                        const char* __t13636 = ".";
-                        const char* __t13637 = arx_str_concat(recv_t, __t13636);
-                        const char* __t13638 = arx_str_concat(__t13637, vnm);
-                        const char* __t13639 = "Enum variant";
-                        const char* __t13640 = "";
-                        arx_emit_comp_item(jb, vnm, __t13635, __t13638, __t13639, __t13640, fst);
+                        int64_t __t14471 = arx_CKIND_ENUM_MEM();
+                        const char* __t14472 = ".";
+                        const char* __t14473 = arx_str_concat(recv_t, __t14472);
+                        const char* __t14474 = arx_str_concat(__t14473, vnm);
+                        const char* __t14475 = "Enum variant";
+                        const char* __t14476 = "";
+                        arx_emit_comp_item(jb, vnm, __t14471, __t14474, __t14475, __t14476, fst);
                         vi = ((vi) + (((int64_t)1LL)));
                     }
                 }
             } else {
-                bool __t13641 = Arx_Map_str_i64_has_key((&(az.cls_idx_map)), recv_t);
-                if (__t13641) {
+                bool __t14477 = Arx_Map_str_i64_has_key((&(az.cls_idx_map)), recv_t);
+                if (__t14477) {
                     arx_collect_class_member_completions(az, recv_t, jb, seen, is_first);
                 } else {
-                    Arx_List_str __t13642 = arx_lsp_builtin_methods_for(recv_t);
-                    Arx_List_str bms = __t13642;
+                    Arx_List_str __t14478 = arx_lsp_builtin_methods_for(recv_t);
+                    Arx_List_str bms = __t14478;
                     int64_t bi = ((int64_t)0LL);
                     while (1) {
-                        int64_t __t13643 = Arx_List_str_len((&(bms)));
-                        if (!(((bi) < (__t13643)))) break;
-                        const char* __t13644 = Arx_List_str_get((&(bms)), bi);
-                        const char* entry = __t13644;
-                        const char* __t13645 = ":";
-                        int64_t __t13646 = arx_lsp_str_find(entry, __t13645, ((int64_t)0LL));
-                        int64_t colon_i = __t13646;
-                        const char* __t13647 = __arx_bstr_slice(entry, ((int64_t)0LL), colon_i);
-                        const char* mnm = __t13647;
-                        const char* __t13648 = __arx_bstr_slice(entry, ((colon_i) + (((int64_t)1LL))), arx_str_len(entry));
-                        const char* msig = __t13648;
-                        int64_t __t13649 = Arx_List_i64_get((&(is_first)), ((int64_t)0LL));
-                        bool fst = ((__t13649) == (((int64_t)1LL)));
+                        int64_t __t14479 = Arx_List_str_len((&(bms)));
+                        if (!(((bi) < (__t14479)))) break;
+                        const char* __t14480 = Arx_List_str_get((&(bms)), bi);
+                        const char* entry = __t14480;
+                        const char* __t14481 = ":";
+                        int64_t __t14482 = arx_lsp_str_find(entry, __t14481, ((int64_t)0LL));
+                        int64_t colon_i = __t14482;
+                        const char* __t14483 = __arx_bstr_slice(entry, ((int64_t)0LL), colon_i);
+                        const char* mnm = __t14483;
+                        const char* __t14484 = __arx_bstr_slice(entry, ((colon_i) + (((int64_t)1LL))), arx_str_len(entry));
+                        const char* msig = __t14484;
+                        int64_t __t14485 = Arx_List_i64_get((&(is_first)), ((int64_t)0LL));
+                        bool fst = ((__t14485) == (((int64_t)1LL)));
                         Arx_List_i64_set((&(is_first)), ((int64_t)0LL), ((int64_t)0LL));
-                        int64_t __t13650 = arx_CKIND_METHOD();
-                        const char* __t13651 = arx_str_concat(mnm, msig);
-                        const char* __t13652 = "Built-in `";
-                        const char* __t13653 = arx_str_concat(__t13652, recv_t);
-                        const char* __t13654 = "` method";
-                        const char* __t13655 = arx_str_concat(__t13653, __t13654);
-                        const char* __t13656 = "";
-                        arx_emit_comp_item(jb, mnm, __t13650, __t13651, __t13655, __t13656, fst);
+                        int64_t __t14486 = arx_CKIND_METHOD();
+                        const char* __t14487 = arx_str_concat(mnm, msig);
+                        const char* __t14488 = "Built-in `";
+                        const char* __t14489 = arx_str_concat(__t14488, recv_t);
+                        const char* __t14490 = "` method";
+                        const char* __t14491 = arx_str_concat(__t14489, __t14490);
+                        const char* __t14492 = "";
+                        arx_emit_comp_item(jb, mnm, __t14486, __t14487, __t14491, __t14492, fst);
                         bi = ((bi) + (((int64_t)1LL)));
                     }
                 }
@@ -33527,65 +35960,65 @@ const char* arx_lsp_build_completion_json(const char* source, Arx_Analyzer az, c
         }
         Arx_JsonBuf_rbrack((&(jb)));
         Arx_JsonBuf_rbrace((&(jb)));
-        const char* __t13657 = Arx_JsonBuf_finish((&(jb)));
-        const char* __t13658 = __t13657;
-        return __t13658;
+        const char* __t14493 = Arx_JsonBuf_finish((&(jb)));
+        const char* __t14494 = __t14493;
+        return __t14494;
     }
     int64_t ni = ((int64_t)0LL);
     while (1) {
         if (!(((ni) < (az.ncount)))) break;
-        int64_t __t13659 = Arx_List_i64_get((&(az.nk)), ni);
-        int64_t k = __t13659;
-        int64_t __t13660 = arx_NK_VAR_DECL();
-        bool __t13661 = true;
-        if (!(((k) == (__t13660)))) {
-            int64_t __t13662 = arx_NK_PARAM();
-            __t13661 = (((k) == (__t13662)));
+        int64_t __t14495 = Arx_List_i64_get((&(az.nk)), ni);
+        int64_t k = __t14495;
+        int64_t __t14496 = arx_NK_VAR_DECL();
+        bool __t14497 = true;
+        if (!(((k) == (__t14496)))) {
+            int64_t __t14498 = arx_NK_PARAM();
+            __t14497 = (((k) == (__t14498)));
         }
-        bool __t13663 = false;
-        if (__t13661) {
-            const char* __t13664 = Arx_List_str_get((&(az.nf)), ni);
-            __t13663 = ((arx_str_compare(__t13664, doc_path) == 0));
+        bool __t14499 = false;
+        if (__t14497) {
+            const char* __t14500 = Arx_List_str_get((&(az.nf)), ni);
+            __t14499 = ((arx_str_compare(__t14500, doc_path) == 0));
         }
-        bool __t13665 = false;
-        if (__t13663) {
-            int64_t __t13666 = Arx_List_i64_get((&(az.ln)), ni);
-            __t13665 = (((__t13666) <= (((line0) + (((int64_t)1LL))))));
+        bool __t14501 = false;
+        if (__t14499) {
+            int64_t __t14502 = Arx_List_i64_get((&(az.ln)), ni);
+            __t14501 = (((__t14502) <= (((line0) + (((int64_t)1LL))))));
         }
-        if (__t13665) {
-            const char* __t13667 = Arx_List_str_get((&(az.sa)), ni);
-            const char* vnm = __t13667;
-            const char* __t13668 = "";
-            bool __t13669 = false;
-            if ((arx_str_compare(vnm, __t13668) != 0)) {
-                const char* __t13670 = "v::";
-                const char* __t13671 = arx_str_concat(__t13670, vnm);
-                bool __t13672 = Arx_Map_str_i64_has_key((&(seen)), __t13671);
-                __t13669 = ((!(__t13672)));
+        if (__t14501) {
+            const char* __t14503 = Arx_List_str_get((&(az.sa)), ni);
+            const char* vnm = __t14503;
+            const char* __t14504 = "";
+            bool __t14505 = false;
+            if ((arx_str_compare(vnm, __t14504) != 0)) {
+                const char* __t14506 = "v::";
+                const char* __t14507 = arx_str_concat(__t14506, vnm);
+                bool __t14508 = Arx_Map_str_i64_has_key((&(seen)), __t14507);
+                __t14505 = ((!(__t14508)));
             }
-            if (__t13669) {
-                const char* __t13673 = "v::";
-                const char* __t13674 = arx_str_concat(__t13673, vnm);
-                Arx_Map_str_i64_insert((&(seen)), __t13674, ((int64_t)1LL));
-                const char* __t13675 = Arx_List_str_get((&(az.node_types)), ni);
-                const char* __t13676 = arx_btype_norm(__t13675);
-                const char* vt = __t13676;
-                const char* __t13677 = "";
-                if ((arx_str_compare(vt, __t13677) == 0)) {
-                    const char* __t13678 = Arx_List_str_get((&(az.sb)), ni);
-                    const char* __t13679 = arx_btype_norm(__t13678);
-                    vt = __t13679;
+            if (__t14505) {
+                const char* __t14509 = "v::";
+                const char* __t14510 = arx_str_concat(__t14509, vnm);
+                Arx_Map_str_i64_insert((&(seen)), __t14510, ((int64_t)1LL));
+                const char* __t14511 = Arx_List_str_get((&(az.node_types)), ni);
+                const char* __t14512 = arx_btype_norm(__t14511);
+                const char* vt = __t14512;
+                const char* __t14513 = "";
+                if ((arx_str_compare(vt, __t14513) == 0)) {
+                    const char* __t14514 = Arx_List_str_get((&(az.sb)), ni);
+                    const char* __t14515 = arx_btype_norm(__t14514);
+                    vt = __t14515;
                 }
-                int64_t __t13680 = Arx_List_i64_get((&(is_first)), ((int64_t)0LL));
-                bool fst = ((__t13680) == (((int64_t)1LL)));
+                int64_t __t14516 = Arx_List_i64_get((&(is_first)), ((int64_t)0LL));
+                bool fst = ((__t14516) == (((int64_t)1LL)));
                 Arx_List_i64_set((&(is_first)), ((int64_t)0LL), ((int64_t)0LL));
-                int64_t __t13681 = arx_CKIND_VARIABLE();
-                const char* __t13682 = ": ";
-                const char* __t13683 = arx_str_concat(vnm, __t13682);
-                const char* __t13684 = arx_str_concat(__t13683, vt);
-                const char* __t13685 = "";
-                const char* __t13686 = "";
-                arx_emit_comp_item(jb, vnm, __t13681, __t13684, __t13685, __t13686, fst);
+                int64_t __t14517 = arx_CKIND_VARIABLE();
+                const char* __t14518 = ": ";
+                const char* __t14519 = arx_str_concat(vnm, __t14518);
+                const char* __t14520 = arx_str_concat(__t14519, vt);
+                const char* __t14521 = "";
+                const char* __t14522 = "";
+                arx_emit_comp_item(jb, vnm, __t14517, __t14520, __t14521, __t14522, fst);
             }
         }
         ni = ((ni) + (((int64_t)1LL)));
@@ -33593,461 +36026,1413 @@ const char* arx_lsp_build_completion_json(const char* source, Arx_Analyzer az, c
     int64_t fi = ((int64_t)0LL);
     while (1) {
         if (!(((fi) < (az.fn_count)))) break;
-        int64_t __t13687 = Arx_List_i64_get((&(az.fn_nodes)), fi);
-        int64_t fid = __t13687;
-        const char* __t13688 = Arx_List_str_get((&(az.sa)), fid);
-        const char* fnm = __t13688;
-        const char* __t13689 = "";
-        bool __t13690 = false;
-        if ((arx_str_compare(fnm, __t13689) != 0)) {
-            const char* __t13691 = "fn::";
-            const char* __t13692 = arx_str_concat(__t13691, fnm);
-            bool __t13693 = Arx_Map_str_i64_has_key((&(seen)), __t13692);
-            __t13690 = ((!(__t13693)));
+        int64_t __t14523 = Arx_List_i64_get((&(az.fn_nodes)), fi);
+        int64_t fid = __t14523;
+        const char* __t14524 = Arx_List_str_get((&(az.sa)), fid);
+        const char* fnm = __t14524;
+        const char* __t14525 = "";
+        bool __t14526 = false;
+        if ((arx_str_compare(fnm, __t14525) != 0)) {
+            const char* __t14527 = "fn::";
+            const char* __t14528 = arx_str_concat(__t14527, fnm);
+            bool __t14529 = Arx_Map_str_i64_has_key((&(seen)), __t14528);
+            __t14526 = ((!(__t14529)));
         }
-        if (__t13690) {
-            const char* __t13694 = "fn::";
-            const char* __t13695 = arx_str_concat(__t13694, fnm);
-            Arx_Map_str_i64_insert((&(seen)), __t13695, ((int64_t)1LL));
-            const char* __t13696 = arx_lsp_fn_signature_str(az, fid);
-            const char* sig = __t13696;
-            int64_t __t13697 = Arx_List_i64_get((&(is_first)), ((int64_t)0LL));
-            bool fst = ((__t13697) == (((int64_t)1LL)));
+        if (__t14526) {
+            const char* __t14530 = "fn::";
+            const char* __t14531 = arx_str_concat(__t14530, fnm);
+            Arx_Map_str_i64_insert((&(seen)), __t14531, ((int64_t)1LL));
+            const char* __t14532 = arx_lsp_fn_signature_str(az, fid);
+            const char* sig = __t14532;
+            int64_t __t14533 = Arx_List_i64_get((&(is_first)), ((int64_t)0LL));
+            bool fst = ((__t14533) == (((int64_t)1LL)));
             Arx_List_i64_set((&(is_first)), ((int64_t)0LL), ((int64_t)0LL));
-            int64_t __t13698 = arx_CKIND_FUNCTION();
-            const char* __t13699 = "Source: `";
-            const char* __t13700 = Arx_List_str_get((&(az.nf)), fid);
-            const char* __t13701 = arx_bpath_basename(__t13700);
-            const char* __t13702 = arx_str_concat(__t13699, __t13701);
-            const char* __t13703 = "`";
-            const char* __t13704 = arx_str_concat(__t13702, __t13703);
-            const char* __t13705 = "";
-            arx_emit_comp_item(jb, fnm, __t13698, sig, __t13704, __t13705, fst);
+            int64_t __t14534 = arx_CKIND_FUNCTION();
+            const char* __t14535 = "Source: `";
+            const char* __t14536 = Arx_List_str_get((&(az.nf)), fid);
+            const char* __t14537 = arx_bpath_basename(__t14536);
+            const char* __t14538 = arx_str_concat(__t14535, __t14537);
+            const char* __t14539 = "`";
+            const char* __t14540 = arx_str_concat(__t14538, __t14539);
+            const char* __t14541 = "";
+            arx_emit_comp_item(jb, fnm, __t14534, sig, __t14540, __t14541, fst);
         }
         fi = ((fi) + (((int64_t)1LL)));
     }
     int64_t ci = ((int64_t)0LL);
     while (1) {
         if (!(((ci) < (az.cls_count)))) break;
-        const char* __t13706 = Arx_List_str_get((&(az.cls_names)), ci);
-        const char* cnm = __t13706;
-        const char* __t13707 = "c::";
-        const char* __t13708 = arx_str_concat(__t13707, cnm);
-        bool __t13709 = Arx_Map_str_i64_has_key((&(seen)), __t13708);
-        if ((!(__t13709))) {
-            const char* __t13710 = "c::";
-            const char* __t13711 = arx_str_concat(__t13710, cnm);
-            Arx_Map_str_i64_insert((&(seen)), __t13711, ((int64_t)1LL));
-            int64_t __t13712 = Arx_List_i64_get((&(is_first)), ((int64_t)0LL));
-            bool fst = ((__t13712) == (((int64_t)1LL)));
+        const char* __t14542 = Arx_List_str_get((&(az.cls_names)), ci);
+        const char* cnm = __t14542;
+        const char* __t14543 = "c::";
+        const char* __t14544 = arx_str_concat(__t14543, cnm);
+        bool __t14545 = Arx_Map_str_i64_has_key((&(seen)), __t14544);
+        if ((!(__t14545))) {
+            const char* __t14546 = "c::";
+            const char* __t14547 = arx_str_concat(__t14546, cnm);
+            Arx_Map_str_i64_insert((&(seen)), __t14547, ((int64_t)1LL));
+            int64_t __t14548 = Arx_List_i64_get((&(is_first)), ((int64_t)0LL));
+            bool fst = ((__t14548) == (((int64_t)1LL)));
             Arx_List_i64_set((&(is_first)), ((int64_t)0LL), ((int64_t)0LL));
-            int64_t __t13713 = arx_CKIND_CLASS();
-            const char* __t13714 = "class ";
-            const char* __t13715 = arx_str_concat(__t13714, cnm);
-            const char* __t13716 = "";
-            const char* __t13717 = "";
-            arx_emit_comp_item(jb, cnm, __t13713, __t13715, __t13716, __t13717, fst);
+            int64_t __t14549 = arx_CKIND_CLASS();
+            const char* __t14550 = "class ";
+            const char* __t14551 = arx_str_concat(__t14550, cnm);
+            const char* __t14552 = "";
+            const char* __t14553 = "";
+            arx_emit_comp_item(jb, cnm, __t14549, __t14551, __t14552, __t14553, fst);
         }
         ci = ((ci) + (((int64_t)1LL)));
     }
     int64_t ei = ((int64_t)0LL);
     while (1) {
         if (!(((ei) < (az.enum_count)))) break;
-        const char* __t13718 = Arx_List_str_get((&(az.enum_names)), ei);
-        const char* enm = __t13718;
-        const char* __t13719 = "e::";
-        const char* __t13720 = arx_str_concat(__t13719, enm);
-        bool __t13721 = Arx_Map_str_i64_has_key((&(seen)), __t13720);
-        if ((!(__t13721))) {
-            const char* __t13722 = "e::";
-            const char* __t13723 = arx_str_concat(__t13722, enm);
-            Arx_Map_str_i64_insert((&(seen)), __t13723, ((int64_t)1LL));
-            int64_t __t13724 = Arx_List_i64_get((&(is_first)), ((int64_t)0LL));
-            bool fst = ((__t13724) == (((int64_t)1LL)));
+        const char* __t14554 = Arx_List_str_get((&(az.enum_names)), ei);
+        const char* enm = __t14554;
+        const char* __t14555 = "e::";
+        const char* __t14556 = arx_str_concat(__t14555, enm);
+        bool __t14557 = Arx_Map_str_i64_has_key((&(seen)), __t14556);
+        if ((!(__t14557))) {
+            const char* __t14558 = "e::";
+            const char* __t14559 = arx_str_concat(__t14558, enm);
+            Arx_Map_str_i64_insert((&(seen)), __t14559, ((int64_t)1LL));
+            int64_t __t14560 = Arx_List_i64_get((&(is_first)), ((int64_t)0LL));
+            bool fst = ((__t14560) == (((int64_t)1LL)));
             Arx_List_i64_set((&(is_first)), ((int64_t)0LL), ((int64_t)0LL));
-            int64_t __t13725 = arx_CKIND_ENUM();
-            const char* __t13726 = "enum ";
-            const char* __t13727 = arx_str_concat(__t13726, enm);
-            const char* __t13728 = "";
-            const char* __t13729 = "";
-            arx_emit_comp_item(jb, enm, __t13725, __t13727, __t13728, __t13729, fst);
+            int64_t __t14561 = arx_CKIND_ENUM();
+            const char* __t14562 = "enum ";
+            const char* __t14563 = arx_str_concat(__t14562, enm);
+            const char* __t14564 = "";
+            const char* __t14565 = "";
+            arx_emit_comp_item(jb, enm, __t14561, __t14563, __t14564, __t14565, fst);
         }
         ei = ((ei) + (((int64_t)1LL)));
     }
-    Arx_List_str __t13730 = arx_lsp_builtin_fn_list();
-    Arx_List_str bfns = __t13730;
+    Arx_List_str __t14566 = arx_lsp_builtin_fn_list();
+    Arx_List_str bfns = __t14566;
     int64_t bfi = ((int64_t)0LL);
     while (1) {
-        int64_t __t13731 = Arx_List_str_len((&(bfns)));
-        if (!(((bfi) < (__t13731)))) break;
-        const char* __t13732 = Arx_List_str_get((&(bfns)), bfi);
-        const char* bnm = __t13732;
-        const char* __t13733 = "fn::";
-        const char* __t13734 = arx_str_concat(__t13733, bnm);
-        bool __t13735 = Arx_Map_str_i64_has_key((&(seen)), __t13734);
-        if ((!(__t13735))) {
-            const char* __t13736 = "fn::";
-            const char* __t13737 = arx_str_concat(__t13736, bnm);
-            Arx_Map_str_i64_insert((&(seen)), __t13737, ((int64_t)1LL));
-            int64_t __t13738 = Arx_List_i64_get((&(is_first)), ((int64_t)0LL));
-            bool fst = ((__t13738) == (((int64_t)1LL)));
+        int64_t __t14567 = Arx_List_str_len((&(bfns)));
+        if (!(((bfi) < (__t14567)))) break;
+        const char* __t14568 = Arx_List_str_get((&(bfns)), bfi);
+        const char* bnm = __t14568;
+        const char* __t14569 = "fn::";
+        const char* __t14570 = arx_str_concat(__t14569, bnm);
+        bool __t14571 = Arx_Map_str_i64_has_key((&(seen)), __t14570);
+        if ((!(__t14571))) {
+            const char* __t14572 = "fn::";
+            const char* __t14573 = arx_str_concat(__t14572, bnm);
+            Arx_Map_str_i64_insert((&(seen)), __t14573, ((int64_t)1LL));
+            int64_t __t14574 = Arx_List_i64_get((&(is_first)), ((int64_t)0LL));
+            bool fst = ((__t14574) == (((int64_t)1LL)));
             Arx_List_i64_set((&(is_first)), ((int64_t)0LL), ((int64_t)0LL));
-            int64_t __t13739 = arx_CKIND_FUNCTION();
-            const char* __t13740 = "builtin ";
-            const char* __t13741 = arx_str_concat(__t13740, bnm);
-            const char* __t13742 = arx_lsp_lookup_doc(bnm);
-            const char* __t13743 = "";
-            arx_emit_comp_item(jb, bnm, __t13739, __t13741, __t13742, __t13743, fst);
+            int64_t __t14575 = arx_CKIND_FUNCTION();
+            const char* __t14576 = "builtin ";
+            const char* __t14577 = arx_str_concat(__t14576, bnm);
+            const char* __t14578 = arx_lsp_lookup_doc(bnm);
+            const char* __t14579 = "";
+            arx_emit_comp_item(jb, bnm, __t14575, __t14577, __t14578, __t14579, fst);
         }
         bfi = ((bfi) + (((int64_t)1LL)));
     }
-    Arx_List_str __t13744 = arx_lsp_type_list();
-    Arx_List_str ts = __t13744;
+    Arx_List_str __t14580 = arx_lsp_type_list();
+    Arx_List_str ts = __t14580;
     int64_t ti = ((int64_t)0LL);
     while (1) {
-        int64_t __t13745 = Arx_List_str_len((&(ts)));
-        if (!(((ti) < (__t13745)))) break;
-        const char* __t13746 = Arx_List_str_get((&(ts)), ti);
-        const char* tnm = __t13746;
-        const char* __t13747 = "c::";
-        const char* __t13748 = arx_str_concat(__t13747, tnm);
-        bool __t13749 = Arx_Map_str_i64_has_key((&(seen)), __t13748);
-        if ((!(__t13749))) {
-            const char* __t13750 = "c::";
-            const char* __t13751 = arx_str_concat(__t13750, tnm);
-            Arx_Map_str_i64_insert((&(seen)), __t13751, ((int64_t)1LL));
-            int64_t __t13752 = Arx_List_i64_get((&(is_first)), ((int64_t)0LL));
-            bool fst = ((__t13752) == (((int64_t)1LL)));
+        int64_t __t14581 = Arx_List_str_len((&(ts)));
+        if (!(((ti) < (__t14581)))) break;
+        const char* __t14582 = Arx_List_str_get((&(ts)), ti);
+        const char* tnm = __t14582;
+        const char* __t14583 = "c::";
+        const char* __t14584 = arx_str_concat(__t14583, tnm);
+        bool __t14585 = Arx_Map_str_i64_has_key((&(seen)), __t14584);
+        if ((!(__t14585))) {
+            const char* __t14586 = "c::";
+            const char* __t14587 = arx_str_concat(__t14586, tnm);
+            Arx_Map_str_i64_insert((&(seen)), __t14587, ((int64_t)1LL));
+            int64_t __t14588 = Arx_List_i64_get((&(is_first)), ((int64_t)0LL));
+            bool fst = ((__t14588) == (((int64_t)1LL)));
             Arx_List_i64_set((&(is_first)), ((int64_t)0LL), ((int64_t)0LL));
-            int64_t __t13753 = arx_CKIND_CLASS();
-            const char* __t13754 = "type ";
-            const char* __t13755 = arx_str_concat(__t13754, tnm);
-            const char* __t13756 = arx_lsp_lookup_doc(tnm);
-            const char* __t13757 = "";
-            arx_emit_comp_item(jb, tnm, __t13753, __t13755, __t13756, __t13757, fst);
+            int64_t __t14589 = arx_CKIND_CLASS();
+            const char* __t14590 = "type ";
+            const char* __t14591 = arx_str_concat(__t14590, tnm);
+            const char* __t14592 = arx_lsp_lookup_doc(tnm);
+            const char* __t14593 = "";
+            arx_emit_comp_item(jb, tnm, __t14589, __t14591, __t14592, __t14593, fst);
         }
         ti = ((ti) + (((int64_t)1LL)));
     }
-    Arx_List_str __t13758 = arx_lsp_keyword_list();
-    Arx_List_str ks = __t13758;
+    Arx_List_str __t14594 = arx_lsp_keyword_list();
+    Arx_List_str ks = __t14594;
     int64_t ki = ((int64_t)0LL);
     while (1) {
-        int64_t __t13759 = Arx_List_str_len((&(ks)));
-        if (!(((ki) < (__t13759)))) break;
-        const char* __t13760 = Arx_List_str_get((&(ks)), ki);
-        const char* knm = __t13760;
-        int64_t __t13761 = Arx_List_i64_get((&(is_first)), ((int64_t)0LL));
-        bool fst = ((__t13761) == (((int64_t)1LL)));
+        int64_t __t14595 = Arx_List_str_len((&(ks)));
+        if (!(((ki) < (__t14595)))) break;
+        const char* __t14596 = Arx_List_str_get((&(ks)), ki);
+        const char* knm = __t14596;
+        int64_t __t14597 = Arx_List_i64_get((&(is_first)), ((int64_t)0LL));
+        bool fst = ((__t14597) == (((int64_t)1LL)));
         Arx_List_i64_set((&(is_first)), ((int64_t)0LL), ((int64_t)0LL));
-        int64_t __t13762 = arx_CKIND_KEYWORD();
-        const char* __t13763 = "keyword ";
-        const char* __t13764 = arx_str_concat(__t13763, knm);
-        const char* __t13765 = arx_lsp_lookup_doc(knm);
-        const char* __t13766 = "";
-        arx_emit_comp_item(jb, knm, __t13762, __t13764, __t13765, __t13766, fst);
+        int64_t __t14598 = arx_CKIND_KEYWORD();
+        const char* __t14599 = "keyword ";
+        const char* __t14600 = arx_str_concat(__t14599, knm);
+        const char* __t14601 = arx_lsp_lookup_doc(knm);
+        const char* __t14602 = "";
+        arx_emit_comp_item(jb, knm, __t14598, __t14600, __t14601, __t14602, fst);
         ki = ((ki) + (((int64_t)1LL)));
     }
     Arx_JsonBuf_rbrack((&(jb)));
     Arx_JsonBuf_rbrace((&(jb)));
-    const char* __t13767 = Arx_JsonBuf_finish((&(jb)));
-    const char* __t13768 = __t13767;
-    return __t13768;
+    const char* __t14603 = Arx_JsonBuf_finish((&(jb)));
+    const char* __t14604 = __t14603;
+    return __t14604;
+}
+
+const char* arx_lsp_subst_generic_sig(const char* raw_sig, const char* recv_t) {
+    const char* __t14605 = ":";
+    int64_t __t14606 = arx_lsp_str_find(raw_sig, __t14605, ((int64_t)0LL));
+    int64_t colon_i = __t14606;
+    const char* mname = raw_sig;
+    const char* __t14607 = "";
+    const char* params_ret = __t14607;
+    if (((colon_i) >= (((int64_t)0LL)))) {
+        const char* __t14608 = __arx_bstr_slice(raw_sig, ((int64_t)0LL), colon_i);
+        mname = __t14608;
+        const char* __t14609 = __arx_bstr_slice(raw_sig, ((colon_i) + (((int64_t)1LL))), arx_str_len(raw_sig));
+        params_ret = __t14609;
+    }
+    const char* __t14610 = "List<";
+    bool __t14611 = true;
+    if (!(arx_str_starts_with(recv_t, __t14610))) {
+        const char* __t14612 = "Set<";
+        __t14611 = (arx_str_starts_with(recv_t, __t14612));
+    }
+    bool __t14613 = true;
+    if (!(__t14611)) {
+        const char* __t14614 = "Stack<";
+        __t14613 = (arx_str_starts_with(recv_t, __t14614));
+    }
+    bool __t14615 = true;
+    if (!(__t14613)) {
+        const char* __t14616 = "Queue<";
+        __t14615 = (arx_str_starts_with(recv_t, __t14616));
+    }
+    bool __t14617 = true;
+    if (!(__t14615)) {
+        const char* __t14618 = "Deque<";
+        __t14617 = (arx_str_starts_with(recv_t, __t14618));
+    }
+    if (__t14617) {
+        const char* __t14619 = arx_lsp_generic_inner_arg(recv_t, ((int64_t)0LL));
+        const char* elem = __t14619;
+        const char* __t14620 = "";
+        if ((arx_str_compare(elem, __t14620) != 0)) {
+            const char* __t14621 = ": T)";
+            const char* __t14622 = ": ";
+            const char* __t14623 = arx_str_concat(__t14622, elem);
+            const char* __t14624 = ")";
+            const char* __t14625 = arx_str_concat(__t14623, __t14624);
+            const char* __t14626 = arx_str_replace(params_ret, __t14621, __t14625);
+            const char* __t14627 = ": T,";
+            const char* __t14628 = ": ";
+            const char* __t14629 = arx_str_concat(__t14628, elem);
+            const char* __t14630 = ",";
+            const char* __t14631 = arx_str_concat(__t14629, __t14630);
+            const char* __t14632 = arx_str_replace(__t14626, __t14627, __t14631);
+            const char* __t14633 = "-> T";
+            const char* __t14634 = "-> ";
+            const char* __t14635 = arx_str_concat(__t14634, elem);
+            const char* __t14636 = arx_str_replace(__t14632, __t14633, __t14635);
+            const char* __t14637 = "<T>";
+            const char* __t14638 = "<";
+            const char* __t14639 = arx_str_concat(__t14638, elem);
+            const char* __t14640 = ">";
+            const char* __t14641 = arx_str_concat(__t14639, __t14640);
+            const char* __t14642 = arx_str_replace(__t14636, __t14637, __t14641);
+            params_ret = __t14642;
+        }
+    } else {
+        const char* __t14643 = "Map<";
+        if (arx_str_starts_with(recv_t, __t14643)) {
+            const char* __t14644 = arx_lsp_generic_inner_arg(recv_t, ((int64_t)0LL));
+            const char* k_elem = __t14644;
+            const char* __t14645 = arx_lsp_generic_inner_arg(recv_t, ((int64_t)1LL));
+            const char* v_elem = __t14645;
+            const char* __t14646 = "";
+            if ((arx_str_compare(k_elem, __t14646) != 0)) {
+                const char* __t14647 = ": K)";
+                const char* __t14648 = ": ";
+                const char* __t14649 = arx_str_concat(__t14648, k_elem);
+                const char* __t14650 = ")";
+                const char* __t14651 = arx_str_concat(__t14649, __t14650);
+                const char* __t14652 = arx_str_replace(params_ret, __t14647, __t14651);
+                const char* __t14653 = ": K,";
+                const char* __t14654 = ": ";
+                const char* __t14655 = arx_str_concat(__t14654, k_elem);
+                const char* __t14656 = ",";
+                const char* __t14657 = arx_str_concat(__t14655, __t14656);
+                const char* __t14658 = arx_str_replace(__t14652, __t14653, __t14657);
+                const char* __t14659 = "<K>";
+                const char* __t14660 = "<";
+                const char* __t14661 = arx_str_concat(__t14660, k_elem);
+                const char* __t14662 = ">";
+                const char* __t14663 = arx_str_concat(__t14661, __t14662);
+                const char* __t14664 = arx_str_replace(__t14658, __t14659, __t14663);
+                params_ret = __t14664;
+            }
+            const char* __t14665 = "";
+            if ((arx_str_compare(v_elem, __t14665) != 0)) {
+                const char* __t14666 = "-> V";
+                const char* __t14667 = "-> ";
+                const char* __t14668 = arx_str_concat(__t14667, v_elem);
+                const char* __t14669 = arx_str_replace(params_ret, __t14666, __t14668);
+                const char* __t14670 = ": V)";
+                const char* __t14671 = ": ";
+                const char* __t14672 = arx_str_concat(__t14671, v_elem);
+                const char* __t14673 = ")";
+                const char* __t14674 = arx_str_concat(__t14672, __t14673);
+                const char* __t14675 = arx_str_replace(__t14669, __t14670, __t14674);
+                const char* __t14676 = "<V>";
+                const char* __t14677 = "<";
+                const char* __t14678 = arx_str_concat(__t14677, v_elem);
+                const char* __t14679 = ">";
+                const char* __t14680 = arx_str_concat(__t14678, __t14679);
+                const char* __t14681 = arx_str_replace(__t14675, __t14676, __t14680);
+                params_ret = __t14681;
+            }
+        }
+    }
+    const char* __t14682 = "fn ";
+    const char* __t14683 = arx_str_concat(__t14682, mname);
+    const char* __t14684 = arx_str_concat(__t14683, params_ret);
+    const char* __t14685 = __t14684;
+    return __t14685;
+}
+
+int64_t arx_lsp_find_class_field_node(Arx_Analyzer az, const char* cls_name, const char* field_name) {
+    const char* walk = cls_name;
+    int64_t hops = ((int64_t)0LL);
+    while (1) {
+        const char* __t14686 = "";
+        bool __t14687 = false;
+        if ((arx_str_compare(walk, __t14686) != 0)) {
+            __t14687 = (((hops) < (((int64_t)8LL))));
+        }
+        if (!(__t14687)) break;
+        int64_t __t14688 = arx_lsp_find_class_node(az, walk);
+        int64_t cid = __t14688;
+        if (((cid) >= (((int64_t)0LL)))) {
+            int64_t __t14689 = Arx_List_i64_get((&(az.la)), cid);
+            int64_t fg = __t14689;
+            if (((fg) >= (((int64_t)0LL)))) {
+                int64_t fi = ((int64_t)0LL);
+                while (1) {
+                    int64_t __t14690 = Arx_List_i64_get((&(az.ll)), fg);
+                    if (!(((fi) < (__t14690)))) break;
+                    int64_t __t14691 = Arx_List_i64_get((&(az.ls)), fg);
+                    int64_t __t14692 = Arx_List_i64_get((&(az.ch)), ((__t14691) + (fi)));
+                    int64_t fid = __t14692;
+                    const char* __t14693 = Arx_List_str_get((&(az.sa)), fid);
+                    if ((arx_str_compare(__t14693, field_name) == 0)) {
+                        int64_t __t14694 = fid;
+                        return __t14694;
+                    }
+                    fi = ((fi) + (((int64_t)1LL)));
+                }
+            }
+        }
+        bool __t14695 = Arx_Map_str_str_has_key((&(az.cls_base_map)), walk);
+        if (__t14695) {
+            const char* __t14696 = Arx_Map_str_str_get((&(az.cls_base_map)), walk);
+            walk = __t14696;
+        } else {
+            const char* __t14697 = "";
+            walk = __t14697;
+        }
+        hops = ((hops) + (((int64_t)1LL)));
+    }
+    int64_t __t14698 = (-(((int64_t)1LL)));
+    return __t14698;
+}
+
+const char* arx_lsp_find_class_method_cls(Arx_Analyzer az, const char* cls_name, const char* mname) {
+    const char* walk = cls_name;
+    int64_t hops = ((int64_t)0LL);
+    while (1) {
+        const char* __t14699 = "";
+        bool __t14700 = false;
+        if ((arx_str_compare(walk, __t14699) != 0)) {
+            __t14700 = (((hops) < (((int64_t)8LL))));
+        }
+        if (!(__t14700)) break;
+        const char* __t14701 = "m::";
+        const char* __t14702 = arx_str_concat(__t14701, walk);
+        const char* __t14703 = "::";
+        const char* __t14704 = arx_str_concat(__t14702, __t14703);
+        const char* __t14705 = arx_str_concat(__t14704, mname);
+        const char* sig_k = __t14705;
+        bool __t14706 = Arx_Map_str_str_has_key((&(az.sig_by_key)), sig_k);
+        if (__t14706) {
+            const char* __t14707 = walk;
+            return __t14707;
+        }
+        bool __t14708 = Arx_Map_str_str_has_key((&(az.cls_base_map)), walk);
+        if (__t14708) {
+            const char* __t14709 = Arx_Map_str_str_get((&(az.cls_base_map)), walk);
+            walk = __t14709;
+        } else {
+            const char* __t14710 = "";
+            walk = __t14710;
+        }
+        hops = ((hops) + (((int64_t)1LL)));
+    }
+    const char* __t14711 = cls_name;
+    return __t14711;
+}
+
+int64_t arx_lsp_find_class_method_sidx(Arx_Analyzer az, const char* cls_name, const char* mname) {
+    const char* walk = cls_name;
+    int64_t hops = ((int64_t)0LL);
+    while (1) {
+        const char* __t14712 = "";
+        bool __t14713 = false;
+        if ((arx_str_compare(walk, __t14712) != 0)) {
+            __t14713 = (((hops) < (((int64_t)8LL))));
+        }
+        if (!(__t14713)) break;
+        const char* __t14714 = "m::";
+        const char* __t14715 = arx_str_concat(__t14714, walk);
+        const char* __t14716 = "::";
+        const char* __t14717 = arx_str_concat(__t14715, __t14716);
+        const char* __t14718 = arx_str_concat(__t14717, mname);
+        const char* sig_k = __t14718;
+        bool __t14719 = Arx_Map_str_str_has_key((&(az.sig_by_key)), sig_k);
+        if (__t14719) {
+            const char* __t14720 = Arx_Map_str_str_get((&(az.sig_by_key)), sig_k);
+            const char* __t14721 = ",";
+            Arx_List_str __t14722 = __arx_bstr_split(__t14720, __t14721);
+            Arx_List_str __t14723 = __t14722;
+            const char* __t14724 = Arx_List_str_get((&__t14723), ((int64_t)0LL));
+            int64_t __t14725 = arx_str_to_i64(__t14724);
+            return __t14725;
+        }
+        bool __t14726 = Arx_Map_str_str_has_key((&(az.cls_base_map)), walk);
+        if (__t14726) {
+            const char* __t14727 = Arx_Map_str_str_get((&(az.cls_base_map)), walk);
+            walk = __t14727;
+        } else {
+            const char* __t14728 = "";
+            walk = __t14728;
+        }
+        hops = ((hops) + (((int64_t)1LL)));
+    }
+    int64_t __t14729 = (-(((int64_t)1LL)));
+    return __t14729;
+}
+
+const char* arx_lsp_format_enum_variant(Arx_Analyzer az, int64_t vid) {
+    Arx_ByteBuffer __t14730 = Arx_ByteBuffer_init();
+    Arx_ByteBuffer bb = __t14730;
+    const char* __t14731 = Arx_List_str_get((&(az.sa)), vid);
+    Arx_ByteBuffer_write_str((&(bb)), __t14731);
+    int64_t __t14732 = Arx_List_i64_get((&(az.ll)), vid);
+    int64_t fc = __t14732;
+    if (((fc) > (((int64_t)0LL)))) {
+        const char* __t14733 = "(";
+        Arx_ByteBuffer_write_str((&(bb)), __t14733);
+        int64_t i = ((int64_t)0LL);
+        while (1) {
+            if (!(((i) < (fc)))) break;
+            if (((i) > (((int64_t)0LL)))) {
+                const char* __t14734 = ", ";
+                Arx_ByteBuffer_write_str((&(bb)), __t14734);
+            }
+            int64_t __t14735 = Arx_List_i64_get((&(az.ls)), vid);
+            int64_t __t14736 = Arx_List_i64_get((&(az.ch)), ((__t14735) + (i)));
+            int64_t pid = __t14736;
+            const char* __t14737 = Arx_List_str_get((&(az.sa)), pid);
+            const char* __t14738 = ": ";
+            const char* __t14739 = arx_str_concat(__t14737, __t14738);
+            const char* __t14740 = Arx_List_str_get((&(az.sb)), pid);
+            const char* __t14741 = arx_btype_norm(__t14740);
+            const char* __t14742 = arx_str_concat(__t14739, __t14741);
+            Arx_ByteBuffer_write_str((&(bb)), __t14742);
+            i = ((i) + (((int64_t)1LL)));
+        }
+        const char* __t14743 = ")";
+        Arx_ByteBuffer_write_str((&(bb)), __t14743);
+    }
+    const char* __t14744 = Arx_ByteBuffer_to_str((&(bb)));
+    const char* out = __t14744;
+    Arx_ByteBuffer_free((&(bb)));
+    const char* __t14745 = out;
+    return __t14745;
+}
+
+const char* arx_lsp_resolve_import_at_cursor(const char* source, const char* doc_path, int64_t line0, int64_t char0) {
+    const char* __t14746 = arx_lsp_get_line_text(source, line0);
+    const char* line = __t14746;
+    const char* trim_l = arx_str_trim(line);
+    const char* __t14747 = "import ";
+    bool __t14748 = false;
+    if ((!(arx_str_starts_with(trim_l, __t14747)))) {
+        const char* __t14749 = "use ";
+        __t14748 = ((!(arx_str_starts_with(trim_l, __t14749))));
+    }
+    if (__t14748) {
+        const char* __t14750 = "";
+        const char* __t14751 = __t14750;
+        return __t14751;
+    }
+    int64_t n = arx_str_len(line);
+    int64_t q1 = (-(((int64_t)1LL)));
+    int64_t q2 = (-(((int64_t)1LL)));
+    int64_t i = ((int64_t)0LL);
+    while (1) {
+        if (!(((i) < (n)))) break;
+        if (((arx_str_byte_at(line, i)) == (((int64_t)34LL)))) {
+            if (((q1) < (((int64_t)0LL)))) {
+                q1 = i;
+            } else {
+                q2 = i;
+                bool __t14752 = false;
+                if (((char0) >= (q1))) {
+                    __t14752 = (((char0) <= (q2)));
+                }
+                if (__t14752) {
+                    const char* __t14753 = __arx_bstr_slice(line, ((q1) + (((int64_t)1LL))), q2);
+                    const char* rel = __t14753;
+                    const char* resolved = rel;
+                    bool __t14754 = arx_bpath_is_abs(resolved);
+                    if ((!(__t14754))) {
+                        const char* __t14755 = arx_bpath_dirname(doc_path);
+                        const char* __t14756 = arx_bpath_join(__t14755, rel);
+                        resolved = __t14756;
+                    } else {
+                        const char* __t14757 = arx_bpath_normalize(resolved);
+                        resolved = __t14757;
+                    }
+                    bool __t14758 = Arx_File_exists(resolved);
+                    bool __t14759 = false;
+                    if ((!(__t14758))) {
+                        bool __t14760 = arx_str_ends_with_arx(resolved);
+                        __t14759 = ((!(__t14760)));
+                    }
+                    if (__t14759) {
+                        const char* __t14761 = ".arx";
+                        const char* __t14762 = arx_str_concat(resolved, __t14761);
+                        bool __t14763 = Arx_File_exists(__t14762);
+                        if (__t14763) {
+                            const char* __t14764 = ".arx";
+                            const char* __t14765 = arx_str_concat(resolved, __t14764);
+                            resolved = __t14765;
+                        }
+                    }
+                    bool __t14766 = Arx_File_exists(resolved);
+                    if (__t14766) {
+                        const char* __t14767 = resolved;
+                        return __t14767;
+                    }
+                    const char* __t14768 = "";
+                    const char* __t14769 = __t14768;
+                    return __t14769;
+                }
+                q1 = (-(((int64_t)1LL)));
+                q2 = (-(((int64_t)1LL)));
+            }
+        }
+        i = ((i) + (((int64_t)1LL)));
+    }
+    const char* __t14770 = arx_lsp_word_at(source, line0, char0);
+    const char* w = __t14770;
+    const char* __t14771 = "";
+    bool __t14772 = false;
+    if ((arx_str_compare(w, __t14771) != 0)) {
+        const char* __t14773 = "import";
+        __t14772 = ((arx_str_compare(w, __t14773) != 0));
+    }
+    bool __t14774 = false;
+    if (__t14772) {
+        const char* __t14775 = "use";
+        __t14774 = ((arx_str_compare(w, __t14775) != 0));
+    }
+    bool __t14776 = false;
+    if (__t14774) {
+        const char* __t14777 = "from";
+        __t14776 = ((arx_str_compare(w, __t14777) != 0));
+    }
+    if (__t14776) {
+        const char* __t14778 = arx_bpath_dirname(doc_path);
+        const char* __t14779 = arx_find_module_dir(w, __t14778);
+        const char* mdir = __t14779;
+        const char* __t14780 = "";
+        if ((arx_str_compare(mdir, __t14780) != 0)) {
+            const char* __t14781 = ".arx";
+            const char* __t14782 = arx_str_concat(w, __t14781);
+            const char* __t14783 = arx_bpath_join(mdir, __t14782);
+            const char* c1 = __t14783;
+            bool __t14784 = Arx_File_exists(c1);
+            if (__t14784) {
+                const char* __t14785 = c1;
+                return __t14785;
+            }
+            const char* __t14786 = "mod.arx";
+            const char* __t14787 = arx_bpath_join(mdir, __t14786);
+            const char* c2 = __t14787;
+            bool __t14788 = Arx_File_exists(c2);
+            if (__t14788) {
+                const char* __t14789 = c2;
+                return __t14789;
+            }
+            const char* __t14790 = "main.arx";
+            const char* __t14791 = arx_bpath_join(mdir, __t14790);
+            const char* c3 = __t14791;
+            bool __t14792 = Arx_File_exists(c3);
+            if (__t14792) {
+                const char* __t14793 = c3;
+                return __t14793;
+            }
+        }
+    }
+    const char* __t14794 = "";
+    const char* __t14795 = __t14794;
+    return __t14795;
+}
+
+const char* arx_lsp_format_hover_block(const char* code, const char* doc, const char* loc_file, int64_t loc_line) {
+    Arx_ByteBuffer __t14796 = Arx_ByteBuffer_init();
+    Arx_ByteBuffer bb = __t14796;
+    const char* __t14797 = "```aerix\n";
+    Arx_ByteBuffer_write_str((&(bb)), __t14797);
+    Arx_ByteBuffer_write_str((&(bb)), code);
+    const char* __t14798 = "\n```";
+    Arx_ByteBuffer_write_str((&(bb)), __t14798);
+    const char* __t14799 = "";
+    if ((arx_str_compare(doc, __t14799) != 0)) {
+        const char* __t14800 = "\n---\n";
+        Arx_ByteBuffer_write_str((&(bb)), __t14800);
+        Arx_ByteBuffer_write_str((&(bb)), doc);
+    }
+    const char* __t14801 = "";
+    bool __t14802 = false;
+    if ((arx_str_compare(loc_file, __t14801) != 0)) {
+        __t14802 = (((loc_line) > (((int64_t)0LL))));
+    }
+    if (__t14802) {
+        const char* __t14803 = "\n\n*Defined at* [`";
+        Arx_ByteBuffer_write_str((&(bb)), __t14803);
+        const char* __t14804 = arx_bpath_basename(loc_file);
+        Arx_ByteBuffer_write_str((&(bb)), __t14804);
+        const char* __t14805 = ":";
+        Arx_ByteBuffer_write_str((&(bb)), __t14805);
+        const char* __t14806 = "";
+        const char* __t14807 = arx_str_concat(__t14806, arx_cast_i64_to_str((int64_t)(loc_line)));
+        Arx_ByteBuffer_write_str((&(bb)), __t14807);
+        const char* __t14808 = "`](";
+        Arx_ByteBuffer_write_str((&(bb)), __t14808);
+        const char* __t14809 = arx_lsp_path_to_uri(loc_file);
+        Arx_ByteBuffer_write_str((&(bb)), __t14809);
+        const char* __t14810 = "#L";
+        Arx_ByteBuffer_write_str((&(bb)), __t14810);
+        const char* __t14811 = "";
+        const char* __t14812 = arx_str_concat(__t14811, arx_cast_i64_to_str((int64_t)(loc_line)));
+        Arx_ByteBuffer_write_str((&(bb)), __t14812);
+        const char* __t14813 = ")";
+        Arx_ByteBuffer_write_str((&(bb)), __t14813);
+    }
+    const char* __t14814 = Arx_ByteBuffer_to_str((&(bb)));
+    const char* out = __t14814;
+    Arx_ByteBuffer_free((&(bb)));
+    const char* __t14815 = out;
+    return __t14815;
 }
 
 const char* arx_lsp_build_hover_json(const char* source, Arx_Analyzer az, const char* doc_path, int64_t line0, int64_t char0) {
-    const char* __t13769 = arx_lsp_get_line_text(source, line0);
-    const char* line = __t13769;
-    const char* __t13770 = arx_lsp_word_at(source, line0, char0);
-    const char* word = __t13770;
-    const char* __t13771 = "";
-    if ((arx_str_compare(word, __t13771) == 0)) {
-        const char* __t13772 = "null";
-        const char* __t13773 = __t13772;
-        return __t13773;
+    const char* __t14816 = arx_lsp_get_line_text(source, line0);
+    const char* line = __t14816;
+    const char* __t14817 = "";
+    const char* md = __t14817;
+    const char* __t14818 = arx_lsp_resolve_import_at_cursor(source, doc_path, line0, char0);
+    const char* imp_target = __t14818;
+    const char* __t14819 = "";
+    if ((arx_str_compare(imp_target, __t14819) != 0)) {
+        const char* __t14820 = "```aerix\nmodule \"";
+        const char* __t14821 = arx_bpath_basename(imp_target);
+        const char* __t14822 = arx_str_concat(__t14820, __t14821);
+        const char* __t14823 = "\"\n```\n\nResolved path: [`";
+        const char* __t14824 = arx_str_concat(__t14822, __t14823);
+        const char* __t14825 = arx_str_concat(__t14824, imp_target);
+        const char* __t14826 = "`](";
+        const char* __t14827 = arx_str_concat(__t14825, __t14826);
+        const char* __t14828 = arx_lsp_path_to_uri(imp_target);
+        const char* __t14829 = arx_str_concat(__t14827, __t14828);
+        const char* __t14830 = ")";
+        const char* __t14831 = arx_str_concat(__t14829, __t14830);
+        md = __t14831;
     }
-    int64_t __t13774 = arx_lsp_word_start_at(source, line0, char0);
-    int64_t wpos = __t13774;
-    const char* __t13775 = "";
-    const char* md = __t13775;
-    bool __t13776 = false;
-    if (((wpos) >= (((int64_t)2LL)))) {
-        __t13776 = (((arx_str_byte_at(line, ((wpos) - (((int64_t)1LL))))) == (((int64_t)46LL))));
+    const char* __t14832 = arx_lsp_word_at(source, line0, char0);
+    const char* word = __t14832;
+    const char* __t14833 = "";
+    bool __t14834 = false;
+    if ((arx_str_compare(md, __t14833) == 0)) {
+        const char* __t14835 = "";
+        __t14834 = ((arx_str_compare(word, __t14835) == 0));
     }
-    if (__t13776) {
-        int64_t p = ((wpos) - (((int64_t)1LL)));
-        int64_t rs = p;
-        while (1) {
-            bool __t13777 = false;
-            if (((rs) > (((int64_t)0LL)))) {
-                bool __t13778 = arx_lsp_is_ident_char(arx_str_byte_at(line, ((rs) - (((int64_t)1LL)))));
-                bool __t13779 = true;
-                if (!(__t13778)) {
-                    __t13779 = (((arx_str_byte_at(line, ((rs) - (((int64_t)1LL))))) == (((int64_t)46LL))));
-                }
-                __t13777 = (__t13779);
-            }
-            if (!(__t13777)) break;
-            rs = ((rs) - (((int64_t)1LL)));
-        }
-        const char* __t13780 = __arx_bstr_slice(line, rs, p);
-        const char* rname = __t13780;
-        const char* __t13781 = arx_lsp_infer_expr_receiver_type(az, doc_path, ((line0) + (((int64_t)1LL))), rname);
-        const char* rt = __t13781;
-        const char* __t13782 = "";
-        if ((arx_str_compare(rt, __t13782) != 0)) {
-            const char* __t13783 = "::";
-            const char* __t13784 = arx_str_concat(rt, __t13783);
-            const char* __t13785 = arx_str_concat(__t13784, word);
-            const char* fkey = __t13785;
-            bool __t13786 = Arx_Map_str_str_has_key((&(az.cls_field_types)), fkey);
-            if (__t13786) {
-                const char* __t13787 = "**Field** `";
-                const char* __t13788 = arx_str_concat(__t13787, rt);
-                const char* __t13789 = ".";
-                const char* __t13790 = arx_str_concat(__t13788, __t13789);
-                const char* __t13791 = arx_str_concat(__t13790, word);
-                const char* __t13792 = ": ";
-                const char* __t13793 = arx_str_concat(__t13791, __t13792);
-                const char* __t13794 = Arx_Map_str_str_get((&(az.cls_field_types)), fkey);
-                const char* __t13795 = arx_str_concat(__t13793, __t13794);
-                const char* __t13796 = "`";
-                const char* __t13797 = arx_str_concat(__t13795, __t13796);
-                md = __t13797;
+    if (__t14834) {
+        const char* __t14836 = "null";
+        const char* __t14837 = __t14836;
+        return __t14837;
+    }
+    int64_t __t14838 = arx_lsp_word_start_at(source, line0, char0);
+    int64_t wpos = __t14838;
+    int64_t line1 = ((line0) + (((int64_t)1LL)));
+    const char* __t14839 = "";
+    bool __t14840 = false;
+    if ((arx_str_compare(md, __t14839) == 0)) {
+        __t14840 = (((wpos) >= (((int64_t)2LL))));
+    }
+    bool __t14841 = false;
+    if (__t14840) {
+        __t14841 = (((arx_str_byte_at(line, ((wpos) - (((int64_t)1LL))))) == (((int64_t)46LL))));
+    }
+    if (__t14841) {
+        const char* __t14842 = arx_lsp_extract_receiver_before_dot(line, ((wpos) - (((int64_t)1LL))));
+        const char* rname = __t14842;
+        bool __t14843 = Arx_Map_str_i64_has_key((&(az.enum_idx_map)), rname);
+        if (__t14843) {
+            const char* __t14844 = "::";
+            const char* __t14845 = arx_str_concat(rname, __t14844);
+            const char* __t14846 = arx_str_concat(__t14845, word);
+            const char* vkey = __t14846;
+            bool __t14847 = Arx_Map_str_i64_has_key((&(az.enum_var_node)), vkey);
+            if (__t14847) {
+                int64_t __t14848 = Arx_Map_str_i64_get((&(az.enum_var_node)), vkey);
+                int64_t vid = __t14848;
+                const char* __t14849 = Arx_List_str_get((&(az.nf)), vid);
+                const char* vfile = __t14849;
+                int64_t __t14850 = Arx_List_i64_get((&(az.ln)), vid);
+                int64_t vln = __t14850;
+                const char* __t14851 = arx_lsp_extract_doc_comments(source, doc_path, vfile, vln);
+                const char* doc = __t14851;
+                int64_t __t14852 = Arx_List_i64_get((&(az.ia)), vid);
+                int64_t tag = __t14852;
+                const char* __t14853 = "(enum variant) ";
+                const char* __t14854 = arx_str_concat(__t14853, rname);
+                const char* __t14855 = ".";
+                const char* __t14856 = arx_str_concat(__t14854, __t14855);
+                const char* __t14857 = arx_lsp_format_enum_variant(az, vid);
+                const char* __t14858 = arx_str_concat(__t14856, __t14857);
+                const char* __t14859 = " = ";
+                const char* __t14860 = arx_str_concat(__t14858, __t14859);
+                const char* __t14861 = arx_str_concat(__t14860, arx_cast_i64_to_str((int64_t)(tag)));
+                const char* __t14862 = arx_lsp_format_hover_block(__t14861, doc, vfile, vln);
+                md = __t14862;
             } else {
-                const char* __t13798 = "m::";
-                const char* __t13799 = arx_str_concat(__t13798, rt);
-                const char* __t13800 = "::";
-                const char* __t13801 = arx_str_concat(__t13799, __t13800);
-                const char* __t13802 = arx_str_concat(__t13801, word);
-                const char* sig_k = __t13802;
-                bool __t13803 = Arx_Map_str_str_has_key((&(az.sig_by_key)), sig_k);
-                if (__t13803) {
-                    const char* __t13804 = Arx_Map_str_str_get((&(az.sig_by_key)), sig_k);
-                    const char* __t13805 = ",";
-                    Arx_List_str __t13806 = __arx_bstr_split(__t13804, __t13805);
-                    Arx_List_str __t13807 = __t13806;
-                    const char* __t13808 = Arx_List_str_get((&__t13807), ((int64_t)0LL));
-                    int64_t sidx = arx_str_to_i64(__t13808);
-                    const char* __t13809 = "**Method** `";
-                    const char* __t13810 = arx_str_concat(__t13809, rt);
-                    const char* __t13811 = ".";
-                    const char* __t13812 = arx_str_concat(__t13810, __t13811);
-                    int64_t __t13813 = Arx_List_i64_get((&(az.sig_nodes)), sidx);
-                    const char* __t13814 = arx_lsp_fn_signature_str(az, __t13813);
-                    const char* __t13815 = arx_str_concat(__t13812, __t13814);
-                    const char* __t13816 = "`";
-                    const char* __t13817 = arx_str_concat(__t13815, __t13816);
-                    md = __t13817;
+                const char* __t14863 = "**Enum Variant** `";
+                const char* __t14864 = arx_str_concat(__t14863, rname);
+                const char* __t14865 = ".";
+                const char* __t14866 = arx_str_concat(__t14864, __t14865);
+                const char* __t14867 = arx_str_concat(__t14866, word);
+                const char* __t14868 = "`";
+                const char* __t14869 = arx_str_concat(__t14867, __t14868);
+                md = __t14869;
+            }
+        }
+        const char* __t14870 = "";
+        if ((arx_str_compare(md, __t14870) == 0)) {
+            const char* __t14871 = arx_lsp_infer_expr_receiver_type(az, doc_path, line1, rname);
+            const char* rt = __t14871;
+            const char* __t14872 = "";
+            if ((arx_str_compare(rt, __t14872) != 0)) {
+                Arx_List_str __t14873 = arx_lsp_builtin_methods_for(rt);
+                Arx_List_str bmethods = __t14873;
+                int64_t bi = ((int64_t)0LL);
+                while (1) {
+                    int64_t __t14874 = Arx_List_str_len((&(bmethods)));
+                    if (!(((bi) < (__t14874)))) break;
+                    const char* __t14875 = Arx_List_str_get((&(bmethods)), bi);
+                    const char* msig = __t14875;
+                    const char* __t14876 = ":";
+                    const char* __t14877 = arx_str_concat(word, __t14876);
+                    if (arx_str_starts_with(msig, __t14877)) {
+                        const char* __t14878 = arx_lsp_subst_generic_sig(msig, rt);
+                        const char* fmt_sig = __t14878;
+                        const char* __t14879 = "```aerix\n";
+                        const char* __t14880 = arx_str_concat(__t14879, fmt_sig);
+                        const char* __t14881 = "\n```\n\n*Stdlib method on* `";
+                        const char* __t14882 = arx_str_concat(__t14880, __t14881);
+                        const char* __t14883 = arx_str_concat(__t14882, rt);
+                        const char* __t14884 = "`";
+                        const char* __t14885 = arx_str_concat(__t14883, __t14884);
+                        md = __t14885;
+                        break;
+                    }
+                    bi = ((bi) + (((int64_t)1LL)));
+                }
+                const char* __t14886 = "";
+                if ((arx_str_compare(md, __t14886) == 0)) {
+                    int64_t __t14887 = arx_lsp_find_class_field_node(az, rt, word);
+                    int64_t fid = __t14887;
+                    if (((fid) >= (((int64_t)0LL)))) {
+                        const char* __t14888 = Arx_List_str_get((&(az.nf)), fid);
+                        const char* ffile = __t14888;
+                        int64_t __t14889 = Arx_List_i64_get((&(az.ln)), fid);
+                        int64_t fln = __t14889;
+                        const char* __t14890 = arx_lsp_extract_doc_comments(source, doc_path, ffile, fln);
+                        const char* doc = __t14890;
+                        const char* __t14891 = "(field) ";
+                        const char* fhdr = __t14891;
+                        int64_t __t14892 = Arx_List_i64_get((&(az.ia)), fid);
+                        int64_t __t14893 = arx_FLAG_PUB();
+                        bool __t14894 = arx_has_flag(__t14892, __t14893);
+                        if (__t14894) {
+                            const char* __t14895 = "pub ";
+                            const char* __t14896 = arx_str_concat(fhdr, __t14895);
+                            fhdr = __t14896;
+                        }
+                        int64_t __t14897 = Arx_List_i64_get((&(az.ia)), fid);
+                        int64_t __t14898 = arx_FLAG_STATIC();
+                        bool __t14899 = arx_has_flag(__t14897, __t14898);
+                        if (__t14899) {
+                            const char* __t14900 = "static ";
+                            const char* __t14901 = arx_str_concat(fhdr, __t14900);
+                            fhdr = __t14901;
+                        }
+                        int64_t __t14902 = Arx_List_i64_get((&(az.ia)), fid);
+                        int64_t __t14903 = arx_FLAG_MUT();
+                        bool __t14904 = arx_has_flag(__t14902, __t14903);
+                        if (__t14904) {
+                            const char* __t14905 = "mut ";
+                            const char* __t14906 = arx_str_concat(fhdr, __t14905);
+                            fhdr = __t14906;
+                        } else {
+                            const char* __t14907 = "let ";
+                            const char* __t14908 = arx_str_concat(fhdr, __t14907);
+                            fhdr = __t14908;
+                        }
+                        const char* __t14909 = arx_str_concat(fhdr, rt);
+                        const char* __t14910 = ".";
+                        const char* __t14911 = arx_str_concat(__t14909, __t14910);
+                        const char* __t14912 = arx_str_concat(__t14911, word);
+                        const char* __t14913 = ": ";
+                        const char* __t14914 = arx_str_concat(__t14912, __t14913);
+                        const char* __t14915 = Arx_List_str_get((&(az.sb)), fid);
+                        const char* __t14916 = arx_btype_norm(__t14915);
+                        const char* __t14917 = arx_str_concat(__t14914, __t14916);
+                        fhdr = __t14917;
+                        const char* __t14918 = arx_lsp_format_hover_block(fhdr, doc, ffile, fln);
+                        md = __t14918;
+                    }
+                }
+                const char* __t14919 = "";
+                if ((arx_str_compare(md, __t14919) == 0)) {
+                    int64_t __t14920 = arx_lsp_find_class_method_sidx(az, rt, word);
+                    int64_t sidx = __t14920;
+                    if (((sidx) >= (((int64_t)0LL)))) {
+                        int64_t __t14921 = Arx_List_i64_get((&(az.sig_nodes)), sidx);
+                        int64_t mid = __t14921;
+                        const char* __t14922 = Arx_List_str_get((&(az.nf)), mid);
+                        const char* mfile = __t14922;
+                        int64_t __t14923 = Arx_List_i64_get((&(az.ln)), mid);
+                        int64_t mln = __t14923;
+                        const char* __t14924 = arx_lsp_extract_doc_comments(source, doc_path, mfile, mln);
+                        const char* doc = __t14924;
+                        const char* __t14925 = arx_lsp_find_class_method_cls(az, rt, word);
+                        const char* owner_cls = __t14925;
+                        const char* __t14926 = "(method on ";
+                        const char* __t14927 = arx_str_concat(__t14926, owner_cls);
+                        const char* __t14928 = ") ";
+                        const char* __t14929 = arx_str_concat(__t14927, __t14928);
+                        const char* __t14930 = arx_lsp_fn_signature_str(az, mid);
+                        const char* __t14931 = arx_str_concat(__t14929, __t14930);
+                        const char* __t14932 = arx_lsp_format_hover_block(__t14931, doc, mfile, mln);
+                        md = __t14932;
+                    }
                 }
             }
         }
-        const char* __t13818 = "";
-        bool __t13819 = false;
-        if ((arx_str_compare(md, __t13818) == 0)) {
-            bool __t13820 = Arx_Map_str_i64_has_key((&(az.enum_idx_map)), rname);
-            __t13819 = (__t13820);
+    }
+    const char* __t14933 = "";
+    bool __t14934 = false;
+    if ((arx_str_compare(md, __t14933) == 0)) {
+        const char* __t14935 = "self";
+        bool __t14936 = true;
+        if (!((arx_str_compare(word, __t14935) == 0))) {
+            const char* __t14937 = "super";
+            __t14936 = ((arx_str_compare(word, __t14937) == 0));
         }
-        if (__t13819) {
-            const char* __t13821 = "**Enum Variant** `";
-            const char* __t13822 = arx_str_concat(__t13821, rname);
-            const char* __t13823 = ".";
-            const char* __t13824 = arx_str_concat(__t13822, __t13823);
-            const char* __t13825 = arx_str_concat(__t13824, word);
-            const char* __t13826 = "`";
-            const char* __t13827 = arx_str_concat(__t13825, __t13826);
-            md = __t13827;
+        __t14934 = (__t14936);
+    }
+    if (__t14934) {
+        const char* __t14938 = arx_lsp_enclosing_class_at(az, doc_path, line1);
+        const char* ec = __t14938;
+        const char* __t14939 = "";
+        if ((arx_str_compare(ec, __t14939) != 0)) {
+            const char* __t14940 = "self";
+            if ((arx_str_compare(word, __t14940) == 0)) {
+                const char* __t14941 = "(self) ";
+                const char* __t14942 = arx_str_concat(__t14941, ec);
+                const char* __t14943 = "Reference to the current `";
+                const char* __t14944 = arx_str_concat(__t14943, ec);
+                const char* __t14945 = "` instance.";
+                const char* __t14946 = arx_str_concat(__t14944, __t14945);
+                const char* __t14947 = "";
+                const char* __t14948 = arx_lsp_format_hover_block(__t14942, __t14946, __t14947, ((int64_t)0LL));
+                md = __t14948;
+            } else {
+                bool __t14949 = Arx_Map_str_str_has_key((&(az.cls_base_map)), ec);
+                if (__t14949) {
+                    const char* __t14950 = Arx_Map_str_str_get((&(az.cls_base_map)), ec);
+                    const char* base_c = __t14950;
+                    const char* __t14951 = "(super) ";
+                    const char* __t14952 = arx_str_concat(__t14951, base_c);
+                    const char* __t14953 = "Parent class of `";
+                    const char* __t14954 = arx_str_concat(__t14953, ec);
+                    const char* __t14955 = "`.";
+                    const char* __t14956 = arx_str_concat(__t14954, __t14955);
+                    const char* __t14957 = "";
+                    const char* __t14958 = arx_lsp_format_hover_block(__t14952, __t14956, __t14957, ((int64_t)0LL));
+                    md = __t14958;
+                }
+            }
         }
     }
-    const char* __t13828 = "";
-    bool __t13829 = false;
-    if ((arx_str_compare(md, __t13828) == 0)) {
-        bool __t13830 = Arx_Map_str_i64_has_key((&(az.cls_idx_map)), word);
-        __t13829 = (__t13830);
+    const char* __t14959 = "";
+    if ((arx_str_compare(md, __t14959) == 0)) {
+        Arx_List_i64 __t14960 = arx_lsp_enclosing_fn_bounds(source, az, doc_path, line1);
+        Arx_List_i64 fbounds = __t14960;
+        int64_t __t14961 = Arx_List_i64_get((&(fbounds)), ((int64_t)1LL));
+        int64_t fstart = __t14961;
+        if (((fstart) > (((int64_t)0LL)))) {
+            int64_t __t14962 = arx_lsp_resolve_scoped_var_node(az, doc_path, line1, fstart, word);
+            int64_t vnid = __t14962;
+            if (((vnid) >= (((int64_t)0LL)))) {
+                int64_t __t14963 = Arx_List_i64_get((&(az.nk)), vnid);
+                int64_t vk = __t14963;
+                const char* __t14964 = Arx_List_str_get((&(az.node_types)), vnid);
+                const char* __t14965 = arx_btype_norm(__t14964);
+                const char* vt = __t14965;
+                const char* __t14966 = "";
+                bool __t14967 = true;
+                if (!((arx_str_compare(vt, __t14966) == 0))) {
+                    const char* __t14968 = "void";
+                    __t14967 = ((arx_str_compare(vt, __t14968) == 0));
+                }
+                if (__t14967) {
+                    const char* __t14969 = Arx_List_str_get((&(az.sb)), vnid);
+                    const char* __t14970 = arx_btype_norm(__t14969);
+                    vt = __t14970;
+                }
+                const char* __t14971 = "";
+                if ((arx_str_compare(vt, __t14971) == 0)) {
+                    const char* __t14972 = "<inferred>";
+                    vt = __t14972;
+                }
+                const char* __t14973 = "let";
+                const char* kind_lbl = __t14973;
+                int64_t __t14974 = arx_NK_PARAM();
+                if (((vk) == (__t14974))) {
+                    int64_t __t14975 = Arx_List_i64_get((&(az.ia)), vnid);
+                    int64_t __t14976 = arx_FLAG_MUT();
+                    bool __t14977 = arx_has_flag(__t14975, __t14976);
+                    if (__t14977) {
+                        const char* __t14978 = "mut param";
+                        kind_lbl = __t14978;
+                    } else {
+                        const char* __t14979 = "param";
+                        kind_lbl = __t14979;
+                    }
+                } else {
+                    int64_t __t14980 = arx_NK_FOR();
+                    if (((vk) == (__t14980))) {
+                        const char* __t14981 = "for var";
+                        kind_lbl = __t14981;
+                    } else {
+                        int64_t __t14982 = Arx_List_i64_get((&(az.ia)), vnid);
+                        if (((__t14982) != (((int64_t)0LL)))) {
+                            const char* __t14983 = "mut";
+                            kind_lbl = __t14983;
+                        }
+                    }
+                }
+                int64_t __t14984 = Arx_List_i64_get((&(az.ln)), vnid);
+                int64_t vln = __t14984;
+                const char* __t14985 = arx_lsp_extract_doc_comments(source, doc_path, doc_path, vln);
+                const char* doc = __t14985;
+                const char* __t14986 = "(";
+                const char* __t14987 = arx_str_concat(__t14986, kind_lbl);
+                const char* __t14988 = ") ";
+                const char* __t14989 = arx_str_concat(__t14987, __t14988);
+                const char* __t14990 = arx_str_concat(__t14989, word);
+                const char* __t14991 = ": ";
+                const char* __t14992 = arx_str_concat(__t14990, __t14991);
+                const char* __t14993 = arx_str_concat(__t14992, vt);
+                const char* __t14994 = arx_lsp_format_hover_block(__t14993, doc, doc_path, vln);
+                md = __t14994;
+            }
+        }
     }
-    if (__t13829) {
-        int64_t __t13831 = arx_lsp_find_class_node(az, word);
-        int64_t cid = __t13831;
-        Arx_ByteBuffer __t13832 = Arx_ByteBuffer_init();
-        Arx_ByteBuffer bb = __t13832;
-        const char* __t13833 = "**Class `class ";
-        const char* __t13834 = arx_str_concat(__t13833, word);
-        const char* __t13835 = "`**\n";
-        const char* __t13836 = arx_str_concat(__t13834, __t13835);
-        Arx_ByteBuffer_write_str((&(bb)), __t13836);
-        int64_t __t13837 = Arx_List_i64_get((&(az.la)), cid);
-        int64_t fg = __t13837;
-        int64_t __t13838 = Arx_List_i64_get((&(az.ll)), fg);
-        int64_t fc = __t13838;
+    const char* __t14995 = "";
+    if ((arx_str_compare(md, __t14995) == 0)) {
+        const char* __t14996 = arx_lsp_enclosing_class_at(az, doc_path, line1);
+        const char* ec2 = __t14996;
+        const char* __t14997 = "";
+        if ((arx_str_compare(ec2, __t14997) != 0)) {
+            int64_t __t14998 = arx_lsp_find_class_field_node(az, ec2, word);
+            int64_t fid = __t14998;
+            if (((fid) >= (((int64_t)0LL)))) {
+                const char* __t14999 = Arx_List_str_get((&(az.nf)), fid);
+                const char* ffile = __t14999;
+                int64_t __t15000 = Arx_List_i64_get((&(az.ln)), fid);
+                int64_t fln = __t15000;
+                const char* __t15001 = arx_lsp_extract_doc_comments(source, doc_path, ffile, fln);
+                const char* doc = __t15001;
+                const char* __t15002 = "(field) ";
+                const char* fhdr = __t15002;
+                int64_t __t15003 = Arx_List_i64_get((&(az.ia)), fid);
+                int64_t __t15004 = arx_FLAG_MUT();
+                bool __t15005 = arx_has_flag(__t15003, __t15004);
+                if (__t15005) {
+                    const char* __t15006 = "mut ";
+                    const char* __t15007 = arx_str_concat(fhdr, __t15006);
+                    fhdr = __t15007;
+                } else {
+                    const char* __t15008 = "let ";
+                    const char* __t15009 = arx_str_concat(fhdr, __t15008);
+                    fhdr = __t15009;
+                }
+                const char* __t15010 = arx_str_concat(fhdr, ec2);
+                const char* __t15011 = ".";
+                const char* __t15012 = arx_str_concat(__t15010, __t15011);
+                const char* __t15013 = arx_str_concat(__t15012, word);
+                const char* __t15014 = ": ";
+                const char* __t15015 = arx_str_concat(__t15013, __t15014);
+                const char* __t15016 = Arx_List_str_get((&(az.sb)), fid);
+                const char* __t15017 = arx_btype_norm(__t15016);
+                const char* __t15018 = arx_str_concat(__t15015, __t15017);
+                fhdr = __t15018;
+                const char* __t15019 = arx_lsp_format_hover_block(fhdr, doc, ffile, fln);
+                md = __t15019;
+            } else {
+                int64_t __t15020 = arx_lsp_find_class_method_sidx(az, ec2, word);
+                int64_t sidx = __t15020;
+                if (((sidx) >= (((int64_t)0LL)))) {
+                    int64_t __t15021 = Arx_List_i64_get((&(az.sig_nodes)), sidx);
+                    int64_t mid = __t15021;
+                    const char* __t15022 = Arx_List_str_get((&(az.nf)), mid);
+                    const char* mfile = __t15022;
+                    int64_t __t15023 = Arx_List_i64_get((&(az.ln)), mid);
+                    int64_t mln = __t15023;
+                    const char* __t15024 = arx_lsp_extract_doc_comments(source, doc_path, mfile, mln);
+                    const char* doc = __t15024;
+                    const char* __t15025 = arx_lsp_find_class_method_cls(az, ec2, word);
+                    const char* owner_cls2 = __t15025;
+                    const char* __t15026 = "(method on ";
+                    const char* __t15027 = arx_str_concat(__t15026, owner_cls2);
+                    const char* __t15028 = ") ";
+                    const char* __t15029 = arx_str_concat(__t15027, __t15028);
+                    const char* __t15030 = arx_lsp_fn_signature_str(az, mid);
+                    const char* __t15031 = arx_str_concat(__t15029, __t15030);
+                    const char* __t15032 = arx_lsp_format_hover_block(__t15031, doc, mfile, mln);
+                    md = __t15032;
+                }
+            }
+        }
+    }
+    const char* __t15033 = "";
+    bool __t15034 = false;
+    if ((arx_str_compare(md, __t15033) == 0)) {
+        bool __t15035 = Arx_Map_str_i64_has_key((&(az.cls_idx_map)), word);
+        __t15034 = (__t15035);
+    }
+    if (__t15034) {
+        int64_t __t15036 = arx_lsp_find_class_node(az, word);
+        int64_t cid = __t15036;
+        const char* __t15037 = Arx_List_str_get((&(az.nf)), cid);
+        const char* cfile = __t15037;
+        int64_t __t15038 = Arx_List_i64_get((&(az.ln)), cid);
+        int64_t cln = __t15038;
+        const char* __t15039 = arx_lsp_extract_doc_comments(source, doc_path, cfile, cln);
+        const char* doc = __t15039;
+        Arx_ByteBuffer __t15040 = Arx_ByteBuffer_init();
+        Arx_ByteBuffer bb = __t15040;
+        const char* __t15041 = "";
+        const char* hdr = __t15041;
+        int64_t __t15042 = Arx_List_i64_get((&(az.ia)), cid);
+        int64_t __t15043 = arx_FLAG_PUB();
+        bool __t15044 = arx_has_flag(__t15042, __t15043);
+        if (__t15044) {
+            const char* __t15045 = "pub ";
+            hdr = __t15045;
+        }
+        int64_t __t15046 = Arx_List_i64_get((&(az.ia)), cid);
+        int64_t __t15047 = arx_FLAG_PACKED();
+        bool __t15048 = arx_has_flag(__t15046, __t15047);
+        if (__t15048) {
+            const char* __t15049 = "#[packed] ";
+            const char* __t15050 = arx_str_concat(hdr, __t15049);
+            hdr = __t15050;
+        }
+        const char* __t15051 = "class ";
+        const char* __t15052 = arx_str_concat(hdr, __t15051);
+        const char* __t15053 = arx_str_concat(__t15052, word);
+        hdr = __t15053;
+        const char* __t15054 = Arx_List_str_get((&(az.sb)), cid);
+        const char* __t15055 = arx_btype_norm(__t15054);
+        const char* base_c = __t15055;
+        const char* __t15056 = "";
+        if ((arx_str_compare(base_c, __t15056) != 0)) {
+            const char* __t15057 = " extends ";
+            const char* __t15058 = arx_str_concat(hdr, __t15057);
+            const char* __t15059 = arx_str_concat(__t15058, base_c);
+            hdr = __t15059;
+        }
+        const char* __t15060 = arx_lsp_format_hover_block(hdr, doc, cfile, cln);
+        Arx_ByteBuffer_write_str((&(bb)), __t15060);
+        int64_t __t15061 = Arx_List_i64_get((&(az.la)), cid);
+        int64_t fg = __t15061;
+        int64_t __t15062 = Arx_List_i64_get((&(az.ll)), fg);
+        int64_t fc = __t15062;
         if (((fc) > (((int64_t)0LL)))) {
-            const char* __t13839 = "\nFields:\n";
-            Arx_ByteBuffer_write_str((&(bb)), __t13839);
+            const char* __t15063 = "\n\n**Fields**\n";
+            Arx_ByteBuffer_write_str((&(bb)), __t15063);
             int64_t fi = ((int64_t)0LL);
+            int64_t shown_f = ((int64_t)0LL);
             while (1) {
-                if (!(((fi) < (fc)))) break;
-                int64_t __t13840 = Arx_List_i64_get((&(az.ls)), fg);
-                int64_t __t13841 = Arx_List_i64_get((&(az.ch)), ((__t13840) + (fi)));
-                int64_t fid = __t13841;
-                const char* __t13842 = "- `";
-                const char* __t13843 = Arx_List_str_get((&(az.sa)), fid);
-                const char* __t13844 = arx_str_concat(__t13842, __t13843);
-                const char* __t13845 = ": ";
-                const char* __t13846 = arx_str_concat(__t13844, __t13845);
-                const char* __t13847 = Arx_List_str_get((&(az.sb)), fid);
-                const char* __t13848 = arx_btype_norm(__t13847);
-                const char* __t13849 = arx_str_concat(__t13846, __t13848);
-                const char* __t13850 = "`\n";
-                const char* __t13851 = arx_str_concat(__t13849, __t13850);
-                Arx_ByteBuffer_write_str((&(bb)), __t13851);
+                bool __t15064 = false;
+                if (((fi) < (fc))) {
+                    __t15064 = (((shown_f) < (((int64_t)12LL))));
+                }
+                if (!(__t15064)) break;
+                int64_t __t15065 = Arx_List_i64_get((&(az.ls)), fg);
+                int64_t __t15066 = Arx_List_i64_get((&(az.ch)), ((__t15065) + (fi)));
+                int64_t fid = __t15066;
+                const char* __t15067 = "";
+                const char* flbl = __t15067;
+                int64_t __t15068 = Arx_List_i64_get((&(az.ia)), fid);
+                int64_t __t15069 = arx_FLAG_MUT();
+                bool __t15070 = arx_has_flag(__t15068, __t15069);
+                if (__t15070) {
+                    const char* __t15071 = "mut ";
+                    flbl = __t15071;
+                }
+                const char* __t15072 = "- `";
+                const char* __t15073 = arx_str_concat(__t15072, flbl);
+                const char* __t15074 = Arx_List_str_get((&(az.sa)), fid);
+                const char* __t15075 = arx_str_concat(__t15073, __t15074);
+                const char* __t15076 = ": ";
+                const char* __t15077 = arx_str_concat(__t15075, __t15076);
+                const char* __t15078 = Arx_List_str_get((&(az.sb)), fid);
+                const char* __t15079 = arx_btype_norm(__t15078);
+                const char* __t15080 = arx_str_concat(__t15077, __t15079);
+                const char* __t15081 = "`\n";
+                const char* __t15082 = arx_str_concat(__t15080, __t15081);
+                Arx_ByteBuffer_write_str((&(bb)), __t15082);
+                shown_f = ((shown_f) + (((int64_t)1LL)));
                 fi = ((fi) + (((int64_t)1LL)));
             }
-        }
-        int64_t __t13852 = Arx_List_i64_get((&(az.ea)), cid);
-        int64_t mg = __t13852;
-        int64_t __t13853 = Arx_List_i64_get((&(az.ll)), mg);
-        int64_t mc = __t13853;
-        if (((mc) > (((int64_t)0LL)))) {
-            const char* __t13854 = "\nMethods:\n";
-            Arx_ByteBuffer_write_str((&(bb)), __t13854);
-            int64_t mi = ((int64_t)0LL);
-            while (1) {
-                if (!(((mi) < (mc)))) break;
-                int64_t __t13855 = Arx_List_i64_get((&(az.ls)), mg);
-                int64_t __t13856 = Arx_List_i64_get((&(az.ch)), ((__t13855) + (mi)));
-                int64_t mid = __t13856;
-                const char* __t13857 = "- `";
-                const char* __t13858 = arx_lsp_fn_signature_str(az, mid);
-                const char* __t13859 = arx_str_concat(__t13857, __t13858);
-                const char* __t13860 = "`\n";
-                const char* __t13861 = arx_str_concat(__t13859, __t13860);
-                Arx_ByteBuffer_write_str((&(bb)), __t13861);
-                mi = ((mi) + (((int64_t)1LL)));
+            if (((fc) > (((int64_t)12LL)))) {
+                const char* __t15083 = "- *...and ";
+                const char* __t15084 = arx_str_concat(__t15083, arx_cast_i64_to_str((int64_t)(((fc) - (((int64_t)12LL))))));
+                const char* __t15085 = " more*\n";
+                const char* __t15086 = arx_str_concat(__t15084, __t15085);
+                Arx_ByteBuffer_write_str((&(bb)), __t15086);
             }
         }
-        const char* __t13862 = Arx_ByteBuffer_to_str((&(bb)));
-        md = __t13862;
+        int64_t __t15087 = Arx_List_i64_get((&(az.ra)), cid);
+        int64_t cg = __t15087;
+        bool __t15088 = false;
+        if (((cg) >= (((int64_t)0LL)))) {
+            int64_t __t15089 = Arx_List_i64_get((&(az.ll)), cg);
+            __t15088 = (((__t15089) > (((int64_t)0LL))));
+        }
+        if (__t15088) {
+            const char* __t15090 = "\n**Constructors**\n";
+            Arx_ByteBuffer_write_str((&(bb)), __t15090);
+            int64_t ki = ((int64_t)0LL);
+            while (1) {
+                int64_t __t15091 = Arx_List_i64_get((&(az.ll)), cg);
+                if (!(((ki) < (__t15091)))) break;
+                int64_t __t15092 = Arx_List_i64_get((&(az.ls)), cg);
+                int64_t __t15093 = Arx_List_i64_get((&(az.ch)), ((__t15092) + (ki)));
+                int64_t kid = __t15093;
+                const char* __t15094 = "- `";
+                const char* __t15095 = arx_lsp_fn_signature_str(az, kid);
+                const char* __t15096 = arx_str_concat(__t15094, __t15095);
+                const char* __t15097 = "`\n";
+                const char* __t15098 = arx_str_concat(__t15096, __t15097);
+                Arx_ByteBuffer_write_str((&(bb)), __t15098);
+                ki = ((ki) + (((int64_t)1LL)));
+            }
+        }
+        int64_t __t15099 = Arx_List_i64_get((&(az.ea)), cid);
+        int64_t mg = __t15099;
+        int64_t __t15100 = Arx_List_i64_get((&(az.ll)), mg);
+        int64_t mc = __t15100;
+        if (((mc) > (((int64_t)0LL)))) {
+            const char* __t15101 = "\n**Methods**\n";
+            Arx_ByteBuffer_write_str((&(bb)), __t15101);
+            int64_t mi = ((int64_t)0LL);
+            int64_t shown_m = ((int64_t)0LL);
+            while (1) {
+                bool __t15102 = false;
+                if (((mi) < (mc))) {
+                    __t15102 = (((shown_m) < (((int64_t)14LL))));
+                }
+                if (!(__t15102)) break;
+                int64_t __t15103 = Arx_List_i64_get((&(az.ls)), mg);
+                int64_t __t15104 = Arx_List_i64_get((&(az.ch)), ((__t15103) + (mi)));
+                int64_t mid = __t15104;
+                const char* __t15105 = "- `";
+                const char* __t15106 = arx_lsp_fn_signature_str(az, mid);
+                const char* __t15107 = arx_str_concat(__t15105, __t15106);
+                const char* __t15108 = "`\n";
+                const char* __t15109 = arx_str_concat(__t15107, __t15108);
+                Arx_ByteBuffer_write_str((&(bb)), __t15109);
+                shown_m = ((shown_m) + (((int64_t)1LL)));
+                mi = ((mi) + (((int64_t)1LL)));
+            }
+            if (((mc) > (((int64_t)14LL)))) {
+                const char* __t15110 = "- *...and ";
+                const char* __t15111 = arx_str_concat(__t15110, arx_cast_i64_to_str((int64_t)(((mc) - (((int64_t)14LL))))));
+                const char* __t15112 = " more*\n";
+                const char* __t15113 = arx_str_concat(__t15111, __t15112);
+                Arx_ByteBuffer_write_str((&(bb)), __t15113);
+            }
+        }
+        const char* __t15114 = Arx_ByteBuffer_to_str((&(bb)));
+        md = __t15114;
         Arx_ByteBuffer_free((&(bb)));
     }
-    const char* __t13863 = "";
-    bool __t13864 = false;
-    if ((arx_str_compare(md, __t13863) == 0)) {
-        bool __t13865 = Arx_Map_str_i64_has_key((&(az.enum_idx_map)), word);
-        __t13864 = (__t13865);
+    const char* __t15115 = "";
+    bool __t15116 = false;
+    if ((arx_str_compare(md, __t15115) == 0)) {
+        bool __t15117 = Arx_Map_str_i64_has_key((&(az.enum_idx_map)), word);
+        __t15116 = (__t15117);
     }
-    if (__t13864) {
-        int64_t __t13866 = arx_lsp_find_enum_node(az, word);
-        int64_t eid = __t13866;
-        Arx_ByteBuffer __t13867 = Arx_ByteBuffer_init();
-        Arx_ByteBuffer bb = __t13867;
-        const char* __t13868 = "**Enum `enum ";
-        const char* __t13869 = arx_str_concat(__t13868, word);
-        const char* __t13870 = "`**\n\nVariants:\n";
-        const char* __t13871 = arx_str_concat(__t13869, __t13870);
-        Arx_ByteBuffer_write_str((&(bb)), __t13871);
-        int64_t __t13872 = Arx_List_i64_get((&(az.ll)), eid);
-        int64_t vc = __t13872;
+    if (__t15116) {
+        int64_t __t15118 = arx_lsp_find_enum_node(az, word);
+        int64_t eid = __t15118;
+        const char* __t15119 = Arx_List_str_get((&(az.nf)), eid);
+        const char* efile = __t15119;
+        int64_t __t15120 = Arx_List_i64_get((&(az.ln)), eid);
+        int64_t eln = __t15120;
+        const char* __t15121 = arx_lsp_extract_doc_comments(source, doc_path, efile, eln);
+        const char* doc = __t15121;
+        Arx_ByteBuffer __t15122 = Arx_ByteBuffer_init();
+        Arx_ByteBuffer bb = __t15122;
+        const char* __t15123 = "enum ";
+        const char* __t15124 = arx_str_concat(__t15123, word);
+        const char* __t15125 = arx_lsp_format_hover_block(__t15124, doc, efile, eln);
+        Arx_ByteBuffer_write_str((&(bb)), __t15125);
+        const char* __t15126 = "\n\n**Variants**\n";
+        Arx_ByteBuffer_write_str((&(bb)), __t15126);
+        int64_t __t15127 = Arx_List_i64_get((&(az.ll)), eid);
+        int64_t vc = __t15127;
         int64_t vi = ((int64_t)0LL);
         while (1) {
             if (!(((vi) < (vc)))) break;
-            int64_t __t13873 = Arx_List_i64_get((&(az.ls)), eid);
-            int64_t __t13874 = Arx_List_i64_get((&(az.ch)), ((__t13873) + (vi)));
-            int64_t vid = __t13874;
-            const char* __t13875 = "- `";
-            const char* __t13876 = Arx_List_str_get((&(az.sa)), vid);
-            const char* __t13877 = arx_str_concat(__t13875, __t13876);
-            const char* __t13878 = "`\n";
-            const char* __t13879 = arx_str_concat(__t13877, __t13878);
-            Arx_ByteBuffer_write_str((&(bb)), __t13879);
+            int64_t __t15128 = Arx_List_i64_get((&(az.ls)), eid);
+            int64_t __t15129 = Arx_List_i64_get((&(az.ch)), ((__t15128) + (vi)));
+            int64_t vid = __t15129;
+            const char* __t15130 = "- `";
+            const char* __t15131 = arx_lsp_format_enum_variant(az, vid);
+            const char* __t15132 = arx_str_concat(__t15130, __t15131);
+            const char* __t15133 = "`\n";
+            const char* __t15134 = arx_str_concat(__t15132, __t15133);
+            Arx_ByteBuffer_write_str((&(bb)), __t15134);
             vi = ((vi) + (((int64_t)1LL)));
         }
-        const char* __t13880 = Arx_ByteBuffer_to_str((&(bb)));
-        md = __t13880;
+        const char* __t15135 = Arx_ByteBuffer_to_str((&(bb)));
+        md = __t15135;
         Arx_ByteBuffer_free((&(bb)));
     }
-    const char* __t13881 = "";
-    if ((arx_str_compare(md, __t13881) == 0)) {
+    const char* __t15136 = "";
+    if ((arx_str_compare(md, __t15136) == 0)) {
+        int64_t best_fid = (-(((int64_t)1LL)));
         int64_t fi = ((int64_t)0LL);
         while (1) {
             if (!(((fi) < (az.fn_count)))) break;
-            int64_t __t13882 = Arx_List_i64_get((&(az.fn_nodes)), fi);
-            int64_t fid = __t13882;
-            const char* __t13883 = Arx_List_str_get((&(az.sa)), fid);
-            if ((arx_str_compare(__t13883, word) == 0)) {
-                const char* __t13884 = "**Function** `";
-                const char* __t13885 = arx_lsp_fn_signature_str(az, fid);
-                const char* __t13886 = arx_str_concat(__t13884, __t13885);
-                const char* __t13887 = "`\n\nDefined in `";
-                const char* __t13888 = arx_str_concat(__t13886, __t13887);
-                const char* __t13889 = Arx_List_str_get((&(az.nf)), fid);
-                const char* __t13890 = arx_bpath_basename(__t13889);
-                const char* __t13891 = arx_str_concat(__t13888, __t13890);
-                const char* __t13892 = ":";
-                const char* __t13893 = arx_str_concat(__t13891, __t13892);
-                int64_t __t13894 = Arx_List_i64_get((&(az.ln)), fid);
-                const char* __t13895 = arx_str_concat(__t13893, arx_cast_i64_to_str((int64_t)(__t13894)));
-                const char* __t13896 = "`";
-                const char* __t13897 = arx_str_concat(__t13895, __t13896);
-                md = __t13897;
-                break;
+            int64_t __t15137 = Arx_List_i64_get((&(az.fn_nodes)), fi);
+            int64_t fid = __t15137;
+            const char* __t15138 = Arx_List_str_get((&(az.sa)), fid);
+            if ((arx_str_compare(__t15138, word) == 0)) {
+                bool __t15139 = true;
+                if (!(((best_fid) < (((int64_t)0LL))))) {
+                    const char* __t15140 = Arx_List_str_get((&(az.nf)), fid);
+                    __t15139 = ((arx_str_compare(__t15140, doc_path) == 0));
+                }
+                if (__t15139) {
+                    best_fid = fid;
+                    const char* __t15141 = Arx_List_str_get((&(az.nf)), fid);
+                    if ((arx_str_compare(__t15141, doc_path) == 0)) {
+                        break;
+                    }
+                }
             }
             fi = ((fi) + (((int64_t)1LL)));
         }
-    }
-    const char* __t13898 = "";
-    if ((arx_str_compare(md, __t13898) == 0)) {
-        const char* __t13899 = arx_lsp_resolve_var_type(az, doc_path, ((line0) + (((int64_t)1LL))), word);
-        const char* vt = __t13899;
-        const char* __t13900 = "";
-        if ((arx_str_compare(vt, __t13900) != 0)) {
-            const char* __t13901 = "**Variable** `";
-            const char* __t13902 = arx_str_concat(__t13901, word);
-            const char* __t13903 = ": ";
-            const char* __t13904 = arx_str_concat(__t13902, __t13903);
-            const char* __t13905 = arx_str_concat(__t13904, vt);
-            const char* __t13906 = "`";
-            const char* __t13907 = arx_str_concat(__t13905, __t13906);
-            md = __t13907;
+        if (((best_fid) >= (((int64_t)0LL)))) {
+            const char* __t15142 = Arx_List_str_get((&(az.nf)), best_fid);
+            const char* ffile = __t15142;
+            int64_t __t15143 = Arx_List_i64_get((&(az.ln)), best_fid);
+            int64_t fln = __t15143;
+            const char* __t15144 = arx_lsp_extract_doc_comments(source, doc_path, ffile, fln);
+            const char* doc = __t15144;
+            const char* __t15145 = arx_lsp_fn_signature_str(az, best_fid);
+            const char* __t15146 = arx_lsp_format_hover_block(__t15145, doc, ffile, fln);
+            md = __t15146;
         }
     }
-    const char* __t13908 = "";
-    if ((arx_str_compare(md, __t13908) == 0)) {
-        const char* __t13909 = arx_lsp_lookup_doc(word);
-        md = __t13909;
+    const char* __t15147 = "";
+    if ((arx_str_compare(md, __t15147) == 0)) {
+        int64_t gi = ((int64_t)0LL);
+        while (1) {
+            if (!(((gi) < (az.global_count)))) break;
+            int64_t __t15148 = Arx_List_i64_get((&(az.global_nodes)), gi);
+            int64_t gid = __t15148;
+            const char* __t15149 = Arx_List_str_get((&(az.sa)), gid);
+            if ((arx_str_compare(__t15149, word) == 0)) {
+                const char* __t15150 = Arx_List_str_get((&(az.node_types)), gid);
+                const char* __t15151 = arx_btype_norm(__t15150);
+                const char* gt = __t15151;
+                const char* __t15152 = "";
+                bool __t15153 = true;
+                if (!((arx_str_compare(gt, __t15152) == 0))) {
+                    const char* __t15154 = "void";
+                    __t15153 = ((arx_str_compare(gt, __t15154) == 0));
+                }
+                if (__t15153) {
+                    const char* __t15155 = Arx_List_str_get((&(az.sb)), gid);
+                    const char* __t15156 = arx_btype_norm(__t15155);
+                    gt = __t15156;
+                }
+                const char* __t15157 = "";
+                bool __t15158 = false;
+                if ((arx_str_compare(gt, __t15157) == 0)) {
+                    bool __t15159 = Arx_Map_str_str_has_key((&(az.global_types)), word);
+                    __t15158 = (__t15159);
+                }
+                if (__t15158) {
+                    const char* __t15160 = Arx_Map_str_str_get((&(az.global_types)), word);
+                    gt = __t15160;
+                }
+                const char* __t15161 = Arx_List_str_get((&(az.nf)), gid);
+                const char* gfile = __t15161;
+                int64_t __t15162 = Arx_List_i64_get((&(az.ln)), gid);
+                int64_t gln = __t15162;
+                const char* __t15163 = arx_lsp_extract_doc_comments(source, doc_path, gfile, gln);
+                const char* doc = __t15163;
+                const char* __t15164 = "global let";
+                const char* gkind = __t15164;
+                int64_t __t15165 = Arx_List_i64_get((&(az.ia)), gid);
+                if (((__t15165) != (((int64_t)0LL)))) {
+                    const char* __t15166 = "global mut";
+                    gkind = __t15166;
+                }
+                const char* __t15167 = "(";
+                const char* __t15168 = arx_str_concat(__t15167, gkind);
+                const char* __t15169 = ") ";
+                const char* __t15170 = arx_str_concat(__t15168, __t15169);
+                const char* __t15171 = arx_str_concat(__t15170, word);
+                const char* __t15172 = ": ";
+                const char* __t15173 = arx_str_concat(__t15171, __t15172);
+                const char* __t15174 = arx_str_concat(__t15173, gt);
+                const char* __t15175 = arx_lsp_format_hover_block(__t15174, doc, gfile, gln);
+                md = __t15175;
+                break;
+            }
+            gi = ((gi) + (((int64_t)1LL)));
+        }
     }
-    const char* __t13910 = "";
-    if ((arx_str_compare(md, __t13910) == 0)) {
-        const char* __t13911 = "null";
-        const char* __t13912 = __t13911;
-        return __t13912;
+    const char* __t15176 = "";
+    if ((arx_str_compare(md, __t15176) == 0)) {
+        int64_t ei = ((int64_t)0LL);
+        while (1) {
+            bool __t15177 = false;
+            if (((ei) < (az.enum_count))) {
+                const char* __t15178 = "";
+                __t15177 = ((arx_str_compare(md, __t15178) == 0));
+            }
+            if (!(__t15177)) break;
+            int64_t __t15179 = Arx_List_i64_get((&(az.enum_nodes)), ei);
+            int64_t eid = __t15179;
+            const char* __t15180 = Arx_List_str_get((&(az.enum_names)), ei);
+            const char* ename = __t15180;
+            int64_t __t15181 = Arx_List_i64_get((&(az.ll)), eid);
+            int64_t vc = __t15181;
+            int64_t vi = ((int64_t)0LL);
+            while (1) {
+                if (!(((vi) < (vc)))) break;
+                int64_t __t15182 = Arx_List_i64_get((&(az.ls)), eid);
+                int64_t __t15183 = Arx_List_i64_get((&(az.ch)), ((__t15182) + (vi)));
+                int64_t vid = __t15183;
+                const char* __t15184 = Arx_List_str_get((&(az.sa)), vid);
+                if ((arx_str_compare(__t15184, word) == 0)) {
+                    const char* __t15185 = Arx_List_str_get((&(az.nf)), vid);
+                    const char* vfile = __t15185;
+                    int64_t __t15186 = Arx_List_i64_get((&(az.ln)), vid);
+                    int64_t vln = __t15186;
+                    const char* __t15187 = arx_lsp_extract_doc_comments(source, doc_path, vfile, vln);
+                    const char* doc = __t15187;
+                    const char* __t15188 = "(enum variant) ";
+                    const char* __t15189 = arx_str_concat(__t15188, ename);
+                    const char* __t15190 = ".";
+                    const char* __t15191 = arx_str_concat(__t15189, __t15190);
+                    const char* __t15192 = arx_lsp_format_enum_variant(az, vid);
+                    const char* __t15193 = arx_str_concat(__t15191, __t15192);
+                    const char* __t15194 = " = ";
+                    const char* __t15195 = arx_str_concat(__t15193, __t15194);
+                    int64_t __t15196 = Arx_List_i64_get((&(az.ia)), vid);
+                    const char* __t15197 = arx_str_concat(__t15195, arx_cast_i64_to_str((int64_t)(__t15196)));
+                    const char* __t15198 = arx_lsp_format_hover_block(__t15197, doc, vfile, vln);
+                    md = __t15198;
+                    break;
+                }
+                vi = ((vi) + (((int64_t)1LL)));
+            }
+            ei = ((ei) + (((int64_t)1LL)));
+        }
     }
-    Arx_JsonBuf __t13913 = Arx_JsonBuf_init();
-    Arx_JsonBuf jb = __t13913;
+    const char* __t15199 = "";
+    if ((arx_str_compare(md, __t15199) == 0)) {
+        const char* __t15200 = arx_lsp_lookup_doc(word);
+        md = __t15200;
+    }
+    const char* __t15201 = "";
+    if ((arx_str_compare(md, __t15201) == 0)) {
+        const char* __t15202 = "null";
+        const char* __t15203 = __t15202;
+        return __t15203;
+    }
+    Arx_JsonBuf __t15204 = Arx_JsonBuf_init();
+    Arx_JsonBuf jb = __t15204;
     Arx_JsonBuf_lbrace((&(jb)));
-    const char* __t13914 = "contents";
-    Arx_JsonBuf_key((&(jb)), __t13914);
+    const char* __t15205 = "contents";
+    Arx_JsonBuf_key((&(jb)), __t15205);
     Arx_JsonBuf_lbrace((&(jb)));
-    const char* __t13915 = "kind";
-    const char* __t13916 = "markdown";
-    Arx_JsonBuf_kv_str((&(jb)), __t13915, __t13916, true);
-    const char* __t13917 = "value";
-    Arx_JsonBuf_kv_str((&(jb)), __t13917, md, false);
+    const char* __t15206 = "kind";
+    const char* __t15207 = "markdown";
+    Arx_JsonBuf_kv_str((&(jb)), __t15206, __t15207, true);
+    const char* __t15208 = "value";
+    Arx_JsonBuf_kv_str((&(jb)), __t15208, md, false);
     Arx_JsonBuf_rbrace((&(jb)));
     Arx_JsonBuf_rbrace((&(jb)));
-    const char* __t13918 = Arx_JsonBuf_finish((&(jb)));
-    const char* __t13919 = __t13918;
-    return __t13919;
+    const char* __t15209 = Arx_JsonBuf_finish((&(jb)));
+    const char* __t15210 = __t15209;
+    return __t15210;
 }
 
 const char* arx_lsp_build_signature_help_json(const char* source, Arx_Analyzer az, const char* doc_path, int64_t line0, int64_t char0) {
-    const char* __t13920 = arx_lsp_get_line_text(source, line0);
-    const char* line = __t13920;
+    const char* __t15211 = arx_lsp_get_line_text(source, line0);
+    const char* line = __t15211;
     int64_t cpos = char0;
     if (((cpos) > (arx_str_len(line)))) {
         cpos = arx_str_len(line);
     }
     if (((cpos) <= (((int64_t)0LL)))) {
-        const char* __t13921 = "null";
-        const char* __t13922 = __t13921;
-        return __t13922;
+        const char* __t15212 = "null";
+        const char* __t15213 = __t15212;
+        return __t15213;
     }
     int64_t depth = ((int64_t)0LL);
     int64_t commas = ((int64_t)0LL);
@@ -34057,15 +37442,15 @@ const char* arx_lsp_build_signature_help_json(const char* source, Arx_Analyzer a
     while (1) {
         if (!(((i) >= (((int64_t)0LL))))) break;
         int64_t b = arx_str_byte_at(line, i);
-        bool __t13923 = false;
+        bool __t15214 = false;
         if (((b) == (((int64_t)34LL)))) {
-            bool __t13924 = true;
+            bool __t15215 = true;
             if (!(((i) == (((int64_t)0LL))))) {
-                __t13924 = (((arx_str_byte_at(line, ((i) - (((int64_t)1LL))))) != (((int64_t)92LL))));
+                __t15215 = (((arx_str_byte_at(line, ((i) - (((int64_t)1LL))))) != (((int64_t)92LL))));
             }
-            __t13923 = (__t13924);
+            __t15214 = (__t15215);
         }
-        if (__t13923) {
+        if (__t15214) {
             in_str = (!(in_str));
         } else {
             if ((!(in_str))) {
@@ -34079,11 +37464,11 @@ const char* arx_lsp_build_signature_help_json(const char* source, Arx_Analyzer a
                         }
                         depth = ((depth) - (((int64_t)1LL)));
                     } else {
-                        bool __t13925 = false;
+                        bool __t15216 = false;
                         if (((b) == (((int64_t)44LL)))) {
-                            __t13925 = (((depth) == (((int64_t)0LL))));
+                            __t15216 = (((depth) == (((int64_t)0LL))));
                         }
-                        if (__t13925) {
+                        if (__t15216) {
                             commas = ((commas) + (((int64_t)1LL)));
                         }
                     }
@@ -34093,162 +37478,162 @@ const char* arx_lsp_build_signature_help_json(const char* source, Arx_Analyzer a
         i = ((i) - (((int64_t)1LL)));
     }
     if (((open_idx) <= (((int64_t)0LL)))) {
-        const char* __t13926 = "null";
-        const char* __t13927 = __t13926;
-        return __t13927;
+        const char* __t15217 = "null";
+        const char* __t15218 = __t15217;
+        return __t15218;
     }
     int64_t end_name = open_idx;
     while (1) {
-        bool __t13928 = false;
+        bool __t15219 = false;
         if (((end_name) > (((int64_t)0LL)))) {
-            bool __t13929 = true;
+            bool __t15220 = true;
             if (!(((arx_str_byte_at(line, ((end_name) - (((int64_t)1LL))))) == (((int64_t)32LL))))) {
-                __t13929 = (((arx_str_byte_at(line, ((end_name) - (((int64_t)1LL))))) == (((int64_t)9LL))));
+                __t15220 = (((arx_str_byte_at(line, ((end_name) - (((int64_t)1LL))))) == (((int64_t)9LL))));
             }
-            __t13928 = (__t13929);
+            __t15219 = (__t15220);
         }
-        if (!(__t13928)) break;
+        if (!(__t15219)) break;
         end_name = ((end_name) - (((int64_t)1LL)));
     }
     int64_t start_name = end_name;
     while (1) {
-        bool __t13930 = false;
+        bool __t15221 = false;
         if (((start_name) > (((int64_t)0LL)))) {
-            bool __t13931 = arx_lsp_is_ident_char(arx_str_byte_at(line, ((start_name) - (((int64_t)1LL)))));
-            __t13930 = (__t13931);
+            bool __t15222 = arx_lsp_is_ident_char(arx_str_byte_at(line, ((start_name) - (((int64_t)1LL)))));
+            __t15221 = (__t15222);
         }
-        if (!(__t13930)) break;
+        if (!(__t15221)) break;
         start_name = ((start_name) - (((int64_t)1LL)));
     }
-    const char* __t13932 = __arx_bstr_slice(line, start_name, end_name);
-    const char* callee = __t13932;
-    const char* __t13933 = "";
-    if ((arx_str_compare(callee, __t13933) == 0)) {
-        const char* __t13934 = "null";
-        const char* __t13935 = __t13934;
-        return __t13935;
+    const char* __t15223 = __arx_bstr_slice(line, start_name, end_name);
+    const char* callee = __t15223;
+    const char* __t15224 = "";
+    if ((arx_str_compare(callee, __t15224) == 0)) {
+        const char* __t15225 = "null";
+        const char* __t15226 = __t15225;
+        return __t15226;
     }
     int64_t fn_nid = (-(((int64_t)1LL)));
-    bool __t13936 = false;
+    bool __t15227 = false;
     if (((start_name) > (((int64_t)0LL)))) {
-        __t13936 = (((arx_str_byte_at(line, ((start_name) - (((int64_t)1LL))))) == (((int64_t)46LL))));
+        __t15227 = (((arx_str_byte_at(line, ((start_name) - (((int64_t)1LL))))) == (((int64_t)46LL))));
     }
-    if (__t13936) {
+    if (__t15227) {
         int64_t rs = ((start_name) - (((int64_t)1LL)));
         while (1) {
-            bool __t13937 = false;
+            bool __t15228 = false;
             if (((rs) > (((int64_t)0LL)))) {
-                bool __t13938 = arx_lsp_is_ident_char(arx_str_byte_at(line, ((rs) - (((int64_t)1LL)))));
-                bool __t13939 = true;
-                if (!(__t13938)) {
-                    __t13939 = (((arx_str_byte_at(line, ((rs) - (((int64_t)1LL))))) == (((int64_t)46LL))));
+                bool __t15229 = arx_lsp_is_ident_char(arx_str_byte_at(line, ((rs) - (((int64_t)1LL)))));
+                bool __t15230 = true;
+                if (!(__t15229)) {
+                    __t15230 = (((arx_str_byte_at(line, ((rs) - (((int64_t)1LL))))) == (((int64_t)46LL))));
                 }
-                __t13937 = (__t13939);
+                __t15228 = (__t15230);
             }
-            if (!(__t13937)) break;
+            if (!(__t15228)) break;
             rs = ((rs) - (((int64_t)1LL)));
         }
-        const char* __t13940 = __arx_bstr_slice(line, rs, ((start_name) - (((int64_t)1LL))));
-        const char* rname = __t13940;
-        const char* __t13941 = arx_lsp_infer_expr_receiver_type(az, doc_path, ((line0) + (((int64_t)1LL))), rname);
-        const char* rt = __t13941;
-        const char* __t13942 = "";
-        if ((arx_str_compare(rt, __t13942) != 0)) {
-            const char* __t13943 = "m::";
-            const char* __t13944 = arx_str_concat(__t13943, rt);
-            const char* __t13945 = "::";
-            const char* __t13946 = arx_str_concat(__t13944, __t13945);
-            const char* __t13947 = arx_str_concat(__t13946, callee);
-            const char* sig_k = __t13947;
-            bool __t13948 = Arx_Map_str_str_has_key((&(az.sig_by_key)), sig_k);
-            if (__t13948) {
-                const char* __t13949 = Arx_Map_str_str_get((&(az.sig_by_key)), sig_k);
-                const char* __t13950 = ",";
-                Arx_List_str __t13951 = __arx_bstr_split(__t13949, __t13950);
-                Arx_List_str __t13952 = __t13951;
-                const char* __t13953 = Arx_List_str_get((&__t13952), ((int64_t)0LL));
-                int64_t sidx = arx_str_to_i64(__t13953);
-                int64_t __t13954 = Arx_List_i64_get((&(az.sig_nodes)), sidx);
-                fn_nid = __t13954;
+        const char* __t15231 = __arx_bstr_slice(line, rs, ((start_name) - (((int64_t)1LL))));
+        const char* rname = __t15231;
+        const char* __t15232 = arx_lsp_infer_expr_receiver_type(az, doc_path, ((line0) + (((int64_t)1LL))), rname);
+        const char* rt = __t15232;
+        const char* __t15233 = "";
+        if ((arx_str_compare(rt, __t15233) != 0)) {
+            const char* __t15234 = "m::";
+            const char* __t15235 = arx_str_concat(__t15234, rt);
+            const char* __t15236 = "::";
+            const char* __t15237 = arx_str_concat(__t15235, __t15236);
+            const char* __t15238 = arx_str_concat(__t15237, callee);
+            const char* sig_k = __t15238;
+            bool __t15239 = Arx_Map_str_str_has_key((&(az.sig_by_key)), sig_k);
+            if (__t15239) {
+                const char* __t15240 = Arx_Map_str_str_get((&(az.sig_by_key)), sig_k);
+                const char* __t15241 = ",";
+                Arx_List_str __t15242 = __arx_bstr_split(__t15240, __t15241);
+                Arx_List_str __t15243 = __t15242;
+                const char* __t15244 = Arx_List_str_get((&__t15243), ((int64_t)0LL));
+                int64_t sidx = arx_str_to_i64(__t15244);
+                int64_t __t15245 = Arx_List_i64_get((&(az.sig_nodes)), sidx);
+                fn_nid = __t15245;
             }
         }
     } else {
-        bool __t13955 = Arx_Map_str_i64_has_key((&(az.cls_idx_map)), callee);
-        if (__t13955) {
-            const char* __t13956 = "ctor::";
-            const char* __t13957 = arx_str_concat(__t13956, callee);
-            const char* ctor_k = __t13957;
-            bool __t13958 = Arx_Map_str_str_has_key((&(az.sig_by_key)), ctor_k);
-            if (__t13958) {
-                const char* __t13959 = Arx_Map_str_str_get((&(az.sig_by_key)), ctor_k);
-                const char* __t13960 = ",";
-                Arx_List_str __t13961 = __arx_bstr_split(__t13959, __t13960);
-                Arx_List_str __t13962 = __t13961;
-                const char* __t13963 = Arx_List_str_get((&__t13962), ((int64_t)0LL));
-                int64_t sidx = arx_str_to_i64(__t13963);
-                int64_t __t13964 = Arx_List_i64_get((&(az.sig_nodes)), sidx);
-                fn_nid = __t13964;
+        bool __t15246 = Arx_Map_str_i64_has_key((&(az.cls_idx_map)), callee);
+        if (__t15246) {
+            const char* __t15247 = "ctor::";
+            const char* __t15248 = arx_str_concat(__t15247, callee);
+            const char* ctor_k = __t15248;
+            bool __t15249 = Arx_Map_str_str_has_key((&(az.sig_by_key)), ctor_k);
+            if (__t15249) {
+                const char* __t15250 = Arx_Map_str_str_get((&(az.sig_by_key)), ctor_k);
+                const char* __t15251 = ",";
+                Arx_List_str __t15252 = __arx_bstr_split(__t15250, __t15251);
+                Arx_List_str __t15253 = __t15252;
+                const char* __t15254 = Arx_List_str_get((&__t15253), ((int64_t)0LL));
+                int64_t sidx = arx_str_to_i64(__t15254);
+                int64_t __t15255 = Arx_List_i64_get((&(az.sig_nodes)), sidx);
+                fn_nid = __t15255;
             }
         } else {
-            const char* __t13965 = "fn::";
-            const char* __t13966 = arx_str_concat(__t13965, callee);
-            const char* fn_k = __t13966;
-            bool __t13967 = Arx_Map_str_str_has_key((&(az.sig_by_key)), fn_k);
-            if (__t13967) {
-                const char* __t13968 = Arx_Map_str_str_get((&(az.sig_by_key)), fn_k);
-                const char* __t13969 = ",";
-                Arx_List_str __t13970 = __arx_bstr_split(__t13968, __t13969);
-                Arx_List_str __t13971 = __t13970;
-                const char* __t13972 = Arx_List_str_get((&__t13971), ((int64_t)0LL));
-                int64_t sidx = arx_str_to_i64(__t13972);
-                int64_t __t13973 = Arx_List_i64_get((&(az.sig_nodes)), sidx);
-                fn_nid = __t13973;
+            const char* __t15256 = "fn::";
+            const char* __t15257 = arx_str_concat(__t15256, callee);
+            const char* fn_k = __t15257;
+            bool __t15258 = Arx_Map_str_str_has_key((&(az.sig_by_key)), fn_k);
+            if (__t15258) {
+                const char* __t15259 = Arx_Map_str_str_get((&(az.sig_by_key)), fn_k);
+                const char* __t15260 = ",";
+                Arx_List_str __t15261 = __arx_bstr_split(__t15259, __t15260);
+                Arx_List_str __t15262 = __t15261;
+                const char* __t15263 = Arx_List_str_get((&__t15262), ((int64_t)0LL));
+                int64_t sidx = arx_str_to_i64(__t15263);
+                int64_t __t15264 = Arx_List_i64_get((&(az.sig_nodes)), sidx);
+                fn_nid = __t15264;
             }
         }
     }
     if (((fn_nid) < (((int64_t)0LL)))) {
-        const char* __t13974 = "null";
-        const char* __t13975 = __t13974;
-        return __t13975;
+        const char* __t15265 = "null";
+        const char* __t15266 = __t15265;
+        return __t15266;
     }
-    const char* __t13976 = arx_lsp_fn_signature_str(az, fn_nid);
-    const char* sig_label = __t13976;
-    Arx_JsonBuf __t13977 = Arx_JsonBuf_init();
-    Arx_JsonBuf jb = __t13977;
+    const char* __t15267 = arx_lsp_fn_signature_str(az, fn_nid);
+    const char* sig_label = __t15267;
+    Arx_JsonBuf __t15268 = Arx_JsonBuf_init();
+    Arx_JsonBuf jb = __t15268;
     Arx_JsonBuf_lbrace((&(jb)));
-    const char* __t13978 = "signatures";
-    Arx_JsonBuf_key((&(jb)), __t13978);
+    const char* __t15269 = "signatures";
+    Arx_JsonBuf_key((&(jb)), __t15269);
     Arx_JsonBuf_lbrack((&(jb)));
     Arx_JsonBuf_lbrace((&(jb)));
-    const char* __t13979 = "label";
-    Arx_JsonBuf_kv_str((&(jb)), __t13979, sig_label, true);
+    const char* __t15270 = "label";
+    Arx_JsonBuf_kv_str((&(jb)), __t15270, sig_label, true);
     Arx_JsonBuf_comma((&(jb)));
-    const char* __t13980 = "parameters";
-    Arx_JsonBuf_key((&(jb)), __t13980);
+    const char* __t15271 = "parameters";
+    Arx_JsonBuf_key((&(jb)), __t15271);
     Arx_JsonBuf_lbrack((&(jb)));
-    int64_t __t13981 = Arx_List_i64_get((&(az.la)), fn_nid);
-    int64_t pg = __t13981;
+    int64_t __t15272 = Arx_List_i64_get((&(az.la)), fn_nid);
+    int64_t pg = __t15272;
     if (((pg) >= (((int64_t)0LL)))) {
-        int64_t __t13982 = Arx_List_i64_get((&(az.ll)), pg);
-        int64_t pc = __t13982;
+        int64_t __t15273 = Arx_List_i64_get((&(az.ll)), pg);
+        int64_t pc = __t15273;
         int64_t pi = ((int64_t)0LL);
         while (1) {
             if (!(((pi) < (pc)))) break;
-            int64_t __t13983 = Arx_List_i64_get((&(az.ls)), pg);
-            int64_t __t13984 = Arx_List_i64_get((&(az.ch)), ((__t13983) + (pi)));
-            int64_t pid = __t13984;
+            int64_t __t15274 = Arx_List_i64_get((&(az.ls)), pg);
+            int64_t __t15275 = Arx_List_i64_get((&(az.ch)), ((__t15274) + (pi)));
+            int64_t pid = __t15275;
             if (((pi) > (((int64_t)0LL)))) {
                 Arx_JsonBuf_comma((&(jb)));
             }
             Arx_JsonBuf_lbrace((&(jb)));
-            const char* __t13985 = "label";
-            const char* __t13986 = Arx_List_str_get((&(az.sa)), pid);
-            const char* __t13987 = ": ";
-            const char* __t13988 = arx_str_concat(__t13986, __t13987);
-            const char* __t13989 = Arx_List_str_get((&(az.sb)), pid);
-            const char* __t13990 = arx_btype_norm(__t13989);
-            const char* __t13991 = arx_str_concat(__t13988, __t13990);
-            Arx_JsonBuf_kv_str((&(jb)), __t13985, __t13991, true);
+            const char* __t15276 = "label";
+            const char* __t15277 = Arx_List_str_get((&(az.sa)), pid);
+            const char* __t15278 = ": ";
+            const char* __t15279 = arx_str_concat(__t15277, __t15278);
+            const char* __t15280 = Arx_List_str_get((&(az.sb)), pid);
+            const char* __t15281 = arx_btype_norm(__t15280);
+            const char* __t15282 = arx_str_concat(__t15279, __t15281);
+            Arx_JsonBuf_kv_str((&(jb)), __t15276, __t15282, true);
             Arx_JsonBuf_rbrace((&(jb)));
             pi = ((pi) + (((int64_t)1LL)));
         }
@@ -34256,209 +37641,607 @@ const char* arx_lsp_build_signature_help_json(const char* source, Arx_Analyzer a
     Arx_JsonBuf_rbrack((&(jb)));
     Arx_JsonBuf_rbrace((&(jb)));
     Arx_JsonBuf_rbrack((&(jb)));
-    const char* __t13992 = "activeSignature";
-    Arx_JsonBuf_kv_int((&(jb)), __t13992, ((int64_t)0LL), false);
-    const char* __t13993 = "activeParameter";
-    Arx_JsonBuf_kv_int((&(jb)), __t13993, commas, false);
+    const char* __t15283 = "activeSignature";
+    Arx_JsonBuf_kv_int((&(jb)), __t15283, ((int64_t)0LL), false);
+    const char* __t15284 = "activeParameter";
+    Arx_JsonBuf_kv_int((&(jb)), __t15284, commas, false);
     Arx_JsonBuf_rbrace((&(jb)));
-    const char* __t13994 = Arx_JsonBuf_finish((&(jb)));
-    const char* __t13995 = __t13994;
-    return __t13995;
+    const char* __t15285 = Arx_JsonBuf_finish((&(jb)));
+    const char* __t15286 = __t15285;
+    return __t15286;
 }
 
-const char* arx_lsp_build_definition_json(const char* source, Arx_Analyzer az, const char* doc_path, int64_t line0, int64_t char0) {
-    const char* __t13996 = arx_lsp_word_at(source, line0, char0);
-    const char* word = __t13996;
-    const char* __t13997 = "";
-    if ((arx_str_compare(word, __t13997) == 0)) {
-        const char* __t13998 = "null";
-        const char* __t13999 = __t13998;
-        return __t13999;
+void arx_lsp_emit_location_obj(Arx_JsonBuf jb, const char* tfile, int64_t tline0, int64_t tcol0, int64_t tlen) {
+    int64_t end_col = ((tcol0) + (tlen));
+    if (((end_col) < (tcol0))) {
+        end_col = tcol0;
     }
-    int64_t target_nid = (-(((int64_t)1LL)));
-    int64_t best_ln = (-(((int64_t)1LL)));
-    int64_t i = ((int64_t)0LL);
-    while (1) {
-        if (!(((i) < (az.ncount)))) break;
-        int64_t __t14000 = Arx_List_i64_get((&(az.nk)), i);
-        int64_t k = __t14000;
-        const char* __t14001 = Arx_List_str_get((&(az.sa)), i);
-        bool __t14002 = false;
-        if ((arx_str_compare(__t14001, word) == 0)) {
-            int64_t __t14003 = arx_NK_VAR_DECL();
-            bool __t14004 = true;
-            if (!(((k) == (__t14003)))) {
-                int64_t __t14005 = arx_NK_PARAM();
-                __t14004 = (((k) == (__t14005)));
-            }
-            bool __t14006 = true;
-            if (!(__t14004)) {
-                int64_t __t14007 = arx_NK_FOR();
-                __t14006 = (((k) == (__t14007)));
-            }
-            __t14002 = (__t14006);
-        }
-        if (__t14002) {
-            const char* __t14008 = Arx_List_str_get((&(az.nf)), i);
-            bool __t14009 = false;
-            if ((arx_str_compare(__t14008, doc_path) == 0)) {
-                int64_t __t14010 = Arx_List_i64_get((&(az.ln)), i);
-                __t14009 = (((__t14010) <= (((line0) + (((int64_t)1LL))))));
-            }
-            bool __t14011 = false;
-            if (__t14009) {
-                int64_t __t14012 = Arx_List_i64_get((&(az.ln)), i);
-                __t14011 = (((__t14012) >= (best_ln)));
-            }
-            if (__t14011) {
-                int64_t __t14013 = Arx_List_i64_get((&(az.ln)), i);
-                best_ln = __t14013;
-                target_nid = i;
-            }
-        }
-        i = ((i) + (((int64_t)1LL)));
-    }
+    Arx_JsonBuf_lbrace((&(jb)));
+    const char* __t15287 = "uri";
+    const char* __t15288 = arx_lsp_path_to_uri(tfile);
+    Arx_JsonBuf_kv_str((&(jb)), __t15287, __t15288, true);
+    Arx_JsonBuf_comma((&(jb)));
+    const char* __t15289 = "range";
+    Arx_JsonBuf_key((&(jb)), __t15289);
+    Arx_JsonBuf_lbrace((&(jb)));
+    const char* __t15290 = "start";
+    Arx_JsonBuf_key((&(jb)), __t15290);
+    Arx_JsonBuf_lbrace((&(jb)));
+    const char* __t15291 = "line";
+    Arx_JsonBuf_kv_int((&(jb)), __t15291, tline0, true);
+    const char* __t15292 = "character";
+    Arx_JsonBuf_kv_int((&(jb)), __t15292, tcol0, false);
+    Arx_JsonBuf_rbrace((&(jb)));
+    Arx_JsonBuf_comma((&(jb)));
+    const char* __t15293 = "end";
+    Arx_JsonBuf_key((&(jb)), __t15293);
+    Arx_JsonBuf_lbrace((&(jb)));
+    const char* __t15294 = "line";
+    Arx_JsonBuf_kv_int((&(jb)), __t15294, tline0, true);
+    const char* __t15295 = "character";
+    Arx_JsonBuf_kv_int((&(jb)), __t15295, end_col, false);
+    Arx_JsonBuf_rbrace((&(jb)));
+    Arx_JsonBuf_rbrace((&(jb)));
+    Arx_JsonBuf_rbrace((&(jb)));
+}
+
+const char* arx_lsp_location_from_node(const char* source, const char* doc_path, Arx_Analyzer az, int64_t target_nid, const char* word) {
     if (((target_nid) < (((int64_t)0LL)))) {
-        int64_t fi = ((int64_t)0LL);
-        while (1) {
-            if (!(((fi) < (az.fn_count)))) break;
-            int64_t __t14014 = Arx_List_i64_get((&(az.fn_nodes)), fi);
-            int64_t fid = __t14014;
-            const char* __t14015 = Arx_List_str_get((&(az.sa)), fid);
-            if ((arx_str_compare(__t14015, word) == 0)) {
-                target_nid = fid;
-                break;
-            }
-            fi = ((fi) + (((int64_t)1LL)));
-        }
+        const char* __t15296 = "null";
+        const char* __t15297 = __t15296;
+        return __t15297;
     }
-    bool __t14016 = false;
-    if (((target_nid) < (((int64_t)0LL)))) {
-        bool __t14017 = Arx_Map_str_i64_has_key((&(az.cls_idx_map)), word);
-        __t14016 = (__t14017);
-    }
-    if (__t14016) {
-        int64_t __t14018 = arx_lsp_find_class_node(az, word);
-        target_nid = __t14018;
-    }
-    bool __t14019 = false;
-    if (((target_nid) < (((int64_t)0LL)))) {
-        bool __t14020 = Arx_Map_str_i64_has_key((&(az.enum_idx_map)), word);
-        __t14019 = (__t14020);
-    }
-    if (__t14019) {
-        int64_t __t14021 = arx_lsp_find_enum_node(az, word);
-        target_nid = __t14021;
-    }
-    if (((target_nid) < (((int64_t)0LL)))) {
-        int64_t ci = ((int64_t)0LL);
-        while (1) {
-            bool __t14022 = false;
-            if (((ci) < (az.cls_count))) {
-                __t14022 = (((target_nid) < (((int64_t)0LL))));
-            }
-            if (!(__t14022)) break;
-            int64_t __t14023 = Arx_List_i64_get((&(az.cls_nodes)), ci);
-            int64_t cid = __t14023;
-            int64_t __t14024 = Arx_List_i64_get((&(az.la)), cid);
-            int64_t fg = __t14024;
-            int64_t j = ((int64_t)0LL);
-            while (1) {
-                int64_t __t14025 = Arx_List_i64_get((&(az.ll)), fg);
-                if (!(((j) < (__t14025)))) break;
-                int64_t __t14026 = Arx_List_i64_get((&(az.ls)), fg);
-                int64_t __t14027 = Arx_List_i64_get((&(az.ch)), ((__t14026) + (j)));
-                int64_t fid = __t14027;
-                const char* __t14028 = Arx_List_str_get((&(az.sa)), fid);
-                if ((arx_str_compare(__t14028, word) == 0)) {
-                    target_nid = fid;
-                    break;
-                }
-                j = ((j) + (((int64_t)1LL)));
-            }
-            if (((target_nid) < (((int64_t)0LL)))) {
-                int64_t __t14029 = Arx_List_i64_get((&(az.ea)), cid);
-                int64_t mg = __t14029;
-                int64_t m = ((int64_t)0LL);
-                while (1) {
-                    int64_t __t14030 = Arx_List_i64_get((&(az.ll)), mg);
-                    if (!(((m) < (__t14030)))) break;
-                    int64_t __t14031 = Arx_List_i64_get((&(az.ls)), mg);
-                    int64_t __t14032 = Arx_List_i64_get((&(az.ch)), ((__t14031) + (m)));
-                    int64_t mid = __t14032;
-                    const char* __t14033 = Arx_List_str_get((&(az.sa)), mid);
-                    if ((arx_str_compare(__t14033, word) == 0)) {
-                        target_nid = mid;
-                        break;
-                    }
-                    m = ((m) + (((int64_t)1LL)));
-                }
-            }
-            ci = ((ci) + (((int64_t)1LL)));
-        }
-    }
-    if (((target_nid) < (((int64_t)0LL)))) {
-        const char* __t14034 = "null";
-        const char* __t14035 = __t14034;
-        return __t14035;
-    }
-    const char* __t14036 = Arx_List_str_get((&(az.nf)), target_nid);
-    const char* tfile = __t14036;
-    int64_t __t14037 = Arx_List_i64_get((&(az.ln)), target_nid);
-    int64_t tline1 = __t14037;
+    const char* __t15298 = Arx_List_str_get((&(az.nf)), target_nid);
+    const char* tfile = __t15298;
+    int64_t __t15299 = Arx_List_i64_get((&(az.ln)), target_nid);
+    int64_t tline1 = __t15299;
     int64_t tline0 = ((tline1) - (((int64_t)1LL)));
     if (((tline0) < (((int64_t)0LL)))) {
         tline0 = ((int64_t)0LL);
     }
-    int64_t __t14038 = Arx_List_i64_get((&(az.nc)), target_nid);
-    int64_t tcol0 = ((__t14038) - (((int64_t)1LL)));
+    int64_t __t15300 = Arx_List_i64_get((&(az.nc)), target_nid);
+    int64_t tcol0 = ((__t15300) - (((int64_t)1LL)));
     if (((tcol0) < (((int64_t)0LL)))) {
         tcol0 = ((int64_t)0LL);
     }
-    if ((arx_str_compare(tfile, doc_path) == 0)) {
-        int64_t __t14039 = arx_lsp_find_node_col0(source, tline1, word);
-        tcol0 = __t14039;
-    } else {
-        bool __t14040 = Arx_File_exists(tfile);
-        if (__t14040) {
-            const char* __t14041 = Arx_File_read_to_string(tfile);
-            const char* fsrc = __t14041;
-            int64_t __t14042 = arx_lsp_find_node_col0(fsrc, tline1, word);
-            tcol0 = __t14042;
+    const char* __t15301 = arx_lsp_read_target_source(source, doc_path, tfile);
+    const char* fsrc = __t15301;
+    const char* __t15302 = "";
+    if ((arx_str_compare(fsrc, __t15302) != 0)) {
+        int64_t __t15303 = arx_lsp_find_node_col0(fsrc, tline1, word);
+        tcol0 = __t15303;
+    }
+    Arx_JsonBuf __t15304 = Arx_JsonBuf_init();
+    Arx_JsonBuf jb = __t15304;
+    arx_lsp_emit_location_obj(jb, tfile, tline0, tcol0, arx_str_len(word));
+    const char* __t15305 = Arx_JsonBuf_finish((&(jb)));
+    const char* __t15306 = __t15305;
+    return __t15306;
+}
+
+const char* arx_lsp_build_definition_json(const char* source, Arx_Analyzer az, const char* doc_path, int64_t line0, int64_t char0) {
+    const char* __t15307 = arx_lsp_resolve_import_at_cursor(source, doc_path, line0, char0);
+    const char* imp_target = __t15307;
+    const char* __t15308 = "";
+    if ((arx_str_compare(imp_target, __t15308) != 0)) {
+        Arx_JsonBuf __t15309 = Arx_JsonBuf_init();
+        Arx_JsonBuf jb = __t15309;
+        arx_lsp_emit_location_obj(jb, imp_target, ((int64_t)0LL), ((int64_t)0LL), ((int64_t)0LL));
+        const char* __t15310 = Arx_JsonBuf_finish((&(jb)));
+        const char* __t15311 = __t15310;
+        return __t15311;
+    }
+    const char* __t15312 = arx_lsp_word_at(source, line0, char0);
+    const char* word = __t15312;
+    const char* __t15313 = "";
+    if ((arx_str_compare(word, __t15313) == 0)) {
+        const char* __t15314 = "null";
+        const char* __t15315 = __t15314;
+        return __t15315;
+    }
+    const char* __t15316 = arx_lsp_get_line_text(source, line0);
+    const char* line = __t15316;
+    int64_t __t15317 = arx_lsp_word_start_at(source, line0, char0);
+    int64_t wpos = __t15317;
+    int64_t line1 = ((line0) + (((int64_t)1LL)));
+    int64_t target_nid = (-(((int64_t)1LL)));
+    const char* __t15318 = "self";
+    if ((arx_str_compare(word, __t15318) == 0)) {
+        const char* __t15319 = arx_lsp_enclosing_class_at(az, doc_path, line1);
+        const char* ec = __t15319;
+        const char* __t15320 = "";
+        if ((arx_str_compare(ec, __t15320) != 0)) {
+            int64_t __t15321 = arx_lsp_find_class_node(az, ec);
+            int64_t cid = __t15321;
+            if (((cid) >= (((int64_t)0LL)))) {
+                const char* __t15322 = arx_lsp_location_from_node(source, doc_path, az, cid, ec);
+                const char* __t15323 = __t15322;
+                return __t15323;
+            }
+        }
+        const char* __t15324 = "null";
+        const char* __t15325 = __t15324;
+        return __t15325;
+    }
+    const char* __t15326 = "super";
+    if ((arx_str_compare(word, __t15326) == 0)) {
+        const char* __t15327 = arx_lsp_enclosing_class_at(az, doc_path, line1);
+        const char* ec = __t15327;
+        const char* __t15328 = "";
+        bool __t15329 = false;
+        if ((arx_str_compare(ec, __t15328) != 0)) {
+            bool __t15330 = Arx_Map_str_str_has_key((&(az.cls_base_map)), ec);
+            __t15329 = (__t15330);
+        }
+        if (__t15329) {
+            const char* __t15331 = Arx_Map_str_str_get((&(az.cls_base_map)), ec);
+            const char* bc = __t15331;
+            int64_t __t15332 = arx_lsp_find_class_node(az, bc);
+            int64_t cid = __t15332;
+            if (((cid) >= (((int64_t)0LL)))) {
+                const char* __t15333 = arx_lsp_location_from_node(source, doc_path, az, cid, bc);
+                const char* __t15334 = __t15333;
+                return __t15334;
+            }
+        }
+        const char* __t15335 = "null";
+        const char* __t15336 = __t15335;
+        return __t15336;
+    }
+    bool __t15337 = false;
+    if (((wpos) >= (((int64_t)2LL)))) {
+        __t15337 = (((arx_str_byte_at(line, ((wpos) - (((int64_t)1LL))))) == (((int64_t)46LL))));
+    }
+    bool is_member_access = __t15337;
+    if (is_member_access) {
+        const char* __t15338 = arx_lsp_extract_receiver_before_dot(line, ((wpos) - (((int64_t)1LL))));
+        const char* rname = __t15338;
+        bool __t15339 = Arx_Map_str_i64_has_key((&(az.enum_idx_map)), rname);
+        if (__t15339) {
+            const char* __t15340 = "::";
+            const char* __t15341 = arx_str_concat(rname, __t15340);
+            const char* __t15342 = arx_str_concat(__t15341, word);
+            const char* vkey = __t15342;
+            bool __t15343 = Arx_Map_str_i64_has_key((&(az.enum_var_node)), vkey);
+            if (__t15343) {
+                int64_t __t15344 = Arx_Map_str_i64_get((&(az.enum_var_node)), vkey);
+                target_nid = __t15344;
+                const char* __t15345 = arx_lsp_location_from_node(source, doc_path, az, target_nid, word);
+                const char* __t15346 = __t15345;
+                return __t15346;
+            }
+        }
+        const char* __t15347 = arx_lsp_infer_expr_receiver_type(az, doc_path, line1, rname);
+        const char* rt = __t15347;
+        const char* __t15348 = "";
+        if ((arx_str_compare(rt, __t15348) != 0)) {
+            int64_t __t15349 = arx_lsp_find_class_field_node(az, rt, word);
+            int64_t fid = __t15349;
+            if (((fid) >= (((int64_t)0LL)))) {
+                const char* __t15350 = arx_lsp_location_from_node(source, doc_path, az, fid, word);
+                const char* __t15351 = __t15350;
+                return __t15351;
+            }
+            int64_t __t15352 = arx_lsp_find_class_method_sidx(az, rt, word);
+            int64_t sidx = __t15352;
+            if (((sidx) >= (((int64_t)0LL)))) {
+                int64_t __t15353 = Arx_List_i64_get((&(az.sig_nodes)), sidx);
+                const char* __t15354 = arx_lsp_location_from_node(source, doc_path, az, __t15353, word);
+                const char* __t15355 = __t15354;
+                return __t15355;
+            }
         }
     }
-    Arx_JsonBuf __t14043 = Arx_JsonBuf_init();
-    Arx_JsonBuf jb = __t14043;
-    Arx_JsonBuf_lbrace((&(jb)));
-    const char* __t14044 = "uri";
-    const char* __t14045 = arx_lsp_path_to_uri(tfile);
-    Arx_JsonBuf_kv_str((&(jb)), __t14044, __t14045, true);
-    Arx_JsonBuf_comma((&(jb)));
-    const char* __t14046 = "range";
-    Arx_JsonBuf_key((&(jb)), __t14046);
-    Arx_JsonBuf_lbrace((&(jb)));
-    const char* __t14047 = "start";
-    Arx_JsonBuf_key((&(jb)), __t14047);
-    Arx_JsonBuf_lbrace((&(jb)));
-    const char* __t14048 = "line";
-    Arx_JsonBuf_kv_int((&(jb)), __t14048, tline0, true);
-    const char* __t14049 = "character";
-    Arx_JsonBuf_kv_int((&(jb)), __t14049, tcol0, false);
-    Arx_JsonBuf_rbrace((&(jb)));
-    Arx_JsonBuf_comma((&(jb)));
-    const char* __t14050 = "end";
-    Arx_JsonBuf_key((&(jb)), __t14050);
-    Arx_JsonBuf_lbrace((&(jb)));
-    const char* __t14051 = "line";
-    Arx_JsonBuf_kv_int((&(jb)), __t14051, tline0, true);
-    const char* __t14052 = "character";
-    Arx_JsonBuf_kv_int((&(jb)), __t14052, ((tcol0) + (arx_str_len(word))), false);
-    Arx_JsonBuf_rbrace((&(jb)));
-    Arx_JsonBuf_rbrace((&(jb)));
-    Arx_JsonBuf_rbrace((&(jb)));
-    const char* __t14053 = Arx_JsonBuf_finish((&(jb)));
-    const char* __t14054 = __t14053;
-    return __t14054;
+    if ((!(is_member_access))) {
+        Arx_List_i64 __t15356 = arx_lsp_enclosing_fn_bounds(source, az, doc_path, line1);
+        Arx_List_i64 fbounds = __t15356;
+        int64_t __t15357 = Arx_List_i64_get((&(fbounds)), ((int64_t)1LL));
+        int64_t fstart = __t15357;
+        if (((fstart) > (((int64_t)0LL)))) {
+            int64_t __t15358 = arx_lsp_resolve_scoped_var_node(az, doc_path, line1, fstart, word);
+            target_nid = __t15358;
+            if (((target_nid) >= (((int64_t)0LL)))) {
+                const char* __t15359 = arx_lsp_location_from_node(source, doc_path, az, target_nid, word);
+                const char* __t15360 = __t15359;
+                return __t15360;
+            }
+        }
+    }
+    if ((!(is_member_access))) {
+        const char* __t15361 = arx_lsp_enclosing_class_at(az, doc_path, line1);
+        const char* ec2 = __t15361;
+        const char* __t15362 = "";
+        if ((arx_str_compare(ec2, __t15362) != 0)) {
+            int64_t __t15363 = arx_lsp_find_class_field_node(az, ec2, word);
+            int64_t fid = __t15363;
+            if (((fid) >= (((int64_t)0LL)))) {
+                const char* __t15364 = arx_lsp_location_from_node(source, doc_path, az, fid, word);
+                const char* __t15365 = __t15364;
+                return __t15365;
+            }
+            int64_t __t15366 = arx_lsp_find_class_method_sidx(az, ec2, word);
+            int64_t sidx = __t15366;
+            if (((sidx) >= (((int64_t)0LL)))) {
+                int64_t __t15367 = Arx_List_i64_get((&(az.sig_nodes)), sidx);
+                const char* __t15368 = arx_lsp_location_from_node(source, doc_path, az, __t15367, word);
+                const char* __t15369 = __t15368;
+                return __t15369;
+            }
+        }
+    }
+    if ((!(is_member_access))) {
+        int64_t best_gid = (-(((int64_t)1LL)));
+        int64_t gi = ((int64_t)0LL);
+        while (1) {
+            if (!(((gi) < (az.global_count)))) break;
+            int64_t __t15370 = Arx_List_i64_get((&(az.global_nodes)), gi);
+            int64_t gid = __t15370;
+            const char* __t15371 = Arx_List_str_get((&(az.sa)), gid);
+            if ((arx_str_compare(__t15371, word) == 0)) {
+                bool __t15372 = true;
+                if (!(((best_gid) < (((int64_t)0LL))))) {
+                    const char* __t15373 = Arx_List_str_get((&(az.nf)), gid);
+                    __t15372 = ((arx_str_compare(__t15373, doc_path) == 0));
+                }
+                if (__t15372) {
+                    best_gid = gid;
+                    const char* __t15374 = Arx_List_str_get((&(az.nf)), gid);
+                    if ((arx_str_compare(__t15374, doc_path) == 0)) {
+                        break;
+                    }
+                }
+            }
+            gi = ((gi) + (((int64_t)1LL)));
+        }
+        if (((best_gid) >= (((int64_t)0LL)))) {
+            const char* __t15375 = arx_lsp_location_from_node(source, doc_path, az, best_gid, word);
+            const char* __t15376 = __t15375;
+            return __t15376;
+        }
+    }
+    if ((!(is_member_access))) {
+        Arx_List_i64 __t15377 = Arx_List_i64_init();
+        Arx_List_i64 fn_matches = __t15377;
+        int64_t same_file_fid = (-(((int64_t)1LL)));
+        int64_t fi = ((int64_t)0LL);
+        while (1) {
+            if (!(((fi) < (az.fn_count)))) break;
+            int64_t __t15378 = Arx_List_i64_get((&(az.fn_nodes)), fi);
+            int64_t fid = __t15378;
+            const char* __t15379 = Arx_List_str_get((&(az.sa)), fid);
+            if ((arx_str_compare(__t15379, word) == 0)) {
+                Arx_List_i64_push((&(fn_matches)), fid);
+                const char* __t15380 = Arx_List_str_get((&(az.nf)), fid);
+                bool __t15381 = false;
+                if ((arx_str_compare(__t15380, doc_path) == 0)) {
+                    __t15381 = (((same_file_fid) < (((int64_t)0LL))));
+                }
+                if (__t15381) {
+                    same_file_fid = fid;
+                }
+            }
+            fi = ((fi) + (((int64_t)1LL)));
+        }
+        int64_t __t15382 = Arx_List_i64_len((&(fn_matches)));
+        if (((__t15382) == (((int64_t)1LL)))) {
+            int64_t __t15383 = Arx_List_i64_get((&(fn_matches)), ((int64_t)0LL));
+            const char* __t15384 = arx_lsp_location_from_node(source, doc_path, az, __t15383, word);
+            const char* __t15385 = __t15384;
+            return __t15385;
+        }
+        int64_t __t15386 = Arx_List_i64_len((&(fn_matches)));
+        if (((__t15386) > (((int64_t)1LL)))) {
+            if (((same_file_fid) >= (((int64_t)0LL)))) {
+                const char* __t15387 = arx_lsp_location_from_node(source, doc_path, az, same_file_fid, word);
+                const char* __t15388 = __t15387;
+                return __t15388;
+            }
+            Arx_JsonBuf __t15389 = Arx_JsonBuf_init();
+            Arx_JsonBuf jb = __t15389;
+            Arx_JsonBuf_lbrack((&(jb)));
+            int64_t mi = ((int64_t)0LL);
+            while (1) {
+                int64_t __t15390 = Arx_List_i64_len((&(fn_matches)));
+                if (!(((mi) < (__t15390)))) break;
+                if (((mi) > (((int64_t)0LL)))) {
+                    Arx_JsonBuf_comma((&(jb)));
+                }
+                int64_t __t15391 = Arx_List_i64_get((&(fn_matches)), mi);
+                int64_t mnid = __t15391;
+                const char* __t15392 = Arx_List_str_get((&(az.nf)), mnid);
+                const char* tfile = __t15392;
+                int64_t __t15393 = Arx_List_i64_get((&(az.ln)), mnid);
+                int64_t tline1 = __t15393;
+                int64_t tline0 = ((tline1) - (((int64_t)1LL)));
+                if (((tline0) < (((int64_t)0LL)))) {
+                    tline0 = ((int64_t)0LL);
+                }
+                const char* __t15394 = arx_lsp_read_target_source(source, doc_path, tfile);
+                const char* fsrc = __t15394;
+                int64_t tcol0 = ((int64_t)0LL);
+                const char* __t15395 = "";
+                if ((arx_str_compare(fsrc, __t15395) != 0)) {
+                    int64_t __t15396 = arx_lsp_find_node_col0(fsrc, tline1, word);
+                    tcol0 = __t15396;
+                }
+                arx_lsp_emit_location_obj(jb, tfile, tline0, tcol0, arx_str_len(word));
+                mi = ((mi) + (((int64_t)1LL)));
+            }
+            Arx_JsonBuf_rbrack((&(jb)));
+            const char* __t15397 = Arx_JsonBuf_finish((&(jb)));
+            const char* __t15398 = __t15397;
+            return __t15398;
+        }
+    }
+    bool __t15399 = Arx_Map_str_i64_has_key((&(az.cls_idx_map)), word);
+    if (__t15399) {
+        int64_t __t15400 = arx_lsp_find_class_node(az, word);
+        int64_t cid = __t15400;
+        if (((cid) >= (((int64_t)0LL)))) {
+            const char* __t15401 = arx_lsp_location_from_node(source, doc_path, az, cid, word);
+            const char* __t15402 = __t15401;
+            return __t15402;
+        }
+    }
+    bool __t15403 = Arx_Map_str_i64_has_key((&(az.enum_idx_map)), word);
+    if (__t15403) {
+        int64_t __t15404 = arx_lsp_find_enum_node(az, word);
+        int64_t eid = __t15404;
+        if (((eid) >= (((int64_t)0LL)))) {
+            const char* __t15405 = arx_lsp_location_from_node(source, doc_path, az, eid, word);
+            const char* __t15406 = __t15405;
+            return __t15406;
+        }
+    }
+    int64_t ei = ((int64_t)0LL);
+    while (1) {
+        if (!(((ei) < (az.enum_count)))) break;
+        int64_t __t15407 = Arx_List_i64_get((&(az.enum_nodes)), ei);
+        int64_t eid = __t15407;
+        int64_t __t15408 = Arx_List_i64_get((&(az.ll)), eid);
+        int64_t vc = __t15408;
+        int64_t vi = ((int64_t)0LL);
+        while (1) {
+            if (!(((vi) < (vc)))) break;
+            int64_t __t15409 = Arx_List_i64_get((&(az.ls)), eid);
+            int64_t __t15410 = Arx_List_i64_get((&(az.ch)), ((__t15409) + (vi)));
+            int64_t vid = __t15410;
+            const char* __t15411 = Arx_List_str_get((&(az.sa)), vid);
+            if ((arx_str_compare(__t15411, word) == 0)) {
+                const char* __t15412 = arx_lsp_location_from_node(source, doc_path, az, vid, word);
+                const char* __t15413 = __t15412;
+                return __t15413;
+            }
+            vi = ((vi) + (((int64_t)1LL)));
+        }
+        ei = ((ei) + (((int64_t)1LL)));
+    }
+    Arx_List_i64 __t15414 = Arx_List_i64_init();
+    Arx_List_i64 mem_matches = __t15414;
+    int64_t ci = ((int64_t)0LL);
+    while (1) {
+        if (!(((ci) < (az.cls_count)))) break;
+        int64_t __t15415 = Arx_List_i64_get((&(az.cls_nodes)), ci);
+        int64_t cid = __t15415;
+        int64_t __t15416 = Arx_List_i64_get((&(az.la)), cid);
+        int64_t fg = __t15416;
+        int64_t j = ((int64_t)0LL);
+        while (1) {
+            int64_t __t15417 = Arx_List_i64_get((&(az.ll)), fg);
+            if (!(((j) < (__t15417)))) break;
+            int64_t __t15418 = Arx_List_i64_get((&(az.ls)), fg);
+            int64_t __t15419 = Arx_List_i64_get((&(az.ch)), ((__t15418) + (j)));
+            int64_t fid = __t15419;
+            const char* __t15420 = Arx_List_str_get((&(az.sa)), fid);
+            if ((arx_str_compare(__t15420, word) == 0)) {
+                Arx_List_i64_push((&(mem_matches)), fid);
+            }
+            j = ((j) + (((int64_t)1LL)));
+        }
+        int64_t __t15421 = Arx_List_i64_get((&(az.ea)), cid);
+        int64_t mg = __t15421;
+        int64_t m = ((int64_t)0LL);
+        while (1) {
+            int64_t __t15422 = Arx_List_i64_get((&(az.ll)), mg);
+            if (!(((m) < (__t15422)))) break;
+            int64_t __t15423 = Arx_List_i64_get((&(az.ls)), mg);
+            int64_t __t15424 = Arx_List_i64_get((&(az.ch)), ((__t15423) + (m)));
+            int64_t mid = __t15424;
+            const char* __t15425 = Arx_List_str_get((&(az.sa)), mid);
+            if ((arx_str_compare(__t15425, word) == 0)) {
+                Arx_List_i64_push((&(mem_matches)), mid);
+            }
+            m = ((m) + (((int64_t)1LL)));
+        }
+        ci = ((ci) + (((int64_t)1LL)));
+    }
+    int64_t __t15426 = Arx_List_i64_len((&(mem_matches)));
+    if (((__t15426) == (((int64_t)1LL)))) {
+        int64_t __t15427 = Arx_List_i64_get((&(mem_matches)), ((int64_t)0LL));
+        const char* __t15428 = arx_lsp_location_from_node(source, doc_path, az, __t15427, word);
+        const char* __t15429 = __t15428;
+        return __t15429;
+    }
+    int64_t __t15430 = Arx_List_i64_len((&(mem_matches)));
+    if (((__t15430) > (((int64_t)1LL)))) {
+        Arx_JsonBuf __t15431 = Arx_JsonBuf_init();
+        Arx_JsonBuf jb = __t15431;
+        Arx_JsonBuf_lbrack((&(jb)));
+        int64_t mi = ((int64_t)0LL);
+        while (1) {
+            int64_t __t15432 = Arx_List_i64_len((&(mem_matches)));
+            bool __t15433 = false;
+            if (((mi) < (__t15432))) {
+                __t15433 = (((mi) < (((int64_t)16LL))));
+            }
+            if (!(__t15433)) break;
+            if (((mi) > (((int64_t)0LL)))) {
+                Arx_JsonBuf_comma((&(jb)));
+            }
+            int64_t __t15434 = Arx_List_i64_get((&(mem_matches)), mi);
+            int64_t mnid = __t15434;
+            const char* __t15435 = Arx_List_str_get((&(az.nf)), mnid);
+            const char* tfile = __t15435;
+            int64_t __t15436 = Arx_List_i64_get((&(az.ln)), mnid);
+            int64_t tline1 = __t15436;
+            int64_t tline0 = ((tline1) - (((int64_t)1LL)));
+            if (((tline0) < (((int64_t)0LL)))) {
+                tline0 = ((int64_t)0LL);
+            }
+            const char* __t15437 = arx_lsp_read_target_source(source, doc_path, tfile);
+            const char* fsrc = __t15437;
+            int64_t tcol0 = ((int64_t)0LL);
+            const char* __t15438 = "";
+            if ((arx_str_compare(fsrc, __t15438) != 0)) {
+                int64_t __t15439 = arx_lsp_find_node_col0(fsrc, tline1, word);
+                tcol0 = __t15439;
+            }
+            arx_lsp_emit_location_obj(jb, tfile, tline0, tcol0, arx_str_len(word));
+            mi = ((mi) + (((int64_t)1LL)));
+        }
+        Arx_JsonBuf_rbrack((&(jb)));
+        const char* __t15440 = Arx_JsonBuf_finish((&(jb)));
+        const char* __t15441 = __t15440;
+        return __t15441;
+    }
+    const char* __t15442 = "null";
+    const char* __t15443 = __t15442;
+    return __t15443;
+}
+
+const char* arx_lsp_extract_named_type_base(const char* t) {
+    const char* __t15444 = arx_btype_norm(t);
+    const char* cur = arx_str_trim(__t15444);
+    const char* __t15445 = "List<";
+    bool __t15446 = true;
+    if (!(arx_str_starts_with(cur, __t15445))) {
+        const char* __t15447 = "Set<";
+        __t15446 = (arx_str_starts_with(cur, __t15447));
+    }
+    bool __t15448 = true;
+    if (!(__t15446)) {
+        const char* __t15449 = "Stack<";
+        __t15448 = (arx_str_starts_with(cur, __t15449));
+    }
+    bool __t15450 = true;
+    if (!(__t15448)) {
+        const char* __t15451 = "Queue<";
+        __t15450 = (arx_str_starts_with(cur, __t15451));
+    }
+    bool __t15452 = true;
+    if (!(__t15450)) {
+        const char* __t15453 = "Deque<";
+        __t15452 = (arx_str_starts_with(cur, __t15453));
+    }
+    if (__t15452) {
+        const char* __t15454 = arx_lsp_generic_inner_arg(cur, ((int64_t)0LL));
+        const char* inner = __t15454;
+        const char* __t15455 = "";
+        if ((arx_str_compare(inner, __t15455) != 0)) {
+            const char* __t15456 = arx_lsp_extract_named_type_base(inner);
+            const char* __t15457 = __t15456;
+            return __t15457;
+        }
+    }
+    const char* __t15458 = "Map<";
+    if (arx_str_starts_with(cur, __t15458)) {
+        const char* __t15459 = arx_lsp_generic_inner_arg(cur, ((int64_t)1LL));
+        const char* val_t = __t15459;
+        const char* __t15460 = "";
+        if ((arx_str_compare(val_t, __t15460) != 0)) {
+            const char* __t15461 = arx_lsp_extract_named_type_base(val_t);
+            const char* __t15462 = __t15461;
+            return __t15462;
+        }
+    }
+    const char* __t15463 = "<";
+    int64_t __t15464 = arx_lsp_str_find(cur, __t15463, ((int64_t)0LL));
+    int64_t lt = __t15464;
+    if (((lt) > (((int64_t)0LL)))) {
+        const char* __t15465 = __arx_bstr_slice(cur, ((int64_t)0LL), lt);
+        cur = arx_str_trim(__t15465);
+    }
+    const char* __t15466 = cur;
+    return __t15466;
+}
+
+const char* arx_lsp_build_type_definition_json(const char* source, Arx_Analyzer az, const char* doc_path, int64_t line0, int64_t char0) {
+    const char* __t15467 = arx_lsp_word_at(source, line0, char0);
+    const char* word = __t15467;
+    const char* __t15468 = "";
+    if ((arx_str_compare(word, __t15468) == 0)) {
+        const char* __t15469 = "null";
+        const char* __t15470 = __t15469;
+        return __t15470;
+    }
+    const char* __t15471 = arx_lsp_get_line_text(source, line0);
+    const char* line = __t15471;
+    int64_t __t15472 = arx_lsp_word_start_at(source, line0, char0);
+    int64_t wpos = __t15472;
+    int64_t line1 = ((line0) + (((int64_t)1LL)));
+    const char* __t15473 = "";
+    const char* tname = __t15473;
+    bool __t15474 = false;
+    if (((wpos) >= (((int64_t)2LL)))) {
+        __t15474 = (((arx_str_byte_at(line, ((wpos) - (((int64_t)1LL))))) == (((int64_t)46LL))));
+    }
+    if (__t15474) {
+        const char* __t15475 = arx_lsp_extract_receiver_before_dot(line, ((wpos) - (((int64_t)1LL))));
+        const char* rname = __t15475;
+        const char* __t15476 = arx_lsp_infer_expr_receiver_type(az, doc_path, line1, rname);
+        const char* rt = __t15476;
+        const char* __t15477 = "";
+        if ((arx_str_compare(rt, __t15477) != 0)) {
+            int64_t __t15478 = arx_lsp_find_class_field_node(az, rt, word);
+            int64_t fid = __t15478;
+            if (((fid) >= (((int64_t)0LL)))) {
+                const char* __t15479 = Arx_List_str_get((&(az.sb)), fid);
+                const char* __t15480 = arx_btype_norm(__t15479);
+                tname = __t15480;
+            } else {
+                int64_t __t15481 = arx_lsp_find_class_method_sidx(az, rt, word);
+                int64_t sidx = __t15481;
+                if (((sidx) >= (((int64_t)0LL)))) {
+                    const char* __t15482 = Arx_List_str_get((&(az.sig_rets)), sidx);
+                    tname = __t15482;
+                }
+            }
+        }
+    } else {
+        const char* __t15483 = arx_lsp_infer_expr_receiver_type(az, doc_path, line1, word);
+        tname = __t15483;
+    }
+    const char* __t15484 = "";
+    if ((arx_str_compare(tname, __t15484) == 0)) {
+        const char* __t15485 = "null";
+        const char* __t15486 = __t15485;
+        return __t15486;
+    }
+    const char* __t15487 = arx_lsp_extract_named_type_base(tname);
+    const char* base = __t15487;
+    bool __t15488 = Arx_Map_str_i64_has_key((&(az.cls_idx_map)), base);
+    if (__t15488) {
+        int64_t __t15489 = arx_lsp_find_class_node(az, base);
+        int64_t cid = __t15489;
+        if (((cid) >= (((int64_t)0LL)))) {
+            const char* __t15490 = arx_lsp_location_from_node(source, doc_path, az, cid, base);
+            const char* __t15491 = __t15490;
+            return __t15491;
+        }
+    }
+    bool __t15492 = Arx_Map_str_i64_has_key((&(az.enum_idx_map)), base);
+    if (__t15492) {
+        int64_t __t15493 = arx_lsp_find_enum_node(az, base);
+        int64_t eid = __t15493;
+        if (((eid) >= (((int64_t)0LL)))) {
+            const char* __t15494 = arx_lsp_location_from_node(source, doc_path, az, eid, base);
+            const char* __t15495 = __t15494;
+            return __t15495;
+        }
+    }
+    const char* __t15496 = "null";
+    const char* __t15497 = __t15496;
+    return __t15497;
 }
 
 void arx_emit_symbol_range(Arx_JsonBuf jb, int64_t ln1) {
@@ -34467,303 +38250,303 @@ void arx_emit_symbol_range(Arx_JsonBuf jb, int64_t ln1) {
         ln0 = ((int64_t)0LL);
     }
     Arx_JsonBuf_lbrace((&(jb)));
-    const char* __t14055 = "start";
-    Arx_JsonBuf_key((&(jb)), __t14055);
+    const char* __t15498 = "start";
+    Arx_JsonBuf_key((&(jb)), __t15498);
     Arx_JsonBuf_lbrace((&(jb)));
-    const char* __t14056 = "line";
-    Arx_JsonBuf_kv_int((&(jb)), __t14056, ln0, true);
-    const char* __t14057 = "character";
-    Arx_JsonBuf_kv_int((&(jb)), __t14057, ((int64_t)0LL), false);
+    const char* __t15499 = "line";
+    Arx_JsonBuf_kv_int((&(jb)), __t15499, ln0, true);
+    const char* __t15500 = "character";
+    Arx_JsonBuf_kv_int((&(jb)), __t15500, ((int64_t)0LL), false);
     Arx_JsonBuf_rbrace((&(jb)));
     Arx_JsonBuf_comma((&(jb)));
-    const char* __t14058 = "end";
-    Arx_JsonBuf_key((&(jb)), __t14058);
+    const char* __t15501 = "end";
+    Arx_JsonBuf_key((&(jb)), __t15501);
     Arx_JsonBuf_lbrace((&(jb)));
-    const char* __t14059 = "line";
-    Arx_JsonBuf_kv_int((&(jb)), __t14059, ln0, true);
-    const char* __t14060 = "character";
-    Arx_JsonBuf_kv_int((&(jb)), __t14060, ((int64_t)80LL), false);
+    const char* __t15502 = "line";
+    Arx_JsonBuf_kv_int((&(jb)), __t15502, ln0, true);
+    const char* __t15503 = "character";
+    Arx_JsonBuf_kv_int((&(jb)), __t15503, ((int64_t)80LL), false);
     Arx_JsonBuf_rbrace((&(jb)));
     Arx_JsonBuf_rbrace((&(jb)));
 }
 
 const char* arx_lsp_build_document_symbols_json(Arx_Analyzer az, const char* doc_path) {
-    Arx_JsonBuf __t14061 = Arx_JsonBuf_init();
-    Arx_JsonBuf jb = __t14061;
+    Arx_JsonBuf __t15504 = Arx_JsonBuf_init();
+    Arx_JsonBuf jb = __t15504;
     Arx_JsonBuf_lbrack((&(jb)));
     bool first = true;
     int64_t ri = ((int64_t)0LL);
     while (1) {
         if (!(((ri) < (az.root_count)))) break;
-        int64_t __t14062 = Arx_List_i64_get((&(az.root_decls)), ri);
-        int64_t nid = __t14062;
-        const char* __t14063 = Arx_List_str_get((&(az.nf)), nid);
-        if ((arx_str_compare(__t14063, doc_path) != 0)) {
+        int64_t __t15505 = Arx_List_i64_get((&(az.root_decls)), ri);
+        int64_t nid = __t15505;
+        const char* __t15506 = Arx_List_str_get((&(az.nf)), nid);
+        if ((arx_str_compare(__t15506, doc_path) != 0)) {
             ri = ((ri) + (((int64_t)1LL)));
             continue;
         }
-        int64_t __t14064 = Arx_List_i64_get((&(az.nk)), nid);
-        int64_t k = __t14064;
-        const char* __t14065 = Arx_List_str_get((&(az.sa)), nid);
-        const char* nm = __t14065;
-        int64_t __t14066 = Arx_List_i64_get((&(az.ln)), nid);
-        int64_t ln1 = __t14066;
-        int64_t __t14067 = arx_NK_FN_DEF();
-        bool __t14068 = true;
-        if (!(((k) == (__t14067)))) {
-            int64_t __t14069 = arx_NK_CEXTERN();
-            __t14068 = (((k) == (__t14069)));
+        int64_t __t15507 = Arx_List_i64_get((&(az.nk)), nid);
+        int64_t k = __t15507;
+        const char* __t15508 = Arx_List_str_get((&(az.sa)), nid);
+        const char* nm = __t15508;
+        int64_t __t15509 = Arx_List_i64_get((&(az.ln)), nid);
+        int64_t ln1 = __t15509;
+        int64_t __t15510 = arx_NK_FN_DEF();
+        bool __t15511 = true;
+        if (!(((k) == (__t15510)))) {
+            int64_t __t15512 = arx_NK_CEXTERN();
+            __t15511 = (((k) == (__t15512)));
         }
-        if (__t14068) {
+        if (__t15511) {
             if ((!(first))) {
                 Arx_JsonBuf_comma((&(jb)));
             }
             first = false;
             Arx_JsonBuf_lbrace((&(jb)));
-            const char* __t14070 = "name";
-            Arx_JsonBuf_kv_str((&(jb)), __t14070, nm, true);
-            const char* __t14071 = "detail";
-            const char* __t14072 = arx_lsp_fn_signature_str(az, nid);
-            Arx_JsonBuf_kv_str((&(jb)), __t14071, __t14072, false);
-            const char* __t14073 = "kind";
-            int64_t __t14074 = arx_SKIND_FUNCTION();
-            Arx_JsonBuf_kv_int((&(jb)), __t14073, __t14074, false);
+            const char* __t15513 = "name";
+            Arx_JsonBuf_kv_str((&(jb)), __t15513, nm, true);
+            const char* __t15514 = "detail";
+            const char* __t15515 = arx_lsp_fn_signature_str(az, nid);
+            Arx_JsonBuf_kv_str((&(jb)), __t15514, __t15515, false);
+            const char* __t15516 = "kind";
+            int64_t __t15517 = arx_SKIND_FUNCTION();
+            Arx_JsonBuf_kv_int((&(jb)), __t15516, __t15517, false);
             Arx_JsonBuf_comma((&(jb)));
-            const char* __t14075 = "range";
-            Arx_JsonBuf_key((&(jb)), __t14075);
+            const char* __t15518 = "range";
+            Arx_JsonBuf_key((&(jb)), __t15518);
             arx_emit_symbol_range(jb, ln1);
             Arx_JsonBuf_comma((&(jb)));
-            const char* __t14076 = "selectionRange";
-            Arx_JsonBuf_key((&(jb)), __t14076);
+            const char* __t15519 = "selectionRange";
+            Arx_JsonBuf_key((&(jb)), __t15519);
             arx_emit_symbol_range(jb, ln1);
             Arx_JsonBuf_rbrace((&(jb)));
         } else {
-            int64_t __t14077 = arx_NK_CLASS_DEF();
-            if (((k) == (__t14077))) {
+            int64_t __t15520 = arx_NK_CLASS_DEF();
+            if (((k) == (__t15520))) {
                 if ((!(first))) {
                     Arx_JsonBuf_comma((&(jb)));
                 }
                 first = false;
                 Arx_JsonBuf_lbrace((&(jb)));
-                const char* __t14078 = "name";
-                Arx_JsonBuf_kv_str((&(jb)), __t14078, nm, true);
-                const char* __t14079 = "detail";
-                const char* __t14080 = "class";
-                Arx_JsonBuf_kv_str((&(jb)), __t14079, __t14080, false);
-                const char* __t14081 = "kind";
-                int64_t __t14082 = arx_SKIND_CLASS();
-                Arx_JsonBuf_kv_int((&(jb)), __t14081, __t14082, false);
+                const char* __t15521 = "name";
+                Arx_JsonBuf_kv_str((&(jb)), __t15521, nm, true);
+                const char* __t15522 = "detail";
+                const char* __t15523 = "class";
+                Arx_JsonBuf_kv_str((&(jb)), __t15522, __t15523, false);
+                const char* __t15524 = "kind";
+                int64_t __t15525 = arx_SKIND_CLASS();
+                Arx_JsonBuf_kv_int((&(jb)), __t15524, __t15525, false);
                 Arx_JsonBuf_comma((&(jb)));
-                const char* __t14083 = "range";
-                Arx_JsonBuf_key((&(jb)), __t14083);
+                const char* __t15526 = "range";
+                Arx_JsonBuf_key((&(jb)), __t15526);
                 arx_emit_symbol_range(jb, ln1);
                 Arx_JsonBuf_comma((&(jb)));
-                const char* __t14084 = "selectionRange";
-                Arx_JsonBuf_key((&(jb)), __t14084);
+                const char* __t15527 = "selectionRange";
+                Arx_JsonBuf_key((&(jb)), __t15527);
                 arx_emit_symbol_range(jb, ln1);
                 Arx_JsonBuf_comma((&(jb)));
-                const char* __t14085 = "children";
-                Arx_JsonBuf_key((&(jb)), __t14085);
+                const char* __t15528 = "children";
+                Arx_JsonBuf_key((&(jb)), __t15528);
                 Arx_JsonBuf_lbrack((&(jb)));
                 bool cfirst = true;
-                int64_t __t14086 = Arx_List_i64_get((&(az.la)), nid);
-                int64_t fg = __t14086;
+                int64_t __t15529 = Arx_List_i64_get((&(az.la)), nid);
+                int64_t fg = __t15529;
                 int64_t fi = ((int64_t)0LL);
                 while (1) {
-                    int64_t __t14087 = Arx_List_i64_get((&(az.ll)), fg);
-                    if (!(((fi) < (__t14087)))) break;
-                    int64_t __t14088 = Arx_List_i64_get((&(az.ls)), fg);
-                    int64_t __t14089 = Arx_List_i64_get((&(az.ch)), ((__t14088) + (fi)));
-                    int64_t fid = __t14089;
+                    int64_t __t15530 = Arx_List_i64_get((&(az.ll)), fg);
+                    if (!(((fi) < (__t15530)))) break;
+                    int64_t __t15531 = Arx_List_i64_get((&(az.ls)), fg);
+                    int64_t __t15532 = Arx_List_i64_get((&(az.ch)), ((__t15531) + (fi)));
+                    int64_t fid = __t15532;
                     if ((!(cfirst))) {
                         Arx_JsonBuf_comma((&(jb)));
                     }
                     cfirst = false;
                     Arx_JsonBuf_lbrace((&(jb)));
-                    const char* __t14090 = "name";
-                    const char* __t14091 = Arx_List_str_get((&(az.sa)), fid);
-                    Arx_JsonBuf_kv_str((&(jb)), __t14090, __t14091, true);
-                    const char* __t14092 = "detail";
-                    const char* __t14093 = Arx_List_str_get((&(az.sb)), fid);
-                    const char* __t14094 = arx_btype_norm(__t14093);
-                    Arx_JsonBuf_kv_str((&(jb)), __t14092, __t14094, false);
-                    const char* __t14095 = "kind";
-                    int64_t __t14096 = arx_SKIND_FIELD();
-                    Arx_JsonBuf_kv_int((&(jb)), __t14095, __t14096, false);
+                    const char* __t15533 = "name";
+                    const char* __t15534 = Arx_List_str_get((&(az.sa)), fid);
+                    Arx_JsonBuf_kv_str((&(jb)), __t15533, __t15534, true);
+                    const char* __t15535 = "detail";
+                    const char* __t15536 = Arx_List_str_get((&(az.sb)), fid);
+                    const char* __t15537 = arx_btype_norm(__t15536);
+                    Arx_JsonBuf_kv_str((&(jb)), __t15535, __t15537, false);
+                    const char* __t15538 = "kind";
+                    int64_t __t15539 = arx_SKIND_FIELD();
+                    Arx_JsonBuf_kv_int((&(jb)), __t15538, __t15539, false);
                     Arx_JsonBuf_comma((&(jb)));
-                    const char* __t14097 = "range";
-                    Arx_JsonBuf_key((&(jb)), __t14097);
-                    int64_t __t14098 = Arx_List_i64_get((&(az.ln)), fid);
-                    arx_emit_symbol_range(jb, __t14098);
+                    const char* __t15540 = "range";
+                    Arx_JsonBuf_key((&(jb)), __t15540);
+                    int64_t __t15541 = Arx_List_i64_get((&(az.ln)), fid);
+                    arx_emit_symbol_range(jb, __t15541);
                     Arx_JsonBuf_comma((&(jb)));
-                    const char* __t14099 = "selectionRange";
-                    Arx_JsonBuf_key((&(jb)), __t14099);
-                    int64_t __t14100 = Arx_List_i64_get((&(az.ln)), fid);
-                    arx_emit_symbol_range(jb, __t14100);
+                    const char* __t15542 = "selectionRange";
+                    Arx_JsonBuf_key((&(jb)), __t15542);
+                    int64_t __t15543 = Arx_List_i64_get((&(az.ln)), fid);
+                    arx_emit_symbol_range(jb, __t15543);
                     Arx_JsonBuf_rbrace((&(jb)));
                     fi = ((fi) + (((int64_t)1LL)));
                 }
-                int64_t __t14101 = Arx_List_i64_get((&(az.ra)), nid);
-                int64_t cg = __t14101;
+                int64_t __t15544 = Arx_List_i64_get((&(az.ra)), nid);
+                int64_t cg = __t15544;
                 int64_t ci = ((int64_t)0LL);
                 while (1) {
-                    int64_t __t14102 = Arx_List_i64_get((&(az.ll)), cg);
-                    if (!(((ci) < (__t14102)))) break;
-                    int64_t __t14103 = Arx_List_i64_get((&(az.ls)), cg);
-                    int64_t __t14104 = Arx_List_i64_get((&(az.ch)), ((__t14103) + (ci)));
-                    int64_t cid = __t14104;
+                    int64_t __t15545 = Arx_List_i64_get((&(az.ll)), cg);
+                    if (!(((ci) < (__t15545)))) break;
+                    int64_t __t15546 = Arx_List_i64_get((&(az.ls)), cg);
+                    int64_t __t15547 = Arx_List_i64_get((&(az.ch)), ((__t15546) + (ci)));
+                    int64_t cid = __t15547;
                     if ((!(cfirst))) {
                         Arx_JsonBuf_comma((&(jb)));
                     }
                     cfirst = false;
                     Arx_JsonBuf_lbrace((&(jb)));
-                    const char* __t14105 = "name";
-                    const char* __t14106 = "init";
-                    Arx_JsonBuf_kv_str((&(jb)), __t14105, __t14106, true);
-                    const char* __t14107 = "detail";
-                    const char* __t14108 = arx_lsp_fn_signature_str(az, cid);
-                    Arx_JsonBuf_kv_str((&(jb)), __t14107, __t14108, false);
-                    const char* __t14109 = "kind";
-                    int64_t __t14110 = arx_SKIND_CTOR();
-                    Arx_JsonBuf_kv_int((&(jb)), __t14109, __t14110, false);
+                    const char* __t15548 = "name";
+                    const char* __t15549 = "init";
+                    Arx_JsonBuf_kv_str((&(jb)), __t15548, __t15549, true);
+                    const char* __t15550 = "detail";
+                    const char* __t15551 = arx_lsp_fn_signature_str(az, cid);
+                    Arx_JsonBuf_kv_str((&(jb)), __t15550, __t15551, false);
+                    const char* __t15552 = "kind";
+                    int64_t __t15553 = arx_SKIND_CTOR();
+                    Arx_JsonBuf_kv_int((&(jb)), __t15552, __t15553, false);
                     Arx_JsonBuf_comma((&(jb)));
-                    const char* __t14111 = "range";
-                    Arx_JsonBuf_key((&(jb)), __t14111);
-                    int64_t __t14112 = Arx_List_i64_get((&(az.ln)), cid);
-                    arx_emit_symbol_range(jb, __t14112);
+                    const char* __t15554 = "range";
+                    Arx_JsonBuf_key((&(jb)), __t15554);
+                    int64_t __t15555 = Arx_List_i64_get((&(az.ln)), cid);
+                    arx_emit_symbol_range(jb, __t15555);
                     Arx_JsonBuf_comma((&(jb)));
-                    const char* __t14113 = "selectionRange";
-                    Arx_JsonBuf_key((&(jb)), __t14113);
-                    int64_t __t14114 = Arx_List_i64_get((&(az.ln)), cid);
-                    arx_emit_symbol_range(jb, __t14114);
+                    const char* __t15556 = "selectionRange";
+                    Arx_JsonBuf_key((&(jb)), __t15556);
+                    int64_t __t15557 = Arx_List_i64_get((&(az.ln)), cid);
+                    arx_emit_symbol_range(jb, __t15557);
                     Arx_JsonBuf_rbrace((&(jb)));
                     ci = ((ci) + (((int64_t)1LL)));
                 }
-                int64_t __t14115 = Arx_List_i64_get((&(az.ea)), nid);
-                int64_t mg = __t14115;
+                int64_t __t15558 = Arx_List_i64_get((&(az.ea)), nid);
+                int64_t mg = __t15558;
                 int64_t mi = ((int64_t)0LL);
                 while (1) {
-                    int64_t __t14116 = Arx_List_i64_get((&(az.ll)), mg);
-                    if (!(((mi) < (__t14116)))) break;
-                    int64_t __t14117 = Arx_List_i64_get((&(az.ls)), mg);
-                    int64_t __t14118 = Arx_List_i64_get((&(az.ch)), ((__t14117) + (mi)));
-                    int64_t mid = __t14118;
+                    int64_t __t15559 = Arx_List_i64_get((&(az.ll)), mg);
+                    if (!(((mi) < (__t15559)))) break;
+                    int64_t __t15560 = Arx_List_i64_get((&(az.ls)), mg);
+                    int64_t __t15561 = Arx_List_i64_get((&(az.ch)), ((__t15560) + (mi)));
+                    int64_t mid = __t15561;
                     if ((!(cfirst))) {
                         Arx_JsonBuf_comma((&(jb)));
                     }
                     cfirst = false;
                     Arx_JsonBuf_lbrace((&(jb)));
-                    const char* __t14119 = "name";
-                    const char* __t14120 = Arx_List_str_get((&(az.sa)), mid);
-                    Arx_JsonBuf_kv_str((&(jb)), __t14119, __t14120, true);
-                    const char* __t14121 = "detail";
-                    const char* __t14122 = arx_lsp_fn_signature_str(az, mid);
-                    Arx_JsonBuf_kv_str((&(jb)), __t14121, __t14122, false);
-                    const char* __t14123 = "kind";
-                    int64_t __t14124 = arx_SKIND_METHOD();
-                    Arx_JsonBuf_kv_int((&(jb)), __t14123, __t14124, false);
+                    const char* __t15562 = "name";
+                    const char* __t15563 = Arx_List_str_get((&(az.sa)), mid);
+                    Arx_JsonBuf_kv_str((&(jb)), __t15562, __t15563, true);
+                    const char* __t15564 = "detail";
+                    const char* __t15565 = arx_lsp_fn_signature_str(az, mid);
+                    Arx_JsonBuf_kv_str((&(jb)), __t15564, __t15565, false);
+                    const char* __t15566 = "kind";
+                    int64_t __t15567 = arx_SKIND_METHOD();
+                    Arx_JsonBuf_kv_int((&(jb)), __t15566, __t15567, false);
                     Arx_JsonBuf_comma((&(jb)));
-                    const char* __t14125 = "range";
-                    Arx_JsonBuf_key((&(jb)), __t14125);
-                    int64_t __t14126 = Arx_List_i64_get((&(az.ln)), mid);
-                    arx_emit_symbol_range(jb, __t14126);
+                    const char* __t15568 = "range";
+                    Arx_JsonBuf_key((&(jb)), __t15568);
+                    int64_t __t15569 = Arx_List_i64_get((&(az.ln)), mid);
+                    arx_emit_symbol_range(jb, __t15569);
                     Arx_JsonBuf_comma((&(jb)));
-                    const char* __t14127 = "selectionRange";
-                    Arx_JsonBuf_key((&(jb)), __t14127);
-                    int64_t __t14128 = Arx_List_i64_get((&(az.ln)), mid);
-                    arx_emit_symbol_range(jb, __t14128);
+                    const char* __t15570 = "selectionRange";
+                    Arx_JsonBuf_key((&(jb)), __t15570);
+                    int64_t __t15571 = Arx_List_i64_get((&(az.ln)), mid);
+                    arx_emit_symbol_range(jb, __t15571);
                     Arx_JsonBuf_rbrace((&(jb)));
                     mi = ((mi) + (((int64_t)1LL)));
                 }
                 Arx_JsonBuf_rbrack((&(jb)));
                 Arx_JsonBuf_rbrace((&(jb)));
             } else {
-                int64_t __t14129 = arx_NK_ENUM_DEF();
-                if (((k) == (__t14129))) {
+                int64_t __t15572 = arx_NK_ENUM_DEF();
+                if (((k) == (__t15572))) {
                     if ((!(first))) {
                         Arx_JsonBuf_comma((&(jb)));
                     }
                     first = false;
                     Arx_JsonBuf_lbrace((&(jb)));
-                    const char* __t14130 = "name";
-                    Arx_JsonBuf_kv_str((&(jb)), __t14130, nm, true);
-                    const char* __t14131 = "detail";
-                    const char* __t14132 = "enum";
-                    Arx_JsonBuf_kv_str((&(jb)), __t14131, __t14132, false);
-                    const char* __t14133 = "kind";
-                    int64_t __t14134 = arx_SKIND_ENUM();
-                    Arx_JsonBuf_kv_int((&(jb)), __t14133, __t14134, false);
+                    const char* __t15573 = "name";
+                    Arx_JsonBuf_kv_str((&(jb)), __t15573, nm, true);
+                    const char* __t15574 = "detail";
+                    const char* __t15575 = "enum";
+                    Arx_JsonBuf_kv_str((&(jb)), __t15574, __t15575, false);
+                    const char* __t15576 = "kind";
+                    int64_t __t15577 = arx_SKIND_ENUM();
+                    Arx_JsonBuf_kv_int((&(jb)), __t15576, __t15577, false);
                     Arx_JsonBuf_comma((&(jb)));
-                    const char* __t14135 = "range";
-                    Arx_JsonBuf_key((&(jb)), __t14135);
+                    const char* __t15578 = "range";
+                    Arx_JsonBuf_key((&(jb)), __t15578);
                     arx_emit_symbol_range(jb, ln1);
                     Arx_JsonBuf_comma((&(jb)));
-                    const char* __t14136 = "selectionRange";
-                    Arx_JsonBuf_key((&(jb)), __t14136);
+                    const char* __t15579 = "selectionRange";
+                    Arx_JsonBuf_key((&(jb)), __t15579);
                     arx_emit_symbol_range(jb, ln1);
                     Arx_JsonBuf_comma((&(jb)));
-                    const char* __t14137 = "children";
-                    Arx_JsonBuf_key((&(jb)), __t14137);
+                    const char* __t15580 = "children";
+                    Arx_JsonBuf_key((&(jb)), __t15580);
                     Arx_JsonBuf_lbrack((&(jb)));
                     bool vfirst = true;
-                    int64_t __t14138 = Arx_List_i64_get((&(az.ll)), nid);
-                    int64_t vc = __t14138;
+                    int64_t __t15581 = Arx_List_i64_get((&(az.ll)), nid);
+                    int64_t vc = __t15581;
                     int64_t vi = ((int64_t)0LL);
                     while (1) {
                         if (!(((vi) < (vc)))) break;
-                        int64_t __t14139 = Arx_List_i64_get((&(az.ls)), nid);
-                        int64_t __t14140 = Arx_List_i64_get((&(az.ch)), ((__t14139) + (vi)));
-                        int64_t vid = __t14140;
+                        int64_t __t15582 = Arx_List_i64_get((&(az.ls)), nid);
+                        int64_t __t15583 = Arx_List_i64_get((&(az.ch)), ((__t15582) + (vi)));
+                        int64_t vid = __t15583;
                         if ((!(vfirst))) {
                             Arx_JsonBuf_comma((&(jb)));
                         }
                         vfirst = false;
                         Arx_JsonBuf_lbrace((&(jb)));
-                        const char* __t14141 = "name";
-                        const char* __t14142 = Arx_List_str_get((&(az.sa)), vid);
-                        Arx_JsonBuf_kv_str((&(jb)), __t14141, __t14142, true);
-                        const char* __t14143 = "kind";
-                        int64_t __t14144 = arx_SKIND_ENUM_MEM();
-                        Arx_JsonBuf_kv_int((&(jb)), __t14143, __t14144, false);
+                        const char* __t15584 = "name";
+                        const char* __t15585 = Arx_List_str_get((&(az.sa)), vid);
+                        Arx_JsonBuf_kv_str((&(jb)), __t15584, __t15585, true);
+                        const char* __t15586 = "kind";
+                        int64_t __t15587 = arx_SKIND_ENUM_MEM();
+                        Arx_JsonBuf_kv_int((&(jb)), __t15586, __t15587, false);
                         Arx_JsonBuf_comma((&(jb)));
-                        const char* __t14145 = "range";
-                        Arx_JsonBuf_key((&(jb)), __t14145);
-                        int64_t __t14146 = Arx_List_i64_get((&(az.ln)), vid);
-                        arx_emit_symbol_range(jb, __t14146);
+                        const char* __t15588 = "range";
+                        Arx_JsonBuf_key((&(jb)), __t15588);
+                        int64_t __t15589 = Arx_List_i64_get((&(az.ln)), vid);
+                        arx_emit_symbol_range(jb, __t15589);
                         Arx_JsonBuf_comma((&(jb)));
-                        const char* __t14147 = "selectionRange";
-                        Arx_JsonBuf_key((&(jb)), __t14147);
-                        int64_t __t14148 = Arx_List_i64_get((&(az.ln)), vid);
-                        arx_emit_symbol_range(jb, __t14148);
+                        const char* __t15590 = "selectionRange";
+                        Arx_JsonBuf_key((&(jb)), __t15590);
+                        int64_t __t15591 = Arx_List_i64_get((&(az.ln)), vid);
+                        arx_emit_symbol_range(jb, __t15591);
                         Arx_JsonBuf_rbrace((&(jb)));
                         vi = ((vi) + (((int64_t)1LL)));
                     }
                     Arx_JsonBuf_rbrack((&(jb)));
                     Arx_JsonBuf_rbrace((&(jb)));
                 } else {
-                    int64_t __t14149 = arx_NK_VAR_DECL_GLOBAL();
-                    if (((k) == (__t14149))) {
+                    int64_t __t15592 = arx_NK_VAR_DECL_GLOBAL();
+                    if (((k) == (__t15592))) {
                         if ((!(first))) {
                             Arx_JsonBuf_comma((&(jb)));
                         }
                         first = false;
                         Arx_JsonBuf_lbrace((&(jb)));
-                        const char* __t14150 = "name";
-                        Arx_JsonBuf_kv_str((&(jb)), __t14150, nm, true);
-                        const char* __t14151 = "detail";
-                        const char* __t14152 = Arx_List_str_get((&(az.node_types)), nid);
-                        const char* __t14153 = arx_btype_norm(__t14152);
-                        Arx_JsonBuf_kv_str((&(jb)), __t14151, __t14153, false);
-                        const char* __t14154 = "kind";
-                        int64_t __t14155 = arx_SKIND_VAR();
-                        Arx_JsonBuf_kv_int((&(jb)), __t14154, __t14155, false);
+                        const char* __t15593 = "name";
+                        Arx_JsonBuf_kv_str((&(jb)), __t15593, nm, true);
+                        const char* __t15594 = "detail";
+                        const char* __t15595 = Arx_List_str_get((&(az.node_types)), nid);
+                        const char* __t15596 = arx_btype_norm(__t15595);
+                        Arx_JsonBuf_kv_str((&(jb)), __t15594, __t15596, false);
+                        const char* __t15597 = "kind";
+                        int64_t __t15598 = arx_SKIND_VAR();
+                        Arx_JsonBuf_kv_int((&(jb)), __t15597, __t15598, false);
                         Arx_JsonBuf_comma((&(jb)));
-                        const char* __t14156 = "range";
-                        Arx_JsonBuf_key((&(jb)), __t14156);
+                        const char* __t15599 = "range";
+                        Arx_JsonBuf_key((&(jb)), __t15599);
                         arx_emit_symbol_range(jb, ln1);
                         Arx_JsonBuf_comma((&(jb)));
-                        const char* __t14157 = "selectionRange";
-                        Arx_JsonBuf_key((&(jb)), __t14157);
+                        const char* __t15600 = "selectionRange";
+                        Arx_JsonBuf_key((&(jb)), __t15600);
                         arx_emit_symbol_range(jb, ln1);
                         Arx_JsonBuf_rbrace((&(jb)));
                     }
@@ -34773,87 +38556,87 @@ const char* arx_lsp_build_document_symbols_json(Arx_Analyzer az, const char* doc
         ri = ((ri) + (((int64_t)1LL)));
     }
     Arx_JsonBuf_rbrack((&(jb)));
-    const char* __t14158 = Arx_JsonBuf_finish((&(jb)));
-    const char* __t14159 = __t14158;
-    return __t14159;
+    const char* __t15601 = Arx_JsonBuf_finish((&(jb)));
+    const char* __t15602 = __t15601;
+    return __t15602;
 }
 
 const char* arx_lsp_build_inlay_hints_json(const char* source, Arx_Analyzer az, const char* doc_path) {
-    Arx_JsonBuf __t14160 = Arx_JsonBuf_init();
-    Arx_JsonBuf jb = __t14160;
+    Arx_JsonBuf __t15603 = Arx_JsonBuf_init();
+    Arx_JsonBuf jb = __t15603;
     Arx_JsonBuf_lbrack((&(jb)));
     bool first = true;
     int64_t i = ((int64_t)0LL);
     while (1) {
         if (!(((i) < (az.ncount)))) break;
-        int64_t __t14161 = Arx_List_i64_get((&(az.nk)), i);
-        int64_t k = __t14161;
-        int64_t __t14162 = arx_NK_VAR_DECL();
-        bool __t14163 = true;
-        if (!(((k) == (__t14162)))) {
-            int64_t __t14164 = arx_NK_VAR_DECL_GLOBAL();
-            __t14163 = (((k) == (__t14164)));
+        int64_t __t15604 = Arx_List_i64_get((&(az.nk)), i);
+        int64_t k = __t15604;
+        int64_t __t15605 = arx_NK_VAR_DECL();
+        bool __t15606 = true;
+        if (!(((k) == (__t15605)))) {
+            int64_t __t15607 = arx_NK_VAR_DECL_GLOBAL();
+            __t15606 = (((k) == (__t15607)));
         }
-        bool __t14165 = false;
-        if (__t14163) {
-            const char* __t14166 = Arx_List_str_get((&(az.nf)), i);
-            __t14165 = ((arx_str_compare(__t14166, doc_path) == 0));
+        bool __t15608 = false;
+        if (__t15606) {
+            const char* __t15609 = Arx_List_str_get((&(az.nf)), i);
+            __t15608 = ((arx_str_compare(__t15609, doc_path) == 0));
         }
-        if (__t14165) {
-            const char* __t14167 = Arx_List_str_get((&(az.sb)), i);
-            const char* __t14168 = "";
-            if ((arx_str_compare(__t14167, __t14168) == 0)) {
-                const char* __t14169 = Arx_List_str_get((&(az.sa)), i);
-                const char* vnm = __t14169;
-                const char* __t14170 = Arx_List_str_get((&(az.node_types)), i);
-                const char* __t14171 = arx_btype_norm(__t14170);
-                const char* vt = __t14171;
-                int64_t __t14172 = Arx_List_i64_get((&(az.ln)), i);
-                int64_t ln1 = __t14172;
-                const char* __t14173 = "";
-                bool __t14174 = false;
-                if ((arx_str_compare(vnm, __t14173) != 0)) {
-                    const char* __t14175 = "";
-                    __t14174 = ((arx_str_compare(vt, __t14175) != 0));
+        if (__t15608) {
+            const char* __t15610 = Arx_List_str_get((&(az.sb)), i);
+            const char* __t15611 = "";
+            if ((arx_str_compare(__t15610, __t15611) == 0)) {
+                const char* __t15612 = Arx_List_str_get((&(az.sa)), i);
+                const char* vnm = __t15612;
+                const char* __t15613 = Arx_List_str_get((&(az.node_types)), i);
+                const char* __t15614 = arx_btype_norm(__t15613);
+                const char* vt = __t15614;
+                int64_t __t15615 = Arx_List_i64_get((&(az.ln)), i);
+                int64_t ln1 = __t15615;
+                const char* __t15616 = "";
+                bool __t15617 = false;
+                if ((arx_str_compare(vnm, __t15616) != 0)) {
+                    const char* __t15618 = "";
+                    __t15617 = ((arx_str_compare(vt, __t15618) != 0));
                 }
-                bool __t14176 = false;
-                if (__t14174) {
-                    const char* __t14177 = "void";
-                    __t14176 = ((arx_str_compare(vt, __t14177) != 0));
+                bool __t15619 = false;
+                if (__t15617) {
+                    const char* __t15620 = "void";
+                    __t15619 = ((arx_str_compare(vt, __t15620) != 0));
                 }
-                bool __t14178 = false;
-                if (__t14176) {
-                    __t14178 = (((ln1) > (((int64_t)0LL))));
+                bool __t15621 = false;
+                if (__t15619) {
+                    __t15621 = (((ln1) > (((int64_t)0LL))));
                 }
-                if (__t14178) {
-                    const char* __t14179 = arx_lsp_get_line_text(source, ((ln1) - (((int64_t)1LL))));
-                    const char* line = __t14179;
-                    int64_t __t14180 = arx_lsp_str_find(line, vnm, ((int64_t)0LL));
-                    int64_t idx = __t14180;
+                if (__t15621) {
+                    const char* __t15622 = arx_lsp_get_line_text(source, ((ln1) - (((int64_t)1LL))));
+                    const char* line = __t15622;
+                    int64_t __t15623 = arx_lsp_str_find(line, vnm, ((int64_t)0LL));
+                    int64_t idx = __t15623;
                     if (((idx) >= (((int64_t)0LL)))) {
                         if ((!(first))) {
                             Arx_JsonBuf_comma((&(jb)));
                         }
                         first = false;
                         Arx_JsonBuf_lbrace((&(jb)));
-                        const char* __t14181 = "position";
-                        Arx_JsonBuf_key((&(jb)), __t14181);
+                        const char* __t15624 = "position";
+                        Arx_JsonBuf_key((&(jb)), __t15624);
                         Arx_JsonBuf_lbrace((&(jb)));
-                        const char* __t14182 = "line";
-                        Arx_JsonBuf_kv_int((&(jb)), __t14182, ((ln1) - (((int64_t)1LL))), true);
-                        const char* __t14183 = "character";
-                        Arx_JsonBuf_kv_int((&(jb)), __t14183, ((idx) + (arx_str_len(vnm))), false);
+                        const char* __t15625 = "line";
+                        Arx_JsonBuf_kv_int((&(jb)), __t15625, ((ln1) - (((int64_t)1LL))), true);
+                        const char* __t15626 = "character";
+                        Arx_JsonBuf_kv_int((&(jb)), __t15626, ((idx) + (arx_str_len(vnm))), false);
                         Arx_JsonBuf_rbrace((&(jb)));
-                        const char* __t14184 = "label";
-                        const char* __t14185 = ": ";
-                        const char* __t14186 = arx_str_concat(__t14185, vt);
-                        Arx_JsonBuf_kv_str((&(jb)), __t14184, __t14186, false);
-                        const char* __t14187 = "kind";
-                        Arx_JsonBuf_kv_int((&(jb)), __t14187, ((int64_t)1LL), false);
-                        const char* __t14188 = "paddingLeft";
-                        Arx_JsonBuf_kv_bool((&(jb)), __t14188, false, false);
-                        const char* __t14189 = "paddingRight";
-                        Arx_JsonBuf_kv_bool((&(jb)), __t14189, true, false);
+                        const char* __t15627 = "label";
+                        const char* __t15628 = ": ";
+                        const char* __t15629 = arx_str_concat(__t15628, vt);
+                        Arx_JsonBuf_kv_str((&(jb)), __t15627, __t15629, false);
+                        const char* __t15630 = "kind";
+                        Arx_JsonBuf_kv_int((&(jb)), __t15630, ((int64_t)1LL), false);
+                        const char* __t15631 = "paddingLeft";
+                        Arx_JsonBuf_kv_bool((&(jb)), __t15631, false, false);
+                        const char* __t15632 = "paddingRight";
+                        Arx_JsonBuf_kv_bool((&(jb)), __t15632, true, false);
                         Arx_JsonBuf_rbrace((&(jb)));
                     }
                 }
@@ -34862,31 +38645,31 @@ const char* arx_lsp_build_inlay_hints_json(const char* source, Arx_Analyzer az, 
         i = ((i) + (((int64_t)1LL)));
     }
     Arx_JsonBuf_rbrack((&(jb)));
-    const char* __t14190 = Arx_JsonBuf_finish((&(jb)));
-    const char* __t14191 = __t14190;
-    return __t14191;
+    const char* __t15633 = Arx_JsonBuf_finish((&(jb)));
+    const char* __t15634 = __t15633;
+    return __t15634;
 }
 
 const char* arx_lsp_build_code_lens_json(Arx_Analyzer az, const char* doc_path) {
-    Arx_JsonBuf __t14192 = Arx_JsonBuf_init();
-    Arx_JsonBuf jb = __t14192;
+    Arx_JsonBuf __t15635 = Arx_JsonBuf_init();
+    Arx_JsonBuf jb = __t15635;
     Arx_JsonBuf_lbrack((&(jb)));
     bool first = true;
     int64_t fi = ((int64_t)0LL);
     while (1) {
         if (!(((fi) < (az.fn_count)))) break;
-        int64_t __t14193 = Arx_List_i64_get((&(az.fn_nodes)), fi);
-        int64_t fid = __t14193;
-        const char* __t14194 = Arx_List_str_get((&(az.nf)), fid);
-        bool __t14195 = false;
-        if ((arx_str_compare(__t14194, doc_path) == 0)) {
-            const char* __t14196 = Arx_List_str_get((&(az.sa)), fid);
-            const char* __t14197 = "main";
-            __t14195 = ((arx_str_compare(__t14196, __t14197) == 0));
+        int64_t __t15636 = Arx_List_i64_get((&(az.fn_nodes)), fi);
+        int64_t fid = __t15636;
+        const char* __t15637 = Arx_List_str_get((&(az.nf)), fid);
+        bool __t15638 = false;
+        if ((arx_str_compare(__t15637, doc_path) == 0)) {
+            const char* __t15639 = Arx_List_str_get((&(az.sa)), fid);
+            const char* __t15640 = "main";
+            __t15638 = ((arx_str_compare(__t15639, __t15640) == 0));
         }
-        if (__t14195) {
-            int64_t __t14198 = Arx_List_i64_get((&(az.ln)), fid);
-            int64_t ln0 = ((__t14198) - (((int64_t)1LL)));
+        if (__t15638) {
+            int64_t __t15641 = Arx_List_i64_get((&(az.ln)), fid);
+            int64_t ln0 = ((__t15641) - (((int64_t)1LL)));
             if (((ln0) < (((int64_t)0LL)))) {
                 ln0 = ((int64_t)0LL);
             }
@@ -34895,73 +38678,73 @@ const char* arx_lsp_build_code_lens_json(Arx_Analyzer az, const char* doc_path) 
             }
             first = false;
             Arx_JsonBuf_lbrace((&(jb)));
-            const char* __t14199 = "range";
-            Arx_JsonBuf_key((&(jb)), __t14199);
+            const char* __t15642 = "range";
+            Arx_JsonBuf_key((&(jb)), __t15642);
             Arx_JsonBuf_lbrace((&(jb)));
-            const char* __t14200 = "start";
-            Arx_JsonBuf_key((&(jb)), __t14200);
+            const char* __t15643 = "start";
+            Arx_JsonBuf_key((&(jb)), __t15643);
             Arx_JsonBuf_lbrace((&(jb)));
-            const char* __t14201 = "line";
-            Arx_JsonBuf_kv_int((&(jb)), __t14201, ln0, true);
-            const char* __t14202 = "character";
-            Arx_JsonBuf_kv_int((&(jb)), __t14202, ((int64_t)0LL), false);
+            const char* __t15644 = "line";
+            Arx_JsonBuf_kv_int((&(jb)), __t15644, ln0, true);
+            const char* __t15645 = "character";
+            Arx_JsonBuf_kv_int((&(jb)), __t15645, ((int64_t)0LL), false);
             Arx_JsonBuf_rbrace((&(jb)));
             Arx_JsonBuf_comma((&(jb)));
-            const char* __t14203 = "end";
-            Arx_JsonBuf_key((&(jb)), __t14203);
+            const char* __t15646 = "end";
+            Arx_JsonBuf_key((&(jb)), __t15646);
             Arx_JsonBuf_lbrace((&(jb)));
-            const char* __t14204 = "line";
-            Arx_JsonBuf_kv_int((&(jb)), __t14204, ln0, true);
-            const char* __t14205 = "character";
-            Arx_JsonBuf_kv_int((&(jb)), __t14205, ((int64_t)0LL), false);
+            const char* __t15647 = "line";
+            Arx_JsonBuf_kv_int((&(jb)), __t15647, ln0, true);
+            const char* __t15648 = "character";
+            Arx_JsonBuf_kv_int((&(jb)), __t15648, ((int64_t)0LL), false);
             Arx_JsonBuf_rbrace((&(jb)));
             Arx_JsonBuf_rbrace((&(jb)));
             Arx_JsonBuf_comma((&(jb)));
-            const char* __t14206 = "command";
-            Arx_JsonBuf_key((&(jb)), __t14206);
+            const char* __t15649 = "command";
+            Arx_JsonBuf_key((&(jb)), __t15649);
             Arx_JsonBuf_lbrace((&(jb)));
-            const char* __t14207 = "title";
-            const char* __t14208 = "▶ Run Program";
-            Arx_JsonBuf_kv_str((&(jb)), __t14207, __t14208, true);
-            const char* __t14209 = "command";
-            const char* __t14210 = "aerix.runFile";
-            Arx_JsonBuf_kv_str((&(jb)), __t14209, __t14210, false);
+            const char* __t15650 = "title";
+            const char* __t15651 = "▶ Run Program";
+            Arx_JsonBuf_kv_str((&(jb)), __t15650, __t15651, true);
+            const char* __t15652 = "command";
+            const char* __t15653 = "aerix.runFile";
+            Arx_JsonBuf_kv_str((&(jb)), __t15652, __t15653, false);
             Arx_JsonBuf_rbrace((&(jb)));
             Arx_JsonBuf_rbrace((&(jb)));
         }
         fi = ((fi) + (((int64_t)1LL)));
     }
     Arx_JsonBuf_rbrack((&(jb)));
-    const char* __t14211 = Arx_JsonBuf_finish((&(jb)));
-    const char* __t14212 = __t14211;
-    return __t14212;
+    const char* __t15654 = Arx_JsonBuf_finish((&(jb)));
+    const char* __t15655 = __t15654;
+    return __t15655;
 }
 
 const char* arx_lsp_format_source(const char* source) {
-    const char* __t14213 = "\r\n";
-    const char* __t14214 = "\n";
-    const char* __t14215 = arx_str_replace(source, __t14213, __t14214);
-    const char* __t14216 = "\n";
-    Arx_List_str __t14217 = __arx_bstr_split(__t14215, __t14216);
-    Arx_List_str lines = __t14217;
-    int64_t __t14218 = Arx_List_str_len((&(lines)));
-    int64_t n = __t14218;
-    Arx_ByteBuffer __t14219 = Arx_ByteBuffer_init();
-    Arx_ByteBuffer bb = __t14219;
+    const char* __t15656 = "\r\n";
+    const char* __t15657 = "\n";
+    const char* __t15658 = arx_str_replace(source, __t15656, __t15657);
+    const char* __t15659 = "\n";
+    Arx_List_str __t15660 = __arx_bstr_split(__t15658, __t15659);
+    Arx_List_str lines = __t15660;
+    int64_t __t15661 = Arx_List_str_len((&(lines)));
+    int64_t n = __t15661;
+    Arx_ByteBuffer __t15662 = Arx_ByteBuffer_init();
+    Arx_ByteBuffer bb = __t15662;
     int64_t indent = ((int64_t)0LL);
     bool prev_blank = false;
     int64_t i = ((int64_t)0LL);
     while (1) {
         if (!(((i) < (n)))) break;
-        const char* __t14220 = Arx_List_str_get((&(lines)), i);
-        const char* trimmed = arx_str_trim(__t14220);
-        const char* __t14221 = "";
-        if ((arx_str_compare(trimmed, __t14221) == 0)) {
-            bool __t14222 = false;
+        const char* __t15663 = Arx_List_str_get((&(lines)), i);
+        const char* trimmed = arx_str_trim(__t15663);
+        const char* __t15664 = "";
+        if ((arx_str_compare(trimmed, __t15664) == 0)) {
+            bool __t15665 = false;
             if ((!(prev_blank))) {
-                __t14222 = (((((i) + (((int64_t)1LL)))) < (n)));
+                __t15665 = (((((i) + (((int64_t)1LL)))) < (n)));
             }
-            if (__t14222) {
+            if (__t15665) {
                 Arx_ByteBuffer_write_u8((&(bb)), ((int64_t)10LL));
             }
             prev_blank = true;
@@ -34969,18 +38752,18 @@ const char* arx_lsp_format_source(const char* source) {
             continue;
         }
         prev_blank = false;
-        const char* __t14223 = "}";
-        bool __t14224 = true;
-        if (!(arx_str_starts_with(trimmed, __t14223))) {
-            const char* __t14225 = ")";
-            __t14224 = (arx_str_starts_with(trimmed, __t14225));
+        const char* __t15666 = "}";
+        bool __t15667 = true;
+        if (!(arx_str_starts_with(trimmed, __t15666))) {
+            const char* __t15668 = ")";
+            __t15667 = (arx_str_starts_with(trimmed, __t15668));
         }
-        bool __t14226 = true;
-        if (!(__t14224)) {
-            const char* __t14227 = "]";
-            __t14226 = (arx_str_starts_with(trimmed, __t14227));
+        bool __t15669 = true;
+        if (!(__t15667)) {
+            const char* __t15670 = "]";
+            __t15669 = (arx_str_starts_with(trimmed, __t15670));
         }
-        if (__t14226) {
+        if (__t15669) {
             if (((indent) > (((int64_t)0LL)))) {
                 indent = ((indent) - (((int64_t)1LL)));
             }
@@ -34988,8 +38771,8 @@ const char* arx_lsp_format_source(const char* source) {
         int64_t k = ((int64_t)0LL);
         while (1) {
             if (!(((k) < (indent)))) break;
-            const char* __t14228 = "    ";
-            Arx_ByteBuffer_write_str((&(bb)), __t14228);
+            const char* __t15671 = "    ";
+            Arx_ByteBuffer_write_str((&(bb)), __t15671);
             k = ((k) + (((int64_t)1LL)));
         }
         Arx_ByteBuffer_write_str((&(bb)), trimmed);
@@ -35001,11 +38784,11 @@ const char* arx_lsp_format_source(const char* source) {
         while (1) {
             if (!(((j) < (tlen)))) break;
             int64_t b = arx_str_byte_at(trimmed, j);
-            bool __t14229 = false;
+            bool __t15672 = false;
             if (((b) == (((int64_t)92LL)))) {
-                __t14229 = (in_str);
+                __t15672 = (in_str);
             }
-            if (__t14229) {
+            if (__t15672) {
                 j = ((j) + (((int64_t)2LL)));
                 continue;
             }
@@ -35013,15 +38796,15 @@ const char* arx_lsp_format_source(const char* source) {
                 in_str = (!(in_str));
             } else {
                 if ((!(in_str))) {
-                    bool __t14230 = false;
+                    bool __t15673 = false;
                     if (((b) == (((int64_t)47LL)))) {
-                        __t14230 = (((((j) + (((int64_t)1LL)))) < (tlen)));
+                        __t15673 = (((((j) + (((int64_t)1LL)))) < (tlen)));
                     }
-                    bool __t14231 = false;
-                    if (__t14230) {
-                        __t14231 = (((arx_str_byte_at(trimmed, ((j) + (((int64_t)1LL))))) == (((int64_t)47LL))));
+                    bool __t15674 = false;
+                    if (__t15673) {
+                        __t15674 = (((arx_str_byte_at(trimmed, ((j) + (((int64_t)1LL))))) == (((int64_t)47LL))));
                     }
-                    if (__t14231) {
+                    if (__t15674) {
                         break;
                     }
                     if (((b) == (((int64_t)123LL)))) {
@@ -35035,12 +38818,12 @@ const char* arx_lsp_format_source(const char* source) {
             }
             j = ((j) + (((int64_t)1LL)));
         }
-        const char* __t14232 = "}";
-        bool __t14233 = false;
-        if (arx_str_starts_with(trimmed, __t14232)) {
-            __t14233 = (((delta) < (((int64_t)0LL))));
+        const char* __t15675 = "}";
+        bool __t15676 = false;
+        if (arx_str_starts_with(trimmed, __t15675)) {
+            __t15676 = (((delta) < (((int64_t)0LL))));
         }
-        if (__t14233) {
+        if (__t15676) {
             delta = ((delta) + (((int64_t)1LL)));
         }
         indent = ((indent) + (delta));
@@ -35049,1181 +38832,1195 @@ const char* arx_lsp_format_source(const char* source) {
         }
         i = ((i) + (((int64_t)1LL)));
     }
-    const char* __t14234 = Arx_ByteBuffer_to_str((&(bb)));
-    const char* out = __t14234;
+    const char* __t15677 = Arx_ByteBuffer_to_str((&(bb)));
+    const char* out = __t15677;
     Arx_ByteBuffer_free((&(bb)));
-    const char* __t14235 = out;
-    return __t14235;
+    const char* __t15678 = out;
+    return __t15678;
 }
 
 const char* arx_lsp_build_formatting_json(const char* source) {
-    const char* __t14236 = arx_lsp_format_source(source);
-    const char* formatted = __t14236;
-    int64_t __t14237 = arx_lsp_count_lines(source);
-    int64_t line_cnt = __t14237;
-    Arx_JsonBuf __t14238 = Arx_JsonBuf_init();
-    Arx_JsonBuf jb = __t14238;
+    const char* __t15679 = arx_lsp_format_source(source);
+    const char* formatted = __t15679;
+    int64_t __t15680 = arx_lsp_count_lines(source);
+    int64_t line_cnt = __t15680;
+    Arx_JsonBuf __t15681 = Arx_JsonBuf_init();
+    Arx_JsonBuf jb = __t15681;
     Arx_JsonBuf_lbrack((&(jb)));
     Arx_JsonBuf_lbrace((&(jb)));
-    const char* __t14239 = "range";
-    Arx_JsonBuf_key((&(jb)), __t14239);
+    const char* __t15682 = "range";
+    Arx_JsonBuf_key((&(jb)), __t15682);
     Arx_JsonBuf_lbrace((&(jb)));
-    const char* __t14240 = "start";
-    Arx_JsonBuf_key((&(jb)), __t14240);
+    const char* __t15683 = "start";
+    Arx_JsonBuf_key((&(jb)), __t15683);
     Arx_JsonBuf_lbrace((&(jb)));
-    const char* __t14241 = "line";
-    Arx_JsonBuf_kv_int((&(jb)), __t14241, ((int64_t)0LL), true);
-    const char* __t14242 = "character";
-    Arx_JsonBuf_kv_int((&(jb)), __t14242, ((int64_t)0LL), false);
+    const char* __t15684 = "line";
+    Arx_JsonBuf_kv_int((&(jb)), __t15684, ((int64_t)0LL), true);
+    const char* __t15685 = "character";
+    Arx_JsonBuf_kv_int((&(jb)), __t15685, ((int64_t)0LL), false);
     Arx_JsonBuf_rbrace((&(jb)));
     Arx_JsonBuf_comma((&(jb)));
-    const char* __t14243 = "end";
-    Arx_JsonBuf_key((&(jb)), __t14243);
+    const char* __t15686 = "end";
+    Arx_JsonBuf_key((&(jb)), __t15686);
     Arx_JsonBuf_lbrace((&(jb)));
-    const char* __t14244 = "line";
-    Arx_JsonBuf_kv_int((&(jb)), __t14244, ((line_cnt) + (((int64_t)1LL))), true);
-    const char* __t14245 = "character";
-    Arx_JsonBuf_kv_int((&(jb)), __t14245, ((int64_t)0LL), false);
+    const char* __t15687 = "line";
+    Arx_JsonBuf_kv_int((&(jb)), __t15687, ((line_cnt) + (((int64_t)1LL))), true);
+    const char* __t15688 = "character";
+    Arx_JsonBuf_kv_int((&(jb)), __t15688, ((int64_t)0LL), false);
     Arx_JsonBuf_rbrace((&(jb)));
     Arx_JsonBuf_rbrace((&(jb)));
     Arx_JsonBuf_comma((&(jb)));
-    const char* __t14246 = "newText";
-    Arx_JsonBuf_kv_str((&(jb)), __t14246, formatted, true);
+    const char* __t15689 = "newText";
+    Arx_JsonBuf_kv_str((&(jb)), __t15689, formatted, true);
     Arx_JsonBuf_rbrace((&(jb)));
     Arx_JsonBuf_rbrack((&(jb)));
-    const char* __t14247 = Arx_JsonBuf_finish((&(jb)));
-    const char* __t14248 = __t14247;
-    return __t14248;
+    const char* __t15690 = Arx_JsonBuf_finish((&(jb)));
+    const char* __t15691 = __t15690;
+    return __t15691;
 }
 
 const char* arx_lsp_read_msg_str(void) {
-    int64_t __t14249 = arx_lsp_read_start();
-    int64_t n = __t14249;
+    int64_t __t15692 = arx_lsp_read_start();
+    int64_t n = __t15692;
     if (((n) < (((int64_t)0LL)))) {
-        const char* __t14250 = "";
-        const char* __t14251 = __t14250;
-        return __t14251;
+        const char* __t15693 = "";
+        const char* __t15694 = __t15693;
+        return __t15694;
     }
     if (((n) == (((int64_t)0LL)))) {
-        const char* __t14252 = "";
-        const char* __t14253 = __t14252;
-        return __t14253;
+        const char* __t15695 = "";
+        const char* __t15696 = __t15695;
+        return __t15696;
     }
-    Arx_ByteBuffer __t14254 = Arx_ByteBuffer_init();
-    Arx_ByteBuffer bb = __t14254;
+    Arx_ByteBuffer __t15697 = Arx_ByteBuffer_init();
+    Arx_ByteBuffer bb = __t15697;
     int64_t i = ((int64_t)0LL);
     while (1) {
         if (!(((i) < (n)))) break;
-        int64_t __t14255 = arx_lsp_read_byte(i);
-        Arx_ByteBuffer_write_u8((&(bb)), __t14255);
+        int64_t __t15698 = arx_lsp_read_byte(i);
+        Arx_ByteBuffer_write_u8((&(bb)), __t15698);
         i = ((i) + (((int64_t)1LL)));
     }
-    const char* __t14256 = Arx_ByteBuffer_to_str((&(bb)));
-    const char* msg = __t14256;
+    const char* __t15699 = Arx_ByteBuffer_to_str((&(bb)));
+    const char* msg = __t15699;
     Arx_ByteBuffer_free((&(bb)));
-    const char* __t14257 = msg;
-    return __t14257;
+    const char* __t15700 = msg;
+    return __t15700;
 }
 
 void arx_lsp_send_response(const char* id_raw, const char* result_raw) {
-    Arx_JsonBuf __t14258 = Arx_JsonBuf_init();
-    Arx_JsonBuf jb = __t14258;
+    Arx_JsonBuf __t15701 = Arx_JsonBuf_init();
+    Arx_JsonBuf jb = __t15701;
     Arx_JsonBuf_lbrace((&(jb)));
-    const char* __t14259 = "jsonrpc";
-    const char* __t14260 = "2.0";
-    Arx_JsonBuf_kv_str((&(jb)), __t14259, __t14260, true);
-    const char* __t14261 = "id";
-    Arx_JsonBuf_kv_raw((&(jb)), __t14261, id_raw, false);
-    const char* __t14262 = "result";
-    Arx_JsonBuf_kv_raw((&(jb)), __t14262, result_raw, false);
+    const char* __t15702 = "jsonrpc";
+    const char* __t15703 = "2.0";
+    Arx_JsonBuf_kv_str((&(jb)), __t15702, __t15703, true);
+    const char* __t15704 = "id";
+    Arx_JsonBuf_kv_raw((&(jb)), __t15704, id_raw, false);
+    const char* __t15705 = "result";
+    Arx_JsonBuf_kv_raw((&(jb)), __t15705, result_raw, false);
     Arx_JsonBuf_rbrace((&(jb)));
-    const char* __t14263 = Arx_JsonBuf_finish((&(jb)));
-    const char* payload = __t14263;
-    int64_t __t14264 = arx_lsp_write_msg(payload);
-    (void)(__t14264);
+    const char* __t15706 = Arx_JsonBuf_finish((&(jb)));
+    const char* payload = __t15706;
+    int64_t __t15707 = arx_lsp_write_msg(payload);
+    (void)(__t15707);
 }
 
 void arx_lsp_send_error(const char* id_raw, int64_t code, const char* msg) {
-    Arx_JsonBuf __t14265 = Arx_JsonBuf_init();
-    Arx_JsonBuf jb = __t14265;
+    Arx_JsonBuf __t15708 = Arx_JsonBuf_init();
+    Arx_JsonBuf jb = __t15708;
     Arx_JsonBuf_lbrace((&(jb)));
-    const char* __t14266 = "jsonrpc";
-    const char* __t14267 = "2.0";
-    Arx_JsonBuf_kv_str((&(jb)), __t14266, __t14267, true);
-    const char* __t14268 = "id";
-    Arx_JsonBuf_kv_raw((&(jb)), __t14268, id_raw, false);
+    const char* __t15709 = "jsonrpc";
+    const char* __t15710 = "2.0";
+    Arx_JsonBuf_kv_str((&(jb)), __t15709, __t15710, true);
+    const char* __t15711 = "id";
+    Arx_JsonBuf_kv_raw((&(jb)), __t15711, id_raw, false);
     Arx_JsonBuf_comma((&(jb)));
-    const char* __t14269 = "error";
-    Arx_JsonBuf_key((&(jb)), __t14269);
+    const char* __t15712 = "error";
+    Arx_JsonBuf_key((&(jb)), __t15712);
     Arx_JsonBuf_lbrace((&(jb)));
-    const char* __t14270 = "code";
-    Arx_JsonBuf_kv_int((&(jb)), __t14270, code, true);
-    const char* __t14271 = "message";
-    Arx_JsonBuf_kv_str((&(jb)), __t14271, msg, false);
+    const char* __t15713 = "code";
+    Arx_JsonBuf_kv_int((&(jb)), __t15713, code, true);
+    const char* __t15714 = "message";
+    Arx_JsonBuf_kv_str((&(jb)), __t15714, msg, false);
     Arx_JsonBuf_rbrace((&(jb)));
     Arx_JsonBuf_rbrace((&(jb)));
-    const char* __t14272 = Arx_JsonBuf_finish((&(jb)));
-    const char* payload = __t14272;
-    int64_t __t14273 = arx_lsp_write_msg(payload);
-    (void)(__t14273);
+    const char* __t15715 = Arx_JsonBuf_finish((&(jb)));
+    const char* payload = __t15715;
+    int64_t __t15716 = arx_lsp_write_msg(payload);
+    (void)(__t15716);
 }
 
 void arx_lsp_send_notification(const char* method, const char* params_raw) {
-    Arx_JsonBuf __t14274 = Arx_JsonBuf_init();
-    Arx_JsonBuf jb = __t14274;
+    Arx_JsonBuf __t15717 = Arx_JsonBuf_init();
+    Arx_JsonBuf jb = __t15717;
     Arx_JsonBuf_lbrace((&(jb)));
-    const char* __t14275 = "jsonrpc";
-    const char* __t14276 = "2.0";
-    Arx_JsonBuf_kv_str((&(jb)), __t14275, __t14276, true);
-    const char* __t14277 = "method";
-    Arx_JsonBuf_kv_str((&(jb)), __t14277, method, false);
-    const char* __t14278 = "params";
-    Arx_JsonBuf_kv_raw((&(jb)), __t14278, params_raw, false);
+    const char* __t15718 = "jsonrpc";
+    const char* __t15719 = "2.0";
+    Arx_JsonBuf_kv_str((&(jb)), __t15718, __t15719, true);
+    const char* __t15720 = "method";
+    Arx_JsonBuf_kv_str((&(jb)), __t15720, method, false);
+    const char* __t15721 = "params";
+    Arx_JsonBuf_kv_raw((&(jb)), __t15721, params_raw, false);
     Arx_JsonBuf_rbrace((&(jb)));
-    const char* __t14279 = Arx_JsonBuf_finish((&(jb)));
-    const char* payload = __t14279;
-    int64_t __t14280 = arx_lsp_write_msg(payload);
-    (void)(__t14280);
+    const char* __t15722 = Arx_JsonBuf_finish((&(jb)));
+    const char* payload = __t15722;
+    int64_t __t15723 = arx_lsp_write_msg(payload);
+    (void)(__t15723);
 }
 
 const char* arx_lsp_build_initialize_result(void) {
-    Arx_JsonBuf __t14281 = Arx_JsonBuf_init();
-    Arx_JsonBuf jb = __t14281;
+    Arx_JsonBuf __t15724 = Arx_JsonBuf_init();
+    Arx_JsonBuf jb = __t15724;
     Arx_JsonBuf_lbrace((&(jb)));
-    const char* __t14282 = "capabilities";
-    Arx_JsonBuf_key((&(jb)), __t14282);
+    const char* __t15725 = "capabilities";
+    Arx_JsonBuf_key((&(jb)), __t15725);
     Arx_JsonBuf_lbrace((&(jb)));
-    const char* __t14283 = "textDocumentSync";
-    Arx_JsonBuf_key((&(jb)), __t14283);
+    const char* __t15726 = "textDocumentSync";
+    Arx_JsonBuf_key((&(jb)), __t15726);
     Arx_JsonBuf_lbrace((&(jb)));
-    const char* __t14284 = "openClose";
-    Arx_JsonBuf_kv_bool((&(jb)), __t14284, true, true);
-    const char* __t14285 = "change";
-    Arx_JsonBuf_kv_int((&(jb)), __t14285, ((int64_t)1LL), false);
+    const char* __t15727 = "openClose";
+    Arx_JsonBuf_kv_bool((&(jb)), __t15727, true, true);
+    const char* __t15728 = "change";
+    Arx_JsonBuf_kv_int((&(jb)), __t15728, ((int64_t)1LL), false);
     Arx_JsonBuf_comma((&(jb)));
-    const char* __t14286 = "save";
-    Arx_JsonBuf_key((&(jb)), __t14286);
+    const char* __t15729 = "save";
+    Arx_JsonBuf_key((&(jb)), __t15729);
     Arx_JsonBuf_lbrace((&(jb)));
-    const char* __t14287 = "includeText";
-    Arx_JsonBuf_kv_bool((&(jb)), __t14287, true, true);
+    const char* __t15730 = "includeText";
+    Arx_JsonBuf_kv_bool((&(jb)), __t15730, true, true);
     Arx_JsonBuf_rbrace((&(jb)));
     Arx_JsonBuf_rbrace((&(jb)));
     Arx_JsonBuf_comma((&(jb)));
-    const char* __t14288 = "semanticTokensProvider";
-    Arx_JsonBuf_key((&(jb)), __t14288);
+    const char* __t15731 = "semanticTokensProvider";
+    Arx_JsonBuf_key((&(jb)), __t15731);
     Arx_JsonBuf_lbrace((&(jb)));
-    const char* __t14289 = "legend";
-    Arx_JsonBuf_key((&(jb)), __t14289);
+    const char* __t15732 = "legend";
+    Arx_JsonBuf_key((&(jb)), __t15732);
     Arx_JsonBuf_lbrace((&(jb)));
-    const char* __t14290 = "tokenTypes";
-    Arx_JsonBuf_key((&(jb)), __t14290);
+    const char* __t15733 = "tokenTypes";
+    Arx_JsonBuf_key((&(jb)), __t15733);
     Arx_JsonBuf_lbrack((&(jb)));
-    const char* __t14291 = "comment";
-    Arx_JsonBuf_str_val((&(jb)), __t14291);
+    const char* __t15734 = "comment";
+    Arx_JsonBuf_str_val((&(jb)), __t15734);
     Arx_JsonBuf_comma((&(jb)));
-    const char* __t14292 = "keyword";
-    Arx_JsonBuf_str_val((&(jb)), __t14292);
+    const char* __t15735 = "keyword";
+    Arx_JsonBuf_str_val((&(jb)), __t15735);
     Arx_JsonBuf_comma((&(jb)));
-    const char* __t14293 = "string";
-    Arx_JsonBuf_str_val((&(jb)), __t14293);
+    const char* __t15736 = "string";
+    Arx_JsonBuf_str_val((&(jb)), __t15736);
     Arx_JsonBuf_comma((&(jb)));
-    const char* __t14294 = "number";
-    Arx_JsonBuf_str_val((&(jb)), __t14294);
+    const char* __t15737 = "number";
+    Arx_JsonBuf_str_val((&(jb)), __t15737);
     Arx_JsonBuf_comma((&(jb)));
-    const char* __t14295 = "operator";
-    Arx_JsonBuf_str_val((&(jb)), __t14295);
+    const char* __t15738 = "operator";
+    Arx_JsonBuf_str_val((&(jb)), __t15738);
     Arx_JsonBuf_comma((&(jb)));
-    const char* __t14296 = "type";
-    Arx_JsonBuf_str_val((&(jb)), __t14296);
+    const char* __t15739 = "type";
+    Arx_JsonBuf_str_val((&(jb)), __t15739);
     Arx_JsonBuf_comma((&(jb)));
-    const char* __t14297 = "class";
-    Arx_JsonBuf_str_val((&(jb)), __t14297);
+    const char* __t15740 = "class";
+    Arx_JsonBuf_str_val((&(jb)), __t15740);
     Arx_JsonBuf_comma((&(jb)));
-    const char* __t14298 = "enum";
-    Arx_JsonBuf_str_val((&(jb)), __t14298);
+    const char* __t15741 = "enum";
+    Arx_JsonBuf_str_val((&(jb)), __t15741);
     Arx_JsonBuf_comma((&(jb)));
-    const char* __t14299 = "enumMember";
-    Arx_JsonBuf_str_val((&(jb)), __t14299);
+    const char* __t15742 = "enumMember";
+    Arx_JsonBuf_str_val((&(jb)), __t15742);
     Arx_JsonBuf_comma((&(jb)));
-    const char* __t14300 = "function";
-    Arx_JsonBuf_str_val((&(jb)), __t14300);
+    const char* __t15743 = "function";
+    Arx_JsonBuf_str_val((&(jb)), __t15743);
     Arx_JsonBuf_comma((&(jb)));
-    const char* __t14301 = "method";
-    Arx_JsonBuf_str_val((&(jb)), __t14301);
+    const char* __t15744 = "method";
+    Arx_JsonBuf_str_val((&(jb)), __t15744);
     Arx_JsonBuf_comma((&(jb)));
-    const char* __t14302 = "property";
-    Arx_JsonBuf_str_val((&(jb)), __t14302);
+    const char* __t15745 = "property";
+    Arx_JsonBuf_str_val((&(jb)), __t15745);
     Arx_JsonBuf_comma((&(jb)));
-    const char* __t14303 = "parameter";
-    Arx_JsonBuf_str_val((&(jb)), __t14303);
+    const char* __t15746 = "parameter";
+    Arx_JsonBuf_str_val((&(jb)), __t15746);
     Arx_JsonBuf_comma((&(jb)));
-    const char* __t14304 = "variable";
-    Arx_JsonBuf_str_val((&(jb)), __t14304);
+    const char* __t15747 = "variable";
+    Arx_JsonBuf_str_val((&(jb)), __t15747);
     Arx_JsonBuf_comma((&(jb)));
-    const char* __t14305 = "namespace";
-    Arx_JsonBuf_str_val((&(jb)), __t14305);
+    const char* __t15748 = "namespace";
+    Arx_JsonBuf_str_val((&(jb)), __t15748);
     Arx_JsonBuf_comma((&(jb)));
-    const char* __t14306 = "macro";
-    Arx_JsonBuf_str_val((&(jb)), __t14306);
+    const char* __t15749 = "macro";
+    Arx_JsonBuf_str_val((&(jb)), __t15749);
+    Arx_JsonBuf_comma((&(jb)));
+    const char* __t15750 = "typeParameter";
+    Arx_JsonBuf_str_val((&(jb)), __t15750);
     Arx_JsonBuf_rbrack((&(jb)));
     Arx_JsonBuf_comma((&(jb)));
-    const char* __t14307 = "tokenModifiers";
-    Arx_JsonBuf_key((&(jb)), __t14307);
+    const char* __t15751 = "tokenModifiers";
+    Arx_JsonBuf_key((&(jb)), __t15751);
     Arx_JsonBuf_lbrack((&(jb)));
-    const char* __t14308 = "declaration";
-    Arx_JsonBuf_str_val((&(jb)), __t14308);
+    const char* __t15752 = "declaration";
+    Arx_JsonBuf_str_val((&(jb)), __t15752);
     Arx_JsonBuf_comma((&(jb)));
-    const char* __t14309 = "definition";
-    Arx_JsonBuf_str_val((&(jb)), __t14309);
+    const char* __t15753 = "definition";
+    Arx_JsonBuf_str_val((&(jb)), __t15753);
     Arx_JsonBuf_comma((&(jb)));
-    const char* __t14310 = "readonly";
-    Arx_JsonBuf_str_val((&(jb)), __t14310);
+    const char* __t15754 = "readonly";
+    Arx_JsonBuf_str_val((&(jb)), __t15754);
     Arx_JsonBuf_comma((&(jb)));
-    const char* __t14311 = "static";
-    Arx_JsonBuf_str_val((&(jb)), __t14311);
+    const char* __t15755 = "static";
+    Arx_JsonBuf_str_val((&(jb)), __t15755);
     Arx_JsonBuf_comma((&(jb)));
-    const char* __t14312 = "defaultLibrary";
-    Arx_JsonBuf_str_val((&(jb)), __t14312);
+    const char* __t15756 = "defaultLibrary";
+    Arx_JsonBuf_str_val((&(jb)), __t15756);
+    Arx_JsonBuf_comma((&(jb)));
+    const char* __t15757 = "documentation";
+    Arx_JsonBuf_str_val((&(jb)), __t15757);
     Arx_JsonBuf_rbrack((&(jb)));
     Arx_JsonBuf_rbrace((&(jb)));
-    const char* __t14313 = "full";
-    Arx_JsonBuf_kv_bool((&(jb)), __t14313, true, false);
+    const char* __t15758 = "full";
+    Arx_JsonBuf_kv_bool((&(jb)), __t15758, true, false);
     Arx_JsonBuf_rbrace((&(jb)));
     Arx_JsonBuf_comma((&(jb)));
-    const char* __t14314 = "completionProvider";
-    Arx_JsonBuf_key((&(jb)), __t14314);
+    const char* __t15759 = "completionProvider";
+    Arx_JsonBuf_key((&(jb)), __t15759);
     Arx_JsonBuf_lbrace((&(jb)));
-    const char* __t14315 = "resolveProvider";
-    Arx_JsonBuf_kv_bool((&(jb)), __t14315, false, true);
+    const char* __t15760 = "resolveProvider";
+    Arx_JsonBuf_kv_bool((&(jb)), __t15760, false, true);
     Arx_JsonBuf_comma((&(jb)));
-    const char* __t14316 = "triggerCharacters";
-    Arx_JsonBuf_key((&(jb)), __t14316);
+    const char* __t15761 = "triggerCharacters";
+    Arx_JsonBuf_key((&(jb)), __t15761);
     Arx_JsonBuf_lbrack((&(jb)));
-    const char* __t14317 = ".";
-    Arx_JsonBuf_str_val((&(jb)), __t14317);
+    const char* __t15762 = ".";
+    Arx_JsonBuf_str_val((&(jb)), __t15762);
     Arx_JsonBuf_comma((&(jb)));
-    const char* __t14318 = ">";
-    Arx_JsonBuf_str_val((&(jb)), __t14318);
+    const char* __t15763 = ">";
+    Arx_JsonBuf_str_val((&(jb)), __t15763);
     Arx_JsonBuf_comma((&(jb)));
-    const char* __t14319 = ":";
-    Arx_JsonBuf_str_val((&(jb)), __t14319);
+    const char* __t15764 = ":";
+    Arx_JsonBuf_str_val((&(jb)), __t15764);
     Arx_JsonBuf_rbrack((&(jb)));
     Arx_JsonBuf_rbrace((&(jb)));
     Arx_JsonBuf_comma((&(jb)));
-    const char* __t14320 = "signatureHelpProvider";
-    Arx_JsonBuf_key((&(jb)), __t14320);
+    const char* __t15765 = "signatureHelpProvider";
+    Arx_JsonBuf_key((&(jb)), __t15765);
     Arx_JsonBuf_lbrace((&(jb)));
-    const char* __t14321 = "triggerCharacters";
-    Arx_JsonBuf_key((&(jb)), __t14321);
+    const char* __t15766 = "triggerCharacters";
+    Arx_JsonBuf_key((&(jb)), __t15766);
     Arx_JsonBuf_lbrack((&(jb)));
-    const char* __t14322 = "(";
-    Arx_JsonBuf_str_val((&(jb)), __t14322);
+    const char* __t15767 = "(";
+    Arx_JsonBuf_str_val((&(jb)), __t15767);
     Arx_JsonBuf_comma((&(jb)));
-    const char* __t14323 = ",";
-    Arx_JsonBuf_str_val((&(jb)), __t14323);
+    const char* __t15768 = ",";
+    Arx_JsonBuf_str_val((&(jb)), __t15768);
     Arx_JsonBuf_rbrack((&(jb)));
     Arx_JsonBuf_rbrace((&(jb)));
-    const char* __t14324 = "hoverProvider";
-    Arx_JsonBuf_kv_bool((&(jb)), __t14324, true, false);
-    const char* __t14325 = "definitionProvider";
-    Arx_JsonBuf_kv_bool((&(jb)), __t14325, true, false);
-    const char* __t14326 = "documentSymbolProvider";
-    Arx_JsonBuf_kv_bool((&(jb)), __t14326, true, false);
-    const char* __t14327 = "inlayHintProvider";
-    Arx_JsonBuf_kv_bool((&(jb)), __t14327, true, false);
-    const char* __t14328 = "documentFormattingProvider";
-    Arx_JsonBuf_kv_bool((&(jb)), __t14328, true, false);
+    const char* __t15769 = "hoverProvider";
+    Arx_JsonBuf_kv_bool((&(jb)), __t15769, true, false);
+    const char* __t15770 = "definitionProvider";
+    Arx_JsonBuf_kv_bool((&(jb)), __t15770, true, false);
+    const char* __t15771 = "typeDefinitionProvider";
+    Arx_JsonBuf_kv_bool((&(jb)), __t15771, true, false);
+    const char* __t15772 = "documentSymbolProvider";
+    Arx_JsonBuf_kv_bool((&(jb)), __t15772, true, false);
+    const char* __t15773 = "inlayHintProvider";
+    Arx_JsonBuf_kv_bool((&(jb)), __t15773, true, false);
+    const char* __t15774 = "documentFormattingProvider";
+    Arx_JsonBuf_kv_bool((&(jb)), __t15774, true, false);
     Arx_JsonBuf_comma((&(jb)));
-    const char* __t14329 = "codeLensProvider";
-    Arx_JsonBuf_key((&(jb)), __t14329);
+    const char* __t15775 = "codeLensProvider";
+    Arx_JsonBuf_key((&(jb)), __t15775);
     Arx_JsonBuf_lbrace((&(jb)));
-    const char* __t14330 = "resolveProvider";
-    Arx_JsonBuf_kv_bool((&(jb)), __t14330, false, true);
+    const char* __t15776 = "resolveProvider";
+    Arx_JsonBuf_kv_bool((&(jb)), __t15776, false, true);
     Arx_JsonBuf_rbrace((&(jb)));
     Arx_JsonBuf_rbrace((&(jb)));
     Arx_JsonBuf_comma((&(jb)));
-    const char* __t14331 = "serverInfo";
-    Arx_JsonBuf_key((&(jb)), __t14331);
+    const char* __t15777 = "serverInfo";
+    Arx_JsonBuf_key((&(jb)), __t15777);
     Arx_JsonBuf_lbrace((&(jb)));
-    const char* __t14332 = "name";
-    const char* __t14333 = "aerix-lsp";
-    Arx_JsonBuf_kv_str((&(jb)), __t14332, __t14333, true);
-    const char* __t14334 = "version";
-    const char* __t14335 = "1.1.0-stable";
-    Arx_JsonBuf_kv_str((&(jb)), __t14334, __t14335, false);
+    const char* __t15778 = "name";
+    const char* __t15779 = "aerix-lsp";
+    Arx_JsonBuf_kv_str((&(jb)), __t15778, __t15779, true);
+    const char* __t15780 = "version";
+    const char* __t15781 = "1.1.2-stable";
+    Arx_JsonBuf_kv_str((&(jb)), __t15780, __t15781, false);
     Arx_JsonBuf_rbrace((&(jb)));
     Arx_JsonBuf_rbrace((&(jb)));
-    const char* __t14336 = Arx_JsonBuf_finish((&(jb)));
-    const char* __t14337 = __t14336;
-    return __t14337;
+    const char* __t15782 = Arx_JsonBuf_finish((&(jb)));
+    const char* __t15783 = __t15782;
+    return __t15783;
 }
 
 void arx_lsp_publish_diagnostics(const char* uri, const char* diags_json) {
-    Arx_JsonBuf __t14338 = Arx_JsonBuf_init();
-    Arx_JsonBuf jb = __t14338;
+    Arx_JsonBuf __t15784 = Arx_JsonBuf_init();
+    Arx_JsonBuf jb = __t15784;
     Arx_JsonBuf_lbrace((&(jb)));
-    const char* __t14339 = "uri";
-    Arx_JsonBuf_kv_str((&(jb)), __t14339, uri, true);
-    const char* __t14340 = "diagnostics";
-    Arx_JsonBuf_kv_raw((&(jb)), __t14340, diags_json, false);
+    const char* __t15785 = "uri";
+    Arx_JsonBuf_kv_str((&(jb)), __t15785, uri, true);
+    const char* __t15786 = "diagnostics";
+    Arx_JsonBuf_kv_raw((&(jb)), __t15786, diags_json, false);
     Arx_JsonBuf_rbrace((&(jb)));
-    const char* __t14341 = "textDocument/publishDiagnostics";
-    const char* __t14342 = Arx_JsonBuf_finish((&(jb)));
-    arx_lsp_send_notification(__t14341, __t14342);
+    const char* __t15787 = "textDocument/publishDiagnostics";
+    const char* __t15788 = Arx_JsonBuf_finish((&(jb)));
+    arx_lsp_send_notification(__t15787, __t15788);
 }
 
 const char* arx_lsp_build_semantic_tokens_json(const char* source, Arx_Analyzer az, const char* doc_path) {
-    Arx_List_i64 __t14343 = arx_lsp_compute_semantic_tokens(source, az, doc_path);
-    Arx_List_i64 data = __t14343;
-    Arx_JsonBuf __t14344 = Arx_JsonBuf_init();
-    Arx_JsonBuf jb = __t14344;
+    Arx_List_i64 __t15789 = arx_lsp_compute_semantic_tokens(source, az, doc_path);
+    Arx_List_i64 data = __t15789;
+    Arx_JsonBuf __t15790 = Arx_JsonBuf_init();
+    Arx_JsonBuf jb = __t15790;
     Arx_JsonBuf_lbrace((&(jb)));
-    const char* __t14345 = "data";
-    Arx_JsonBuf_key((&(jb)), __t14345);
+    const char* __t15791 = "data";
+    Arx_JsonBuf_key((&(jb)), __t15791);
     Arx_JsonBuf_lbrack((&(jb)));
-    int64_t __t14346 = Arx_List_i64_len((&(data)));
-    int64_t n = __t14346;
+    int64_t __t15792 = Arx_List_i64_len((&(data)));
+    int64_t n = __t15792;
     int64_t i = ((int64_t)0LL);
     while (1) {
         if (!(((i) < (n)))) break;
         if (((i) > (((int64_t)0LL)))) {
             Arx_JsonBuf_comma((&(jb)));
         }
-        int64_t __t14347 = Arx_List_i64_get((&(data)), i);
-        Arx_JsonBuf_int_val((&(jb)), __t14347);
+        int64_t __t15793 = Arx_List_i64_get((&(data)), i);
+        Arx_JsonBuf_int_val((&(jb)), __t15793);
         i = ((i) + (((int64_t)1LL)));
     }
     Arx_JsonBuf_rbrack((&(jb)));
     Arx_JsonBuf_rbrace((&(jb)));
-    const char* __t14348 = Arx_JsonBuf_finish((&(jb)));
-    const char* __t14349 = __t14348;
-    return __t14349;
+    const char* __t15794 = Arx_JsonBuf_finish((&(jb)));
+    const char* __t15795 = __t15794;
+    return __t15795;
 }
 
 int64_t arx_run_lsp_server(void) {
-    int64_t __t14350 = arx_lsp_init_stdio();
-    (void)(__t14350);
-    Arx_Map_str_str __t14351 = Arx_Map_str_str_init();
-    Arx_Map_str_str uri_docs = __t14351;
-    Arx_Map_str_str __t14352 = Arx_Map_str_str_init();
-    Arx_Map_str_str path_docs = __t14352;
+    int64_t __t15796 = arx_lsp_init_stdio();
+    (void)(__t15796);
+    Arx_Map_str_str __t15797 = Arx_Map_str_str_init();
+    Arx_Map_str_str uri_docs = __t15797;
+    Arx_Map_str_str __t15798 = Arx_Map_str_str_init();
+    Arx_Map_str_str path_docs = __t15798;
     bool shutting_down = false;
-    const char* __t14353 = "";
-    const char* cached_uri = __t14353;
-    const char* __t14354 = "";
-    const char* cached_src = __t14354;
+    const char* __t15799 = "";
+    const char* cached_uri = __t15799;
+    const char* __t15800 = "";
+    const char* cached_src = __t15800;
     bool has_cached_az = false;
-    const char* __t14355 = "<init>.arx";
-    const char* __t14356 = "";
-    Arx_Analyzer __t14357 = arx_lsp_analyze_document(__t14355, __t14356, path_docs);
-    Arx_Analyzer cached_az = __t14357;
+    const char* __t15801 = "<init>.arx";
+    const char* __t15802 = "";
+    Arx_Analyzer __t15803 = arx_lsp_analyze_document(__t15801, __t15802, path_docs);
+    Arx_Analyzer cached_az = __t15803;
     while (1) {
         if (!(true)) break;
-        const char* __t14358 = arx_lsp_read_msg_str();
-        const char* raw_msg = __t14358;
-        const char* __t14359 = "";
-        if ((arx_str_compare(raw_msg, __t14359) == 0)) {
+        const char* __t15804 = arx_lsp_read_msg_str();
+        const char* raw_msg = __t15804;
+        const char* __t15805 = "";
+        if ((arx_str_compare(raw_msg, __t15805) == 0)) {
             break;
         }
-        Arx_JsonDoc __t14360 = Arx_JsonDoc_init(raw_msg);
-        Arx_JsonDoc jdoc = __t14360;
-        int64_t __t14361 = Arx_JsonDoc_parse_value((&(jdoc)));
-        int64_t root = __t14361;
+        Arx_JsonDoc __t15806 = Arx_JsonDoc_init(raw_msg);
+        Arx_JsonDoc jdoc = __t15806;
+        int64_t __t15807 = Arx_JsonDoc_parse_value((&(jdoc)));
+        int64_t root = __t15807;
         if (((root) < (((int64_t)0LL)))) {
             continue;
         }
-        const char* __t14362 = "method";
-        const char* __t14363 = Arx_JsonDoc_get_str((&(jdoc)), root, __t14362);
-        const char* method = __t14363;
-        const char* __t14364 = "id";
-        int64_t __t14365 = Arx_JsonDoc_get((&(jdoc)), root, __t14364);
-        int64_t id_node = __t14365;
+        const char* __t15808 = "method";
+        const char* __t15809 = Arx_JsonDoc_get_str((&(jdoc)), root, __t15808);
+        const char* method = __t15809;
+        const char* __t15810 = "id";
+        int64_t __t15811 = Arx_JsonDoc_get((&(jdoc)), root, __t15810);
+        int64_t id_node = __t15811;
         bool has_id = ((id_node) >= (((int64_t)0LL)));
-        const char* __t14366 = "null";
-        const char* id_raw = __t14366;
+        const char* __t15812 = "null";
+        const char* id_raw = __t15812;
         if (has_id) {
-            const char* __t14367 = Arx_JsonDoc_raw_repr((&(jdoc)), id_node);
-            id_raw = __t14367;
+            const char* __t15813 = Arx_JsonDoc_raw_repr((&(jdoc)), id_node);
+            id_raw = __t15813;
         }
-        const char* __t14368 = "params";
-        int64_t __t14369 = Arx_JsonDoc_get((&(jdoc)), root, __t14368);
-        int64_t params = __t14369;
-        const char* __t14370 = "initialize";
-        if ((arx_str_compare(method, __t14370) == 0)) {
-            const char* __t14371 = arx_lsp_build_initialize_result();
-            arx_lsp_send_response(id_raw, __t14371);
+        const char* __t15814 = "params";
+        int64_t __t15815 = Arx_JsonDoc_get((&(jdoc)), root, __t15814);
+        int64_t params = __t15815;
+        const char* __t15816 = "initialize";
+        if ((arx_str_compare(method, __t15816) == 0)) {
+            const char* __t15817 = arx_lsp_build_initialize_result();
+            arx_lsp_send_response(id_raw, __t15817);
             continue;
         }
-        const char* __t14372 = "initialized";
-        if ((arx_str_compare(method, __t14372) == 0)) {
+        const char* __t15818 = "initialized";
+        if ((arx_str_compare(method, __t15818) == 0)) {
             continue;
         }
-        const char* __t14373 = "shutdown";
-        if ((arx_str_compare(method, __t14373) == 0)) {
+        const char* __t15819 = "shutdown";
+        if ((arx_str_compare(method, __t15819) == 0)) {
             shutting_down = true;
-            const char* __t14374 = "null";
-            arx_lsp_send_response(id_raw, __t14374);
+            const char* __t15820 = "null";
+            arx_lsp_send_response(id_raw, __t15820);
             continue;
         }
-        const char* __t14375 = "exit";
-        if ((arx_str_compare(method, __t14375) == 0)) {
+        const char* __t15821 = "exit";
+        if ((arx_str_compare(method, __t15821) == 0)) {
             if (shutting_down) {
-                int64_t __t14376 = ((int64_t)0LL);
-                return __t14376;
+                int64_t __t15822 = ((int64_t)0LL);
+                return __t15822;
             }
-            int64_t __t14377 = ((int64_t)1LL);
-            return __t14377;
+            int64_t __t15823 = ((int64_t)1LL);
+            return __t15823;
         }
-        const char* __t14378 = "textDocument/didOpen";
-        if ((arx_str_compare(method, __t14378) == 0)) {
-            const char* __t14379 = "textDocument";
-            int64_t __t14380 = Arx_JsonDoc_get((&(jdoc)), params, __t14379);
-            int64_t td = __t14380;
-            const char* __t14381 = "uri";
-            const char* __t14382 = Arx_JsonDoc_get_str((&(jdoc)), td, __t14381);
-            const char* uri = __t14382;
-            const char* __t14383 = "text";
-            const char* __t14384 = Arx_JsonDoc_get_str((&(jdoc)), td, __t14383);
-            const char* text = __t14384;
-            const char* __t14385 = arx_lsp_uri_to_path(uri);
-            const char* __t14386 = arx_bpath_normalize(__t14385);
-            const char* fpath = __t14386;
+        const char* __t15824 = "textDocument/didOpen";
+        if ((arx_str_compare(method, __t15824) == 0)) {
+            const char* __t15825 = "textDocument";
+            int64_t __t15826 = Arx_JsonDoc_get((&(jdoc)), params, __t15825);
+            int64_t td = __t15826;
+            const char* __t15827 = "uri";
+            const char* __t15828 = Arx_JsonDoc_get_str((&(jdoc)), td, __t15827);
+            const char* uri = __t15828;
+            const char* __t15829 = "text";
+            const char* __t15830 = Arx_JsonDoc_get_str((&(jdoc)), td, __t15829);
+            const char* text = __t15830;
+            const char* __t15831 = arx_lsp_uri_to_path(uri);
+            const char* __t15832 = arx_bpath_normalize(__t15831);
+            const char* fpath = __t15832;
             Arx_Map_str_str_insert((&(uri_docs)), uri, text);
             Arx_Map_str_str_insert((&(path_docs)), fpath, text);
-            Arx_Analyzer __t14387 = arx_lsp_analyze_document(fpath, text, path_docs);
-            cached_az = __t14387;
+            Arx_Analyzer __t15833 = arx_lsp_analyze_document(fpath, text, path_docs);
+            cached_az = __t15833;
             cached_uri = uri;
             cached_src = text;
             has_cached_az = true;
-            const char* __t14388 = arx_lsp_build_diagnostics_json(cached_az, fpath);
-            arx_lsp_publish_diagnostics(uri, __t14388);
+            const char* __t15834 = arx_lsp_build_diagnostics_json(cached_az, fpath);
+            arx_lsp_publish_diagnostics(uri, __t15834);
             continue;
         }
-        const char* __t14389 = "textDocument/didChange";
-        if ((arx_str_compare(method, __t14389) == 0)) {
-            const char* __t14390 = "textDocument";
-            int64_t __t14391 = Arx_JsonDoc_get((&(jdoc)), params, __t14390);
-            int64_t td = __t14391;
-            const char* __t14392 = "uri";
-            const char* __t14393 = Arx_JsonDoc_get_str((&(jdoc)), td, __t14392);
-            const char* uri = __t14393;
-            const char* __t14394 = "contentChanges";
-            int64_t __t14395 = Arx_JsonDoc_get((&(jdoc)), params, __t14394);
-            int64_t changes = __t14395;
-            int64_t __t14396 = Arx_JsonDoc_arr_len((&(jdoc)), changes);
-            if (((__t14396) > (((int64_t)0LL)))) {
-                int64_t __t14397 = Arx_JsonDoc_arr_get((&(jdoc)), changes, ((int64_t)0LL));
-                int64_t c0 = __t14397;
-                const char* __t14398 = "text";
-                const char* __t14399 = Arx_JsonDoc_get_str((&(jdoc)), c0, __t14398);
-                const char* text = __t14399;
-                const char* __t14400 = arx_lsp_uri_to_path(uri);
-                const char* __t14401 = arx_bpath_normalize(__t14400);
-                const char* fpath = __t14401;
+        const char* __t15835 = "textDocument/didChange";
+        if ((arx_str_compare(method, __t15835) == 0)) {
+            const char* __t15836 = "textDocument";
+            int64_t __t15837 = Arx_JsonDoc_get((&(jdoc)), params, __t15836);
+            int64_t td = __t15837;
+            const char* __t15838 = "uri";
+            const char* __t15839 = Arx_JsonDoc_get_str((&(jdoc)), td, __t15838);
+            const char* uri = __t15839;
+            const char* __t15840 = "contentChanges";
+            int64_t __t15841 = Arx_JsonDoc_get((&(jdoc)), params, __t15840);
+            int64_t changes = __t15841;
+            int64_t __t15842 = Arx_JsonDoc_arr_len((&(jdoc)), changes);
+            if (((__t15842) > (((int64_t)0LL)))) {
+                int64_t __t15843 = Arx_JsonDoc_arr_get((&(jdoc)), changes, ((int64_t)0LL));
+                int64_t c0 = __t15843;
+                const char* __t15844 = "text";
+                const char* __t15845 = Arx_JsonDoc_get_str((&(jdoc)), c0, __t15844);
+                const char* text = __t15845;
+                const char* __t15846 = arx_lsp_uri_to_path(uri);
+                const char* __t15847 = arx_bpath_normalize(__t15846);
+                const char* fpath = __t15847;
                 Arx_Map_str_str_insert((&(uri_docs)), uri, text);
                 Arx_Map_str_str_insert((&(path_docs)), fpath, text);
-                Arx_Analyzer __t14402 = arx_lsp_analyze_document(fpath, text, path_docs);
-                cached_az = __t14402;
+                Arx_Analyzer __t15848 = arx_lsp_analyze_document(fpath, text, path_docs);
+                cached_az = __t15848;
                 cached_uri = uri;
                 cached_src = text;
                 has_cached_az = true;
-                const char* __t14403 = arx_lsp_build_diagnostics_json(cached_az, fpath);
-                arx_lsp_publish_diagnostics(uri, __t14403);
+                const char* __t15849 = arx_lsp_build_diagnostics_json(cached_az, fpath);
+                arx_lsp_publish_diagnostics(uri, __t15849);
             }
             continue;
         }
-        const char* __t14404 = "textDocument/didSave";
-        if ((arx_str_compare(method, __t14404) == 0)) {
-            const char* __t14405 = "textDocument";
-            int64_t __t14406 = Arx_JsonDoc_get((&(jdoc)), params, __t14405);
-            int64_t td = __t14406;
-            const char* __t14407 = "uri";
-            const char* __t14408 = Arx_JsonDoc_get_str((&(jdoc)), td, __t14407);
-            const char* uri = __t14408;
-            const char* __t14409 = arx_lsp_uri_to_path(uri);
-            const char* __t14410 = arx_bpath_normalize(__t14409);
-            const char* fpath = __t14410;
-            const char* __t14411 = "text";
-            int64_t __t14412 = Arx_JsonDoc_get((&(jdoc)), params, __t14411);
-            int64_t txt_id = __t14412;
+        const char* __t15850 = "textDocument/didSave";
+        if ((arx_str_compare(method, __t15850) == 0)) {
+            const char* __t15851 = "textDocument";
+            int64_t __t15852 = Arx_JsonDoc_get((&(jdoc)), params, __t15851);
+            int64_t td = __t15852;
+            const char* __t15853 = "uri";
+            const char* __t15854 = Arx_JsonDoc_get_str((&(jdoc)), td, __t15853);
+            const char* uri = __t15854;
+            const char* __t15855 = arx_lsp_uri_to_path(uri);
+            const char* __t15856 = arx_bpath_normalize(__t15855);
+            const char* fpath = __t15856;
+            const char* __t15857 = "text";
+            int64_t __t15858 = Arx_JsonDoc_get((&(jdoc)), params, __t15857);
+            int64_t txt_id = __t15858;
             if (((txt_id) >= (((int64_t)0LL)))) {
-                const char* __t14413 = Arx_List_str_get((&(jdoc.svals)), txt_id);
-                const char* text = __t14413;
+                const char* __t15859 = Arx_List_str_get((&(jdoc.svals)), txt_id);
+                const char* text = __t15859;
                 Arx_Map_str_str_insert((&(uri_docs)), uri, text);
                 Arx_Map_str_str_insert((&(path_docs)), fpath, text);
             }
-            const char* __t14414 = "";
-            const char* src = __t14414;
-            bool __t14415 = Arx_Map_str_str_has_key((&(uri_docs)), uri);
-            if (__t14415) {
-                const char* __t14416 = Arx_Map_str_str_get((&(uri_docs)), uri);
-                src = __t14416;
+            const char* __t15860 = "";
+            const char* src = __t15860;
+            bool __t15861 = Arx_Map_str_str_has_key((&(uri_docs)), uri);
+            if (__t15861) {
+                const char* __t15862 = Arx_Map_str_str_get((&(uri_docs)), uri);
+                src = __t15862;
             } else {
-                bool __t14417 = Arx_File_exists(fpath);
-                if (__t14417) {
-                    const char* __t14418 = Arx_File_read_to_string(fpath);
-                    src = __t14418;
+                bool __t15863 = Arx_File_exists(fpath);
+                if (__t15863) {
+                    const char* __t15864 = Arx_File_read_to_string(fpath);
+                    src = __t15864;
                     Arx_Map_str_str_insert((&(uri_docs)), uri, src);
                     Arx_Map_str_str_insert((&(path_docs)), fpath, src);
                 }
             }
-            Arx_Analyzer __t14419 = arx_lsp_analyze_document(fpath, src, path_docs);
-            cached_az = __t14419;
+            Arx_Analyzer __t15865 = arx_lsp_analyze_document(fpath, src, path_docs);
+            cached_az = __t15865;
             cached_uri = uri;
             cached_src = src;
             has_cached_az = true;
-            const char* __t14420 = arx_lsp_build_diagnostics_json(cached_az, fpath);
-            arx_lsp_publish_diagnostics(uri, __t14420);
+            const char* __t15866 = arx_lsp_build_diagnostics_json(cached_az, fpath);
+            arx_lsp_publish_diagnostics(uri, __t15866);
             continue;
         }
-        const char* __t14421 = "textDocument/didClose";
-        if ((arx_str_compare(method, __t14421) == 0)) {
-            const char* __t14422 = "textDocument";
-            int64_t __t14423 = Arx_JsonDoc_get((&(jdoc)), params, __t14422);
-            int64_t td = __t14423;
-            const char* __t14424 = "uri";
-            const char* __t14425 = Arx_JsonDoc_get_str((&(jdoc)), td, __t14424);
-            const char* uri = __t14425;
-            const char* __t14426 = arx_lsp_uri_to_path(uri);
-            const char* __t14427 = arx_bpath_normalize(__t14426);
-            const char* fpath = __t14427;
-            bool __t14428 = Arx_Map_str_str_remove((&(uri_docs)), uri);
-            (void)(__t14428);
-            bool __t14429 = Arx_Map_str_str_remove((&(path_docs)), fpath);
-            (void)(__t14429);
+        const char* __t15867 = "textDocument/didClose";
+        if ((arx_str_compare(method, __t15867) == 0)) {
+            const char* __t15868 = "textDocument";
+            int64_t __t15869 = Arx_JsonDoc_get((&(jdoc)), params, __t15868);
+            int64_t td = __t15869;
+            const char* __t15870 = "uri";
+            const char* __t15871 = Arx_JsonDoc_get_str((&(jdoc)), td, __t15870);
+            const char* uri = __t15871;
+            const char* __t15872 = arx_lsp_uri_to_path(uri);
+            const char* __t15873 = arx_bpath_normalize(__t15872);
+            const char* fpath = __t15873;
+            bool __t15874 = Arx_Map_str_str_remove((&(uri_docs)), uri);
+            (void)(__t15874);
+            bool __t15875 = Arx_Map_str_str_remove((&(path_docs)), fpath);
+            (void)(__t15875);
             if ((arx_str_compare(cached_uri, uri) == 0)) {
                 has_cached_az = false;
-                const char* __t14430 = "";
-                cached_uri = __t14430;
-                const char* __t14431 = "";
-                cached_src = __t14431;
+                const char* __t15876 = "";
+                cached_uri = __t15876;
+                const char* __t15877 = "";
+                cached_src = __t15877;
             }
-            const char* __t14432 = "[]";
-            arx_lsp_publish_diagnostics(uri, __t14432);
+            const char* __t15878 = "[]";
+            arx_lsp_publish_diagnostics(uri, __t15878);
             continue;
         }
-        const char* __t14433 = "textDocument/";
-        bool __t14434 = false;
-        if (arx_str_starts_with(method, __t14433)) {
-            __t14434 = (has_id);
+        const char* __t15879 = "textDocument/";
+        bool __t15880 = false;
+        if (arx_str_starts_with(method, __t15879)) {
+            __t15880 = (has_id);
         }
-        if (__t14434) {
-            const char* __t14435 = "textDocument";
-            int64_t __t14436 = Arx_JsonDoc_get((&(jdoc)), params, __t14435);
-            int64_t td = __t14436;
-            const char* __t14437 = "uri";
-            const char* __t14438 = Arx_JsonDoc_get_str((&(jdoc)), td, __t14437);
-            const char* uri = __t14438;
-            const char* __t14439 = arx_lsp_uri_to_path(uri);
-            const char* __t14440 = arx_bpath_normalize(__t14439);
-            const char* fpath = __t14440;
-            const char* __t14441 = "";
-            const char* src = __t14441;
-            bool __t14442 = Arx_Map_str_str_has_key((&(uri_docs)), uri);
-            if (__t14442) {
-                const char* __t14443 = Arx_Map_str_str_get((&(uri_docs)), uri);
-                src = __t14443;
+        if (__t15880) {
+            const char* __t15881 = "textDocument";
+            int64_t __t15882 = Arx_JsonDoc_get((&(jdoc)), params, __t15881);
+            int64_t td = __t15882;
+            const char* __t15883 = "uri";
+            const char* __t15884 = Arx_JsonDoc_get_str((&(jdoc)), td, __t15883);
+            const char* uri = __t15884;
+            const char* __t15885 = arx_lsp_uri_to_path(uri);
+            const char* __t15886 = arx_bpath_normalize(__t15885);
+            const char* fpath = __t15886;
+            const char* __t15887 = "";
+            const char* src = __t15887;
+            bool __t15888 = Arx_Map_str_str_has_key((&(uri_docs)), uri);
+            if (__t15888) {
+                const char* __t15889 = Arx_Map_str_str_get((&(uri_docs)), uri);
+                src = __t15889;
             } else {
-                bool __t14444 = Arx_File_exists(fpath);
-                if (__t14444) {
-                    const char* __t14445 = Arx_File_read_to_string(fpath);
-                    src = __t14445;
+                bool __t15890 = Arx_File_exists(fpath);
+                if (__t15890) {
+                    const char* __t15891 = Arx_File_read_to_string(fpath);
+                    src = __t15891;
                     Arx_Map_str_str_insert((&(uri_docs)), uri, src);
                     Arx_Map_str_str_insert((&(path_docs)), fpath, src);
                 }
             }
-            bool __t14446 = true;
+            bool __t15892 = true;
             if (!((!(has_cached_az)))) {
-                __t14446 = ((arx_str_compare(cached_uri, uri) != 0));
+                __t15892 = ((arx_str_compare(cached_uri, uri) != 0));
             }
-            bool __t14447 = true;
-            if (!(__t14446)) {
-                __t14447 = ((arx_str_compare(cached_src, src) != 0));
+            bool __t15893 = true;
+            if (!(__t15892)) {
+                __t15893 = ((arx_str_compare(cached_src, src) != 0));
             }
-            if (__t14447) {
-                Arx_Analyzer __t14448 = arx_lsp_analyze_document(fpath, src, path_docs);
-                cached_az = __t14448;
+            if (__t15893) {
+                Arx_Analyzer __t15894 = arx_lsp_analyze_document(fpath, src, path_docs);
+                cached_az = __t15894;
                 cached_uri = uri;
                 cached_src = src;
                 has_cached_az = true;
             }
-            const char* __t14449 = "position";
-            int64_t __t14450 = Arx_JsonDoc_get((&(jdoc)), params, __t14449);
-            int64_t pos = __t14450;
-            const char* __t14451 = "line";
-            int64_t __t14452 = Arx_JsonDoc_get_int((&(jdoc)), pos, __t14451, ((int64_t)0LL));
-            int64_t line0 = __t14452;
-            const char* __t14453 = "character";
-            int64_t __t14454 = Arx_JsonDoc_get_int((&(jdoc)), pos, __t14453, ((int64_t)0LL));
-            int64_t char0 = __t14454;
-            const char* __t14455 = "textDocument/semanticTokens/full";
-            if ((arx_str_compare(method, __t14455) == 0)) {
-                const char* __t14456 = arx_lsp_build_semantic_tokens_json(src, cached_az, fpath);
-                arx_lsp_send_response(id_raw, __t14456);
+            const char* __t15895 = "position";
+            int64_t __t15896 = Arx_JsonDoc_get((&(jdoc)), params, __t15895);
+            int64_t pos = __t15896;
+            const char* __t15897 = "line";
+            int64_t __t15898 = Arx_JsonDoc_get_int((&(jdoc)), pos, __t15897, ((int64_t)0LL));
+            int64_t line0 = __t15898;
+            const char* __t15899 = "character";
+            int64_t __t15900 = Arx_JsonDoc_get_int((&(jdoc)), pos, __t15899, ((int64_t)0LL));
+            int64_t char0 = __t15900;
+            const char* __t15901 = "textDocument/semanticTokens/full";
+            if ((arx_str_compare(method, __t15901) == 0)) {
+                const char* __t15902 = arx_lsp_build_semantic_tokens_json(src, cached_az, fpath);
+                arx_lsp_send_response(id_raw, __t15902);
                 continue;
             }
-            const char* __t14457 = "textDocument/completion";
-            if ((arx_str_compare(method, __t14457) == 0)) {
-                const char* __t14458 = arx_lsp_build_completion_json(src, cached_az, fpath, line0, char0);
-                arx_lsp_send_response(id_raw, __t14458);
+            const char* __t15903 = "textDocument/completion";
+            if ((arx_str_compare(method, __t15903) == 0)) {
+                const char* __t15904 = arx_lsp_build_completion_json(src, cached_az, fpath, line0, char0);
+                arx_lsp_send_response(id_raw, __t15904);
                 continue;
             }
-            const char* __t14459 = "textDocument/hover";
-            if ((arx_str_compare(method, __t14459) == 0)) {
-                const char* __t14460 = arx_lsp_build_hover_json(src, cached_az, fpath, line0, char0);
-                arx_lsp_send_response(id_raw, __t14460);
+            const char* __t15905 = "textDocument/hover";
+            if ((arx_str_compare(method, __t15905) == 0)) {
+                const char* __t15906 = arx_lsp_build_hover_json(src, cached_az, fpath, line0, char0);
+                arx_lsp_send_response(id_raw, __t15906);
                 continue;
             }
-            const char* __t14461 = "textDocument/signatureHelp";
-            if ((arx_str_compare(method, __t14461) == 0)) {
-                const char* __t14462 = arx_lsp_build_signature_help_json(src, cached_az, fpath, line0, char0);
-                arx_lsp_send_response(id_raw, __t14462);
+            const char* __t15907 = "textDocument/signatureHelp";
+            if ((arx_str_compare(method, __t15907) == 0)) {
+                const char* __t15908 = arx_lsp_build_signature_help_json(src, cached_az, fpath, line0, char0);
+                arx_lsp_send_response(id_raw, __t15908);
                 continue;
             }
-            const char* __t14463 = "textDocument/definition";
-            if ((arx_str_compare(method, __t14463) == 0)) {
-                const char* __t14464 = arx_lsp_build_definition_json(src, cached_az, fpath, line0, char0);
-                arx_lsp_send_response(id_raw, __t14464);
+            const char* __t15909 = "textDocument/definition";
+            if ((arx_str_compare(method, __t15909) == 0)) {
+                const char* __t15910 = arx_lsp_build_definition_json(src, cached_az, fpath, line0, char0);
+                arx_lsp_send_response(id_raw, __t15910);
                 continue;
             }
-            const char* __t14465 = "textDocument/documentSymbol";
-            if ((arx_str_compare(method, __t14465) == 0)) {
-                const char* __t14466 = arx_lsp_build_document_symbols_json(cached_az, fpath);
-                arx_lsp_send_response(id_raw, __t14466);
+            const char* __t15911 = "textDocument/typeDefinition";
+            if ((arx_str_compare(method, __t15911) == 0)) {
+                const char* __t15912 = arx_lsp_build_type_definition_json(src, cached_az, fpath, line0, char0);
+                arx_lsp_send_response(id_raw, __t15912);
                 continue;
             }
-            const char* __t14467 = "textDocument/inlayHint";
-            if ((arx_str_compare(method, __t14467) == 0)) {
-                const char* __t14468 = arx_lsp_build_inlay_hints_json(src, cached_az, fpath);
-                arx_lsp_send_response(id_raw, __t14468);
+            const char* __t15913 = "textDocument/documentSymbol";
+            if ((arx_str_compare(method, __t15913) == 0)) {
+                const char* __t15914 = arx_lsp_build_document_symbols_json(cached_az, fpath);
+                arx_lsp_send_response(id_raw, __t15914);
                 continue;
             }
-            const char* __t14469 = "textDocument/codeLens";
-            if ((arx_str_compare(method, __t14469) == 0)) {
-                const char* __t14470 = arx_lsp_build_code_lens_json(cached_az, fpath);
-                arx_lsp_send_response(id_raw, __t14470);
+            const char* __t15915 = "textDocument/inlayHint";
+            if ((arx_str_compare(method, __t15915) == 0)) {
+                const char* __t15916 = arx_lsp_build_inlay_hints_json(src, cached_az, fpath);
+                arx_lsp_send_response(id_raw, __t15916);
                 continue;
             }
-            const char* __t14471 = "textDocument/formatting";
-            if ((arx_str_compare(method, __t14471) == 0)) {
-                const char* __t14472 = arx_lsp_build_formatting_json(src);
-                arx_lsp_send_response(id_raw, __t14472);
+            const char* __t15917 = "textDocument/codeLens";
+            if ((arx_str_compare(method, __t15917) == 0)) {
+                const char* __t15918 = arx_lsp_build_code_lens_json(cached_az, fpath);
+                arx_lsp_send_response(id_raw, __t15918);
                 continue;
             }
-            const char* __t14473 = "null";
-            arx_lsp_send_response(id_raw, __t14473);
+            const char* __t15919 = "textDocument/formatting";
+            if ((arx_str_compare(method, __t15919) == 0)) {
+                const char* __t15920 = arx_lsp_build_formatting_json(src);
+                arx_lsp_send_response(id_raw, __t15920);
+                continue;
+            }
+            const char* __t15921 = "null";
+            arx_lsp_send_response(id_raw, __t15921);
             continue;
         }
         if (has_id) {
-            const char* __t14474 = "Method not supported: ";
-            const char* __t14475 = arx_str_concat(__t14474, method);
-            arx_lsp_send_error(id_raw, (-(((int64_t)32601LL))), __t14475);
+            const char* __t15922 = "Method not supported: ";
+            const char* __t15923 = arx_str_concat(__t15922, method);
+            arx_lsp_send_error(id_raw, (-(((int64_t)32601LL))), __t15923);
         }
     }
-    int64_t __t14476 = ((int64_t)0LL);
-    return __t14476;
+    int64_t __t15924 = ((int64_t)0LL);
+    return __t15924;
 }
 
 void arx_print_usage(void) {
-    const char* __t14477 = "Aerix Self-Hosting Bootstrap Compiler (arxc)";
-    arx_println_str(__t14477);
-    const char* __t14478 = "Usage:";
-    arx_println_str(__t14478);
-    const char* __t14479 = "  arxc build <file.arx> [-o <out>] [--emit-c] [--backend=native|c] [-O0|-O1|-O2|-O3]";
-    arx_println_str(__t14479);
-    const char* __t14480 = "  arxc run <file.arx> [--backend=native|c] [-- <args...>]";
-    arx_println_str(__t14480);
-    const char* __t14481 = "  arxc emit-c <file.arx> [-o <out.c>]";
-    arx_println_str(__t14481);
-    const char* __t14482 = "  arxc check <file.arx>";
-    arx_println_str(__t14482);
-    const char* __t14483 = "  arxc lsp";
-    arx_println_str(__t14483);
-    const char* __t14484 = "  arxc <file.arx> [-o <out>]";
-    arx_println_str(__t14484);
-    const char* __t14485 = "  arxc version";
-    arx_println_str(__t14485);
+    const char* __t15925 = "Aerix Self-Hosting Bootstrap Compiler (arxc)";
+    arx_println_str(__t15925);
+    const char* __t15926 = "Usage:";
+    arx_println_str(__t15926);
+    const char* __t15927 = "  arxc build <file.arx> [-o <out>] [--emit-c] [--backend=native|c] [-O0|-O1|-O2|-O3]";
+    arx_println_str(__t15927);
+    const char* __t15928 = "  arxc run <file.arx> [--backend=native|c] [-- <args...>]";
+    arx_println_str(__t15928);
+    const char* __t15929 = "  arxc emit-c <file.arx> [-o <out.c>]";
+    arx_println_str(__t15929);
+    const char* __t15930 = "  arxc check <file.arx>";
+    arx_println_str(__t15930);
+    const char* __t15931 = "  arxc lsp";
+    arx_println_str(__t15931);
+    const char* __t15932 = "  arxc <file.arx> [-o <out>]";
+    arx_println_str(__t15932);
+    const char* __t15933 = "  arxc version";
+    arx_println_str(__t15933);
 }
 
 const char* arx_strip_arx_ext(const char* p) {
-    const char* __t14486 = ".arx";
-    if (arx_str_ends_with(p, __t14486)) {
-        const char* __t14487 = __arx_bstr_slice(p, ((int64_t)0LL), ((arx_str_len(p)) - (((int64_t)4LL))));
-        const char* __t14488 = __t14487;
-        return __t14488;
+    const char* __t15934 = ".arx";
+    if (arx_str_ends_with(p, __t15934)) {
+        const char* __t15935 = __arx_bstr_slice(p, ((int64_t)0LL), ((arx_str_len(p)) - (((int64_t)4LL))));
+        const char* __t15936 = __t15935;
+        return __t15936;
     }
-    const char* __t14489 = p;
-    return __t14489;
+    const char* __t15937 = p;
+    return __t15937;
 }
 
 const char* arx_strip_exe_ext(const char* p) {
-    const char* __t14490 = ".exe";
-    if (arx_str_ends_with(p, __t14490)) {
-        const char* __t14491 = __arx_bstr_slice(p, ((int64_t)0LL), ((arx_str_len(p)) - (((int64_t)4LL))));
-        const char* __t14492 = __t14491;
-        return __t14492;
+    const char* __t15938 = ".exe";
+    if (arx_str_ends_with(p, __t15938)) {
+        const char* __t15939 = __arx_bstr_slice(p, ((int64_t)0LL), ((arx_str_len(p)) - (((int64_t)4LL))));
+        const char* __t15940 = __t15939;
+        return __t15940;
     }
-    const char* __t14493 = arx_strip_arx_ext(p);
-    const char* __t14494 = __t14493;
-    return __t14494;
+    const char* __t15941 = arx_strip_arx_ext(p);
+    const char* __t15942 = __t15941;
+    return __t15942;
 }
 
 const char* arx_get_temp_dir(void) {
-    const char* __t14495 = "TEMP";
-    const char* __t14496 = Arx_Env_get(__t14495);
-    const char* t1 = __t14496;
-    const char* __t14497 = "";
-    if ((arx_str_compare(t1, __t14497) != 0)) {
-        const char* __t14498 = arx_bpath_normalize(t1);
-        const char* __t14499 = __t14498;
-        return __t14499;
+    const char* __t15943 = "TEMP";
+    const char* __t15944 = Arx_Env_get(__t15943);
+    const char* t1 = __t15944;
+    const char* __t15945 = "";
+    if ((arx_str_compare(t1, __t15945) != 0)) {
+        const char* __t15946 = arx_bpath_normalize(t1);
+        const char* __t15947 = __t15946;
+        return __t15947;
     }
-    const char* __t14500 = "TMP";
-    const char* __t14501 = Arx_Env_get(__t14500);
-    const char* t2 = __t14501;
-    const char* __t14502 = "";
-    if ((arx_str_compare(t2, __t14502) != 0)) {
-        const char* __t14503 = arx_bpath_normalize(t2);
-        const char* __t14504 = __t14503;
-        return __t14504;
+    const char* __t15948 = "TMP";
+    const char* __t15949 = Arx_Env_get(__t15948);
+    const char* t2 = __t15949;
+    const char* __t15950 = "";
+    if ((arx_str_compare(t2, __t15950) != 0)) {
+        const char* __t15951 = arx_bpath_normalize(t2);
+        const char* __t15952 = __t15951;
+        return __t15952;
     }
-    const char* __t14505 = "TMPDIR";
-    const char* __t14506 = Arx_Env_get(__t14505);
-    const char* t3 = __t14506;
-    const char* __t14507 = "";
-    if ((arx_str_compare(t3, __t14507) != 0)) {
-        const char* __t14508 = arx_bpath_normalize(t3);
-        const char* __t14509 = __t14508;
-        return __t14509;
+    const char* __t15953 = "TMPDIR";
+    const char* __t15954 = Arx_Env_get(__t15953);
+    const char* t3 = __t15954;
+    const char* __t15955 = "";
+    if ((arx_str_compare(t3, __t15955) != 0)) {
+        const char* __t15956 = arx_bpath_normalize(t3);
+        const char* __t15957 = __t15956;
+        return __t15957;
     }
-    const char* __t14510 = "/tmp";
-    const char* __t14511 = __t14510;
-    return __t14511;
+    const char* __t15958 = "/tmp";
+    const char* __t15959 = __t15958;
+    return __t15959;
 }
 
 const char* arx_quote_shell_arg(const char* s) {
-    const char* __t14512 = "\"";
-    const char* q = __t14512;
-    const char* __t14513 = arx_str_concat(q, s);
-    const char* __t14514 = arx_str_concat(__t14513, q);
-    const char* __t14515 = __t14514;
-    return __t14515;
+    const char* __t15960 = "\"";
+    const char* q = __t15960;
+    const char* __t15961 = arx_str_concat(q, s);
+    const char* __t15962 = arx_str_concat(__t15961, q);
+    const char* __t15963 = __t15962;
+    return __t15963;
 }
 
 Arx_Analyzer arx_compile_frontend(const char* input_file) {
-    bool __t14516 = Arx_File_exists(input_file);
-    if ((!(__t14516))) {
-        const char* __t14517 = "ERROR: Source file not found: ";
-        const char* __t14518 = arx_str_concat(__t14517, input_file);
-        fprintf(stderr, "%s\n", __t14518);
+    bool __t15964 = Arx_File_exists(input_file);
+    if ((!(__t15964))) {
+        const char* __t15965 = "ERROR: Source file not found: ";
+        const char* __t15966 = arx_str_concat(__t15965, input_file);
+        fprintf(stderr, "%s\n", __t15966);
         Arx_Env_exit(((int64_t)1LL));
     }
-    Arx_Parser __t14519 = Arx_Parser_init(input_file);
-    Arx_Parser parser = __t14519;
+    Arx_Parser __t15967 = Arx_Parser_init(input_file);
+    Arx_Parser parser = __t15967;
     Arx_Parser_load_resolved_file((&(parser)), input_file);
-    Arx_Analyzer __t14520 = Arx_Analyzer_init(parser);
-    Arx_Analyzer az = __t14520;
+    Arx_Analyzer __t15968 = Arx_Analyzer_init(parser);
+    Arx_Analyzer az = __t15968;
     Arx_Analyzer_analyze((&(az)));
-    Arx_Analyzer __t14521 = az;
-    return __t14521;
+    Arx_Analyzer __t15969 = az;
+    return __t15969;
 }
 
 const char* arx_emit_c_for_file(const char* input_file) {
-    Arx_Analyzer __t14522 = arx_compile_frontend(input_file);
-    Arx_Analyzer az = __t14522;
-    Arx_Emitter __t14523 = Arx_Emitter_init(az);
-    Arx_Emitter em = __t14523;
-    const char* __t14524 = Arx_Emitter_emit((&(em)));
-    const char* __t14525 = __t14524;
-    return __t14525;
+    Arx_Analyzer __t15970 = arx_compile_frontend(input_file);
+    Arx_Analyzer az = __t15970;
+    Arx_Emitter __t15971 = Arx_Emitter_init(az);
+    Arx_Emitter em = __t15971;
+    const char* __t15972 = Arx_Emitter_emit((&(em)));
+    const char* __t15973 = __t15972;
+    return __t15973;
 }
 
 int64_t arx_cmd_check(const char* input_file) {
-    Arx_Analyzer __t14526 = arx_compile_frontend(input_file);
-    Arx_Analyzer az = __t14526;
+    Arx_Analyzer __t15974 = arx_compile_frontend(input_file);
+    Arx_Analyzer az = __t15974;
     if (((az.has_errors) > (((int64_t)0LL)))) {
-        const char* __t14527 = "Check failed for: ";
-        const char* __t14528 = arx_str_concat(__t14527, input_file);
-        fprintf(stderr, "%s\n", __t14528);
-        int64_t __t14529 = ((int64_t)1LL);
-        return __t14529;
+        const char* __t15975 = "Check failed for: ";
+        const char* __t15976 = arx_str_concat(__t15975, input_file);
+        fprintf(stderr, "%s\n", __t15976);
+        int64_t __t15977 = ((int64_t)1LL);
+        return __t15977;
     }
-    const char* __t14530 = "OK: ";
-    const char* __t14531 = arx_str_concat(__t14530, input_file);
-    const char* __t14532 = " (";
-    const char* __t14533 = arx_str_concat(__t14531, __t14532);
-    const char* __t14534 = arx_str_concat(__t14533, arx_cast_i64_to_str((int64_t)(az.ncount)));
-    const char* __t14535 = " AST nodes, ";
-    const char* __t14536 = arx_str_concat(__t14534, __t14535);
-    const char* __t14537 = arx_str_concat(__t14536, arx_cast_i64_to_str((int64_t)(az.fn_count)));
-    const char* __t14538 = " fns, ";
-    const char* __t14539 = arx_str_concat(__t14537, __t14538);
-    const char* __t14540 = arx_str_concat(__t14539, arx_cast_i64_to_str((int64_t)(az.cls_count)));
-    const char* __t14541 = " classes)";
-    const char* __t14542 = arx_str_concat(__t14540, __t14541);
-    arx_println_str(__t14542);
-    int64_t __t14543 = ((int64_t)0LL);
-    return __t14543;
+    const char* __t15978 = "OK: ";
+    const char* __t15979 = arx_str_concat(__t15978, input_file);
+    const char* __t15980 = " (";
+    const char* __t15981 = arx_str_concat(__t15979, __t15980);
+    const char* __t15982 = arx_str_concat(__t15981, arx_cast_i64_to_str((int64_t)(az.ncount)));
+    const char* __t15983 = " AST nodes, ";
+    const char* __t15984 = arx_str_concat(__t15982, __t15983);
+    const char* __t15985 = arx_str_concat(__t15984, arx_cast_i64_to_str((int64_t)(az.fn_count)));
+    const char* __t15986 = " fns, ";
+    const char* __t15987 = arx_str_concat(__t15985, __t15986);
+    const char* __t15988 = arx_str_concat(__t15987, arx_cast_i64_to_str((int64_t)(az.cls_count)));
+    const char* __t15989 = " classes)";
+    const char* __t15990 = arx_str_concat(__t15988, __t15989);
+    arx_println_str(__t15990);
+    int64_t __t15991 = ((int64_t)0LL);
+    return __t15991;
 }
 
 int64_t arx_cmd_emit_c(const char* input_file, const char* out_file) {
     const char* target = out_file;
-    const char* __t14544 = "";
-    if ((arx_str_compare(target, __t14544) == 0)) {
-        const char* __t14545 = arx_bpath_normalize(input_file);
-        const char* __t14546 = arx_strip_arx_ext(__t14545);
-        const char* __t14547 = ".c";
-        const char* __t14548 = arx_str_concat(__t14546, __t14547);
-        target = __t14548;
+    const char* __t15992 = "";
+    if ((arx_str_compare(target, __t15992) == 0)) {
+        const char* __t15993 = arx_bpath_normalize(input_file);
+        const char* __t15994 = arx_strip_arx_ext(__t15993);
+        const char* __t15995 = ".c";
+        const char* __t15996 = arx_str_concat(__t15994, __t15995);
+        target = __t15996;
     }
-    const char* __t14549 = arx_bpath_dirname(target);
-    const char* dir = __t14549;
-    const char* __t14550 = "";
-    bool __t14551 = false;
-    if ((arx_str_compare(dir, __t14550) != 0)) {
-        const char* __t14552 = ".";
-        __t14551 = ((arx_str_compare(dir, __t14552) != 0));
+    const char* __t15997 = arx_bpath_dirname(target);
+    const char* dir = __t15997;
+    const char* __t15998 = "";
+    bool __t15999 = false;
+    if ((arx_str_compare(dir, __t15998) != 0)) {
+        const char* __t16000 = ".";
+        __t15999 = ((arx_str_compare(dir, __t16000) != 0));
     }
-    if (__t14551) {
-        bool __t14553 = Arx_Directory_create(dir);
-        (void)(__t14553);
+    if (__t15999) {
+        bool __t16001 = Arx_Directory_create(dir);
+        (void)(__t16001);
     }
-    const char* __t14554 = arx_emit_c_for_file(input_file);
-    const char* c_src = __t14554;
-    bool __t14555 = Arx_File_write_string(target, c_src);
-    if ((!(__t14555))) {
-        const char* __t14556 = "ERROR: Failed to write C file: ";
-        const char* __t14557 = arx_str_concat(__t14556, target);
-        fprintf(stderr, "%s\n", __t14557);
-        int64_t __t14558 = ((int64_t)1LL);
-        return __t14558;
+    const char* __t16002 = arx_emit_c_for_file(input_file);
+    const char* c_src = __t16002;
+    bool __t16003 = Arx_File_write_string(target, c_src);
+    if ((!(__t16003))) {
+        const char* __t16004 = "ERROR: Failed to write C file: ";
+        const char* __t16005 = arx_str_concat(__t16004, target);
+        fprintf(stderr, "%s\n", __t16005);
+        int64_t __t16006 = ((int64_t)1LL);
+        return __t16006;
     }
-    int64_t __t14559 = ((int64_t)0LL);
-    return __t14559;
+    int64_t __t16007 = ((int64_t)0LL);
+    return __t16007;
 }
 
 int64_t arx_emit_native_exe(const char* input_file, const char* exe_path) {
-    const char* __t14560 = arx_bpath_dirname(exe_path);
-    const char* dir = __t14560;
-    const char* __t14561 = "";
-    bool __t14562 = false;
-    if ((arx_str_compare(dir, __t14561) != 0)) {
-        const char* __t14563 = ".";
-        __t14562 = ((arx_str_compare(dir, __t14563) != 0));
+    const char* __t16008 = arx_bpath_dirname(exe_path);
+    const char* dir = __t16008;
+    const char* __t16009 = "";
+    bool __t16010 = false;
+    if ((arx_str_compare(dir, __t16009) != 0)) {
+        const char* __t16011 = ".";
+        __t16010 = ((arx_str_compare(dir, __t16011) != 0));
     }
-    if (__t14562) {
-        bool __t14564 = Arx_Directory_create(dir);
-        (void)(__t14564);
+    if (__t16010) {
+        bool __t16012 = Arx_Directory_create(dir);
+        (void)(__t16012);
     }
-    Arx_Analyzer __t14565 = arx_compile_frontend(input_file);
-    Arx_Analyzer az = __t14565;
+    Arx_Analyzer __t16013 = arx_compile_frontend(input_file);
+    Arx_Analyzer az = __t16013;
     if (((az.has_errors) > (((int64_t)0LL)))) {
-        int64_t __t14566 = ((int64_t)1LL);
-        return __t14566;
+        int64_t __t16014 = ((int64_t)1LL);
+        return __t16014;
     }
-    Arx_NativeCodegen __t14567 = Arx_NativeCodegen_init(az);
-    Arx_NativeCodegen ncg = __t14567;
-    bool __t14568 = Arx_NativeCodegen_compile((&(ncg)), exe_path);
-    if ((!(__t14568))) {
-        const char* __t14569 = "ERROR: Failed to emit native PE32+ executable: ";
-        const char* __t14570 = arx_str_concat(__t14569, exe_path);
-        fprintf(stderr, "%s\n", __t14570);
-        int64_t __t14571 = ((int64_t)1LL);
-        return __t14571;
+    Arx_NativeCodegen __t16015 = Arx_NativeCodegen_init(az);
+    Arx_NativeCodegen ncg = __t16015;
+    bool __t16016 = Arx_NativeCodegen_compile((&(ncg)), exe_path);
+    if ((!(__t16016))) {
+        const char* __t16017 = "ERROR: Failed to emit native PE32+ executable: ";
+        const char* __t16018 = arx_str_concat(__t16017, exe_path);
+        fprintf(stderr, "%s\n", __t16018);
+        int64_t __t16019 = ((int64_t)1LL);
+        return __t16019;
     }
-    int64_t __t14572 = ((int64_t)0LL);
-    return __t14572;
+    int64_t __t16020 = ((int64_t)0LL);
+    return __t16020;
 }
 
 int64_t arx_cmd_build(const char* input_file, const char* out_file, const char* opt_flag, bool keep_c, const char* backend) {
-    const char* __t14573 = arx_bpath_normalize(input_file);
-    const char* norm_in = __t14573;
+    const char* __t16021 = arx_bpath_normalize(input_file);
+    const char* norm_in = __t16021;
     const char* exe_path = out_file;
-    const char* __t14574 = "";
-    if ((arx_str_compare(exe_path, __t14574) == 0)) {
-        const char* __t14575 = arx_strip_arx_ext(norm_in);
-        exe_path = __t14575;
+    const char* __t16022 = "";
+    if ((arx_str_compare(exe_path, __t16022) == 0)) {
+        const char* __t16023 = arx_strip_arx_ext(norm_in);
+        exe_path = __t16023;
     }
-    const char* __t14576 = arx_bpath_normalize(exe_path);
-    const char* __t14577 = arx_ensure_exe_ext(__t14576);
-    exe_path = __t14577;
+    const char* __t16024 = arx_bpath_normalize(exe_path);
+    const char* __t16025 = arx_ensure_exe_ext(__t16024);
+    exe_path = __t16025;
     bool use_native = false;
-    const char* __t14578 = "native";
-    if ((arx_str_compare(backend, __t14578) == 0)) {
+    const char* __t16026 = "native";
+    if ((arx_str_compare(backend, __t16026) == 0)) {
         use_native = true;
     } else {
-        const char* __t14579 = "c";
-        bool __t14580 = true;
-        if (!((arx_str_compare(backend, __t14579) == 0))) {
-            __t14580 = (keep_c);
+        const char* __t16027 = "c";
+        bool __t16028 = true;
+        if (!((arx_str_compare(backend, __t16027) == 0))) {
+            __t16028 = (keep_c);
         }
-        if (__t14580) {
+        if (__t16028) {
             use_native = false;
         } else {
-            const char* __t14581 = Arx_Env_os_name();
-            const char* __t14582 = "windows";
-            if ((arx_str_compare(__t14581, __t14582) == 0)) {
+            const char* __t16029 = Arx_Env_os_name();
+            const char* __t16030 = "windows";
+            if ((arx_str_compare(__t16029, __t16030) == 0)) {
                 use_native = true;
             }
         }
     }
     if (use_native) {
-        int64_t __t14583 = arx_emit_native_exe(norm_in, exe_path);
-        int64_t rc = __t14583;
+        int64_t __t16031 = arx_emit_native_exe(norm_in, exe_path);
+        int64_t rc = __t16031;
         if (((rc) == (((int64_t)0LL)))) {
-            const char* __t14584 = "Built ";
-            const char* __t14585 = arx_str_concat(__t14584, exe_path);
-            arx_println_str(__t14585);
+            const char* __t16032 = "Built ";
+            const char* __t16033 = arx_str_concat(__t16032, exe_path);
+            arx_println_str(__t16033);
         }
-        int64_t __t14586 = rc;
-        return __t14586;
+        int64_t __t16034 = rc;
+        return __t16034;
     }
-    const char* __t14587 = arx_strip_exe_ext(exe_path);
-    const char* __t14588 = ".c";
-    const char* __t14589 = arx_str_concat(__t14587, __t14588);
-    const char* c_path = __t14589;
-    const char* __t14590 = arx_emit_c_for_file(norm_in);
-    const char* c_src = __t14590;
-    int64_t __t14591 = arx_link_c_to_exe_from(c_src, c_path, exe_path, opt_flag, keep_c, norm_in);
-    int64_t __t14592 = __t14591;
-    return __t14592;
+    const char* __t16035 = arx_strip_exe_ext(exe_path);
+    const char* __t16036 = ".c";
+    const char* __t16037 = arx_str_concat(__t16035, __t16036);
+    const char* c_path = __t16037;
+    const char* __t16038 = arx_emit_c_for_file(norm_in);
+    const char* c_src = __t16038;
+    int64_t __t16039 = arx_link_c_to_exe_from(c_src, c_path, exe_path, opt_flag, keep_c, norm_in);
+    int64_t __t16040 = __t16039;
+    return __t16040;
 }
 
 int64_t arx_cmd_run(const char* input_file, const char* opt_flag, const char* backend, Arx_List_str prog_args, int64_t prog_argc) {
-    const char* __t14593 = arx_bpath_normalize(input_file);
-    const char* norm_in = __t14593;
-    const char* __t14594 = arx_get_temp_dir();
-    const char* __t14595 = "aerix_boot_run";
-    const char* __t14596 = arx_bpath_join(__t14594, __t14595);
-    const char* tmp_dir = __t14596;
-    bool __t14597 = Arx_Directory_create(tmp_dir);
-    (void)(__t14597);
-    const char* __t14598 = arx_bpath_basename(norm_in);
-    const char* __t14599 = arx_strip_arx_ext(__t14598);
-    const char* base = __t14599;
-    const char* __t14600 = ".c";
-    const char* __t14601 = arx_str_concat(base, __t14600);
-    const char* __t14602 = arx_bpath_join(tmp_dir, __t14601);
-    const char* c_path = __t14602;
-    const char* __t14603 = arx_bpath_join(tmp_dir, base);
-    const char* __t14604 = arx_ensure_exe_ext(__t14603);
-    const char* exe_path = __t14604;
+    const char* __t16041 = arx_bpath_normalize(input_file);
+    const char* norm_in = __t16041;
+    const char* __t16042 = arx_get_temp_dir();
+    const char* __t16043 = "aerix_boot_run";
+    const char* __t16044 = arx_bpath_join(__t16042, __t16043);
+    const char* tmp_dir = __t16044;
+    bool __t16045 = Arx_Directory_create(tmp_dir);
+    (void)(__t16045);
+    const char* __t16046 = arx_bpath_basename(norm_in);
+    const char* __t16047 = arx_strip_arx_ext(__t16046);
+    const char* base = __t16047;
+    const char* __t16048 = ".c";
+    const char* __t16049 = arx_str_concat(base, __t16048);
+    const char* __t16050 = arx_bpath_join(tmp_dir, __t16049);
+    const char* c_path = __t16050;
+    const char* __t16051 = arx_bpath_join(tmp_dir, base);
+    const char* __t16052 = arx_ensure_exe_ext(__t16051);
+    const char* exe_path = __t16052;
     bool use_native = false;
-    const char* __t14605 = "native";
-    if ((arx_str_compare(backend, __t14605) == 0)) {
+    const char* __t16053 = "native";
+    if ((arx_str_compare(backend, __t16053) == 0)) {
         use_native = true;
     } else {
-        const char* __t14606 = "c";
-        if ((arx_str_compare(backend, __t14606) == 0)) {
+        const char* __t16054 = "c";
+        if ((arx_str_compare(backend, __t16054) == 0)) {
             use_native = false;
         } else {
-            const char* __t14607 = Arx_Env_os_name();
-            const char* __t14608 = "windows";
-            if ((arx_str_compare(__t14607, __t14608) == 0)) {
+            const char* __t16055 = Arx_Env_os_name();
+            const char* __t16056 = "windows";
+            if ((arx_str_compare(__t16055, __t16056) == 0)) {
                 use_native = true;
             }
         }
     }
     int64_t rc_link = ((int64_t)0LL);
     if (use_native) {
-        int64_t __t14609 = arx_emit_native_exe(norm_in, exe_path);
-        rc_link = __t14609;
+        int64_t __t16057 = arx_emit_native_exe(norm_in, exe_path);
+        rc_link = __t16057;
     } else {
-        const char* __t14610 = arx_emit_c_for_file(norm_in);
-        const char* c_src = __t14610;
-        int64_t __t14611 = arx_link_c_to_exe_from(c_src, c_path, exe_path, opt_flag, false, norm_in);
-        rc_link = __t14611;
+        const char* __t16058 = arx_emit_c_for_file(norm_in);
+        const char* c_src = __t16058;
+        int64_t __t16059 = arx_link_c_to_exe_from(c_src, c_path, exe_path, opt_flag, false, norm_in);
+        rc_link = __t16059;
     }
     if (((rc_link) != (((int64_t)0LL)))) {
-        int64_t __t14612 = rc_link;
-        return __t14612;
+        int64_t __t16060 = rc_link;
+        return __t16060;
     }
-    Arx_ByteBuffer __t14613 = Arx_ByteBuffer_init();
-    Arx_ByteBuffer bb = __t14613;
-    const char* __t14614 = Arx_Env_os_name();
-    const char* __t14615 = "windows";
-    if ((arx_str_compare(__t14614, __t14615) == 0)) {
-        const char* __t14616 = "/";
-        const char* __t14617 = "\\";
-        const char* __t14618 = arx_str_replace(exe_path, __t14616, __t14617);
-        const char* win_exe = __t14618;
-        const char* __t14619 = arx_quote_shell_arg(win_exe);
-        Arx_ByteBuffer_write_str((&(bb)), __t14619);
+    Arx_ByteBuffer __t16061 = Arx_ByteBuffer_init();
+    Arx_ByteBuffer bb = __t16061;
+    const char* __t16062 = Arx_Env_os_name();
+    const char* __t16063 = "windows";
+    if ((arx_str_compare(__t16062, __t16063) == 0)) {
+        const char* __t16064 = "/";
+        const char* __t16065 = "\\";
+        const char* __t16066 = arx_str_replace(exe_path, __t16064, __t16065);
+        const char* win_exe = __t16066;
+        const char* __t16067 = arx_quote_shell_arg(win_exe);
+        Arx_ByteBuffer_write_str((&(bb)), __t16067);
     } else {
-        const char* __t14620 = arx_quote_shell_arg(exe_path);
-        Arx_ByteBuffer_write_str((&(bb)), __t14620);
+        const char* __t16068 = arx_quote_shell_arg(exe_path);
+        Arx_ByteBuffer_write_str((&(bb)), __t16068);
     }
     int64_t i = ((int64_t)0LL);
     while (1) {
         if (!(((i) < (prog_argc)))) break;
         Arx_ByteBuffer_write_u8((&(bb)), ((int64_t)32LL));
-        const char* __t14621 = Arx_List_str_get((&(prog_args)), i);
-        const char* __t14622 = arx_quote_shell_arg(__t14621);
-        Arx_ByteBuffer_write_str((&(bb)), __t14622);
+        const char* __t16069 = Arx_List_str_get((&(prog_args)), i);
+        const char* __t16070 = arx_quote_shell_arg(__t16069);
+        Arx_ByteBuffer_write_str((&(bb)), __t16070);
         i = ((i) + (((int64_t)1LL)));
     }
-    const char* __t14623 = Arx_ByteBuffer_to_str((&(bb)));
-    const char* run_cmd = __t14623;
+    const char* __t16071 = Arx_ByteBuffer_to_str((&(bb)));
+    const char* run_cmd = __t16071;
     Arx_ByteBuffer_free((&(bb)));
-    int64_t __t14624 = Arx_Process_execute(run_cmd);
-    int64_t rc = __t14624;
-    bool __t14625 = Arx_File_remove(exe_path);
-    (void)(__t14625);
-    int64_t __t14626 = rc;
-    return __t14626;
+    int64_t __t16072 = Arx_Process_execute(run_cmd);
+    int64_t rc = __t16072;
+    bool __t16073 = Arx_File_remove(exe_path);
+    (void)(__t16073);
+    int64_t __t16074 = rc;
+    return __t16074;
 }
 
 int64_t arx_main(void) {
-    Arx_List_str __t14627 = Arx_Env_args();
-    Arx_List_str cli_args = __t14627;
-    int64_t __t14628 = Arx_Env_arg_count();
-    int64_t cli_argc = __t14628;
+    Arx_List_str __t16075 = Arx_Env_args();
+    Arx_List_str cli_args = __t16075;
+    int64_t __t16076 = Arx_Env_arg_count();
+    int64_t cli_argc = __t16076;
     if (((cli_argc) <= (((int64_t)1LL)))) {
         arx_print_usage();
-        int64_t __t14629 = ((int64_t)0LL);
-        return __t14629;
+        int64_t __t16077 = ((int64_t)0LL);
+        return __t16077;
     }
-    const char* __t14630 = Arx_List_str_get((&(cli_args)), ((int64_t)1LL));
-    const char* first = __t14630;
-    const char* __t14631 = "version";
-    bool __t14632 = true;
-    if (!((arx_str_compare(first, __t14631) == 0))) {
-        const char* __t14633 = "--version";
-        __t14632 = ((arx_str_compare(first, __t14633) == 0));
+    const char* __t16078 = Arx_List_str_get((&(cli_args)), ((int64_t)1LL));
+    const char* first = __t16078;
+    const char* __t16079 = "version";
+    bool __t16080 = true;
+    if (!((arx_str_compare(first, __t16079) == 0))) {
+        const char* __t16081 = "--version";
+        __t16080 = ((arx_str_compare(first, __t16081) == 0));
     }
-    bool __t14634 = true;
-    if (!(__t14632)) {
-        const char* __t14635 = "-v";
-        __t14634 = ((arx_str_compare(first, __t14635) == 0));
+    bool __t16082 = true;
+    if (!(__t16080)) {
+        const char* __t16083 = "-v";
+        __t16082 = ((arx_str_compare(first, __t16083) == 0));
     }
-    if (__t14634) {
-        const char* __t14636 = "Aerix Self-Hosting Bootstrap Compiler (arxc) v1.1.0-stable";
-        arx_println_str(__t14636);
-        int64_t __t14637 = ((int64_t)0LL);
-        return __t14637;
+    if (__t16082) {
+        const char* __t16084 = "Aerix Self-Hosting Bootstrap Compiler (arxc) v1.1.2-stable";
+        arx_println_str(__t16084);
+        int64_t __t16085 = ((int64_t)0LL);
+        return __t16085;
     }
-    const char* __t14638 = "help";
-    bool __t14639 = true;
-    if (!((arx_str_compare(first, __t14638) == 0))) {
-        const char* __t14640 = "--help";
-        __t14639 = ((arx_str_compare(first, __t14640) == 0));
+    const char* __t16086 = "help";
+    bool __t16087 = true;
+    if (!((arx_str_compare(first, __t16086) == 0))) {
+        const char* __t16088 = "--help";
+        __t16087 = ((arx_str_compare(first, __t16088) == 0));
     }
-    bool __t14641 = true;
-    if (!(__t14639)) {
-        const char* __t14642 = "-h";
-        __t14641 = ((arx_str_compare(first, __t14642) == 0));
+    bool __t16089 = true;
+    if (!(__t16087)) {
+        const char* __t16090 = "-h";
+        __t16089 = ((arx_str_compare(first, __t16090) == 0));
     }
-    if (__t14641) {
+    if (__t16089) {
         arx_print_usage();
-        int64_t __t14643 = ((int64_t)0LL);
-        return __t14643;
+        int64_t __t16091 = ((int64_t)0LL);
+        return __t16091;
     }
-    const char* __t14644 = "lsp";
-    if ((arx_str_compare(first, __t14644) == 0)) {
-        int64_t __t14645 = arx_run_lsp_server();
-        int64_t __t14646 = __t14645;
-        return __t14646;
+    const char* __t16092 = "lsp";
+    if ((arx_str_compare(first, __t16092) == 0)) {
+        int64_t __t16093 = arx_run_lsp_server();
+        int64_t __t16094 = __t16093;
+        return __t16094;
     }
-    const char* __t14647 = "";
-    const char* mode = __t14647;
+    const char* __t16095 = "";
+    const char* mode = __t16095;
     int64_t start_i = ((int64_t)2LL);
-    const char* __t14648 = "build";
-    bool __t14649 = true;
-    if (!((arx_str_compare(first, __t14648) == 0))) {
-        const char* __t14650 = "run";
-        __t14649 = ((arx_str_compare(first, __t14650) == 0));
+    const char* __t16096 = "build";
+    bool __t16097 = true;
+    if (!((arx_str_compare(first, __t16096) == 0))) {
+        const char* __t16098 = "run";
+        __t16097 = ((arx_str_compare(first, __t16098) == 0));
     }
-    bool __t14651 = true;
-    if (!(__t14649)) {
-        const char* __t14652 = "emit-c";
-        __t14651 = ((arx_str_compare(first, __t14652) == 0));
+    bool __t16099 = true;
+    if (!(__t16097)) {
+        const char* __t16100 = "emit-c";
+        __t16099 = ((arx_str_compare(first, __t16100) == 0));
     }
-    bool __t14653 = true;
-    if (!(__t14651)) {
-        const char* __t14654 = "check";
-        __t14653 = ((arx_str_compare(first, __t14654) == 0));
+    bool __t16101 = true;
+    if (!(__t16099)) {
+        const char* __t16102 = "check";
+        __t16101 = ((arx_str_compare(first, __t16102) == 0));
     }
-    if (__t14653) {
+    if (__t16101) {
         mode = first;
     } else {
-        const char* __t14655 = "auto";
-        mode = __t14655;
+        const char* __t16103 = "auto";
+        mode = __t16103;
         start_i = ((int64_t)1LL);
     }
-    const char* __t14656 = "";
-    const char* input_file = __t14656;
-    const char* __t14657 = "";
-    const char* out_file = __t14657;
-    const char* __t14658 = "-O2";
-    const char* opt_flag = __t14658;
+    const char* __t16104 = "";
+    const char* input_file = __t16104;
+    const char* __t16105 = "";
+    const char* out_file = __t16105;
+    const char* __t16106 = "-O2";
+    const char* opt_flag = __t16106;
     bool keep_c = false;
-    const char* __t14659 = "auto";
-    const char* backend = __t14659;
-    Arx_List_str __t14660 = Arx_List_str_init();
-    Arx_List_str prog_args = __t14660;
+    const char* __t16107 = "auto";
+    const char* backend = __t16107;
+    Arx_List_str __t16108 = Arx_List_str_init();
+    Arx_List_str prog_args = __t16108;
     int64_t prog_argc = ((int64_t)0LL);
     bool after_dashdash = false;
     int64_t i = start_i;
     while (1) {
         if (!(((i) < (cli_argc)))) break;
-        const char* __t14661 = Arx_List_str_get((&(cli_args)), i);
-        const char* a = __t14661;
+        const char* __t16109 = Arx_List_str_get((&(cli_args)), i);
+        const char* a = __t16109;
         if (after_dashdash) {
             Arx_List_str_push((&(prog_args)), a);
             prog_argc = ((prog_argc) + (((int64_t)1LL)));
         } else {
-            const char* __t14662 = "--";
-            if ((arx_str_compare(a, __t14662) == 0)) {
+            const char* __t16110 = "--";
+            if ((arx_str_compare(a, __t16110) == 0)) {
                 after_dashdash = true;
             } else {
-                const char* __t14663 = "-o";
-                bool __t14664 = true;
-                if (!((arx_str_compare(a, __t14663) == 0))) {
-                    const char* __t14665 = "--output";
-                    __t14664 = ((arx_str_compare(a, __t14665) == 0));
+                const char* __t16111 = "-o";
+                bool __t16112 = true;
+                if (!((arx_str_compare(a, __t16111) == 0))) {
+                    const char* __t16113 = "--output";
+                    __t16112 = ((arx_str_compare(a, __t16113) == 0));
                 }
-                if (__t14664) {
+                if (__t16112) {
                     if (((((i) + (((int64_t)1LL)))) < (cli_argc))) {
                         i = ((i) + (((int64_t)1LL)));
-                        const char* __t14666 = Arx_List_str_get((&(cli_args)), i);
-                        out_file = __t14666;
+                        const char* __t16114 = Arx_List_str_get((&(cli_args)), i);
+                        out_file = __t16114;
                     }
                 } else {
-                    const char* __t14667 = "--emit-c";
-                    if ((arx_str_compare(a, __t14667) == 0)) {
+                    const char* __t16115 = "--emit-c";
+                    if ((arx_str_compare(a, __t16115) == 0)) {
                         keep_c = true;
                     } else {
-                        const char* __t14668 = "--backend=c";
-                        if ((arx_str_compare(a, __t14668) == 0)) {
-                            const char* __t14669 = "c";
-                            backend = __t14669;
+                        const char* __t16116 = "--backend=c";
+                        if ((arx_str_compare(a, __t16116) == 0)) {
+                            const char* __t16117 = "c";
+                            backend = __t16117;
                         } else {
-                            const char* __t14670 = "--backend=native";
-                            if ((arx_str_compare(a, __t14670) == 0)) {
-                                const char* __t14671 = "native";
-                                backend = __t14671;
+                            const char* __t16118 = "--backend=native";
+                            if ((arx_str_compare(a, __t16118) == 0)) {
+                                const char* __t16119 = "native";
+                                backend = __t16119;
                             } else {
-                                const char* __t14672 = "-O0";
-                                bool __t14673 = true;
-                                if (!((arx_str_compare(a, __t14672) == 0))) {
-                                    const char* __t14674 = "-O1";
-                                    __t14673 = ((arx_str_compare(a, __t14674) == 0));
+                                const char* __t16120 = "-O0";
+                                bool __t16121 = true;
+                                if (!((arx_str_compare(a, __t16120) == 0))) {
+                                    const char* __t16122 = "-O1";
+                                    __t16121 = ((arx_str_compare(a, __t16122) == 0));
                                 }
-                                bool __t14675 = true;
-                                if (!(__t14673)) {
-                                    const char* __t14676 = "-O2";
-                                    __t14675 = ((arx_str_compare(a, __t14676) == 0));
+                                bool __t16123 = true;
+                                if (!(__t16121)) {
+                                    const char* __t16124 = "-O2";
+                                    __t16123 = ((arx_str_compare(a, __t16124) == 0));
                                 }
-                                bool __t14677 = true;
-                                if (!(__t14675)) {
-                                    const char* __t14678 = "-O3";
-                                    __t14677 = ((arx_str_compare(a, __t14678) == 0));
+                                bool __t16125 = true;
+                                if (!(__t16123)) {
+                                    const char* __t16126 = "-O3";
+                                    __t16125 = ((arx_str_compare(a, __t16126) == 0));
                                 }
-                                if (__t14677) {
+                                if (__t16125) {
                                     opt_flag = a;
                                 } else {
-                                    const char* __t14679 = "";
-                                    if ((arx_str_compare(input_file, __t14679) == 0)) {
+                                    const char* __t16127 = "";
+                                    if ((arx_str_compare(input_file, __t16127) == 0)) {
                                         input_file = a;
                                     } else {
                                         Arx_List_str_push((&(prog_args)), a);
@@ -36238,47 +40035,47 @@ int64_t arx_main(void) {
         }
         i = ((i) + (((int64_t)1LL)));
     }
-    const char* __t14680 = "";
-    if ((arx_str_compare(input_file, __t14680) == 0)) {
-        const char* __t14681 = "ERROR: No input .arx file provided.";
-        fprintf(stderr, "%s\n", __t14681);
+    const char* __t16128 = "";
+    if ((arx_str_compare(input_file, __t16128) == 0)) {
+        const char* __t16129 = "ERROR: No input .arx file provided.";
+        fprintf(stderr, "%s\n", __t16129);
         arx_print_usage();
-        int64_t __t14682 = ((int64_t)1LL);
-        return __t14682;
+        int64_t __t16130 = ((int64_t)1LL);
+        return __t16130;
     }
-    const char* __t14683 = "check";
-    if ((arx_str_compare(mode, __t14683) == 0)) {
-        int64_t __t14684 = arx_cmd_check(input_file);
-        int64_t __t14685 = __t14684;
-        return __t14685;
+    const char* __t16131 = "check";
+    if ((arx_str_compare(mode, __t16131) == 0)) {
+        int64_t __t16132 = arx_cmd_check(input_file);
+        int64_t __t16133 = __t16132;
+        return __t16133;
     }
-    const char* __t14686 = "emit-c";
-    if ((arx_str_compare(mode, __t14686) == 0)) {
-        int64_t __t14687 = arx_cmd_emit_c(input_file, out_file);
-        int64_t __t14688 = __t14687;
-        return __t14688;
+    const char* __t16134 = "emit-c";
+    if ((arx_str_compare(mode, __t16134) == 0)) {
+        int64_t __t16135 = arx_cmd_emit_c(input_file, out_file);
+        int64_t __t16136 = __t16135;
+        return __t16136;
     }
-    const char* __t14689 = "build";
-    if ((arx_str_compare(mode, __t14689) == 0)) {
-        int64_t __t14690 = arx_cmd_build(input_file, out_file, opt_flag, keep_c, backend);
-        int64_t __t14691 = __t14690;
-        return __t14691;
+    const char* __t16137 = "build";
+    if ((arx_str_compare(mode, __t16137) == 0)) {
+        int64_t __t16138 = arx_cmd_build(input_file, out_file, opt_flag, keep_c, backend);
+        int64_t __t16139 = __t16138;
+        return __t16139;
     }
-    const char* __t14692 = "run";
-    if ((arx_str_compare(mode, __t14692) == 0)) {
-        int64_t __t14693 = arx_cmd_run(input_file, opt_flag, backend, prog_args, prog_argc);
-        int64_t __t14694 = __t14693;
-        return __t14694;
+    const char* __t16140 = "run";
+    if ((arx_str_compare(mode, __t16140) == 0)) {
+        int64_t __t16141 = arx_cmd_run(input_file, opt_flag, backend, prog_args, prog_argc);
+        int64_t __t16142 = __t16141;
+        return __t16142;
     }
-    const char* __t14695 = "";
-    if ((arx_str_compare(out_file, __t14695) != 0)) {
-        int64_t __t14696 = arx_cmd_build(input_file, out_file, opt_flag, keep_c, backend);
-        int64_t __t14697 = __t14696;
-        return __t14697;
+    const char* __t16143 = "";
+    if ((arx_str_compare(out_file, __t16143) != 0)) {
+        int64_t __t16144 = arx_cmd_build(input_file, out_file, opt_flag, keep_c, backend);
+        int64_t __t16145 = __t16144;
+        return __t16145;
     }
-    int64_t __t14698 = arx_cmd_run(input_file, opt_flag, backend, prog_args, prog_argc);
-    int64_t __t14699 = __t14698;
-    return __t14699;
+    int64_t __t16146 = arx_cmd_run(input_file, opt_flag, backend, prog_args, prog_argc);
+    int64_t __t16147 = __t16146;
+    return __t16147;
 }
 
 int main(int argc, char** argv) {

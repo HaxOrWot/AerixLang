@@ -1,8 +1,0 @@
--xc++
--std=c++17
--DUNICODE
--D_UNICODE
--D_WIN32_WINNT=0x0A00
--DWINVER=0x0A00
--IZ:/MinGW-64/ucrt64/include
--Wno-unused-includes

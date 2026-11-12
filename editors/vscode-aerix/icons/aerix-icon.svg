@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <!-- Aerix Language Icon: Supersonic Duo 'X' -->
+  <defs>
+    <linearGradient id="aerixCyan" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00F2FE"/>
+      <stop offset="100%" stop-color="#00B4D8"/>
+    </linearGradient>
+    <linearGradient id="aerixAzure" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38BDF8"/>
+      <stop offset="100%" stop-color="#1D4ED8"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Right Chevron (Royal Azure): Points inward from right -->
+  <path d="M 92 34 L 66 64 L 92 94" 
+        fill="none" 
+        stroke="url(#aerixAzure)" 
+        stroke-width="14" 
+        stroke-linecap="round" 
+        stroke-linejoin="round"/>
+
+  <!-- Left Chevron (Electric Aero Cyan): Points inward from left -->
+  <path d="M 36 34 L 62 64 L 36 94" 
+        fill="none" 
+        stroke="url(#aerixCyan)" 
+        stroke-width="14" 
+        stroke-linecap="round" 
+        stroke-linejoin="round"/>
+</svg>
