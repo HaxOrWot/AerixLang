@@ -1804,14 +1804,18 @@ fn collect_module_or_file_completions(az: Analyzer, source: str, doc_path: str, 
                                       insert_parens: bool, expected_t: str,
                                       jb: JsonBuf, seen: Map<str, i64>, is_first_box: List<i64>) -> bool {
     mut matched_any = false
-    let is_static_prelude = lsp_is_static_runtime(mod_name)
+    mut target_mod = mod_name
+    if az.mod_aliases.has_key(mod_name) {
+        target_mod = az.mod_aliases.get(mod_name)
+    }
+    let is_static_prelude = lsp_is_static_runtime(mod_name) || lsp_is_static_runtime(target_mod)
 
     // 1. All functions declared in that module or file
     mut fi = 0
     while fi < az.fn_count {
         let fid = az.fn_nodes.get(fi)
         let fn_file = az.nf.get(fid)
-        if lsp_file_matches_mod(fn_file, mod_name) {
+        if lsp_file_matches_mod(fn_file, mod_name) || lsp_file_matches_mod(fn_file, target_mod) {
             let fnm = az.sa.get(fid)
             let skey = "mfn::" + fnm
             if !seen.has_key(skey) {
@@ -1841,7 +1845,7 @@ fn collect_module_or_file_completions(az: Analyzer, source: str, doc_path: str, 
     while ci < az.cls_count {
         let cid = az.cls_nodes.get(ci)
         let c_file = az.nf.get(cid)
-        if lsp_file_matches_mod(c_file, mod_name) {
+        if lsp_file_matches_mod(c_file, mod_name) || lsp_file_matches_mod(c_file, target_mod) {
             let cnm = az.cls_names.get(ci)
             let skey = "mc::" + cnm
             if !seen.has_key(skey) {
@@ -1864,7 +1868,7 @@ fn collect_module_or_file_completions(az: Analyzer, source: str, doc_path: str, 
     while ei < az.enum_count {
         let eid = az.enum_nodes.get(ei)
         let e_file = az.nf.get(eid)
-        if lsp_file_matches_mod(e_file, mod_name) {
+        if lsp_file_matches_mod(e_file, mod_name) || lsp_file_matches_mod(e_file, target_mod) {
             let enm = az.enum_names.get(ei)
             let skey = "me::" + enm
             if !seen.has_key(skey) {
@@ -1887,7 +1891,7 @@ fn collect_module_or_file_completions(az: Analyzer, source: str, doc_path: str, 
     while gi < az.global_count {
         let gid = az.global_nodes.get(gi)
         let g_file = az.nf.get(gid)
-        if lsp_file_matches_mod(g_file, mod_name) {
+        if lsp_file_matches_mod(g_file, mod_name) || lsp_file_matches_mod(g_file, target_mod) {
             let gnm = az.sa.get(gid)
             let skey = "mg::" + gnm
             if !seen.has_key(skey) {
@@ -1908,7 +1912,7 @@ fn collect_module_or_file_completions(az: Analyzer, source: str, doc_path: str, 
 
     // 5. Merge built-in methods if this is a static runtime / stdlib module (e.g. Math, Random, File, etc.)
     if is_static_prelude {
-        let bms = lsp_builtin_methods_for(mod_name)
+        let bms = lsp_builtin_methods_for(target_mod)
         mut bi = 0
         while bi < bms.len() {
             let entry = bms.get(bi)

@@ -529,6 +529,10 @@ static inline void arx_sleep_ms(int64_t ms) {
 #endif
 }
 
+static inline void arx_sleep(int64_t ms) {
+    arx_sleep_ms(ms);
+}
+
 static inline int64_t arx_thread_spawn(void* (*func)(void*), void* arg) {
 #if defined(_WIN32) || defined(_WIN64)
     HANDLE h = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)func, (LPVOID)arg, 0, NULL);

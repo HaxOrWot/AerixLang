@@ -62,6 +62,13 @@ pub fn pow(base: f64, exp: i64) -> f64 {
     return res;
 }
 
+pub fn pow(base: f64, exponent: f64) -> f64 {
+    if base <= 0.0 {
+        return 0.0;
+    }
+    return exp(exponent * ln(base));
+}
+
 pub fn factorial(n: i64) -> i64 {
     if n <= 1 {
         return 1;

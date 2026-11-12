@@ -58,6 +58,8 @@ pub class Parser {
     pub c_inc_count: i64
     pub loaded_files: Map<str, i64>
     pub loaded_mods: Map<str, i64>
+    pub mod_aliases: Map<str, str>
+    pub item_aliases: Map<str, str>
     pub gen_list_types: List<str>
     pub gen_list_count: i64
     pub gen_map_keys: List<str>
@@ -122,6 +124,8 @@ pub class Parser {
         self.c_inc_count = 0
         self.loaded_files = Map<str, i64>()
         self.loaded_mods = Map<str, i64>()
+        self.mod_aliases = Map<str, str>()
+        self.item_aliases = Map<str, str>()
         self.gen_list_types = List<str>()
         self.gen_list_count = 0
         self.gen_map_keys = List<str>()
@@ -736,12 +740,15 @@ pub class Parser {
     priv fn parse_import_stmt() {
         if self.cur_kind() == TK_FROM() {
             self.adv()
+            mut mod_src = ""
             if self.cur_kind() == TK_STR() {
                 let t = self.adv()
-                self.load_file(self.tok_vals.get(t))
+                mod_src = self.tok_vals.get(t)
+                self.load_file(mod_src)
             } else if self.cur_kind() == TK_IDENT() {
                 let t = self.adv()
-                self.load_module(self.tok_vals.get(t))
+                mod_src = self.tok_vals.get(t)
+                self.load_module(mod_src)
             } else {
                 self.fail("Expected path or module name after 'from'")
                 return
@@ -749,7 +756,17 @@ pub class Parser {
             self.expect_k(TK_IMPORT(), "Expected 'import' after 'from <module>'")
             if self.match_k(TK_LBRACE()) {
                 while self.cur_kind() != TK_RBRACE() && self.cur_kind() != TK_EOF() {
-                    self.adv()
+                    if self.cur_kind() == TK_IDENT() {
+                        let orig_tok = self.adv()
+                        let orig_nm = self.tok_vals.get(orig_tok)
+                        if self.match_k(TK_AS()) {
+                            let atok = self.expect_k(TK_IDENT(), "Expected alias identifier after 'as'")
+                            let alias_nm = self.tok_vals.get(atok)
+                            self.item_aliases.insert(alias_nm, orig_nm)
+                        }
+                    } else {
+                        self.adv()
+                    }
                     if !self.match_k(TK_COMMA()) { break }
                 }
                 self.expect_k(TK_RBRACE(), "Expected closing brace in from ... import")
@@ -757,7 +774,13 @@ pub class Parser {
                 // from Mod import *
             } else {
                 while self.cur_kind() == TK_IDENT() {
-                    self.adv()
+                    let orig_tok = self.adv()
+                    let orig_nm = self.tok_vals.get(orig_tok)
+                    if self.match_k(TK_AS()) {
+                        let atok = self.expect_k(TK_IDENT(), "Expected alias identifier after 'as'")
+                        let alias_nm = self.tok_vals.get(atok)
+                        self.item_aliases.insert(alias_nm, orig_nm)
+                    }
                     if !self.match_k(TK_COMMA()) { break }
                 }
             }
@@ -765,10 +788,24 @@ pub class Parser {
         }
 
         self.adv()
-        // Selective: import { a, b } from "path" / Mod
+        // Selective: import { a, b as c } from "path" / Mod
         if self.match_k(TK_LBRACE()) {
+            let names = List<str>()
+            let aliases = List<str>()
             while self.cur_kind() != TK_RBRACE() && self.cur_kind() != TK_EOF() {
-                self.adv()
+                if self.cur_kind() == TK_IDENT() {
+                    let orig_tok = self.adv()
+                    let orig_nm = self.tok_vals.get(orig_tok)
+                    names.push(orig_nm)
+                    if self.match_k(TK_AS()) {
+                        let atok = self.expect_k(TK_IDENT(), "Expected alias identifier after 'as'")
+                        aliases.push(self.tok_vals.get(atok))
+                    } else {
+                        aliases.push("")
+                    }
+                } else {
+                    self.adv()
+                }
                 if !self.match_k(TK_COMMA()) { break }
             }
             self.expect_k(TK_RBRACE(), "Expected closing brace in selective import")
@@ -782,23 +819,46 @@ pub class Parser {
             } else {
                 self.fail("Expected path or module name after 'from'")
             }
+            mut ni = 0
+            while ni < names.len() {
+                let al = aliases.get(ni)
+                if al != "" {
+                    self.item_aliases.insert(al, names.get(ni))
+                }
+                ni = ni + 1
+            }
             return
         }
         // File path: import "./foo.arx" (optionally with 'as Alias')
         if self.cur_kind() == TK_STR() {
             let t = self.adv()
-            self.load_file(self.tok_vals.get(t))
+            let pth = self.tok_vals.get(t)
+            self.load_file(pth)
             if self.match_k(TK_AS()) {
-                self.expect_k(TK_IDENT(), "Expected alias identifier after 'as'")
+                let atok = self.expect_k(TK_IDENT(), "Expected alias identifier after 'as'")
+                let alias_nm = self.tok_vals.get(atok)
+                let base = bpath_basename(pth)
+                mut stem = base
+                if stem.ends_with(".arx") && stem.len() > 4 { stem = stem.slice(0, stem.len() - 4) }
+                self.mod_aliases.insert(alias_nm, stem)
+                self.mod_aliases.insert(alias_nm, pth)
             }
             return
         }
-        // Module list: import Math, Random (optionally with 'as Alias')
+        // Module list: import Math as M, Random as Rnd
         while self.cur_kind() == TK_IDENT() {
             let t = self.adv()
-            self.load_module(self.tok_vals.get(t))
+            let mod_name = self.tok_vals.get(t)
+            self.load_module(mod_name)
             if self.match_k(TK_AS()) {
-                self.expect_k(TK_IDENT(), "Expected alias identifier after 'as'")
+                let atok = self.expect_k(TK_IDENT(), "Expected alias identifier after 'as'")
+                let alias_nm = self.tok_vals.get(atok)
+                self.mod_aliases.insert(alias_nm, mod_name)
+                // Also insert capitalized form for robustness
+                if mod_name.len() > 0 {
+                    let cap_mod = mod_name.slice(0, 1).to_upper() + mod_name.slice(1, mod_name.len())
+                    self.mod_aliases.insert(alias_nm, cap_mod)
+                }
             }
             if !self.match_k(TK_COMMA()) { break }
         }
