@@ -1,7 +1,7 @@
 # Aerix (arx) - Universal Windows PowerShell Installer & Setup Engine
 # Supports both:
 #   1. Remote one-liner from the web:
-#      irm https://raw.githubusercontent.com/<user>/AerixLang/main/install.ps1 | iex
+#      irm https://raw.githubusercontent.com/<user>/AerixLang/stable/install.ps1 | iex
 #   2. Local zero-click installation from the repository:
 #      powershell -ExecutionPolicy Bypass -File .\install.ps1
 
@@ -38,12 +38,12 @@ $localDistArx  = Join-Path $scriptDir "dist\arx.exe"
 $localDistArxc = Join-Path $scriptDir "dist\arxc.exe"
 $localRtHeader = Join-Path $scriptDir "stdlib\aerix_rt.h"
 $localVsixCandidate = Get-ChildItem -Path (Join-Path $scriptDir "editors\vscode-aerix") -Filter "*.vsix" -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-$localVsix = if ($localVsixCandidate) { $localVsixCandidate.FullName } else { Join-Path $scriptDir "editors\vscode-aerix\aerix-1.0.82.vsix" }
+$localVsix = if ($localVsixCandidate) { $localVsixCandidate.FullName } else { Join-Path $scriptDir "editors\vscode-aerix\aerix-1.1.0-stable.vsix" }
 
 # GitHub fallback repository
 $GitHubRepo = if ($env:AERIX_REPO) { $env:AERIX_REPO } else { "HaxOrWot/AerixLang" }
 $ReleaseBase = "https://github.com/$GitHubRepo/releases/latest/download"
-$RawBase     = "https://raw.githubusercontent.com/$GitHubRepo/main"
+$RawBase     = "https://raw.githubusercontent.com/$GitHubRepo/master"
 
 # ----------------------------------------------------
 # 1. Install Toolchain Binaries (arx.exe and arxc.exe)
@@ -96,12 +96,12 @@ if (Test-Path $localRtHeader) {
 # ----------------------------------------------------
 # 3. Cache Extension VSIX
 # ----------------------------------------------------
-$targetVsix = Join-Path $aerixEditors "aerix-1.0.82.vsix"
+$targetVsix = Join-Path $aerixEditors "aerix-1.1.0-stable.vsix"
 if ($localVsix -and (Test-Path $localVsix)) {
     Copy-Item -Path $localVsix -Destination $targetVsix -Force
 } elseif (-not (Test-Path $targetVsix)) {
     try {
-        Invoke-WebRequest -Uri "$ReleaseBase/aerix-1.0.82.vsix" -OutFile $targetVsix -UseBasicParsing
+        Invoke-WebRequest -Uri "$ReleaseBase/aerix-1.1.0-stable.vsix" -OutFile $targetVsix -UseBasicParsing
     } catch {
         # Optional extension download
     }

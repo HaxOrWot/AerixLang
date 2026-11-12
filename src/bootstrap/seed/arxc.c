@@ -19295,7 +19295,7 @@ int64_t arx_main(void) {
         __t8287 = ((arx_str_compare(first, __t8288) == 0));
     }
     if (__t8287) {
-        const char* __t8289 = "Aerix Self-Hosting Bootstrap Compiler (arxc) v0.1.0-bootstrap";
+        const char* __t8289 = "Aerix Self-Hosting Bootstrap Compiler (arxc) v1.1.0-stable";
         arx_println_str(__t8289);
         int64_t __t8290 = ((int64_t)0LL);
         return __t8290;

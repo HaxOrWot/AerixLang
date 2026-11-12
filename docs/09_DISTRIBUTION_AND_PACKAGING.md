@@ -21,7 +21,7 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1
 #### Option B: Global Web One-Liner (For Anyone Worldwide — No Website Needed!)
 Anyone on Windows can install Aerix in one command using PowerShell:
 ```powershell
-irm https://raw.githubusercontent.com/<YOUR_GITHUB_USERNAME>/AerixLang/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/<YOUR_GITHUB_USERNAME>/AerixLang/stable/install.ps1 | iex
 ```
 *(To create a clean branded link without buying a domain, use a free GitHub Pages URL or a URL shortener like `bit.ly/get-aerix` or `is.gd/aerix`)*.
 
@@ -45,7 +45,7 @@ flowchart LR
 ### How It Works:
 1. **Hosting the Installer Script (`install.ps1`):**
    - GitHub automatically serves raw files from any public repository via their global CDN:  
-     `https://raw.githubusercontent.com/<YOUR_USERNAME>/AerixLang/main/install.ps1`
+     `https://raw.githubusercontent.com/<YOUR_USERNAME>/AerixLang/stable/install.ps1`
 2. **Hosting the Compiled Binaries (`arx.exe`, `arxc.exe`):**
    - Go to your GitHub repository -> **Releases** -> **Draft a new release** (e.g. tag `v1.0.0`).
    - Attach `dist/arx.exe`, `dist/arxc.exe`, and `editors/vscode-aerix/aerix-1.0.0.vsix`.

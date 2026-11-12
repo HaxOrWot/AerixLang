@@ -20,12 +20,20 @@ def get_project_version(root_dir):
             if line.strip().startswith("VERSION ="):
                 raw_ver = line.split("=")[1].strip().strip('"').strip("'")
                 return raw_ver
-    return "1.0.91-pre"
+    return "1.1.0-stable"
+
+
+def resolve_release_channel(version):
+    if version.endswith("-pre") or "-alpha" in version or "-rc" in version:
+        return "pre", True
+    return "stable", False
+
 
 def publish(tag=None):
     root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
     version = get_project_version(root_dir)
     tag_name = tag or f"v{version}"
+    target_branch, is_prerelease = resolve_release_channel(version)
 
     print("==================================================================")
     print(f"       AERIX GITHUB RELEASE PUBLISHER ({tag_name})                ")
@@ -77,11 +85,17 @@ def publish(tag=None):
 
         print(f"[*] Uploading/updating allowed assets into {tag_name}...")
         subprocess.run(["gh", "release", "upload", tag_name, setup_exe, vsix_file, "--clobber"], check=True)
-        subprocess.run(["gh", "release", "edit", tag_name, "--latest"], check=False)
+        edit_cmd = ["gh", "release", "edit", tag_name, "--target", target_branch]
+        edit_cmd.append("--prerelease" if is_prerelease else "--latest")
+        subprocess.run(edit_cmd, check=False)
     else:
-        print(f"\n[*] Creating new release {tag_name}...")
+        print(f"\n[*] Creating new release {tag_name} targeting {target_branch}...")
         title = f"Aerix v{version}: Windows Installer & VS Code Extension"
-        cmd = ["gh", "release", "create", tag_name, setup_exe, vsix_file, "--title", title, "--latest"]
+        cmd = [
+            "gh", "release", "create", tag_name, setup_exe, vsix_file,
+            "--title", title, "--target", target_branch
+        ]
+        cmd.append("--prerelease" if is_prerelease else "--latest")
         notes_path = os.path.join(root_dir, "scratch", f"RELEASE_NOTES_v{version}.md")
         if os.path.exists(notes_path):
             cmd.extend(["--notes-file", notes_path])

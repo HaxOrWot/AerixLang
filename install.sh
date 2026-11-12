@@ -31,7 +31,7 @@ LOCAL_STDLIB="${SCRIPT_DIR}/stdlib/aerix_rt.h"
 
 AERIX_REPO="${AERIX_REPO:-HaxOrWot/AerixLang}"
 RELEASE_BASE="https://github.com/${AERIX_REPO}/releases/latest/download"
-RAW_BASE="https://raw.githubusercontent.com/${AERIX_REPO}/main"
+RAW_BASE="https://raw.githubusercontent.com/${AERIX_REPO}/master"
 
 if [ -f "${LOCAL_DIST}" ]; then
     echo "[*] Installing local standalone toolchain from dist/arx..."
