@@ -78,6 +78,7 @@ pub class NativeRt {
     pub lbl_global_init: i64
     pub lbl_user_main: i64
     pub env_buf_off: i64
+    pub prng_state_off: i64
 
     init(asm: X64Asm, pe: PeBuilder) {
         self.asm = asm
@@ -149,6 +150,7 @@ pub class NativeRt {
         self.s_windows = pe.add_rdata_cstr("windows")
 
         self.env_buf_off = pe.alloc_data_bytes(4096)
+        self.prng_state_off = pe.alloc_data_bytes(8)
         self.lbl_global_init = asm.new_label()
         self.lbl_user_main = asm.new_label()
     }
@@ -1761,6 +1763,175 @@ pub class NativeRt {
         a.call_rel32(self.lbl("__rt_env_args"))
         a.mov_rr(REG_RCX(), REG_RAX())
         a.call_rel32(self.lbl("__rt_list_len"))
+        self.end_fn()
+
+        // PRNG runtime implementations
+        // arx_prng_seed(rcx = seed: i64)
+        self.begin_fn("arx_prng_seed", 48)
+        let l_seed_nonzero = a.new_label()
+        a.test_rr(REG_RCX(), REG_RCX())
+        a.jcc_rel32(CC_NE(), l_seed_nonzero)
+
+        // seed == 0: get seed from GetTickCount64
+        a.call_rip_iat(self.imp_tick) // RAX = GetTickCount64()
+        let l_nonz2 = a.new_label()
+        a.test_rr(REG_RAX(), REG_RAX())
+        a.jcc_rel32(CC_NE(), l_nonz2)
+        a.mov_ri64(REG_RAX(), 423259739)
+        a.bind_label(l_nonz2)
+        a.mov_mr64_rip_data(self.prng_state_off, REG_RAX())
+        self.end_fn()
+
+        a.bind_label(l_seed_nonzero)
+        a.mov_mr64_rip_data(self.prng_state_off, REG_RCX())
+        self.end_fn()
+
+        // arx_prng_get_state() -> i64
+        self.begin_fn("arx_prng_get_state", 48)
+        a.mov_rm64_rip_data(REG_RAX(), self.prng_state_off)
+        let l_gs_ok = a.new_label()
+        a.test_rr(REG_RAX(), REG_RAX())
+        a.jcc_rel32(CC_NE(), l_gs_ok)
+        a.mov_ri32_sext(REG_RCX(), 0)
+        a.call_rel32(self.lbl("arx_prng_seed"))
+        a.mov_rm64_rip_data(REG_RAX(), self.prng_state_off)
+        a.bind_label(l_gs_ok)
+        self.end_fn()
+
+        // arx_prng_set_state(rcx = state)
+        self.begin_fn("arx_prng_set_state", 48)
+        a.mov_mr64_rip_data(self.prng_state_off, REG_RCX())
+        self.end_fn()
+
+        // arx_prng_next_i64() -> i64 (xorshift64* generator)
+        self.begin_fn("arx_prng_next_i64", 48)
+        a.mov_rm64_rip_data(REG_RAX(), self.prng_state_off)
+        let l_prng_init = a.new_label()
+        a.test_rr(REG_RAX(), REG_RAX())
+        a.jcc_rel32(CC_NE(), l_prng_init)
+        a.mov_ri32_sext(REG_RCX(), 0)
+        a.call_rel32(self.lbl("arx_prng_seed"))
+        a.mov_rm64_rip_data(REG_RAX(), self.prng_state_off)
+        a.bind_label(l_prng_init)
+
+        // x ^= x >> 12
+        a.mov_rr(REG_RDX(), REG_RAX())
+        a.mov_ri32_sext(REG_RCX(), 12)
+        a.shr_cl(REG_RDX())
+        a.xor_rr(REG_RAX(), REG_RDX())
+
+        // x ^= x << 25
+        a.mov_rr(REG_RDX(), REG_RAX())
+        a.mov_ri32_sext(REG_RCX(), 25)
+        a.shl_cl(REG_RDX())
+        a.xor_rr(REG_RAX(), REG_RDX())
+
+        // x ^= x >> 27
+        a.mov_rr(REG_RDX(), REG_RAX())
+        a.mov_ri32_sext(REG_RCX(), 27)
+        a.shr_cl(REG_RDX())
+        a.xor_rr(REG_RAX(), REG_RDX())
+
+        // update state in memory
+        a.mov_mr64_rip_data(self.prng_state_off, REG_RAX())
+
+        // return x * 2685821657736338717
+        a.mov_ri64(REG_RDX(), 2685821657736338717)
+        a.imul_rr(REG_RAX(), REG_RDX())
+        self.end_fn()
+
+        // arx_prng_next_f64() -> f64
+        self.begin_fn("arx_prng_next_f64", 48)
+        a.call_rel32(self.lbl("arx_prng_next_i64"))
+        a.mov_ri32_sext(REG_RCX(), 11)
+        a.shr_cl(REG_RAX())
+        a.cvtsi2sd(0, REG_RAX())
+        a.mov_ri64(REG_RAX(), 9007199254740992)
+        a.cvtsi2sd(1, REG_RAX())
+        a.divsd(0, 1)
+        a.movq_r_xmm(REG_RAX(), 0)
+        self.end_fn()
+
+        // arx_time_now() -> f64
+        self.begin_fn("arx_time_now", 48)
+        a.call_rip_iat(self.imp_tick)
+        a.cvtsi2sd(0, REG_RAX())
+        a.mov_ri64(REG_RAX(), 1000)
+        a.cvtsi2sd(1, REG_RAX())
+        a.divsd(0, 1)
+        a.movq_r_xmm(REG_RAX(), 0)
+        self.end_fn()
+
+        // arx_sleep(rcx = ms: i64) -> void
+        self.begin_fn("arx_sleep", 48)
+        a.call_rip_iat(self.imp_sleep)
+        self.end_fn()
+
+        // Math builtin wrappers with safe Win64 shadow stack frames
+        // __rt_math_sqrt(rcx = x bitpattern) -> rax (result bitpattern)
+        self.begin_fn("__rt_math_sqrt", 48)
+        a.movq_xmm_r(0, REG_RCX())
+        a.call_rip_iat(self.imp_sqrt)
+        a.movq_r_xmm(REG_RAX(), 0)
+        self.end_fn()
+
+        // __rt_math_pow(rcx = base bitpattern, rdx = exp bitpattern) -> rax (result bitpattern)
+        self.begin_fn("__rt_math_pow", 48)
+        a.movq_xmm_r(0, REG_RCX())
+        a.movq_xmm_r(1, REG_RDX())
+        a.call_rip_iat(self.imp_pow)
+        a.movq_r_xmm(REG_RAX(), 0)
+        self.end_fn()
+
+        // __rt_math_sin(rcx = x bitpattern) -> rax
+        self.begin_fn("__rt_math_sin", 48)
+        a.movq_xmm_r(0, REG_RCX())
+        a.call_rip_iat(self.imp_sin)
+        a.movq_r_xmm(REG_RAX(), 0)
+        self.end_fn()
+
+        // __rt_math_cos(rcx = x bitpattern) -> rax
+        self.begin_fn("__rt_math_cos", 48)
+        a.movq_xmm_r(0, REG_RCX())
+        a.call_rip_iat(self.imp_cos)
+        a.movq_r_xmm(REG_RAX(), 0)
+        self.end_fn()
+
+        // __rt_math_tan(rcx = x bitpattern) -> rax
+        self.begin_fn("__rt_math_tan", 48)
+        a.movq_xmm_r(0, REG_RCX())
+        a.call_rip_iat(self.imp_tan)
+        a.movq_r_xmm(REG_RAX(), 0)
+        self.end_fn()
+
+        // __rt_math_floor(rcx = x bitpattern) -> rax
+        self.begin_fn("__rt_math_floor", 48)
+        a.movq_xmm_r(0, REG_RCX())
+        a.call_rip_iat(self.imp_floor)
+        a.movq_r_xmm(REG_RAX(), 0)
+        self.end_fn()
+
+        // __rt_math_ceil(rcx = x bitpattern) -> rax
+        self.begin_fn("__rt_math_ceil", 48)
+        a.movq_xmm_r(0, REG_RCX())
+        a.call_rip_iat(self.imp_ceil)
+        a.movq_r_xmm(REG_RAX(), 0)
+        self.end_fn()
+
+        // __rt_math_log(rcx = x bitpattern) -> rax
+        self.begin_fn("__rt_math_log", 48)
+        a.movq_xmm_r(0, REG_RCX())
+        a.call_rip_iat(self.imp_log)
+        a.movq_r_xmm(REG_RAX(), 0)
+        self.end_fn()
+
+        // __rt_math_exp(rcx = x bitpattern) -> rax
+        self.begin_fn("__rt_math_exp", 48)
+        a.movq_xmm_r(1, REG_RCX())
+        a.mov_ri64(REG_RDX(), 4613303445314885427)
+        a.movq_xmm_r(0, REG_RDX())
+        a.call_rip_iat(self.imp_pow)
+        a.movq_r_xmm(REG_RAX(), 0)
         self.end_fn()
     }
 }

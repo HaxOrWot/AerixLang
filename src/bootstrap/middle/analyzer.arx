@@ -47,6 +47,8 @@ pub class Analyzer {
     pub root_count: i64
     pub c_includes: List<str>
     pub c_inc_count: i64
+    pub mod_aliases: Map<str, str>
+    pub item_aliases: Map<str, str>
 
     // Monomorphized generic registries
     pub gen_list_types: List<str>
@@ -86,6 +88,7 @@ pub class Analyzer {
     pub global_nodes: List<i64>
     pub global_count: i64
     pub global_types: Map<str, str>
+    pub fn_externs: Map<str, str>
 
     pub fn_nodes: List<i64>
     pub fn_count: i64
@@ -153,6 +156,9 @@ pub class Analyzer {
         self.root_count = p.root_count
         self.c_includes = p.c_includes
         self.c_inc_count = p.c_inc_count
+        self.mod_aliases = p.mod_aliases
+        self.item_aliases = p.item_aliases
+        self.fn_externs = p.fn_externs
 
         self.gen_list_types = List<str>()
         self.gen_list_count = 0
@@ -581,8 +587,9 @@ pub class Analyzer {
     }
 
     priv fn is_builtin_ident(name: str) -> bool {
+        if self.mod_aliases.has_key(name) || self.item_aliases.has_key(name) { return true }
         if name == "true" || name == "false" || name == "null" || name == "_" || name == "self" { return true }
-        if name == "println" || name == "print" || name == "eprintln" || name == "panic" || name == "abort" || name == "assert" || name == "assert_eq" || name == "arx_free" { return true }
+        if name == "println" || name == "print" || name == "eprintln" || name == "panic" || name == "abort" || name == "assert" || name == "assert_eq" || name == "arx_free" || name == "arx_sleep" { return true }
         if name == "input" || name == "read_line" || name == "to_string" || name == "chr" || name == "parse_int" || name == "ord" || name == "len" { return true }
         if name == "parse_float" || name == "sqrt" || name == "sin" || name == "cos" || name == "tan" || name == "pow" || name == "floor" || name == "ceil" || name == "round" || name == "log" || name == "exp" || name == "abs" || name == "min" || name == "max" || name == "exit" { return true }
         if name == "File" || name == "Directory" || name == "Process" || name == "Env" || name == "Math" || name == "ByteBuffer" || name == "String" || name == "List" || name == "Map" || name == "Set" || name == "Stack" || name == "Queue" || name == "Deque" { return true }
@@ -1555,6 +1562,8 @@ pub class Analyzer {
                     t = name
                 } else if self.enum_idx_map.has_key(name) {
                     t = name
+                } else if self.mod_aliases.has_key(name) || self.item_aliases.has_key(name) {
+                    t = "module"
                 } else if self.sig_by_key.has_key("fn::" + name) || self.is_builtin_ident(name) {
                     t = "i64"
                 } else {
@@ -1719,17 +1728,19 @@ pub class Analyzer {
                 if !self.cls_idx_map.has_key(lname) {
                     if !self.enum_idx_map.has_key(lname) {
                         if self.scope_lookup(lname) == "" {
+                            mut lookup_mname = mname
+                            if self.item_aliases.has_key(mname) { lookup_mname = self.item_aliases.get(mname) }
                             let empty_args = List<str>()
-                            let msig = self.find_best_overload("fn::" + mname, empty_args, 0)
+                            let msig = self.find_best_overload("fn::" + lookup_mname, empty_args, 0)
                             if msig >= 0 {
                                 let rt = self.sig_rets.get(msig)
                                 self.node_ext.set(nid, "mod_call::" + self.sig_cnames.get(msig))
                                 self.node_types.set(nid, rt)
                                 return rt
                             }
-                            if self.global_types.has_key(mname) {
-                                let gt = self.global_types.get(mname)
-                                self.node_ext.set(nid, "mod_global::" + mname)
+                            if self.global_types.has_key(lookup_mname) {
+                                let gt = self.global_types.get(lookup_mname)
+                                self.node_ext.set(nid, "mod_global::" + lookup_mname)
                                 self.node_types.set(nid, gt)
                                 return gt
                             }
@@ -1875,7 +1886,26 @@ pub class Analyzer {
 
         let ck = self.nk.get(callee)
         if ck == NK_IDENT() {
-            let name = self.sa.get(callee)
+            let raw_name = self.sa.get(callee)
+            mut name = raw_name
+            if self.item_aliases.has_key(raw_name) {
+                name = self.item_aliases.get(raw_name)
+            }
+
+            // User function / imported module function check (takes precedence over math builtins)
+            if self.sig_by_key.has_key("fn::" + name) {
+                self.check_call_arity(callee, "fn::" + name, name, ac, "function")
+                let sig_i = self.find_best_overload("fn::" + name, arg_types, ac)
+                if sig_i >= 0 {
+                    let rt = self.sig_rets.get(sig_i)
+                    self.call_kinds.set(nid, CK_NORMAL())
+                    self.call_targets.set(nid, self.sig_cnames.get(sig_i))
+                    self.call_fn_nodes.set(nid, self.sig_nodes.get(sig_i))
+                    self.node_types.set(nid, rt)
+                    return rt
+                }
+            }
+
             // 1. Built-in global functions
             if name == "println" || name == "print" || name == "eprintln" || name == "panic" || name == "abort" || name == "assert" || name == "assert_eq" || name == "arx_free" {
                 self.call_kinds.set(nid, CK_BUILTIN())
@@ -1917,7 +1947,7 @@ pub class Analyzer {
                 self.node_types.set(nid, "void")
                 return "void"
             }
-            if name == "arx_prng_seed" || name == "arx_prng_set_state" {
+            if name == "arx_prng_seed" || name == "arx_prng_set_state" || name == "arx_sleep" {
                 self.call_kinds.set(nid, CK_NORMAL())
                 self.call_targets.set(nid, name)
                 self.node_types.set(nid, "void")
@@ -2004,6 +2034,9 @@ pub class Analyzer {
             // Enum payload constructor: EnumName.Variant(args)
             if self.nk.get(lhs) == NK_IDENT() {
                 let lname = self.sa.get(lhs)
+                mut mod_name = lname
+                if self.mod_aliases.has_key(lname) { mod_name = self.mod_aliases.get(lname) }
+
                 if self.enum_idx_map.has_key(lname) {
                     let vkey = lname + "::" + mname
                     self.call_kinds.set(nid, CK_ENUM_VAR())
@@ -2016,7 +2049,7 @@ pub class Analyzer {
                 }
 
                 // Static prelude classes
-                if lname == "File" || lname == "Directory" || lname == "Process" || lname == "Env" || lname == "Math" {
+                if lname == "File" || lname == "Directory" || lname == "Process" || lname == "Env" {
                     let rt = self.prelude_static_ret(lname, mname)
                     self.ensure_generic_type(rt)
                     self.call_kinds.set(nid, CK_STATIC())
@@ -2038,12 +2071,14 @@ pub class Analyzer {
                     }
                 }
 
-                // Module-qualified function call: Mod.func(args)
+                // Module-qualified function call: Mod.func(args) or Alias.func(args)
                 if lname != "String" && lname != "ByteBuffer" {
                     if !self.cls_idx_map.has_key(lname) {
                         if !self.enum_idx_map.has_key(lname) {
                             if self.scope_lookup(lname) == "" {
-                                let msig = self.find_best_overload("fn::" + mname, arg_types, ac)
+                                mut lookup_target = mname
+                                if self.item_aliases.has_key(mname) { lookup_target = self.item_aliases.get(mname) }
+                                let msig = self.find_best_overload("fn::" + lookup_target, arg_types, ac)
                                 if msig >= 0 {
                                     let rt = self.sig_rets.get(msig)
                                     self.call_kinds.set(nid, CK_NORMAL())
@@ -2051,6 +2086,32 @@ pub class Analyzer {
                                     self.call_fn_nodes.set(nid, self.sig_nodes.get(msig))
                                     self.node_types.set(nid, rt)
                                     return rt
+                                }
+                                if self.cls_idx_map.has_key(lookup_target) {
+                                    let ctor_sig = self.find_best_overload("ctor::" + lookup_target, arg_types, ac)
+                                    self.call_kinds.set(nid, CK_CTOR())
+                                    self.call_targets.set(nid, lookup_target)
+                                    if ctor_sig >= 0 {
+                                        self.call_fn_nodes.set(nid, self.sig_nodes.get(ctor_sig))
+                                    }
+                                    self.node_types.set(nid, lookup_target)
+                                    return lookup_target
+                                }
+                                if mod_name == "Math" {
+                                    if mname == "sqrt" || mname == "sin" || mname == "cos" || mname == "tan" || mname == "pow" || mname == "floor" || mname == "ceil" || mname == "round" || mname == "log" || mname == "exp" {
+                                        self.call_kinds.set(nid, CK_BUILTIN())
+                                        self.call_targets.set(nid, mname)
+                                        self.node_types.set(nid, "f64")
+                                        return "f64"
+                                    }
+                                    if mname == "abs" || mname == "min" || mname == "max" {
+                                        self.call_kinds.set(nid, CK_BUILTIN())
+                                        self.call_targets.set(nid, mname)
+                                        mut rt = "i64"
+                                        if ac > 0 && btype_is_float(arg_types.get(0)) { rt = "f64" }
+                                        self.node_types.set(nid, rt)
+                                        return rt
+                                    }
                                 }
                             }
                         }

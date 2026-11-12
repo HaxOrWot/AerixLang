@@ -191,11 +191,13 @@ pub fn find_module_dir(mod_name: str, entry_dir: str) -> str {
     if env_mp != "" {
         let cand_env = bpath_join(env_mp, mod_name)
         if Directory.exists(cand_env) { return cand_env }
+        if File.exists(cand_env + ".arx") { return cand_env + ".arx" }
     }
     let env_home = Env.get("AERIX_HOME")
     if env_home != "" {
         let cand_home = bpath_join(bpath_join(env_home, "modules"), mod_name)
         if Directory.exists(cand_home) { return cand_home }
+        if File.exists(cand_home + ".arx") { return cand_home + ".arx" }
     }
     let cands = List<str>()
     let cwd = bpath_normalize(Env.cwd())
@@ -217,10 +219,35 @@ pub fn find_module_dir(mod_name: str, entry_dir: str) -> str {
         cands.push(bpath_join(exe_dir, "../../modules/" + mod_name))
         cands.push(bpath_join(exe_dir, "../../../modules/" + mod_name))
     }
+
+    // Capitalized variant (e.g. 'random' -> 'Random')
+    mut alt_name = ""
+    if mod_name.len() > 0 {
+        let ch0 = mod_name.byte_at(0)
+        if ch0 >= 97 && ch0 <= 122 {
+            let bb_alt = ByteBuffer()
+            bb_alt.write_u8(ch0 - 32)
+            if mod_name.len() > 1 {
+                bb_alt.write_str(mod_name.slice(1, mod_name.len()))
+            }
+            alt_name = bb_alt.to_str()
+            bb_alt.free()
+        }
+    }
+    if alt_name != "" {
+        cands.push("C:/Aerix/modules/" + alt_name)
+        cands.push(bpath_join(entry_dir, "modules/" + alt_name))
+        cands.push(bpath_join(cwd, "modules/" + alt_name))
+        if local_app != "" {
+            cands.push(bpath_join(local_app, "Programs/Aerix/modules/" + alt_name))
+        }
+    }
+
     mut i = 0
     while i < cands.len() {
         let c = cands.get(i)
         if Directory.exists(c) { return c }
+        if File.exists(c + ".arx") { return c + ".arx" }
         i = i + 1
     }
     return ""

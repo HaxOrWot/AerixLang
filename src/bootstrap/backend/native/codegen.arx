@@ -89,6 +89,8 @@ pub class NativeCodegen {
     pub enum_var_tags: Map<str, i64>     // "Enum::Var" -> tag index
     pub global_offs: Map<str, i64>       // global var -> .data offset
     pub global_nodes: List<i64>
+    pub fn_externs: Map<str, str>
+    pub extern_iats: Map<i64, i64>
 
     // Per-function compilation state (lexical variable stack for shadowing/blocks)
     pub scope_names: List<str>
@@ -136,6 +138,8 @@ pub class NativeCodegen {
         self.enum_var_tags = Map<str, i64>()
         self.global_offs = Map<str, i64>()
         self.global_nodes = List<i64>()
+        self.fn_externs = az.fn_externs
+        self.extern_iats = Map<i64, i64>()
 
         self.scope_names = List<str>()
         self.scope_offs = List<i64>()
@@ -240,6 +244,18 @@ pub class NativeCodegen {
                     self.global_offs.insert(nm, self.pe.alloc_data_qword(0))
                 }
                 self.global_nodes.push(nid)
+            } else if self.nk.get(nid) == NK_FN_DEF() {
+                let fname = self.sa.get(nid)
+                if self.fn_externs.has_key(fname) {
+                    let full_ext = self.fn_externs.get(fname)
+                    let parts = full_ext.split("::")
+                    if parts.len() >= 2 {
+                        let dll = parts.get(0)
+                        let sym = parts.get(1)
+                        let iat_off = self.pe.add_import(dll, sym)
+                        self.extern_iats.insert(nid, iat_off)
+                    }
+                }
             }
             ri = ri + 1
         }
@@ -357,13 +373,7 @@ pub class NativeCodegen {
         }
         self.asm.bind_label(self.rt.lbl_user_main)
         if main_nid >= 0 {
-            if btype_norm(self.sb.get(main_nid)) == "void" {
-                self.asm.call_rel32(self.rt.lbl(self.fn_symbol_name(main_nid)))
-                self.asm.mov_ri32_sext(REG_RAX(), 0)
-                self.asm.ret()
-            } else {
-                self.asm.jmp_rel32(self.rt.lbl(self.fn_symbol_name(main_nid)))
-            }
+            self.asm.jmp_rel32(self.rt.lbl(self.fn_symbol_name(main_nid)))
         } else {
             self.asm.mov_ri32_sext(REG_RAX(), 0)
             self.asm.ret()
@@ -493,6 +503,9 @@ pub class NativeCodegen {
         self.emit_scope_defers(0)
 
         a.bind_label(self.cur_ret_lbl)
+        if self.cur_ret_type == "void" {
+            a.mov_ri32_sext(REG_RAX(), 0)
+        }
         self.pop_scope()
         self.cur_class = ""
 
@@ -1108,6 +1121,18 @@ pub class NativeCodegen {
             let obj_id = self.la.get(nid)
             let mem = self.sa.get(nid)
             let ext = self.node_ext.get(nid)
+            if ext.starts_with("mod_call::") {
+                let sym = ext.slice(10, ext.len())
+                a.call_rel32(self.rt.lbl(sym))
+                return
+            }
+            if ext.starts_with("mod_global::") {
+                let gname = ext.slice(12, ext.len())
+                if self.global_offs.has_key(gname) {
+                    a.mov_rm64_rip_data(REG_RAX(), self.global_offs.get(gname))
+                    return
+                }
+            }
             if ext.starts_with("enum_unit::") {
                 let rest = ext.slice(11, ext.len())
                 if self.enum_unit_ptrs.has_key(rest) {
@@ -1535,6 +1560,16 @@ pub class NativeCodegen {
                 return
             }
 
+            if nm == "sqrt" && ac == 1 { self.emit_call_with_temps(self.rt.lbl("__rt_math_sqrt"), false, arg_temps); return }
+            if nm == "pow" && ac == 2 { self.emit_call_with_temps(self.rt.lbl("__rt_math_pow"), false, arg_temps); return }
+            if nm == "sin" && ac == 1 { self.emit_call_with_temps(self.rt.lbl("__rt_math_sin"), false, arg_temps); return }
+            if nm == "cos" && ac == 1 { self.emit_call_with_temps(self.rt.lbl("__rt_math_cos"), false, arg_temps); return }
+            if nm == "tan" && ac == 1 { self.emit_call_with_temps(self.rt.lbl("__rt_math_tan"), false, arg_temps); return }
+            if nm == "floor" && ac == 1 { self.emit_call_with_temps(self.rt.lbl("__rt_math_floor"), false, arg_temps); return }
+            if nm == "ceil" && ac == 1 { self.emit_call_with_temps(self.rt.lbl("__rt_math_ceil"), false, arg_temps); return }
+            if nm == "log" && ac == 1 { self.emit_call_with_temps(self.rt.lbl("__rt_math_log"), false, arg_temps); return }
+            if nm == "exp" && ac == 1 { self.emit_call_with_temps(self.rt.lbl("__rt_math_exp"), false, arg_temps); return }
+
             // Runtime binary buffer helpers for self-hosting PE output
             if nm == "arx_bin_new" { a.call_rel32(self.rt.lbl("__rt_bb_new")); return }
             if nm == "arx_bin_u8" { self.emit_call_with_temps(self.rt.lbl("__rt_bb_write_u8"), false, arg_temps); return }
@@ -1579,20 +1614,22 @@ pub class NativeCodegen {
                     if mname == "execute" { self.emit_call_with_temps(self.rt.lbl("__rt_proc_exec"), false, arg_temps); return }
                 }
                 if ns == "Math" {
-                    a.mov_rm64(REG_RAX(), REG_RBP(), -arg_temps.get(0))
-                    a.movq_xmm_r(0, REG_RAX())
-                    if ac >= 2 {
-                        a.mov_rm64(REG_RCX(), REG_RBP(), -arg_temps.get(1))
-                        a.movq_xmm_r(1, REG_RCX())
+                    if mname == "sqrt" && ac >= 1 { self.emit_call_with_temps(self.rt.lbl("__rt_math_sqrt"), false, arg_temps); return }
+                    if mname == "pow" && ac >= 2 { self.emit_call_with_temps(self.rt.lbl("__rt_math_pow"), false, arg_temps); return }
+                    if mname == "sin" && ac >= 1 { self.emit_call_with_temps(self.rt.lbl("__rt_math_sin"), false, arg_temps); return }
+                    if mname == "cos" && ac >= 1 { self.emit_call_with_temps(self.rt.lbl("__rt_math_cos"), false, arg_temps); return }
+                    if mname == "tan" && ac >= 1 { self.emit_call_with_temps(self.rt.lbl("__rt_math_tan"), false, arg_temps); return }
+                    if mname == "floor" && ac >= 1 { self.emit_call_with_temps(self.rt.lbl("__rt_math_floor"), false, arg_temps); return }
+                    if mname == "ceil" && ac >= 1 { self.emit_call_with_temps(self.rt.lbl("__rt_math_ceil"), false, arg_temps); return }
+                    if mname == "log" && ac >= 1 { self.emit_call_with_temps(self.rt.lbl("__rt_math_log"), false, arg_temps); return }
+                    if mname == "exp" && ac >= 1 { self.emit_call_with_temps(self.rt.lbl("__rt_math_exp"), false, arg_temps); return }
+                    if (mname == "abs" || mname == "fabs") && ac >= 1 {
+                        a.mov_rm64(REG_RAX(), REG_RBP(), -arg_temps.get(0))
+                        a.movq_xmm_r(0, REG_RAX())
+                        a.call_rip_iat(self.rt.imp_fabs)
+                        a.movq_r_xmm(REG_RAX(), 0)
+                        return
                     }
-                    if mname == "sqrt" { a.call_rip_iat(self.rt.imp_sqrt); a.movq_r_xmm(REG_RAX(), 0); return }
-                    if mname == "pow" { a.call_rip_iat(self.rt.imp_pow); a.movq_r_xmm(REG_RAX(), 0); return }
-                    if mname == "sin" { a.call_rip_iat(self.rt.imp_sin); a.movq_r_xmm(REG_RAX(), 0); return }
-                    if mname == "cos" { a.call_rip_iat(self.rt.imp_cos); a.movq_r_xmm(REG_RAX(), 0); return }
-                    if mname == "tan" { a.call_rip_iat(self.rt.imp_tan); a.movq_r_xmm(REG_RAX(), 0); return }
-                    if mname == "floor" { a.call_rip_iat(self.rt.imp_floor); a.movq_r_xmm(REG_RAX(), 0); return }
-                    if mname == "ceil" { a.call_rip_iat(self.rt.imp_ceil); a.movq_r_xmm(REG_RAX(), 0); return }
-                    if mname == "abs" || mname == "fabs" { a.call_rip_iat(self.rt.imp_fabs); a.movq_r_xmm(REG_RAX(), 0); return }
                 }
                 if self.az.enum_idx_map.has_key(ns) {
                     let ekey = ns + "::" + mname
@@ -1754,9 +1791,11 @@ pub class NativeCodegen {
 
             // User class instance or static method call resolved by Analyzer
             if fn_node >= 0 {
+                let ckind = self.az.call_kinds.get(nid)
                 let is_st = has_flag(self.ia.get(fn_node), FLAG_STATIC())
+                let is_method = (ckind == CK_METHOD())
                 let margs = List<i64>()
-                if !is_st {
+                if is_method && !is_st {
                     self.emit_expr(recv_id)
                     let rslot = self.alloc_slot("", recv_t)
                     a.mov_mr64(REG_RBP(), -rslot, REG_RAX())
@@ -1770,9 +1809,17 @@ pub class NativeCodegen {
             }
         }
 
-        // Class constructor call: Player(...) -> calloc(1, size) + Player_init(obj, ...)
-        if cal >= 0 && self.nk.get(cal) == NK_IDENT() && self.az.cls_idx_map.has_key(self.sa.get(cal)) {
-            let cname = self.sa.get(cal)
+        // Class constructor call: Player(...) or Mod.Player(...) -> calloc(1, size) + Player_init(obj, ...)
+        mut ctor_cls = ""
+        if cal >= 0 {
+            if self.nk.get(cal) == NK_IDENT() && self.az.cls_idx_map.has_key(self.sa.get(cal)) {
+                ctor_cls = self.sa.get(cal)
+            } else if self.nk.get(cal) == NK_MEMBER() && self.az.cls_idx_map.has_key(self.sa.get(cal)) {
+                ctor_cls = self.sa.get(cal)
+            }
+        }
+        if ctor_cls != "" {
+            let cname = ctor_cls
             let sz = self.cls_sizes.get(cname)
             a.mov_ri32_sext(REG_RCX(), 1)
             a.mov_ri32_sext(REG_RDX(), sz)
@@ -1797,11 +1844,24 @@ pub class NativeCodegen {
             mut k = 0
             while k < arg_temps.len() { fargs.push(arg_temps.get(k)); k = k + 1 }
             self.emit_default_args_if_needed(fn_node, arg_temps.len(), fargs)
+            if self.extern_iats.has_key(fn_node) {
+                self.emit_call_with_temps(self.extern_iats.get(fn_node), true, fargs)
+                return
+            }
             self.emit_call_with_temps(self.rt.lbl(self.fn_symbol_name(fn_node)), false, fargs)
             return
         }
 
         if tgt != "" {
+            if tgt == "sqrt" { self.emit_call_with_temps(self.rt.lbl("__rt_math_sqrt"), false, arg_temps); return }
+            if tgt == "pow" { self.emit_call_with_temps(self.rt.lbl("__rt_math_pow"), false, arg_temps); return }
+            if tgt == "sin" { self.emit_call_with_temps(self.rt.lbl("__rt_math_sin"), false, arg_temps); return }
+            if tgt == "cos" { self.emit_call_with_temps(self.rt.lbl("__rt_math_cos"), false, arg_temps); return }
+            if tgt == "tan" { self.emit_call_with_temps(self.rt.lbl("__rt_math_tan"), false, arg_temps); return }
+            if tgt == "floor" { self.emit_call_with_temps(self.rt.lbl("__rt_math_floor"), false, arg_temps); return }
+            if tgt == "ceil" { self.emit_call_with_temps(self.rt.lbl("__rt_math_ceil"), false, arg_temps); return }
+            if tgt == "log" { self.emit_call_with_temps(self.rt.lbl("__rt_math_log"), false, arg_temps); return }
+            if tgt == "exp" { self.emit_call_with_temps(self.rt.lbl("__rt_math_exp"), false, arg_temps); return }
             self.emit_call_with_temps(self.rt.lbl(tgt), false, arg_temps)
             return
         }

@@ -67,6 +67,7 @@ pub class Emitter {
     pub call_kinds: List<i64>
     pub call_fn_nodes: List<i64>
     pub node_ext: List<str>
+    pub fn_externs: Map<str, str>
 
     // Output stream & generation state
     pub out: ByteBuffer
@@ -145,6 +146,7 @@ pub class Emitter {
         self.call_kinds = az.call_kinds
         self.call_fn_nodes = az.call_fn_nodes
         self.node_ext = az.node_ext
+        self.fn_externs = az.fn_externs
 
         self.out = ByteBuffer()
         self.indent = 0
@@ -1295,7 +1297,7 @@ pub class Emitter {
                 if btype_is_int(rt) { self.main_returns_i64 = true }
             }
             self.w_ind()
-            if fk == NK_CEXTERN() { self.w("extern ") }
+            if fk == NK_CEXTERN() || self.fn_externs.has_key(raw_name) { self.w("extern ") }
             self.w(btype_to_c(rt) + " " + cname)
             self.emit_param_sig_c(self.la.get(fid), "", true)
             self.w(";")
@@ -1368,7 +1370,7 @@ pub class Emitter {
         while fi < self.fn_count {
             let fid = self.fn_nodes.get(fi)
             if self.nk.get(fid) == NK_FN_DEF() {
-                if self.ra.get(fid) >= 0 {
+                if self.ra.get(fid) >= 0 && !self.fn_externs.has_key(self.sa.get(fid)) {
                     let cname = self.call_targets.get(fid)
                 let rt = btype_norm(self.sb.get(fid))
                 self.cur_class = ""

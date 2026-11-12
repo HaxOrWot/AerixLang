@@ -27,6 +27,10 @@ pub fn exp(x: f64) -> f64 {
     return sum;
 }
 
+pub fn log(x: f64) -> f64 {
+    return ln(x);
+}
+
 pub fn ln(x: f64) -> f64 {
     if x <= 0.0 {
         return 0.0 - (1.0 / 0.0);

@@ -1,0 +1,9 @@
+// ==============================================================================
+// Aerix Standard Library: Math
+// Unified Mathematical Algorithms, Constants, Combinatorics, and Geometry
+// ==============================================================================
+
+import "./core.arx"
+import "./exponential.arx"
+import "./advanced.arx"
+import "./trigonometry.arx"

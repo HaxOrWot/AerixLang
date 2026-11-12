@@ -1,0 +1,24 @@
+// ==============================================================================
+// Aerix Standard Library: Socket::Core
+// Low-level Winsock2 Interop and Socket Lifecycle Management
+// ==============================================================================
+
+#[extern("ws2_32.dll", "WSAStartup")]
+pub fn wsa_startup(version: i64, lp_wsa_data: i64) -> i64;
+
+#[extern("ws2_32.dll", "WSACleanup")]
+pub fn wsa_cleanup() -> i64;
+
+#[extern("ws2_32.dll", "closesocket")]
+pub fn closesocket(s: i64) -> i64;
+
+#[extern("ws2_32.dll", "WSAGetLastError")]
+pub fn wsa_get_last_error() -> i64;
+
+pub fn last_error() -> i64 {
+    return wsa_get_last_error();
+}
+
+pub fn cleanup() -> void {
+    wsa_cleanup();
+}
