@@ -44,6 +44,13 @@
         }
       }
     ],
+    "grammars": [
+      {
+        "language": "aerix",
+        "scopeName": "source.aerix",
+        "path": "./syntaxes/aerix.tmLanguage.json"
+      }
+    ],
     "configurationDefaults": {
       "[aerix]": {
         "editor.semanticHighlighting.enabled": true
@@ -54,12 +61,19 @@
         "language": "aerix",
         "scopes": {
           "comment.documentation": ["comment.block.documentation.aerix", "comment.line.documentation.aerix"],
+          "keyword.readonly": ["constant.language.boolean.aerix", "constant.language.null.aerix"],
           "variable.readonly": ["variable.other.constant.aerix"],
           "variable.readonly.static": ["variable.other.constant.aerix"],
+          "parameter": ["variable.parameter.aerix"],
+          "parameter.readonly": ["variable.parameter.aerix"],
           "property.readonly": ["variable.other.property.aerix"],
           "enumMember.static": ["variable.other.enummember.aerix"],
           "typeParameter": ["entity.name.type.parameter.aerix"],
+          "class.declaration": ["entity.name.type.class.aerix"],
+          "enum.declaration": ["entity.name.type.enum.aerix"],
+          "function.declaration": ["entity.name.function.aerix"],
           "function.defaultLibrary": ["support.function.builtin.aerix"],
+          "method.declaration": ["entity.name.function.method.aerix"],
           "method.defaultLibrary": ["support.function.aerix"],
           "method.static.defaultLibrary": ["support.function.aerix"],
           "namespace.defaultLibrary": ["support.class.aerix"],
@@ -75,7 +89,7 @@
         "aerix.executablePath": {
           "type": "string",
           "default": "",
-          "description": "Path to the Aerix compiler/LSP binary (arx / arxc). Leave empty to auto-detect on PATH or in ~/.aerix/bin."
+          "description": "Path to the Aerix compiler/LSP binary (arx / arxc). Leave empty to auto-detect on PATH, %LOCALAPPDATA%\\Programs\\Aerix\\bin, or ~/.aerix/bin."
         }
       }
     },

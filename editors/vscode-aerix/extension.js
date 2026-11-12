@@ -416,8 +416,13 @@ function activate(context) {
                 return items.map((it) => {
                     const ci = new vscode.CompletionItem(it.label, it.kind || vscode.CompletionItemKind.Text);
                     if (it.detail) ci.detail = it.detail;
-                    if (it.documentation && it.documentation.value) {
-                        ci.documentation = new vscode.MarkdownString(it.documentation.value);
+                    if (it.sortText) ci.sortText = it.sortText;
+                    if (it.filterText) ci.filterText = it.filterText;
+                    if (it.documentation && (it.documentation.value || typeof it.documentation === 'string')) {
+                        const docStr = typeof it.documentation === 'string' ? it.documentation : it.documentation.value;
+                        const md = new vscode.MarkdownString(docStr);
+                        md.isTrusted = true;
+                        ci.documentation = md;
                     }
                     if (it.insertText) ci.insertText = new vscode.SnippetString(it.insertText);
                     return ci;
@@ -451,8 +456,17 @@ function activate(context) {
                 sh.activeSignature = res.activeSignature || 0;
                 sh.activeParameter = res.activeParameter || 0;
                 sh.signatures = res.signatures.map((s) => {
-                    const si = new vscode.SignatureInformation(s.label);
-                    si.parameters = (s.parameters || []).map((p) => new vscode.ParameterInformation(p.label));
+                    const sDoc = s.documentation
+                        ? new vscode.MarkdownString(typeof s.documentation === 'string' ? s.documentation : (s.documentation.value || ''))
+                        : undefined;
+                    if (sDoc) sDoc.isTrusted = true;
+                    const si = new vscode.SignatureInformation(s.label, sDoc);
+                    si.parameters = (s.parameters || []).map((p) => {
+                        const pDoc = p.documentation
+                            ? new vscode.MarkdownString(typeof p.documentation === 'string' ? p.documentation : (p.documentation.value || ''))
+                            : undefined;
+                        return new vscode.ParameterInformation(p.label, pDoc);
+                    });
                     return si;
                 });
                 return sh;

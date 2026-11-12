@@ -1,187 +1,106 @@
-# Aerix Language Support for Visual Studio Code
+# Aerix Language & IntelliSense Support (`v1.1.2-stable`)
 
 <div align="center">
 
-<img src="./icons/aerix-icon.png" width="128" height="128" alt="Aerix Logo" />
+<img src="./icons/aerix-icon.png" width="120" height="120" alt="Aerix Logo" />
 
-# ⚡ Aerix 1.1.2-stable VS Code IntelliSense & Language Tooling
-
-[![Version](https://img.shields.io/badge/version-1.1.2--stable-00DCFF.svg?style=for-the-badge&logo=visualstudiocode)](#) 
+[![Version](https://img.shields.io/badge/version-1.1.2--stable-00DCFF.svg?style=for-the-badge&logo=visualstudiocode)](#)
 [![Language](https://img.shields.io/badge/language-Aerix%20(.arx)-1E90FF.svg?style=for-the-badge)](#)
-[![Tests](https://img.shields.io/badge/test%20suite-138%2F138%20PASS-00E676.svg?style=for-the-badge)](#)
-[![Status](https://img.shields.io/badge/IntelliSense-SUPERCHARGED-7C4DFF.svg?style=for-the-badge)](#)
+[![LSP](https://img.shields.io/badge/LSP-Native%20Compiler%20Driven-7C4DFF.svg?style=for-the-badge)](#)
 
-**The official, ultra-high-performance language extension for Aerix (`.arx`) — Compiler-driven LSP Semantic Tokens highlighting, intelligent context-aware completions, rich Markdown hover signatures & doc comments, F12 Go-to-Definition & Type Definition, inlay hints, signature help, and native compilation integration.**
+**Official language support for Aerix (`.arx`) powered directly by the self-hosting `arx lsp` server — instant TextMate + compiler semantic highlighting, ranked context-aware IntelliSense, rich Markdown hover documentation, live signature help, `F12` Go-to-Definition, inlay hints, document formatting, and one-click native x64 execution.**
 
 </div>
 
 ---
 
-## 🌟 Overview
+## Features at a Glance
 
-The **Aerix VS Code Extension** transforms Visual Studio Code into a world-class Integrated Development Environment (IDE) tailored specifically for modern systems programming in Aerix. Built with zero external dependencies and fine-tuned for instantaneous response times, the extension provides deep static analysis directly as you type.
-
----
-
-## ⚡ Key Capabilities at a Glance
-
-```
-┌──────────────────────────────────────────────────────────────────────────────┐
-│                    AERIX VS CODE INTELLISENSE SUITE                          │
-├─────────────────────┬──────────────────────────┬─────────────────────────────┤
-│ 💡 Smart Completion │ 🔍 Precision Hover       │ 📊 Struct Memory Visualizer │
-│ Contextual fields,  │ Full docstrings, type    │ Live byte offsets, padding, │
-│ cascade ~> chaining │ layout & overload lists  │ & L1 cache line alignment   │
-├─────────────────────┼──────────────────────────┼─────────────────────────────┤
-│ 🏎️ Native Concurrency│ 🌐 WebAssembly Engine    │ 🛡️ On-The-Fly Diagnostics   │
-│ spawn thread help & │ W3C pure binary emitter, │ Sub-millisecond compiler    │
-│ Channel<T> routing  │ canvas primitives & live │ checks via `arx check`      │
-└─────────────────────┴──────────────────────────┴─────────────────────────────┘
-```
+| Capability | Description |
+| :--- | :--- |
+| **Dual-Layer Syntax Highlighting** | Instant [aerix.tmLanguage.json](./syntaxes/aerix.tmLanguage.json) baseline colors refined in milliseconds by compiler-driven LSP Semantic Tokens (`arx lsp`). |
+| **Rich Hover Documentation** | Typed signatures, extracted `///` / `//` doc comments, clickable source links (`file:line`), builtin signatures, keyword docs, class members, and enum variants. |
+| **Ranked IntelliSense** | Prioritized completions: locals/parameters first, then same-file declarations, imported project symbols, static stdlib modules, builtins, types, and keywords. |
+| **Chained & Cascade Completions** | Type-aware member suggestions across `.`, `?.`, `~>` cascades, chained calls (`list.get(0).`, `s.trim().`), `Enum.` variants, and `extend` methods. |
+| **Live Signature Help** | Multi-line active parameter highlighting with documentation for user functions, constructors, methods, container methods, and runtime builtins. |
+| **Navigation & Refactoring Tools** | `F12` Go-to-Definition across imports/modules/members, `Ctrl+F12` Go-to-Type-Definition, `Ctrl+Shift+O` Outline Tree, Inlay Type Hints, and `Shift+Alt+F` Formatting. |
+| **One-Click Native Build & Run** | CodeLens `▶ Run Program` above `fn main()` compiles via the built-in PE32+ x86-64 native backend on Windows with zero external C compiler dependencies. |
 
 ---
 
-## 🎨 1. Precision Syntax Highlighting
+## 1. Syntax Highlighting
 
-Aerix features a meticulously engineered TextMate grammar (`aerix.tmLanguage.json`) adhering to universal VS Code semantic color tokens across all standard themes (*Dark+*, *One Dark Pro*, *Dracula*, *Monokai*, *GitHub Dark*, *Catppuccin*):
-
-| Feature | Syntax Example | Highlighted Semantic Token |
-| :--- | :--- | :--- |
-| **Cascade Mutation** | `phoenix ~> promote(2) ~> set_clearance(8)` | `keyword.operator.cascade.aerix` |
-| **Pipeline Operator** | `raw \|> scale() \|> hash()` | `keyword.operator.pipeline.aerix` |
-| **Concurrency** | `let t = spawn worker(ch, 100);` | `keyword.control.spawn.aerix` |
-| **Traits & Interfaces** | `trait Inspectable`, `class Foo implements Bar` | `keyword.declaration.trait.aerix`, `storage.modifier.implements` |
-| **Reactive Properties**| `pub prop clearance: i64 { get => ... set(v) ... }` | `variable.other.property.aerix`, `storage.modifier.accessor` |
-| **Operator Overload** | `pub op +(other: Vector2D) -> Vector2D` | `entity.name.function.operator.aerix` |
-| **Type Extensions** | `extend Vector2D { ... }` | `keyword.declaration.extend.aerix` |
-| **Tagged Unions** | `enum NodeStatus { Standby(i64), Active(i64, i64) }` | `entity.name.type.enum.aerix`, `variable.other.enummember` |
-| **String Interpolation**| `"Profile: {self.name} | Clearance: {self.clearance}"` | `punctuation.definition.template-expression` & embedded vars |
-| **Fail-Fast Guards** | `guard balance >= amount else { return false }` | `keyword.control.guard.aerix` |
-| **Scope Cleanup** | `defer println("Socket closed.")` | `keyword.control.defer.aerix` |
-| **Exhaustive Matching** | `match event { Alert(code) => ..., _ => ... }` | `keyword.control.match.aerix`, `constant.language.wildcard` |
+Aerix combines two complementary layers:
+1. **TextMate Grammar (`syntaxes/aerix.tmLanguage.json`)**: Zero-delay coloring on file open, search previews, diffs, and Markdown ` ```aerix ` code fences.
+2. **Compiler Semantic Tokens (`arx lsp`)**: Context-accurate tokens differentiating:
+   - Immutable bindings (`let`, `const`, non-`mut` parameters) vs mutable locals (`mut`)
+   - Doc comments (`///`, `//!`, `/**`) vs regular comments
+   - Declarations vs call sites for functions, methods, classes, structs, traits, enums, and generic type parameters (`<T>`)
+   - Enum variants (`Status.Active`), static runtime namespaces (`File`, `Directory`, `Env`, `Process`, `Math`, `Random`), attributes (`#[...]`), and expressions embedded inside string interpolation (`"val = {x.len()}"`)
+   - Fluent cascade (`~>`) and pipeline (`|>`) operators
 
 ---
 
-## 💡 2. Ultra-Charged IntelliSense Engine
+## 2. Hover, Go-to-Definition (`F12`), & Diagnostics
 
-### A. Context-Aware Dot & Cascade Completions
-- **`obj.` or `self.`**: Automatically inspects the receiver's type, enumerating all public fields, reactive properties, and methods.
-- **`obj ~>`**: Automatically surfaces mutating methods suitable for fluent method chaining pipelines.
-- **`spawn `**: Automatically suggests all top-level functions and worker routines with thread parameters.
-- **`implements `**: Suggests all declared interface traits in the project.
-- **`extend `**: Suggests all known classes and user-defined structs.
-- **`NodeStatus.`**: Lists all enum variants with parameter payload documentation.
-
-### B. High-Precision Struct Memory Visualizer (Hover)
-Hovering over any class or struct computes physical memory packing on-the-fly and prints an exact C99 memory offset table:
-
-```
-📦 class Person
-Total Size: 24 bytes | Alignment: 8 bytes | Cache Line: 1 (✨ Fits within single 64B cache line)
-
-| Offset   | Field         | Type | Vis  | Size |
-| :------- | :------------ | :--- | :--- | :--- |
-| [0..7]   | name          | str  | pub  | 8B   |
-| [8..15]  | address       | str  | pub  | 8B   |
-| [16..23] | raw_clearance | i64  | priv | 8B   |
-```
-
-### C. Live Parameter Signature Help
-Type `(` or `,` on any function or constructor call to receive live parameter hints with bold highlighting for the active argument index:
-```aerix
-telemetry_worker(worker_id: i64, ch_handle: i64, packet_count: i64)
-                 ^^^^^^^^^^^^^^
-```
-
-### D. Real-Time Inlay Hints
-- **Variable Inferred Types**: Displays phantom `: type` annotations beside un-annotated `let` variables.
-- **Parameter Labels**: Inlays argument parameter names into function calls for clarity without cluttering your code.
-
-### E. Hierarchical Outline Tree (`Ctrl+Shift+O`)
-Breadcrumbs and Outline View neatly categorize:
-- **Classes** $\rightarrow$ Nested Fields, Properties, Operators, Constructors, and Methods
-- **Traits** $\rightarrow$ Method contracts
-- **Enums** $\rightarrow$ Enum variants and data payloads
-- **Functions** $\rightarrow$ Signature and return types
-
-### F. Interactive CodeLens & One-Click Runner
-Interactive action buttons appear directly above `fn main()` in any `.arx` file:
-- **`▶ Run Aerix Program`**: Executes `arx run` inside the integrated Aerix Terminal.
-- **`⚡ Fast Syntax Check`**: Runs sub-millisecond semantic validation via `arx check`.
-- **`🌐 Compile WASM`**: Compiles to pure WebAssembly `.wasm`, `.wat`, and HTML5 harness via `arx wasm <file> --wat --html`.
-- **`🚀 Live WASM Browser`**: Compiles and launches an instant local HTTP server with live browser runtime preview via `arx wasm <file> --serve`.
-
+- **Hover (`Ctrl+K Ctrl+I` or mouse hover):**
+  - Displays typed code blocks, `///` / `//` doc comments above declarations, and clickable `*Defined at* [file:line]` links.
+  - Works on locals, parameters, `for` variables, `self` / `super`, class fields & inherited methods, chained calls (`a.b().c`), cascade calls (`obj~>step()`), enums & variants, import paths, keywords, primitives, and runtime builtins (`println`, `File.read_to_string`, `List.push`, `Math.sqrt`, etc.).
+- **Navigation:**
+  - **`F12` (Go to Definition):** Jumps to local/global declarations, functions, classes, enums, variants, fields, methods, or imported `.arx` files.
+  - **Go to Type Definition:** Jumps straight to the class/enum declaration of any typed expression or variable.
+  - **`Ctrl+Shift+O` (Document Outline / Breadcrumbs):** Lists classes (with nested fields, constructors, methods), enums (with variants), globals, and functions.
+- **Non-Blocking Live Diagnostics:**
+  - Compiler errors publish smoothly (`120ms` on file open, `650ms` idle while typing, immediate on save) without blocking highlighting responsiveness.
 
 ---
 
-## ⌨️ Interactive Snippets Catalog
+## 3. Keyboard Shortcuts & Commands
 
-| Prefix | Description | Generated Template |
-| :--- | :--- | :--- |
-| `main` | Entrypoint | `fn main() { ... }` |
-| `fn` | Block Function | `fn name(params) -> ret { ... }` |
-| `fn_expr` | Expression Function | `fn name(params) -> ret => expr` |
-| `fn_generic`| Generic Function | `fn name<T>(val: T) -> T { ... }` |
-| `class` | OOP Class | `class Name { pub x: i64 ... init(...) { ... } }` |
-| `class_generic` | Generic Class | `class Container<T> { pub item: T ... }` |
-| `prop` | Reactive Property | `pub prop name: type { get => ... set(v) ... }` |
-| `op` | Operator Overload | `pub op +(other: T) -> T { ... }` |
-| `spawn` | Thread Spawn | `let t = spawn worker(args)` |
-| `channel` | Bounded Channel | `let ch = arx_channel_new(8)` |
-| `guard` | Early Exit Guard | `guard cond else { return }` |
-| `match` | Pattern Matching | `match val { Variant => ..., _ => ... }` |
-| `enum` | Tagged Union | `enum Name { Variant1, Variant2(data: i64) }` |
-| `cascade` | Cascade Operator | `~> method()` |
-| `pipe` | Pipeline Operator | `\|> func()` |
-| `defer` | Scoped Cleanup | `defer cleanup()` |
-| `canvas_rect` | WASM Canvas Fill Rect | `arx_canvas_fill_rect(x, y, w, h, r, g, b, 255);` |
-| `canvas_clear` | WASM Canvas Clear | `arx_canvas_clear(13, 17, 23, 255);` |
-| `wasm_app` | WASM Canvas Starter | `fn main() { ... arx_canvas_clear(...) }` |
+| Shortcut / Action | Command |
+| :--- | :--- |
+| `Ctrl+Space` | Trigger context-aware completions |
+| `Ctrl+Shift+Space` | Trigger parameter signature help inside `(...)` |
+| `F12` | Go to Definition (including cross-file imports) |
+| `Ctrl+Shift+O` | Jump to symbol in Document Outline |
+| `Shift+Alt+F` | Format active `.arx` document |
+| CodeLens / Editor Title Run (`▶`) | `Aerix: Run Aerix Program` (`arx run "<file>"`) |
+| Command Palette | `Aerix: Check Syntax & Types` (`arx check "<file>"`) |
+| Command Palette | `Aerix: Compile to WebAssembly (WASM)` (`arx wasm "<file>" --wat --html`) |
+| Command Palette | `Aerix: Run WebAssembly in Browser (Live)` (`arx wasm "<file>" --serve`) |
 
 ---
 
-## 📁 3. Supersonic "X" File Symbol / Icon Theme
+## 4. Built-In Snippets
 
-The extension includes the official **Aerix Supersonic "X"** file icon:
-- Clean two-tone chevrons combining Electric Aero Cyan (`#00DCFF`) and Royal Azure (`#1E90FF`).
-- Automatically attached to all `.arx` files in your VS Code Explorer.
+| Prefix | Expands To | Prefix | Expands To |
+| :--- | :--- | :--- | :--- |
+| `main` | `fn main() { ... }` | `class` | `class Name { init(...) }` |
+| `fn` | `fn name(params) -> i64 { ... }` | `struct` | `struct Name { pub field: i64 }` |
+| `fn_expr` | `fn name(params) -> i64 => expr` | `enum` | `enum Name { Variant1, Variant2(...) }` |
+| `fn_generic` | `fn name<T>(arg: T) -> T` | `trait` | `trait Name { fn ... }` |
+| `let` / `mut` | `let name = ...` / `mut name = ...` | `extend` | `extend Type { pub fn ... }` |
+| `for` / `for_in` | Range (`0..10`) / collection loop | `prop` | Reactive `prop` getter |
+| `if` / `ifelse` | Conditional blocks | `match` | Exhaustive pattern match |
+| `guard` / `defer` | Early guard / LIFO cleanup | `try` | `try { ... } catch err { ... }` |
+| `import` | `import "./module.arx"` | `doc` | `///` doc comment block |
+| `spawn` / `channel` | Thread spawn / bounded channel | `test` | `#[test] fn test_...()` |
 
 ---
 
-## 🚀 Installation & Setup
+## 5. Configuration & Binary Resolution
 
-### Option 1: Aerix Setup Wizard (GUI)
-Run `AerixSetup-1.1.2-stable.exe` from the `AerixInstaller/dist` directory. Ensure the **IDE Language Extension** option is enabled to install across detected Visual Studio Code / Antigravity / Cursor editors.
+Set **`aerix.executablePath`** in VS Code / Antigravity Settings if you want to point to a custom `arx` binary. When left empty, the extension auto-detects `arx` in order:
+1. `AERIX_HOME\bin\arx.exe` (`arxc.exe`)
+2. `%LOCALAPPDATA%\Programs\Aerix\bin\arx.exe` (default Windows installer path)
+3. `~/.aerix/bin/arx.exe`
+4. `arx` on your system `PATH`
 
-### Option 2: Command-Line Installation
+### Manual VSIX Installation
 
-From the repository root (`z:\VSCode\AerixLang`):
 ```powershell
-# For Visual Studio Code
-code --install-extension editors/vscode-aerix/aerix-1.1.2-stable.vsix --force
-
-# For Google Antigravity IDE
-antigravity --install-extension editors/vscode-aerix/aerix-1.1.2-stable.vsix --force
-```
-
-From inside the `editors/vscode-aerix` folder:
-```powershell
-cd z:\VSCode\AerixLang\editors\vscode-aerix
 code --install-extension aerix-1.1.2-stable.vsix --force
 antigravity --install-extension aerix-1.1.2-stable.vsix --force
 ```
 
-### Reloading Your Editor
-To activate the new grammar and IntelliSense immediately:
-1. Open Command Palette: `Ctrl + Shift + P`
-2. Run: `Developer: Reload Window`
-3. Open any `.arx` file (e.g. `test.arx`) and enjoy the full Aerix systems experience!
-
----
-
-<div align="center">
-
-Made with ⚡ for the **Aerix Systems Programming Language**  
-*Speed of C • Safety of Rust • Elegance of Modern Scripting*
-
-</div>
+After updating the extension or `arx.exe`, run **`Developer: Reload Window`** (`Ctrl+Shift+P`) to restart the language server cleanly.
