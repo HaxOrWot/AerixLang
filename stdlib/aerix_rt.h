@@ -22,6 +22,23 @@
     #include <io.h>
     #include <fcntl.h>
     typedef HANDLE arx_thread_t;
+
+    #undef PM_REMOVE
+    #undef BM_GETCHECK
+    #undef BM_SETCHECK
+    #undef CF_TEXT
+    #undef GMEM_MOVEABLE
+    #undef PROV_RSA_FULL
+    #undef CRYPT_VERIFYCONTEXT
+    #undef MessageBox
+    #undef GetObject
+    #undef PlaySound
+    #undef SendMessage
+    #undef DrawText
+    #undef SetWindowText
+    #undef GetWindowText
+    #undef FindWindow
+    #undef CreateDialog
 #else
     #include <pthread.h>
     #include <unistd.h>
@@ -527,10 +544,6 @@ static inline void arx_sleep_ms(int64_t ms) {
 #else
     usleep((useconds_t)(ms * 1000));
 #endif
-}
-
-static inline void arx_sleep(int64_t ms) {
-    arx_sleep_ms(ms);
 }
 
 static inline int64_t arx_thread_spawn(void* (*func)(void*), void* arg) {
@@ -2769,6 +2782,247 @@ static inline int64_t arx_autoupdate_bg_trigger(const char* uninst_exe) {
     return 0;
 #endif
 }
+
+// --- Native Windows GUI & Canvas Double-Buffered Engine ---
+#if defined(_WIN32) || defined(_WIN64)
+
+typedef struct Arx_BackBuffer {
+    HWND hwnd;
+    HDC screen_hdc;
+    HDC mem_hdc;
+    HBITMAP mem_bmp;
+    HBITMAP old_bmp;
+    int width;
+    int height;
+} Arx_BackBuffer;
+
+static LRESULT CALLBACK __arx_wndproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    switch (msg) {
+        case WM_DESTROY:
+            PostQuitMessage(0);
+            return 0;
+        case WM_ERASEBKGND:
+            return 1; // Prevent background erasing flicker completely
+        default:
+            return DefWindowProcA(hwnd, msg, wParam, lParam);
+    }
+}
+
+static inline void arx_win32_register_class_once(void) {
+    static int initialized = 0;
+    if (initialized) return;
+    WNDCLASSA wc;
+    ZeroMemory(&wc, sizeof(wc));
+    wc.style = CS_HREDRAW | CS_VREDRAW | CS_OWNDC;
+    wc.lpfnWndProc = __arx_wndproc;
+    wc.hInstance = GetModuleHandleA(NULL);
+    wc.hCursor = LoadCursorA(NULL, IDC_ARROW);
+    wc.hbrBackground = (HBRUSH)GetStockObject(BLACK_BRUSH);
+    wc.lpszClassName = "AerixWindowClass";
+    RegisterClassA(&wc);
+    initialized = 1;
+}
+
+static inline int64_t arx_gui_create_window(const char* title, int64_t width, int64_t height) {
+    arx_win32_register_class_once();
+
+    RECT rc = { 0, 0, (LONG)width, (LONG)height };
+    AdjustWindowRect(&rc, WS_OVERLAPPEDWINDOW, FALSE);
+    int real_w = rc.right - rc.left;
+    int real_h = rc.bottom - rc.top;
+
+    int screen_w = GetSystemMetrics(SM_CXSCREEN);
+    int screen_h = GetSystemMetrics(SM_CYSCREEN);
+    int pos_x = (screen_w - real_w) / 2;
+    int pos_y = (screen_h - real_h) / 2;
+    if (pos_x < 0) pos_x = 50;
+    if (pos_y < 0) pos_y = 50;
+
+    HWND hwnd = CreateWindowExA(
+        0,
+        "AerixWindowClass",
+        title ? title : "Aerix Window",
+        WS_OVERLAPPEDWINDOW,
+        pos_x, pos_y, real_w, real_h,
+        NULL, NULL, GetModuleHandleA(NULL), NULL
+    );
+    return (int64_t)(intptr_t)hwnd;
+}
+
+static inline bool arx_gui_show_window(int64_t hwnd_val) {
+    HWND hwnd = (HWND)(intptr_t)hwnd_val;
+    if (!hwnd) return false;
+    ShowWindow(hwnd, SW_SHOW);
+    UpdateWindow(hwnd);
+    return true;
+}
+
+static inline bool arx_gui_hide_window(int64_t hwnd_val) {
+    HWND hwnd = (HWND)(intptr_t)hwnd_val;
+    if (!hwnd) return false;
+    ShowWindow(hwnd, SW_HIDE);
+    return true;
+}
+
+static inline bool arx_gui_destroy_window(int64_t hwnd_val) {
+    HWND hwnd = (HWND)(intptr_t)hwnd_val;
+    if (!hwnd) return false;
+    return DestroyWindow(hwnd) != 0;
+}
+
+static inline bool arx_gui_is_window_visible(int64_t hwnd_val) {
+    HWND hwnd = (HWND)(intptr_t)hwnd_val;
+    if (!hwnd) return false;
+    return IsWindowVisible(hwnd) != 0;
+}
+
+static inline bool arx_gui_poll_events(void) {
+    MSG msg;
+    while (PeekMessageA(&msg, NULL, 0, 0, 1 /* PM_REMOVE */)) {
+        if (msg.message == WM_QUIT) {
+            return false;
+        }
+        TranslateMessage(&msg);
+        DispatchMessageA(&msg);
+    }
+    return true;
+}
+
+static inline int64_t arx_gui_canvas_begin(int64_t hwnd_val, int64_t width, int64_t height) {
+    HWND hwnd = (HWND)(intptr_t)hwnd_val;
+    if (!hwnd || !IsWindow(hwnd)) return 0;
+    HDC sdc = GetDC(hwnd);
+    if (!sdc) return 0;
+
+    HDC mdc = CreateCompatibleDC(sdc);
+    HBITMAP mbmp = CreateCompatibleBitmap(sdc, (int)width, (int)height);
+    HBITMAP obmp = (HBITMAP)SelectObject(mdc, mbmp);
+
+    SetBkMode(mdc, TRANSPARENT);
+    SelectObject(mdc, GetStockObject(DEFAULT_GUI_FONT));
+
+    Arx_BackBuffer* bb = (Arx_BackBuffer*)arx_alloc(sizeof(Arx_BackBuffer));
+    bb->hwnd = hwnd;
+    bb->screen_hdc = sdc;
+    bb->mem_hdc = mdc;
+    bb->mem_bmp = mbmp;
+    bb->old_bmp = obmp;
+    bb->width = (int)width;
+    bb->height = (int)height;
+
+    return (int64_t)(intptr_t)bb;
+}
+
+static inline void arx_gui_canvas_end(int64_t bb_val) {
+    Arx_BackBuffer* bb = (Arx_BackBuffer*)(intptr_t)bb_val;
+    if (!bb) return;
+
+    BitBlt(bb->screen_hdc, 0, 0, bb->width, bb->height, bb->mem_hdc, 0, 0, SRCCOPY);
+
+    SelectObject(bb->mem_hdc, bb->old_bmp);
+    DeleteObject(bb->mem_bmp);
+    DeleteDC(bb->mem_hdc);
+    ReleaseDC(bb->hwnd, bb->screen_hdc);
+}
+
+static inline void arx_gui_fill_rect(int64_t bb_val, int64_t x, int64_t y, int64_t w, int64_t h, int64_t color) {
+    Arx_BackBuffer* bb = (Arx_BackBuffer*)(intptr_t)bb_val;
+    if (!bb || !bb->mem_hdc) return;
+    HBRUSH br = CreateSolidBrush((COLORREF)color);
+    RECT rc = { (LONG)x, (LONG)y, (LONG)(x + w), (LONG)(y + h) };
+    FillRect(bb->mem_hdc, &rc, br);
+    DeleteObject(br);
+}
+
+static inline void arx_gui_draw_rect(int64_t bb_val, int64_t x, int64_t y, int64_t w, int64_t h, int64_t color, int64_t line_width) {
+    Arx_BackBuffer* bb = (Arx_BackBuffer*)(intptr_t)bb_val;
+    if (!bb || !bb->mem_hdc) return;
+    HPEN pen = CreatePen(PS_SOLID, (int)(line_width > 0 ? line_width : 1), (COLORREF)color);
+    HPEN old_pen = (HPEN)SelectObject(bb->mem_hdc, pen);
+    HBRUSH old_brush = (HBRUSH)SelectObject(bb->mem_hdc, GetStockObject(NULL_BRUSH));
+    Rectangle(bb->mem_hdc, (int)x, (int)y, (int)(x + w), (int)(y + h));
+    SelectObject(bb->mem_hdc, old_pen);
+    SelectObject(bb->mem_hdc, old_brush);
+    DeleteObject(pen);
+}
+
+static inline void arx_gui_fill_circle(int64_t bb_val, int64_t cx, int64_t cy, int64_t r, int64_t color) {
+    Arx_BackBuffer* bb = (Arx_BackBuffer*)(intptr_t)bb_val;
+    if (!bb || !bb->mem_hdc) return;
+    HPEN pen = CreatePen(PS_SOLID, 1, (COLORREF)color);
+    HBRUSH br = CreateSolidBrush((COLORREF)color);
+    HPEN old_pen = (HPEN)SelectObject(bb->mem_hdc, pen);
+    HBRUSH old_brush = (HBRUSH)SelectObject(bb->mem_hdc, br);
+    Ellipse(bb->mem_hdc, (int)(cx - r), (int)(cy - r), (int)(cx + r), (int)(cy + r));
+    SelectObject(bb->mem_hdc, old_pen);
+    SelectObject(bb->mem_hdc, old_brush);
+    DeleteObject(pen);
+    DeleteObject(br);
+}
+
+static inline void arx_gui_draw_circle(int64_t bb_val, int64_t cx, int64_t cy, int64_t r, int64_t color, int64_t line_width) {
+    Arx_BackBuffer* bb = (Arx_BackBuffer*)(intptr_t)bb_val;
+    if (!bb || !bb->mem_hdc) return;
+    HPEN pen = CreatePen(PS_SOLID, (int)(line_width > 0 ? line_width : 1), (COLORREF)color);
+    HPEN old_pen = (HPEN)SelectObject(bb->mem_hdc, pen);
+    HBRUSH old_brush = (HBRUSH)SelectObject(bb->mem_hdc, GetStockObject(NULL_BRUSH));
+    Ellipse(bb->mem_hdc, (int)(cx - r), (int)(cy - r), (int)(cx + r), (int)(cy + r));
+    SelectObject(bb->mem_hdc, old_pen);
+    SelectObject(bb->mem_hdc, old_brush);
+    DeleteObject(pen);
+}
+
+static inline void arx_gui_draw_text(int64_t bb_val, const char* text, int64_t x, int64_t y, int64_t color) {
+    Arx_BackBuffer* bb = (Arx_BackBuffer*)(intptr_t)bb_val;
+    if (!bb || !bb->mem_hdc || !text) return;
+    SetTextColor(bb->mem_hdc, (COLORREF)color);
+    TextOutA(bb->mem_hdc, (int)x, (int)y, text, (int)strlen(text));
+}
+
+static inline void arx_gui_draw_line(int64_t bb_val, int64_t x1, int64_t y1, int64_t x2, int64_t y2, int64_t color, int64_t width) {
+    Arx_BackBuffer* bb = (Arx_BackBuffer*)(intptr_t)bb_val;
+    if (!bb || !bb->mem_hdc) return;
+    HPEN pen = CreatePen(PS_SOLID, (int)(width > 0 ? width : 1), (COLORREF)color);
+    HPEN old_pen = (HPEN)SelectObject(bb->mem_hdc, pen);
+    MoveToEx(bb->mem_hdc, (int)x1, (int)y1, NULL);
+    LineTo(bb->mem_hdc, (int)x2, (int)y2);
+    SelectObject(bb->mem_hdc, old_pen);
+    DeleteObject(pen);
+}
+
+static inline void arx_gui_clear(int64_t bb_val, int64_t w, int64_t h, int64_t color) {
+    arx_gui_fill_rect(bb_val, 0, 0, w, h, color);
+}
+
+static inline bool arx_gui_is_key_down(int64_t vkey) {
+    SHORT state = GetAsyncKeyState((int)vkey);
+    return (state & 0x8000) != 0;
+}
+
+static inline void arx_gui_play_beep(int64_t freq, int64_t duration_ms) {
+    Beep((DWORD)freq, (DWORD)duration_ms);
+}
+
+#else
+// POSIX dummy stubs
+static inline int64_t arx_gui_create_window(const char* t, int64_t w, int64_t h) { (void)t;(void)w;(void)h; return 0; }
+static inline bool arx_gui_show_window(int64_t h) { (void)h; return false; }
+static inline bool arx_gui_hide_window(int64_t h) { (void)h; return false; }
+static inline bool arx_gui_destroy_window(int64_t h) { (void)h; return false; }
+static inline bool arx_gui_is_window_visible(int64_t h) { (void)h; return false; }
+static inline bool arx_gui_poll_events(void) { return false; }
+static inline int64_t arx_gui_canvas_begin(int64_t h, int64_t w, int64_t ht) { (void)h;(void)w;(void)ht; return 0; }
+static inline void arx_gui_canvas_end(int64_t b) { (void)b; }
+static inline void arx_gui_fill_rect(int64_t b, int64_t x, int64_t y, int64_t w, int64_t h, int64_t c) { (void)b;(void)x;(void)y;(void)w;(void)h;(void)c; }
+static inline void arx_gui_draw_rect(int64_t b, int64_t x, int64_t y, int64_t w, int64_t h, int64_t c, int64_t l) { (void)b;(void)x;(void)y;(void)w;(void)h;(void)c;(void)l; }
+static inline void arx_gui_fill_circle(int64_t b, int64_t cx, int64_t cy, int64_t r, int64_t c) { (void)b;(void)cx;(void)cy;(void)r;(void)c; }
+static inline void arx_gui_draw_circle(int64_t b, int64_t cx, int64_t cy, int64_t r, int64_t c, int64_t l) { (void)b;(void)cx;(void)cy;(void)r;(void)c;(void)l; }
+static inline void arx_gui_draw_text(int64_t b, const char* t, int64_t x, int64_t y, int64_t c) { (void)b;(void)t;(void)x;(void)y;(void)c; }
+static inline void arx_gui_draw_line(int64_t b, int64_t x1, int64_t y1, int64_t x2, int64_t y2, int64_t c, int64_t w) { (void)b;(void)x1;(void)y1;(void)x2;(void)y2;(void)c;(void)w; }
+static inline void arx_gui_clear(int64_t b, int64_t w, int64_t h, int64_t c) { (void)b;(void)w;(void)h;(void)c; }
+static inline bool arx_gui_is_key_down(int64_t k) { (void)k; return false; }
+static inline void arx_gui_play_beep(int64_t f, int64_t d) { (void)f;(void)d; }
+#endif
 
 #endif // AERIX_RT_H
 

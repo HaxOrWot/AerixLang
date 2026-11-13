@@ -3,8 +3,7 @@
 // Keyboard and Mouse Real-Time Hardware State and Global Cursor Positioning
 // ==============================================================================
 
-#[extern("user32.dll", "GetAsyncKeyState")]
-pub fn getAsyncKeyState(vKey: i64) -> i64;
+cextern fn arx_gui_is_key_down(vkey: i64) -> bool;
 
 #[extern("user32.dll", "SetCursorPos")]
 pub fn setCursorPos(x: i64, y: i64) -> i32;
@@ -13,8 +12,7 @@ pub fn setCursorPos(x: i64, y: i64) -> i32;
 pub fn getCursorPos(lp_point: str) -> i32;
 
 pub fn isKeyDown(vk_code: i64) -> bool {
-    let state = getAsyncKeyState(vk_code);
-    return (state & 32768) != 0;
+    return arx_gui_is_key_down(vk_code);
 }
 
 pub fn setMousePosition(x: i64, y: i64) -> bool {

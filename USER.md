@@ -10,9 +10,9 @@
 ```
 
 ### **The Definitive A-to-Z Technical Reference Manual**
-*Official System Specification for the Aerix Native Programming Language (Version 1.1.12-stable)*
+*Official System Specification for the Aerix Native Programming Language (Version 1.1.13b)*
 
-[![Version](https://img.shields.io/badge/version-1.1.12--stable-00DCFF.svg?style=for-the-badge)](#)
+[![Version](https://img.shields.io/badge/version-1.1.13b-00DCFF.svg?style=for-the-badge)](#)
 [![Standard](https://img.shields.io/badge/standard-ANSI%20C99%20%2F%20C11-1E90FF.svg?style=for-the-badge)](#)
 [![Architecture](https://img.shields.io/badge/architecture-x86__64%20%2F%20ARM64-00E676.svg?style=for-the-badge)](#)
 [![Test Suite](https://img.shields.io/badge/tests-198%2F198%20PASS%20(100%25)-00E5FF.svg?style=for-the-badge)](#)

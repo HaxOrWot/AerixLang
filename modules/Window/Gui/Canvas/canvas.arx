@@ -1,49 +1,17 @@
 // ==============================================================================
 // Aerix Standard Library: Window::Gui::Canvas
-// Hardware-accelerated 2D Graphics, Drawing Primitives, and GDI Canvas
+// Hardware-accelerated 2D Double-Buffered Graphics & Drawing Primitives
 // ==============================================================================
 
-#[extern("user32.dll", "GetDC")]
-pub fn win32GetDC(hwnd: i64) -> i64;
-
-#[extern("user32.dll", "ReleaseDC")]
-pub fn win32ReleaseDC(hwnd: i64, hdc: i64) -> i32;
-
-#[extern("gdi32.dll", "CreateSolidBrush")]
-pub fn win32CreateSolidBrush(crColor: i64) -> i64;
-
-#[extern("gdi32.dll", "CreatePen")]
-pub fn win32CreatePen(iStyle: i32, cWidth: i32, color: i64) -> i64;
-
-#[extern("gdi32.dll", "SelectObject")]
-pub fn win32SelectObject(hdc: i64, h: i64) -> i64;
-
-#[extern("gdi32.dll", "DeleteObject")]
-pub fn win32DeleteObject(ho: i64) -> i32;
-
-#[extern("gdi32.dll", "MoveToEx")]
-pub fn win32MoveToEx(hdc: i64, x: i32, y: i32, lppt: i64) -> i32;
-
-#[extern("gdi32.dll", "LineTo")]
-pub fn win32LineTo(hdc: i64, x: i32, y: i32) -> i32;
-
-#[extern("gdi32.dll", "Rectangle")]
-pub fn win32Rectangle(hdc: i64, left: i32, top: i32, right: i32, bottom: i32) -> i32;
-
-#[extern("gdi32.dll", "Ellipse")]
-pub fn win32Ellipse(hdc: i64, left: i32, top: i32, right: i32, bottom: i32) -> i32;
-
-#[extern("gdi32.dll", "TextOutA")]
-pub fn win32TextOut(hdc: i64, x: i32, y: i32, lpString: str, c: i32) -> i32;
-
-#[extern("gdi32.dll", "SetTextColor")]
-pub fn win32SetTextColor(hdc: i64, color: i64) -> i64;
-
-#[extern("gdi32.dll", "SetBkMode")]
-pub fn win32SetBkMode(hdc: i64, mode: i32) -> i32;
-
-#[extern("user32.dll", "FillRect")]
-pub fn win32FillRect(hdc: i64, lprc: str, hbr: i64) -> i32;
+cextern fn arx_gui_canvas_begin(hwnd: i64, width: i64, height: i64) -> i64;
+cextern fn arx_gui_canvas_end(canvas_handle: i64) -> void;
+cextern fn arx_gui_fill_rect(canvas_handle: i64, x: i64, y: i64, width: i64, height: i64, color: i64) -> void;
+cextern fn arx_gui_draw_rect(canvas_handle: i64, x: i64, y: i64, width: i64, height: i64, color: i64, lineWidth: i64) -> void;
+cextern fn arx_gui_fill_circle(canvas_handle: i64, cx: i64, cy: i64, radius: i64, color: i64) -> void;
+cextern fn arx_gui_draw_circle(canvas_handle: i64, cx: i64, cy: i64, radius: i64, color: i64, lineWidth: i64) -> void;
+cextern fn arx_gui_draw_text(canvas_handle: i64, text: str, x: i64, y: i64, color: i64) -> void;
+cextern fn arx_gui_draw_line(canvas_handle: i64, x1: i64, y1: i64, x2: i64, y2: i64, color: i64, width: i64) -> void;
+cextern fn arx_gui_clear(canvas_handle: i64, width: i64, height: i64, color: i64) -> void;
 
 // RGB Color Packing Helper: 0x00BBGGRR
 pub fn rgb(r: i64, g: i64, b: i64) -> i64 {
@@ -53,7 +21,7 @@ pub fn rgb(r: i64, g: i64, b: i64) -> i64 {
     return red | (green << 8) | (blue << 16);
 }
 
-// Common Colors
+// Common Standard Colors
 pub fn colorBlack() -> i64 { return rgb(0, 0, 0); }
 pub fn colorWhite() -> i64 { return rgb(255, 255, 255); }
 pub fn colorRed() -> i64 { return rgb(255, 0, 0); }
@@ -66,96 +34,67 @@ pub fn colorGray() -> i64 { return rgb(128, 128, 128); }
 
 pub class Canvas {
     pub hwnd: i64
-    pub hdc: i64
+    pub width: i64
+    pub height: i64
+    pub handle: i64
 
     init(hwnd: i64) {
         self.hwnd = hwnd
-        self.hdc = 0
+        self.width = 800
+        self.height = 650
+        self.handle = 0
+    }
+
+    pub fn setSize(w: i64, h: i64) -> void {
+        self.width = w
+        self.height = h
     }
 
     pub fn beginPaint() -> bool {
         if self.hwnd == 0 { return false }
-        self.hdc = win32GetDC(self.hwnd)
-        if self.hdc != 0 {
-            // TRANSPARENT bkMode = 1
-            win32SetBkMode(self.hdc, 1)
-            return true
-        }
-        return false
+        self.handle = arx_gui_canvas_begin(self.hwnd, self.width, self.height)
+        return self.handle != 0
     }
 
     pub fn endPaint() -> void {
-        if self.hdc != 0 {
-            win32ReleaseDC(self.hwnd, self.hdc)
-            self.hdc = 0
+        if self.handle != 0 {
+            arx_gui_canvas_end(self.handle)
+            self.handle = 0
         }
     }
 
     pub fn drawLine(x1: i64, y1: i64, x2: i64, y2: i64, color: i64, width: i64) -> void {
-        if self.hdc == 0 { return }
-        let hPen = win32CreatePen(0, width as i32, color)
-        let oldPen = win32SelectObject(self.hdc, hPen)
-        win32MoveToEx(self.hdc, x1 as i32, y1 as i32, 0)
-        win32LineTo(self.hdc, x2 as i32, y2 as i32)
-        win32SelectObject(self.hdc, oldPen)
-        win32DeleteObject(hPen)
+        if self.handle == 0 { return }
+        arx_gui_draw_line(self.handle, x1, y1, x2, y2, color, width)
     }
 
     pub fn drawRect(x: i64, y: i64, width: i64, height: i64, color: i64, lineWidth: i64) -> void {
-        if self.hdc == 0 { return }
-        let hPen = win32CreatePen(0, lineWidth as i32, color)
-        let oldPen = win32SelectObject(self.hdc, hPen)
-        // NULL_BRUSH = 5
-        let oldBrush = win32SelectObject(self.hdc, 0)
-        win32Rectangle(self.hdc, x as i32, y as i32, (x + width) as i32, (y + height) as i32)
-        win32SelectObject(self.hdc, oldPen)
-        win32DeleteObject(hPen)
+        if self.handle == 0 { return }
+        arx_gui_draw_rect(self.handle, x, y, width, height, color, lineWidth)
     }
 
     pub fn fillRect(x: i64, y: i64, width: i64, height: i64, color: i64) -> void {
-        if self.hdc == 0 { return }
-        let hBrush = win32CreateSolidBrush(color)
-        let bb = ByteBuffer()
-        let l = x as i32; let t = y as i32; let r = (x + width) as i32; let b = (y + height) as i32;
-        bb.write_u8(l & 255); bb.write_u8((l >> 8) & 255); bb.write_u8((l >> 16) & 255); bb.write_u8((l >> 24) & 255);
-        bb.write_u8(t & 255); bb.write_u8((t >> 8) & 255); bb.write_u8((t >> 16) & 255); bb.write_u8((t >> 24) & 255);
-        bb.write_u8(r & 255); bb.write_u8((r >> 8) & 255); bb.write_u8((r >> 16) & 255); bb.write_u8((r >> 24) & 255);
-        bb.write_u8(b & 255); bb.write_u8((b >> 8) & 255); bb.write_u8((b >> 16) & 255); bb.write_u8((b >> 24) & 255);
-        let rc = bb.to_str()
-        bb.free()
-        win32FillRect(self.hdc, rc, hBrush)
-        win32DeleteObject(hBrush)
+        if self.handle == 0 { return }
+        arx_gui_fill_rect(self.handle, x, y, width, height, color)
     }
 
     pub fn drawCircle(centerX: i64, centerY: i64, radius: i64, color: i64, lineWidth: i64) -> void {
-        if self.hdc == 0 { return }
-        let hPen = win32CreatePen(0, lineWidth as i32, color)
-        let oldPen = win32SelectObject(self.hdc, hPen)
-        win32Ellipse(self.hdc, (centerX - radius) as i32, (centerY - radius) as i32, (centerX + radius) as i32, (centerY + radius) as i32)
-        win32SelectObject(self.hdc, oldPen)
-        win32DeleteObject(hPen)
+        if self.handle == 0 { return }
+        arx_gui_draw_circle(self.handle, centerX, centerY, radius, color, lineWidth)
     }
 
     pub fn fillCircle(centerX: i64, centerY: i64, radius: i64, color: i64) -> void {
-        if self.hdc == 0 { return }
-        let hPen = win32CreatePen(0, 1, color)
-        let hBrush = win32CreateSolidBrush(color)
-        let oldPen = win32SelectObject(self.hdc, hPen)
-        let oldBrush = win32SelectObject(self.hdc, hBrush)
-        win32Ellipse(self.hdc, (centerX - radius) as i32, (centerY - radius) as i32, (centerX + radius) as i32, (centerY + radius) as i32)
-        win32SelectObject(self.hdc, oldPen)
-        win32SelectObject(self.hdc, oldBrush)
-        win32DeleteObject(hPen)
-        win32DeleteObject(hBrush)
+        if self.handle == 0 { return }
+        arx_gui_fill_circle(self.handle, centerX, centerY, radius, color)
     }
 
     pub fn drawText(text: str, x: i64, y: i64, color: i64) -> void {
-        if self.hdc == 0 { return }
-        win32SetTextColor(self.hdc, color)
-        win32TextOut(self.hdc, x as i32, y as i32, text, text.len() as i32)
+        if self.handle == 0 { return }
+        arx_gui_draw_text(self.handle, text, x, y, color)
     }
 
     pub fn clear(bgColor: i64, width: i64, height: i64) -> void {
-        self.fillRect(0, 0, width, height, bgColor)
+        if self.handle == 0 { return }
+        arx_gui_clear(self.handle, width, height, bgColor)
     }
 }

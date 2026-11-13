@@ -1296,12 +1296,43 @@ pub class Emitter {
                 self.has_main_fn = true
                 if btype_is_int(rt) { self.main_returns_i64 = true }
             }
-            self.w_ind()
-            if fk == NK_CEXTERN() || self.fn_externs.has_key(raw_name) { self.w("extern ") }
-            self.w(btype_to_c(rt) + " " + cname)
-            self.emit_param_sig_c(self.la.get(fid), "", true)
-            self.w(";")
-            self.w_nl()
+            if self.fn_externs.has_key(raw_name) {
+                let full_ext = self.fn_externs.get(raw_name)
+                let parts = full_ext.split("::")
+                mut sym = raw_name
+                if parts.len() >= 2 { sym = parts.get(1) }
+                self.w_ind()
+                self.w("static inline " + btype_to_c(rt) + " " + cname)
+                self.emit_param_sig_c(self.la.get(fid), "", true)
+                self.w(" ")
+                self.w_lbrace()
+                self.w(" ")
+                if rt != "void" {
+                    self.w("return (" + btype_to_c(rt) + ")(intptr_t)")
+                }
+                self.w(sym + "(")
+                let pgrp = self.la.get(fid)
+                if pgrp >= 0 {
+                    let pcnt = self.child_count(pgrp)
+                    mut pi = 0
+                    while pi < pcnt {
+                        if pi > 0 { self.w(", ") }
+                        let pid = self.child_at(pgrp, pi)
+                        self.w(self.sa.get(pid))
+                        pi = pi + 1
+                    }
+                }
+                self.w("); ")
+                self.w_rbrace()
+                self.w_nl()
+            } else {
+                self.w_ind()
+                if fk == NK_CEXTERN() { self.w("extern ") }
+                self.w(btype_to_c(rt) + " " + cname)
+                self.emit_param_sig_c(self.la.get(fid), "", true)
+                self.w(";")
+                self.w_nl()
+            }
             fi = fi + 1
         }
         self.w_nl()

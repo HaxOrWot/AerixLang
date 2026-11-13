@@ -217,7 +217,7 @@ fn cmd_vm(cli_args: List<str>, cli_argc: i64, start_idx: i64, default_sub: str) 
         }
     } else if sub == "install" || sub == "add" {
         if target == "" {
-            eprintln("error: missing version for 'arx vm install' (e.g. 'arx vm install 1.1.12c-stable')")
+            eprintln("error: missing version for 'arx vm install' (e.g. 'arx vm install 1.1.13b')")
             return 1
         }
         cmd = cmd + " " + quote_shell_arg("--vm-install=" + target)
@@ -478,8 +478,8 @@ fn cmd_build(input_file: str, out_file: str, opt_flag: str, keep_c: bool, backen
         use_native = true
     } else if backend == "c" || keep_c {
         use_native = false
-    } else if Env.os_name() == "windows" {
-        use_native = true
+    } else {
+        use_native = false
     }
 
     if use_native {
@@ -508,8 +508,8 @@ fn cmd_run(input_file: str, opt_flag: str, backend: str, prog_args: List<str>, p
         use_native = true
     } else if backend == "c" {
         use_native = false
-    } else if Env.os_name() == "windows" {
-        use_native = true
+    } else {
+        use_native = false
     }
 
     mut rc_link = 0
@@ -559,7 +559,7 @@ fn main() -> i64 {
 
     let first = cli_args.get(1)
     if first == "version" || first == "--version" || first == "-v" {
-        println("Aerix Self-Hosting Bootstrap Compiler (arxc) v1.1.12c-stable")
+        println("Aerix Self-Hosting Bootstrap Compiler (arxc) v1.1.13b")
         maybe_trigger_bg_update()
         return 0
     }
