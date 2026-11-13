@@ -1,0 +1,91 @@
+// ==============================================================================
+// Aerix Standard Library: Window::Gui::Controls
+// Native Windows OS GUI UI Controls (Buttons, Labels, TextBoxes)
+// ==============================================================================
+
+import "./window.arx"
+
+// Control Styles
+pub let WS_CHILD_FLAG: i64 = 1073741824;     // WS_CHILD
+pub let WS_VISIBLE_STYLE: i64 = 268435456;   // WS_VISIBLE
+pub let WS_BORDER_STYLE: i64 = 8388608;      // WS_BORDER
+pub let ES_AUTOHSCROLL_STYLE: i64 = 128;     // ES_AUTOHSCROLL
+pub let BS_PUSHBUTTON_STYLE: i64 = 0;        // BS_PUSHBUTTON
+
+pub fn create_button(parent_hwnd: i64, text: str, x: i64, y: i64, width: i64, height: i64, id: i64) -> i64 {
+    let style = WS_CHILD_FLAG + WS_VISIBLE_STYLE + BS_PUSHBUTTON_STYLE;
+    let hwnd = win32_create_window_ex(0, "BUTTON", text, style, x, y, width, height, parent_hwnd, id, 0, 0);
+    return hwnd;
+}
+
+pub fn create_label(parent_hwnd: i64, text: str, x: i64, y: i64, width: i64, height: i64) -> i64 {
+    let style = WS_CHILD_FLAG + WS_VISIBLE_STYLE;
+    let hwnd = win32_create_window_ex(0, "STATIC", text, style, x, y, width, height, parent_hwnd, 0, 0, 0);
+    return hwnd;
+}
+
+pub fn create_text_box(parent_hwnd: i64, default_text: str, x: i64, y: i64, width: i64, height: i64, id: i64) -> i64 {
+    let style = WS_CHILD_FLAG + WS_VISIBLE_STYLE + WS_BORDER_STYLE + ES_AUTOHSCROLL_STYLE;
+    let hwnd = win32_create_window_ex(512, "EDIT", default_text, style, x, y, width, height, parent_hwnd, id, 0, 0);
+    return hwnd;
+}
+
+pub class Button {
+    pub hwnd: i64
+    pub text: str
+    pub x: i64
+    pub y: i64
+    pub width: i64
+    pub height: i64
+    pub id: i64
+
+    init(parent_hwnd: i64, text: str, x: i64, y: i64, width: i64, height: i64, id: i64) {
+        self.text = text
+        self.x = x
+        self.y = y
+        self.width = width
+        self.height = height
+        self.id = id
+        self.hwnd = create_button(parent_hwnd, text, x, y, width, height, id)
+    }
+
+    pub fn set_text(new_text: str) -> void {
+        self.text = new_text
+        if self.hwnd != 0 {
+            set_window_title(self.hwnd, new_text)
+        }
+    }
+
+    pub fn enable(is_enabled: bool) -> void {
+        if self.hwnd != 0 {
+            mut flag: i32 = 0
+            if is_enabled { flag = 1 }
+            win32_enable_window(self.hwnd, flag)
+        }
+    }
+}
+
+pub class Label {
+    pub hwnd: i64
+    pub text: str
+    pub x: i64
+    pub y: i64
+    pub width: i64
+    pub height: i64
+
+    init(parent_hwnd: i64, text: str, x: i64, y: i64, width: i64, height: i64) {
+        self.text = text
+        self.x = x
+        self.y = y
+        self.width = width
+        self.height = height
+        self.hwnd = create_label(parent_hwnd, text, x, y, width, height)
+    }
+
+    pub fn set_text(new_text: str) -> void {
+        self.text = new_text
+        if self.hwnd != 0 {
+            set_window_title(self.hwnd, new_text)
+        }
+    }
+}

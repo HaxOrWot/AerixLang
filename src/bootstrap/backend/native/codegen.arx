@@ -1810,13 +1810,20 @@ pub class NativeCodegen {
             }
         }
 
-        // Class constructor call: Player(...) or Mod.Player(...) -> calloc(1, size) + Player_init(obj, ...)
+        // Class constructor call: Player(...) or Mod.Player(...) or Aliased(...) -> calloc(1, size) + Player_init(obj, ...)
         mut ctor_cls = ""
-        if cal >= 0 {
-            if self.nk.get(cal) == NK_IDENT() && self.az.cls_idx_map.has_key(self.sa.get(cal)) {
-                ctor_cls = self.sa.get(cal)
-            } else if self.nk.get(cal) == NK_MEMBER() && self.az.cls_idx_map.has_key(self.sa.get(cal)) {
-                ctor_cls = self.sa.get(cal)
+        let ckind_call = self.az.call_kinds.get(nid)
+        if ckind_call == CK_CTOR() {
+            let t_cls = btype_norm(self.az.node_types.get(nid))
+            if self.az.cls_idx_map.has_key(t_cls) {
+                ctor_cls = t_cls
+            }
+        }
+        if ctor_cls == "" && cal >= 0 {
+            mut c_nm = self.sa.get(cal)
+            if self.az.item_aliases.has_key(c_nm) { c_nm = self.az.item_aliases.get(c_nm) }
+            if self.az.cls_idx_map.has_key(c_nm) {
+                ctor_cls = c_nm
             }
         }
         if ctor_cls != "" {

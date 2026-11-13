@@ -1,11 +1,11 @@
 # Aerix C# Windows Installer (`AerixSetup`)
 
-Standalone, zero-SDK **C# / WinForms (.NET Framework 4.x)** installer and uninstaller for the **Aerix Native Systems Programming Language (`1.1.11b`)**.
+Standalone, zero-SDK **C# / WinForms (.NET Framework 4.x)** installer and uninstaller for the **Aerix Native Systems Programming Language (`1.1.12-stable`)**.
 
 ## Architecture
 
-Compiles directly with the built-in Windows `.NET Framework v4.0.30319\csc.exe` into a self-contained single-file setup executable (`AerixSetup-1.1.11b.exe`) that embeds:
-- `AerixPayload.zip` (native PE32+ compiler `arx.exe` & `arxc.exe`, `stdlib/aerix_rt.h`, `modules/`, icons, docs, unpacked extension fallback, and `aerix-1.1.11b.vsix`)
+Compiles directly with the built-in Windows `.NET Framework v4.0.30319\csc.exe` into a self-contained single-file setup executable (`AerixSetup-1.1.12-stable.exe`) that embeds:
+- `AerixPayload.zip` (native PE32+ compiler `arx.exe` & `arxc.exe`, `stdlib/aerix_rt.h`, `modules/`, icons, docs, unpacked extension fallback, and `aerix-1.1.12-stable.vsix`)
 - `LICENSE`, `aerix.ico`, and `installer_manifest.json`
 
 ### Source Files (`src/`)
@@ -20,13 +20,13 @@ Compiles directly with the built-in Windows `.NET Framework v4.0.30319\csc.exe` 
 powershell -NoProfile -ExecutionPolicy Bypass -File .\AerixInstaller\build.ps1
 ```
 
-Output: `AerixInstaller/dist/AerixSetup-1.1.11b.exe`
+Output: `AerixInstaller/dist/AerixSetup-1.1.12-stable.exe`
 
 ## Silent / CLI Usage
 
 ```powershell
 # Custom non-interactive install
-.\AerixInstaller\dist\AerixSetup-1.1.11b.exe --silent --dir="C:\Tools\Aerix" --no-env --no-assoc --no-ide --no-verify
+.\AerixInstaller\dist\AerixSetup-1.1.12-stable.exe --silent --dir="C:\Tools\Aerix" --no-env --no-assoc --no-ide --no-verify
 
 # Interactive GUI setup
 .\AerixInstaller\dist\AerixSetup-1.1.10b.exe

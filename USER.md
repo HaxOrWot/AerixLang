@@ -10,9 +10,9 @@
 ```
 
 ### **The Definitive A-to-Z Technical Reference Manual**
-*Official System Specification for the Aerix Native Programming Language (Version 1.1.11b)*
+*Official System Specification for the Aerix Native Programming Language (Version 1.1.12-stable)*
 
-[![Version](https://img.shields.io/badge/version-1.1.11b-00DCFF.svg?style=for-the-badge)](#)
+[![Version](https://img.shields.io/badge/version-1.1.12--stable-00DCFF.svg?style=for-the-badge)](#)
 [![Standard](https://img.shields.io/badge/standard-ANSI%20C99%20%2F%20C11-1E90FF.svg?style=for-the-badge)](#)
 [![Architecture](https://img.shields.io/badge/architecture-x86__64%20%2F%20ARM64-00E676.svg?style=for-the-badge)](#)
 [![Test Suite](https://img.shields.io/badge/tests-198%2F198%20PASS%20(100%25)-00E5FF.svg?style=for-the-badge)](#)
@@ -97,7 +97,7 @@ Aerix operates as an ahead-of-time (AOT) transpiling systems compiler that produ
 Aerix ships two complementary compiler implementations synchronized across repository branches:
 * **`master` (Self-Hosting Core):** Minimal default branch containing `src/bootstrap/` (`main.arx`, `frontend/{tokens,lexer,ast,parser}.arx`, `middle/{types,analyzer,paths}.arx`, `backend/{emitter,linker}.arx`), the verified ANSI C99 bootstrap seed (`src/bootstrap/seed/arxc.c`), `stdlib/`, `modules/`, and documentation. Requires only a C99 compiler (`gcc`/`clang`) — zero Python dependency.
 * **`pre` (Pre-release Toolchain & Test Suite):** Development branch (`*-pre` releases) containing the Stage 0 Python compiler (`src/`), bootstrap compiler (`src/bootstrap/`), `198` pytest tests (`src/tests/`), `41` example files (`examples/`), `benchmarks/`, `docs/`, `editors/`, the C++ installer (`AerixInstaller/`), and installers (`install.ps1`, `install.sh`).
-* **`stable` (Stable Releases):** Production release branch (`*-stable` releases, currently `1.1.2-stable`) carrying verified self-hosting builds, the C# Windows installer (`AerixSetup-1.1.2-stable.exe`), and VS Code / Antigravity extension (`aerix-1.1.2-stable.vsix`).
+* **`stable` (Stable Releases):** Production release branch (`*-stable` releases, currently `1.1.12-stable`) carrying verified self-hosting builds, the C# Windows installer (`AerixSetup-1.1.12-stable.exe`), and VS Code / Antigravity extension (`aerix-1.1.12-stable.vsix`).
 
 `arxc` compiles its own source (`src/bootstrap/main.arx`) cleanly through a 3-stage bootstrap with an exact byte-for-byte fixed point between Stage 2 and Stage 3 C outputs.
 

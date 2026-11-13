@@ -187,59 +187,78 @@ pub fn find_stdlib_dir() -> str {
 }
 
 pub fn find_module_dir(mod_name: str, entry_dir: str) -> str {
+    let norm_name = mod_name.replace(".", "/")
     let env_mp = Env.get("AERIX_MODULE_PATH")
     if env_mp != "" {
-        let cand_env = bpath_join(env_mp, mod_name)
+        let cand_env = bpath_join(env_mp, norm_name)
         if Directory.exists(cand_env) { return cand_env }
         if File.exists(cand_env + ".arx") { return cand_env + ".arx" }
     }
     let env_home = Env.get("AERIX_HOME")
     if env_home != "" {
-        let cand_home = bpath_join(bpath_join(env_home, "modules"), mod_name)
+        let cand_home = bpath_join(bpath_join(env_home, "modules"), norm_name)
         if Directory.exists(cand_home) { return cand_home }
         if File.exists(cand_home + ".arx") { return cand_home + ".arx" }
     }
     let cands = List<str>()
     let cwd = bpath_normalize(Env.cwd())
-    cands.push(bpath_join(entry_dir, "modules/" + mod_name))
-    cands.push(bpath_join(entry_dir, "../modules/" + mod_name))
-    cands.push(bpath_join(entry_dir, "../../modules/" + mod_name))
-    cands.push(bpath_join(cwd, "modules/" + mod_name))
-    cands.push(bpath_join(cwd, "../modules/" + mod_name))
-    cands.push("C:/Aerix/modules/" + mod_name)
+    cands.push(bpath_join(entry_dir, "modules/" + norm_name))
+    cands.push(bpath_join(entry_dir, "../modules/" + norm_name))
+    cands.push(bpath_join(entry_dir, "../../modules/" + norm_name))
+    cands.push(bpath_join(cwd, "modules/" + norm_name))
+    cands.push(bpath_join(cwd, "../modules/" + norm_name))
+    cands.push("C:/Aerix/modules/" + norm_name)
+    cands.push(bpath_join(entry_dir, norm_name))
+    cands.push(bpath_join(cwd, norm_name))
     let local_app = Env.get("LOCALAPPDATA")
     if local_app != "" {
-        cands.push(bpath_join(local_app, "Programs/Aerix/modules/" + mod_name))
+        cands.push(bpath_join(local_app, "Programs/Aerix/modules/" + norm_name))
     }
     let exe_path = Env.arg(0)
     if exe_path != "" {
         let exe_dir = bpath_dirname(exe_path)
-        cands.push(bpath_join(exe_dir, "modules/" + mod_name))
-        cands.push(bpath_join(exe_dir, "../modules/" + mod_name))
-        cands.push(bpath_join(exe_dir, "../../modules/" + mod_name))
-        cands.push(bpath_join(exe_dir, "../../../modules/" + mod_name))
+        cands.push(bpath_join(exe_dir, "modules/" + norm_name))
+        cands.push(bpath_join(exe_dir, "../modules/" + norm_name))
+        cands.push(bpath_join(exe_dir, "../../modules/" + norm_name))
+        cands.push(bpath_join(exe_dir, "../../../modules/" + norm_name))
     }
 
-    // Capitalized variant (e.g. 'random' -> 'Random')
-    mut alt_name = ""
-    if mod_name.len() > 0 {
-        let ch0 = mod_name.byte_at(0)
-        if ch0 >= 97 && ch0 <= 122 {
-            let bb_alt = ByteBuffer()
-            bb_alt.write_u8(ch0 - 32)
-            if mod_name.len() > 1 {
-                bb_alt.write_str(mod_name.slice(1, mod_name.len()))
-            }
-            alt_name = bb_alt.to_str()
-            bb_alt.free()
+    // Capitalized and casing variants (e.g. 'Window/gui' -> 'Window/Gui')
+    let parts = norm_name.split("/")
+    if parts.len() > 1 {
+        let p0 = parts.get(0)
+        let p1 = parts.get(1)
+        let p0_cap = p0.slice(0, 1).to_upper() + p0.slice(1, p0.len())
+        let p1_cap = p1.slice(0, 1).to_upper() + p1.slice(1, p1.len())
+        let p1_low = p1.slice(0, 1).to_lower() + p1.slice(1, p1.len())
+        let p1_upp = p1.to_upper()
+        let alts = List<str>()
+        alts.push(p0_cap + "/" + p1_cap)
+        alts.push(p0_cap + "/" + p1_low)
+        alts.push(p0_cap + "/" + p1_upp)
+        alts.push(p0.to_lower() + "/" + p1_low)
+        mut ai = 0
+        while ai < alts.len() {
+            let alt = alts.get(ai)
+            cands.push("C:/Aerix/modules/" + alt)
+            cands.push(bpath_join(entry_dir, "modules/" + alt))
+            cands.push(bpath_join(cwd, "modules/" + alt))
+            cands.push(bpath_join(entry_dir, alt))
+            cands.push(bpath_join(cwd, alt))
+            ai = ai + 1
         }
-    }
-    if alt_name != "" {
-        cands.push("C:/Aerix/modules/" + alt_name)
-        cands.push(bpath_join(entry_dir, "modules/" + alt_name))
-        cands.push(bpath_join(cwd, "modules/" + alt_name))
-        if local_app != "" {
-            cands.push(bpath_join(local_app, "Programs/Aerix/modules/" + alt_name))
+    } else if norm_name.len() > 0 {
+        let ch0 = norm_name.byte_at(0)
+        if ch0 >= 97 && ch0 <= 122 {
+            let alt_name = norm_name.slice(0, 1).to_upper() + norm_name.slice(1, norm_name.len())
+            cands.push("C:/Aerix/modules/" + alt_name)
+            cands.push(bpath_join(entry_dir, "modules/" + alt_name))
+            cands.push(bpath_join(cwd, "modules/" + alt_name))
+            cands.push(bpath_join(entry_dir, alt_name))
+            cands.push(bpath_join(cwd, alt_name))
+            if local_app != "" {
+                cands.push(bpath_join(local_app, "Programs/Aerix/modules/" + alt_name))
+            }
         }
     }
 

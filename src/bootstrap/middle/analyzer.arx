@@ -301,6 +301,18 @@ pub class Analyzer {
         return self.ll.get(nid)
     }
 
+    priv fn get_member_path(nid: i64) -> str {
+        if nid < 0 { return "" }
+        let k = self.nk.get(nid)
+        if k == NK_IDENT() { return self.sa.get(nid) }
+        if k == NK_MEMBER() {
+            let p = self.get_member_path(self.la.get(nid))
+            if p != "" { return p + "." + self.sa.get(nid) }
+            return self.sa.get(nid)
+        }
+        return ""
+    }
+
     pub fn ensure_generic_type(raw_t: str) {
         let nt = btype_norm(raw_t)
         if btype_is_ptr(nt) {
@@ -1714,6 +1726,13 @@ pub class Analyzer {
         if k == NK_MEMBER() {
             let lhs = self.la.get(nid)
             let mname = self.sa.get(nid)
+            let full_p = self.get_member_path(nid)
+            if full_p != "" && (self.mod_aliases.has_key(full_p) || self.loaded_mods.has_key(full_p)) {
+                self.node_types.set(nid, "module")
+                return "module"
+            }
+
+            let lpath = self.get_member_path(lhs)
             if self.nk.get(lhs) == NK_IDENT() {
                 let lname = self.sa.get(lhs)
                 if self.enum_idx_map.has_key(lname) {
@@ -1727,27 +1746,35 @@ pub class Analyzer {
                         self.add_diag(nid, mname.len(), "E0206", "no variant named '" + mname + "' found for enum '" + lname + "'", "check the declared variants of enum '" + lname + "'", 1)
                     }
                 }
-                if !self.cls_idx_map.has_key(lname) {
-                    if !self.enum_idx_map.has_key(lname) {
-                        if self.scope_lookup(lname) == "" {
-                            mut lookup_mname = mname
-                            if self.item_aliases.has_key(mname) { lookup_mname = self.item_aliases.get(mname) }
-                            let empty_args = List<str>()
-                            let msig = self.find_best_overload("fn::" + lookup_mname, empty_args, 0)
-                            if msig >= 0 {
-                                let rt = self.sig_rets.get(msig)
-                                self.node_ext.set(nid, "mod_call::" + self.sig_cnames.get(msig))
-                                self.node_types.set(nid, rt)
-                                return rt
-                            }
-                            if self.global_types.has_key(lookup_mname) {
-                                let gt = self.global_types.get(lookup_mname)
-                                self.node_ext.set(nid, "mod_global::" + lookup_mname)
-                                self.node_types.set(nid, gt)
-                                return gt
-                            }
-                        }
+            }
+
+            mut is_mod_access = false
+            if lpath != "" {
+                if self.mod_aliases.has_key(lpath) || self.loaded_mods.has_key(lpath) {
+                    is_mod_access = true
+                } else if self.nk.get(lhs) == NK_IDENT() {
+                    let lname = self.sa.get(lhs)
+                    if !self.cls_idx_map.has_key(lname) && !self.enum_idx_map.has_key(lname) && self.scope_lookup(lname) == "" {
+                        is_mod_access = true
                     }
+                }
+            }
+            if is_mod_access {
+                mut lookup_mname = mname
+                if self.item_aliases.has_key(mname) { lookup_mname = self.item_aliases.get(mname) }
+                let empty_args = List<str>()
+                let msig = self.find_best_overload("fn::" + lookup_mname, empty_args, 0)
+                if msig >= 0 {
+                    let rt = self.sig_rets.get(msig)
+                    self.node_ext.set(nid, "mod_call::" + self.sig_cnames.get(msig))
+                    self.node_types.set(nid, rt)
+                    return rt
+                }
+                if self.global_types.has_key(lookup_mname) {
+                    let gt = self.global_types.get(lookup_mname)
+                    self.node_ext.set(nid, "mod_global::" + lookup_mname)
+                    self.node_types.set(nid, gt)
+                    return gt
                 }
             }
             let lt = btype_norm(self.analyze_expr(lhs))
@@ -2032,12 +2059,11 @@ pub class Analyzer {
         if ck == NK_MEMBER() {
             let lhs = self.la.get(callee)
             let mname = self.sa.get(callee)
+            let lpath = self.get_member_path(lhs)
 
             // Enum payload constructor: EnumName.Variant(args)
             if self.nk.get(lhs) == NK_IDENT() {
                 let lname = self.sa.get(lhs)
-                mut mod_name = lname
-                if self.mod_aliases.has_key(lname) { mod_name = self.mod_aliases.get(lname) }
 
                 if self.enum_idx_map.has_key(lname) {
                     let vkey = lname + "::" + mname
@@ -2072,53 +2098,61 @@ pub class Analyzer {
                         return rt
                     }
                 }
+            }
 
-                // Module-qualified function call: Mod.func(args) or Alias.func(args)
-                if lname != "String" && lname != "ByteBuffer" {
-                    if !self.cls_idx_map.has_key(lname) {
-                        if !self.enum_idx_map.has_key(lname) {
-                            if self.scope_lookup(lname) == "" {
-                                mut lookup_target = mname
-                                if self.item_aliases.has_key(mname) { lookup_target = self.item_aliases.get(mname) }
-                                let msig = self.find_best_overload("fn::" + lookup_target, arg_types, ac)
-                                if msig >= 0 {
-                                    let rt = self.sig_rets.get(msig)
-                                    self.call_kinds.set(nid, CK_NORMAL())
-                                    self.call_targets.set(nid, self.sig_cnames.get(msig))
-                                    self.call_fn_nodes.set(nid, self.sig_nodes.get(msig))
-                                    self.node_types.set(nid, rt)
-                                    return rt
-                                }
-                                if self.cls_idx_map.has_key(lookup_target) {
-                                    let ctor_sig = self.find_best_overload("ctor::" + lookup_target, arg_types, ac)
-                                    self.call_kinds.set(nid, CK_CTOR())
-                                    if ctor_sig >= 0 {
-                                        self.call_targets.set(nid, self.sig_cnames.get(ctor_sig))
-                                        self.call_fn_nodes.set(nid, self.sig_nodes.get(ctor_sig))
-                                    } else {
-                                        self.call_targets.set(nid, "Arx_" + lookup_target + "_init")
-                                    }
-                                    self.node_types.set(nid, lookup_target)
-                                    return lookup_target
-                                }
-                                if mod_name == "Math" {
-                                    if mname == "sqrt" || mname == "sin" || mname == "cos" || mname == "tan" || mname == "pow" || mname == "floor" || mname == "ceil" || mname == "round" || mname == "log" || mname == "exp" {
-                                        self.call_kinds.set(nid, CK_BUILTIN())
-                                        self.call_targets.set(nid, mname)
-                                        self.node_types.set(nid, "f64")
-                                        return "f64"
-                                    }
-                                    if mname == "abs" || mname == "min" || mname == "max" {
-                                        self.call_kinds.set(nid, CK_BUILTIN())
-                                        self.call_targets.set(nid, mname)
-                                        mut rt = "i64"
-                                        if ac > 0 && btype_is_float(arg_types.get(0)) { rt = "f64" }
-                                        self.node_types.set(nid, rt)
-                                        return rt
-                                    }
-                                }
-                            }
-                        }
+            // Module-qualified function or constructor call: Mod.func(args) or Mod.Sub.func(args) or Alias.func(args)
+            mut is_mod_call = false
+            if lpath != "" {
+                if self.mod_aliases.has_key(lpath) || self.loaded_mods.has_key(lpath) {
+                    is_mod_call = true
+                } else if self.nk.get(lhs) == NK_IDENT() {
+                    let lname = self.sa.get(lhs)
+                    if lname != "String" && lname != "ByteBuffer" && !self.cls_idx_map.has_key(lname) && !self.enum_idx_map.has_key(lname) && self.scope_lookup(lname) == "" {
+                        is_mod_call = true
+                    }
+                }
+            }
+
+            if is_mod_call {
+                mut lookup_target = mname
+                if self.item_aliases.has_key(mname) { lookup_target = self.item_aliases.get(mname) }
+                let msig = self.find_best_overload("fn::" + lookup_target, arg_types, ac)
+                if msig >= 0 {
+                    let rt = self.sig_rets.get(msig)
+                    self.call_kinds.set(nid, CK_NORMAL())
+                    self.call_targets.set(nid, self.sig_cnames.get(msig))
+                    self.call_fn_nodes.set(nid, self.sig_nodes.get(msig))
+                    self.node_types.set(nid, rt)
+                    return rt
+                }
+                if self.cls_idx_map.has_key(lookup_target) {
+                    let ctor_sig = self.find_best_overload("ctor::" + lookup_target, arg_types, ac)
+                    self.call_kinds.set(nid, CK_CTOR())
+                    if ctor_sig >= 0 {
+                        self.call_targets.set(nid, self.sig_cnames.get(ctor_sig))
+                        self.call_fn_nodes.set(nid, self.sig_nodes.get(ctor_sig))
+                    } else {
+                        self.call_targets.set(nid, "Arx_" + lookup_target + "_init")
+                    }
+                    self.node_types.set(nid, lookup_target)
+                    return lookup_target
+                }
+                mut mod_name = lpath
+                if self.mod_aliases.has_key(lpath) { mod_name = self.mod_aliases.get(lpath) }
+                if mod_name == "Math" {
+                    if mname == "sqrt" || mname == "sin" || mname == "cos" || mname == "tan" || mname == "pow" || mname == "floor" || mname == "ceil" || mname == "round" || mname == "log" || mname == "exp" {
+                        self.call_kinds.set(nid, CK_BUILTIN())
+                        self.call_targets.set(nid, mname)
+                        self.node_types.set(nid, "f64")
+                        return "f64"
+                    }
+                    if mname == "abs" || mname == "min" || mname == "max" {
+                        self.call_kinds.set(nid, CK_BUILTIN())
+                        self.call_targets.set(nid, mname)
+                        mut rt = "i64"
+                        if ac > 0 && btype_is_float(arg_types.get(0)) { rt = "f64" }
+                        self.node_types.set(nid, rt)
+                        return rt
                     }
                 }
             }

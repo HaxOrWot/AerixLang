@@ -1,0 +1,122 @@
+// ==============================================================================
+// Aerix Standard Library: Window::Gui::Window
+// Native Windows OS GUI Window Management Primitives
+// ==============================================================================
+
+#[extern("user32.dll", "CreateWindowExA")]
+pub fn win32_create_window_ex(ex_style: i64, class_name: str, window_name: str, style: i64, x: i64, y: i64, width: i64, height: i64, parent: i64, menu: i64, instance: i64, param: i64) -> i64;
+
+#[extern("user32.dll", "ShowWindow")]
+pub fn win32_show_window(hwnd: i64, cmd_show: i64) -> i32;
+
+#[extern("user32.dll", "UpdateWindow")]
+pub fn win32_update_window(hwnd: i64) -> i32;
+
+#[extern("user32.dll", "DestroyWindow")]
+pub fn win32_destroy_window(hwnd: i64) -> i32;
+
+#[extern("user32.dll", "SetWindowTextA")]
+pub fn win32_set_window_text(hwnd: i64, title: str) -> i32;
+
+#[extern("user32.dll", "MoveWindow")]
+pub fn win32_move_window(hwnd: i64, x: i64, y: i64, width: i64, height: i64, repaint: i32) -> i32;
+
+#[extern("user32.dll", "IsWindowVisible")]
+pub fn win32_is_window_visible(hwnd: i64) -> i32;
+
+#[extern("user32.dll", "EnableWindow")]
+pub fn win32_enable_window(hwnd: i64, enable: i32) -> i32;
+
+// Window Styles
+pub let WS_OVERLAPPED_WINDOW: i64 = 13565952; // WS_OVERLAPPEDWINDOW
+pub let WS_POPUP_WINDOW: i64 = 2156396544;   // WS_POPUPWINDOW
+pub let WS_VISIBLE_FLAG: i64 = 268435456;    // WS_VISIBLE
+pub let SW_SHOW_NORMAL: i64 = 1;
+pub let SW_SHOW_CMD: i64 = 5;
+pub let SW_HIDE_CMD: i64 = 0;
+
+pub fn create_window(title: str, width: i64, height: i64) -> i64 {
+    let hwnd = win32_create_window_ex(0, "STATIC", title, WS_OVERLAPPED_WINDOW, 100, 100, width, height, 0, 0, 0, 0);
+    return hwnd;
+}
+
+pub fn show_window(hwnd: i64, cmd: i64) -> bool {
+    let res = win32_show_window(hwnd, cmd);
+    win32_update_window(hwnd);
+    return res != 0;
+}
+
+pub fn hide_window(hwnd: i64) -> bool {
+    let res = win32_show_window(hwnd, SW_HIDE_CMD);
+    return res != 0;
+}
+
+pub fn set_window_title(hwnd: i64, title: str) -> bool {
+    let res = win32_set_window_text(hwnd, title);
+    return res != 0;
+}
+
+pub fn destroy_window(hwnd: i64) -> bool {
+    let res = win32_destroy_window(hwnd);
+    return res != 0;
+}
+
+pub fn move_window(hwnd: i64, x: i64, y: i64, width: i64, height: i64) -> bool {
+    let res = win32_move_window(hwnd, x, y, width, height, 1);
+    return res != 0;
+}
+
+pub fn is_window_visible(hwnd: i64) -> bool {
+    return win32_is_window_visible(hwnd) != 0;
+}
+
+pub class AppWindow {
+    pub hwnd: i64
+    pub title: str
+    pub width: i64
+    pub height: i64
+    pub is_open: bool
+
+    init(title: str, width: i64, height: i64) {
+        self.title = title
+        self.width = width
+        self.height = height
+        self.hwnd = create_window(title, width, height)
+        self.is_open = self.hwnd != 0
+    }
+
+    pub fn show() -> void {
+        if self.hwnd != 0 {
+            show_window(self.hwnd, SW_SHOW_CMD)
+        }
+    }
+
+    pub fn hide() -> void {
+        if self.hwnd != 0 {
+            hide_window(self.hwnd)
+        }
+    }
+
+    pub fn set_title(new_title: str) -> void {
+        self.title = new_title
+        if self.hwnd != 0 {
+            set_window_title(self.hwnd, new_title)
+        }
+    }
+
+    pub fn resize(w: i64, h: i64) -> void {
+        self.width = w
+        self.height = h
+        if self.hwnd != 0 {
+            move_window(self.hwnd, 100, 100, w, h)
+        }
+    }
+
+    pub fn close() -> void {
+        if self.hwnd != 0 {
+            destroy_window(self.hwnd)
+            self.hwnd = 0
+            self.is_open = false
+        }
+    }
+}

@@ -1,0 +1,53 @@
+// ==============================================================================
+// Aerix Standard Library: Socket::Server
+// Object-oriented TCP Server Listener and Client Socket Acceptor
+// ==============================================================================
+
+import "./constants.arx"
+import "./core.arx"
+
+pub class TcpServer {
+    pub sock: i64
+    pub is_listening: bool
+    pub port: i64
+
+    init() {
+        self.sock = INVALID_SOCKET()
+        self.is_listening = false
+        self.port = 0
+    }
+
+    pub fn listen(port: i64, backlog: i64) -> bool {
+        self.sock = create_tcp_socket()
+        if self.sock == INVALID_SOCKET() {
+            return false
+        }
+        let addr_buf = make_sockaddr_in("0.0.0.0", port)
+        if bind(self.sock, addr_buf, 16) == SOCKET_ERROR() {
+            self.close()
+            return false
+        }
+        if listen(self.sock, backlog) == SOCKET_ERROR() {
+            self.close()
+            return false
+        }
+        self.port = port
+        self.is_listening = true
+        return true
+    }
+
+    pub fn accept_client() -> i64 {
+        if !self.is_listening {
+            return INVALID_SOCKET()
+        }
+        return accept(self.sock, 0, 0)
+    }
+
+    pub fn close() -> void {
+        if self.sock != INVALID_SOCKET() {
+            closesocket(self.sock)
+            self.sock = INVALID_SOCKET()
+        }
+        self.is_listening = false
+    }
+}
