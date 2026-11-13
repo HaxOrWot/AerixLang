@@ -1391,6 +1391,9 @@ pub class Parser {
 
     priv fn parse_stmt() -> i64 {
         let k = self.cur_kind()
+        if k == TK_LBRACE() {
+            return self.parse_block()
+        }
         if k == TK_LET() || k == TK_MUT() || k == TK_CONST() {
             return self.parse_var_decl()
         }
@@ -1666,7 +1669,7 @@ pub class Parser {
         while self.cur_kind() != TK_RPAREN() && self.cur_kind() != TK_EOF() {
             let lp = self.pos
             mut arg_name = ""
-            mut arg_ln = self.cur_line()
+            let arg_ln = self.cur_line()
             if self.cur_kind() == TK_IDENT() && self.peek_kind(1) == TK_EQUALS() {
                 arg_name = self.tok_vals.get(self.adv())
                 self.adv()

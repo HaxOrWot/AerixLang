@@ -1582,6 +1582,14 @@ pub class Emitter {
         }
     }
 
+    priv fn defer_emit_unwind_all() {
+        mut i = self.defer_count - 1
+        while i >= 0 {
+            self.gen_stmt(self.defer_nodes.get(i))
+            i = i - 1
+        }
+    }
+
     priv fn defer_pop_scope() {
         if self.defer_depth <= 0 { return }
         self.defer_depth = self.defer_depth - 1
@@ -1809,7 +1817,7 @@ pub class Emitter {
             let val_id = self.la.get(nid)
             if self.cur_class != "" && self.cur_ret_type == self.cur_class {
                 // Inside constructor (`init`) returning `_obj` early!
-                self.defer_emit_unwind()
+                self.defer_emit_unwind_all()
                 self.wl("return _obj;")
                 return
             }
@@ -1817,10 +1825,10 @@ pub class Emitter {
                 let rv = self.gen_expr(val_id)
                 let rtmp = self.next_tmp()
                 self.wl(btype_to_c(self.cur_ret_type) + " " + rtmp + " = " + rv + ";")
-                self.defer_emit_unwind()
+                self.defer_emit_unwind_all()
                 self.wl("return " + rtmp + ";")
             } else {
-                self.defer_emit_unwind()
+                self.defer_emit_unwind_all()
                 self.wl("return;")
             }
             return
@@ -2420,7 +2428,34 @@ pub class Emitter {
             let tmp = self.next_tmp()
             self.wl("bool " + tmp + " = true;")
             self.w_ind()
-            self.w("if (!(" + lv + ")) ")
+            if (!lv.starts_with("(") || !lv.ends_with(")")) {
+                self.w("if (!(" + lv + ")) ")
+            } else {
+                self.w("if (!" + lv + ") ")
+            }
+            self.w_lbrace()
+            self.w_nl()
+            self.indent = self.indent + 1
+            let rv = self.gen_expr(rid)
+            self.wl(tmp + " = (" + rv + ");")
+            self.close_blk()
+            return tmp
+        }
+        if op_s == "??" {
+            let lv = self.gen_expr(lid)
+            let tmp = self.next_tmp()
+            let ctype = btype_to_c(lt)
+            self.wl(ctype + " " + tmp + " = " + lv + ";")
+            self.w_ind()
+            if btype_is_str(lt) {
+                self.w("if (" + tmp + " == NULL || " + tmp + "[0] == '\\0') ")
+            } else if lt == "bool" {
+                self.w("if (!(" + tmp + ")) ")
+            } else if btype_is_numeric(lt) {
+                self.w("if (" + tmp + " == 0) ")
+            } else {
+                self.w("if (" + tmp + " == NULL) ")
+            }
             self.w_lbrace()
             self.w_nl()
             self.indent = self.indent + 1
@@ -2792,7 +2827,7 @@ pub class Emitter {
         if mname == "contains" { if ac >= 1 { return "arx_str_contains(" + recv + ", " + self.gen_expr(self.child_at(nid, 0)) + ")" } }
         if mname == "starts_with" { if ac >= 1 { return "arx_str_starts_with(" + recv + ", " + self.gen_expr(self.child_at(nid, 0)) + ")" } }
         if mname == "ends_with" { if ac >= 1 { return "arx_str_ends_with(" + recv + ", " + self.gen_expr(self.child_at(nid, 0)) + ")" } }
-        if mname == "index_of" { if ac >= 1 { return "arx_str_find(" + recv + ", " + self.gen_expr(self.child_at(nid, 0)) + ")" } }
+        if mname == "index_of" || mname == "find" { if ac >= 1 { return "arx_str_find(" + recv + ", " + self.gen_expr(self.child_at(nid, 0)) + ")" } }
         if mname == "replace" && ac >= 2 {
             let o = self.gen_expr(self.child_at(nid, 0))
             let n = self.gen_expr(self.child_at(nid, 1))

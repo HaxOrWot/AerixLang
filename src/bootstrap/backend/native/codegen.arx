@@ -1369,6 +1369,18 @@ pub class NativeCodegen {
             a.bind_label(l_done)
             return
         }
+        if op_s == "??" {
+            let l_has_val = a.new_label()
+            let l_done = a.new_label()
+            self.emit_expr(lid)
+            a.test_rr(REG_RAX(), REG_RAX())
+            a.jcc_rel32(CC_NE(), l_has_val)
+            self.emit_expr(rid)
+            a.jmp_rel32(l_done)
+            a.bind_label(l_has_val)
+            a.bind_label(l_done)
+            return
+        }
 
         self.emit_expr(lid)
         let l_tmp = self.alloc_slot("", lt)

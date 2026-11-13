@@ -321,6 +321,15 @@ pub class Analyzer {
         return ""
     }
 
+    priv fn get_root_ident(nid: i64) -> str {
+        if nid < 0 { return "" }
+        let k = self.nk.get(nid)
+        if k == NK_IDENT() { return self.sa.get(nid) }
+        if k == NK_MEMBER() { return self.get_root_ident(self.la.get(nid)) }
+        if k == NK_INDEX() { return self.get_root_ident(self.la.get(nid)) }
+        return ""
+    }
+
     priv fn resolve_mod_path(raw_path: str) -> str {
         if raw_path == "" { return "" }
         if self.mod_aliases.has_key(raw_path) {
@@ -1436,12 +1445,14 @@ pub class Analyzer {
             let rhs_id = self.ra.get(nid)
             let lt = self.analyze_expr(lhs_id)
             let rt = self.analyze_expr(rhs_id)
-            if lhs_id >= 0 && self.nk.get(lhs_id) == NK_IDENT() {
-                let vname = self.sa.get(lhs_id)
-                self.scope_mark_mutated(vname)
-                self.scope_unmark_used(vname)
-                if self.scope_lookup(vname) != "" && self.scope_is_mut(vname) == 0 {
-                    self.add_diag(lhs_id, vname.len(), "E0204", "cannot assign twice to immutable variable '" + vname + "'", "declare '" + vname + "' with 'mut " + vname + "' instead of 'let " + vname + "'", 1)
+            let root_name = self.get_root_ident(lhs_id)
+            if root_name != "" {
+                self.scope_mark_mutated(root_name)
+                if lhs_id >= 0 && self.nk.get(lhs_id) == NK_IDENT() {
+                    self.scope_unmark_used(root_name)
+                    if self.scope_lookup(root_name) != "" && self.scope_is_mut(root_name) == 0 {
+                        self.add_diag(lhs_id, root_name.len(), "E0204", "cannot assign twice to immutable variable '" + root_name + "'", "declare '" + root_name + "' with 'mut " + root_name + "' instead of 'let " + root_name + "'", 1)
+                    }
                 }
             }
             if !self.unresolved_nodes.has_key(lhs_id) && !self.unresolved_nodes.has_key(rhs_id) {
@@ -1753,6 +1764,7 @@ pub class Analyzer {
                 res_t = "f64"
             } else if op_s == "??" {
                 res_t = lt
+                if res_t == "" || res_t == "void" { res_t = rt }
             }
             self.node_types.set(nid, res_t)
             return res_t
@@ -2274,7 +2286,7 @@ pub class Analyzer {
                     self.node_types.set(nid, lookup_target)
                     return lookup_target
                 }
-                mut mod_name = self.resolve_mod_path(lpath)
+                let mod_name = self.resolve_mod_path(lpath)
                 if mod_name == "Math" {
                     if mname == "sqrt" || mname == "sin" || mname == "cos" || mname == "tan" || mname == "pow" || mname == "floor" || mname == "ceil" || mname == "round" || mname == "log" || mname == "exp" {
                         self.call_kinds.set(nid, CK_BUILTIN())
@@ -2295,6 +2307,10 @@ pub class Analyzer {
 
             // Instance method call: recv.method(args)
             let recv_t = btype_norm(self.analyze_expr(lhs))
+            let root_recv = self.get_root_ident(lhs)
+            if root_recv != "" && !btype_is_str(recv_t) && !btype_is_numeric(recv_t) && recv_t != "bool" {
+                self.scope_mark_mutated(root_recv)
+            }
 
             // Primitive str methods
             if btype_is_str(recv_t) {
@@ -2423,7 +2439,7 @@ pub class Analyzer {
     }
 
     priv fn str_method_ret(mname: str) -> str {
-        if mname == "len" || mname == "length" || mname == "byte_at" || mname == "index_of" || mname == "to_i64" || mname == "char_len" { return "i64" }
+        if mname == "len" || mname == "length" || mname == "byte_at" || mname == "index_of" || mname == "find" || mname == "to_i64" || mname == "char_len" { return "i64" }
         if mname == "to_f64" { return "f64" }
         if mname == "is_empty" || mname == "contains" || mname == "starts_with" || mname == "ends_with" { return "bool" }
         if mname == "split" || mname == "lines" { return "List<str>" }
@@ -2434,7 +2450,7 @@ pub class Analyzer {
 
     priv fn string_cls_method_ret(mname: str) -> str {
         if mname == "trim" || mname == "to_upper" || mname == "to_lower" || mname == "replace" || mname == "slice" || mname == "repeat" || mname == "append" { return "String" }
-        if mname == "len" || mname == "length" || mname == "byte_at" || mname == "index_of" { return "i64" }
+        if mname == "len" || mname == "length" || mname == "byte_at" || mname == "index_of" || mname == "find" { return "i64" }
         if mname == "is_empty" || mname == "contains" || mname == "starts_with" || mname == "ends_with" { return "bool" }
         if mname == "split" { return "List<str>" }
         if mname == "as_str" || mname == "char_at" || mname == "get" { return "str" }
