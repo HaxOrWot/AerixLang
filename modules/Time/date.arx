@@ -21,6 +21,12 @@
 #[extern("kernel32.dll", "GetLocalTime")]
 pub fn get_local_time(lp_system_time: str) -> void;
 
+#[extern("kernel32.dll", "GetDateFormatA")]
+pub fn win32GetDateFormat(locale: i64, flags: i64, date_ptr: i64, format: str, out_buf: str, cch: i64) -> i32;
+
+#[extern("kernel32.dll", "GetTimeFormatA")]
+pub fn win32GetTimeFormat(locale: i64, flags: i64, time_ptr: i64, format: str, out_buf: str, cch: i64) -> i32;
+
 #[extern("msvcrt.dll", "time")]
 pub fn c_time(timer: i64) -> i64;
 
@@ -93,19 +99,29 @@ pub class DateTime {
 /// Retrieves the current system local date and time according to user time zone settings.
 pub fn nowLocal() -> DateTime {
     let dt = DateTime()
-    let buf = " ".repeat(16)
-    get_local_time(buf)
+    let date_buf = " ".repeat(32)
+    let r1 = win32GetDateFormat(1024, 0, 0, "yyyy-MM-dd", date_buf, 32)
+    let time_buf = " ".repeat(32)
+    let r2 = win32GetTimeFormat(1024, 0, 0, "HH:mm:ss", time_buf, 32)
 
-    // Windows SYSTEMTIME layout:
-    // wYear(0..1), wMonth(2..3), wDayOfWeek(4..5), wDay(6..7),
-    // wHour(8..9), wMinute(10..11), wSecond(12..13), wMilliseconds(14..15)
-    dt.year = (buf.byte_at(0) & 255) | ((buf.byte_at(1) & 255) << 8)
-    dt.month = (buf.byte_at(2) & 255) | ((buf.byte_at(3) & 255) << 8)
-    dt.day = (buf.byte_at(6) & 255) | ((buf.byte_at(7) & 255) << 8)
-    dt.hour = (buf.byte_at(8) & 255) | ((buf.byte_at(9) & 255) << 8)
-    dt.minute = (buf.byte_at(10) & 255) | ((buf.byte_at(11) & 255) << 8)
-    dt.second = (buf.byte_at(12) & 255) | ((buf.byte_at(13) & 255) << 8)
-    dt.millisecond = (buf.byte_at(14) & 255) | ((buf.byte_at(15) & 255) << 8)
+    if r1 > 0 {
+        let d_str = date_buf.slice(0, r1 - 1)
+        let parts = d_str.split("-")
+        if parts.len() >= 3 {
+            dt.year = parts.get(0).to_i64()
+            dt.month = parts.get(1).to_i64()
+            dt.day = parts.get(2).to_i64()
+        }
+    }
+    if r2 > 0 {
+        let t_str = time_buf.slice(0, r2 - 1)
+        let parts = t_str.split(":")
+        if parts.len() >= 3 {
+            dt.hour = parts.get(0).to_i64()
+            dt.minute = parts.get(1).to_i64()
+            dt.second = parts.get(2).to_i64()
+        }
+    }
     return dt
 }
 
