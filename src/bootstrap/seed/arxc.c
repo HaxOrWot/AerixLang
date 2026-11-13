@@ -32799,7 +32799,7 @@ int64_t arx_link_c_to_exe_from(const char* c_source, const char* c_path, const c
     const char* __t13663 = " -std=c99 ";
     Arx_ByteBuffer_write_str((&(bb)), __t13663);
     Arx_ByteBuffer_write_str((&(bb)), opt_flag);
-    const char* __t13664 = " -Wno-unused-function -I";
+    const char* __t13664 = " -w -Wno-unused-function -I";
     Arx_ByteBuffer_write_str((&(bb)), __t13664);
     Arx_ByteBuffer_write_str((&(bb)), q);
     Arx_ByteBuffer_write_str((&(bb)), c_dir);
@@ -51343,7 +51343,7 @@ const char* arx_lsp_build_initialize_result(void) {
     const char* __t20693 = "aerix-lsp";
     Arx_JsonBuf_kv_str((&(jb)), __t20692, __t20693, true);
     const char* __t20694 = "version";
-    const char* __t20695 = "1.1.14b";
+    const char* __t20695 = "1.1.15b";
     Arx_JsonBuf_kv_str((&(jb)), __t20694, __t20695, false);
     Arx_JsonBuf_rbrace((&(jb)));
     Arx_JsonBuf_rbrace((&(jb)));
@@ -52385,7 +52385,7 @@ int64_t arx_cmd_vm(Arx_List_str cli_args, int64_t cli_argc, int64_t start_idx, c
                     if (__t21096) {
                         const char* __t21098 = "";
                         if ((arx_str_compare(target, __t21098) == 0)) {
-                            const char* __t21099 = "error: missing version for 'arx vm install' (e.g. 'arx vm install 1.1.14b')";
+                            const char* __t21099 = "error: missing version for 'arx vm install' (e.g. 'arx vm install 1.1.15b')";
                             fprintf(stderr, "%s\n", __t21099);
                             int64_t __t21100 = ((int64_t)1LL);
                             return __t21100;
@@ -53188,7 +53188,7 @@ int64_t arx_main(void) {
         __t21481 = ((arx_str_compare(first, __t21482) == 0));
     }
     if (__t21481) {
-        const char* __t21483 = "Aerix Self-Hosting Bootstrap Compiler (arxc) v1.1.14b";
+        const char* __t21483 = "Aerix Self-Hosting Bootstrap Compiler (arxc) v1.1.15b";
         arx_println_str(__t21483);
         arx_maybe_trigger_bg_update();
         int64_t __t21484 = ((int64_t)0LL);
