@@ -62,17 +62,6 @@ fn print_usage() {
     println("  -h, --help             Show help for any command (e.g. '" + bin + " build --help')")
     println("  -v, --version          Show compiler version information")
     println("")
-    println("Quick Examples:")
-    println("  " + bin + " build main.arx                  Compile to standalone 'main.exe'")
-    println("  " + bin + " build main.arx --release -o app  Optimized release build")
-    println("  " + bin + " build app.arx --gui -o app.exe  Build Windows GUI app (no console)")
-    println("  " + bin + " run main.arx                    Compile and immediately execute")
-    println("  " + bin + " run server.arx -- -p 8080       Forward CLI arguments to program")
-    println("  " + bin + " fmt src/                        Format all .arx source files in src/")
-    println("  " + bin + " test                            Discover and run all test suites")
-    println("  " + bin + " emit-c main.arx -o main.c       Transpile to standalone ANSI C99")
-    println("  " + bin + " check main.arx                  Validate syntax and static warnings")
-    println("")
     println("Run '" + bin + " <command> --help' or '" + bin + " help <command>' for detailed command options.")
 }
 
