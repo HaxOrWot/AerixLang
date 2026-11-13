@@ -6,6 +6,7 @@ import "./frontend/parser.arx"
 import "./middle/paths.arx"
 import "./middle/types.arx"
 import "./middle/analyzer.arx"
+import "./middle/docgen.arx"
 import "./backend/emitter.arx"
 import "./backend/linker.arx"
 import "./backend/native/codegen.arx"
@@ -23,7 +24,7 @@ fn resolve_bin_name() -> str {
 fn print_usage() {
     let bin = resolve_bin_name()
     println("Aerix Native Systems Programming Language Toolchain (" + bin + ")")
-    println("Version: 1.2.21b (Beta Channel) - x86_64-windows")
+    println("Version: 1.2.22b (Beta Channel) - x86_64-windows")
     println("")
     println("Usage:")
     println("  " + bin + " <command> [arguments...] [options]")
@@ -39,6 +40,8 @@ fn print_usage() {
     println("")
     println("Developer & IDE Tooling:")
     println("  lsp          Start the Language Server Protocol (LSP) JSON-RPC daemon")
+    println("  doc          Generate static HTML API documentation from doc-comments")
+    println("  repl         Start the interactive Aerix REPL shell")
     println("")
     println("Version & Toolchain Management:")
     println("  vm           Manage multiple compiler toolchains and release channels")
@@ -206,6 +209,31 @@ fn print_lsp_usage() {
     println("")
     println("Integration:")
     println("  Used automatically by the Aerix VS Code and Antigravity extension.")
+}
+
+fn print_doc_usage() {
+    let bin = resolve_bin_name()
+    println("Aerix Documentation Generator (" + bin + " doc)")
+    println("Generates modern, searchable HTML API documentation from source doc-comments.")
+    println("")
+    println("Usage:")
+    println("  " + bin + " doc [path] [-o <out_dir>]")
+    println("")
+    println("Options:")
+    println("  -o, --output <dir>     Output directory for HTML documentation (default: docs/)")
+    println("  -h, --help             Show this help message")
+}
+
+fn print_repl_usage() {
+    let bin = resolve_bin_name()
+    println("Aerix Interactive REPL (" + bin + " repl)")
+    println("Starts an interactive read-eval-print loop for instant expression evaluation.")
+    println("")
+    println("Usage:")
+    println("  " + bin + " repl")
+    println("")
+    println("Options:")
+    println("  -h, --help             Show this help message")
 }
 
 fn print_version_usage() {
@@ -409,7 +437,7 @@ fn cmd_vm(cli_args: List<str>, cli_argc: i64, start_idx: i64, default_sub: str) 
         }
     } else if sub == "install" || sub == "add" {
         if target == "" {
-            eprintln("error: missing version for 'arx vm install' (e.g. 'arx vm install 1.2.21b')")
+            eprintln("error: missing version for 'arx vm install' (e.g. 'arx vm install 1.2.22b')")
             return 1
         }
         cmd = cmd + " " + quote_shell_arg("--vm-install=" + target)
@@ -881,6 +909,71 @@ fn cmd_run(input_file: str, opt_flag: str, backend: str, prog_args: List<str>, p
     return rc
 }
 
+fn cmd_doc(target_path: str, out_dir: str) -> i64 {
+    return generate_docs(target_path, out_dir)
+}
+
+fn cmd_repl() -> i64 {
+    let bin = resolve_bin_name()
+    println("==================================================================")
+    println("  Aerix Interactive REPL v1.2.22b (x86_64-windows)")
+    println("  Type :help for commands, :exit or :quit to quit.")
+    println("==================================================================")
+    println("")
+    let tmp_dir = bpath_join(get_temp_dir(), "aerix_repl")
+    Directory.create(tmp_dir)
+    let tmp_src = bpath_join(tmp_dir, "repl_session.arx")
+
+    mut line_num = 1
+    while true {
+        let line = input("aerix[" + line_num + "]> ")
+        let trimmed = line.trim()
+        if trimmed == ":exit" || trimmed == ":quit" || trimmed == ":q" {
+            println("Goodbye!")
+            break
+        }
+        if trimmed == ":help" || trimmed == ":h" {
+            println("Aerix REPL Commands:")
+            println("  :exit, :quit, :q     Exit the interactive session")
+            println("  :help, :h            Display this help menu")
+            println("  :version, :v         Display compiler version")
+            println("  :clear, :cls         Clear the screen")
+            continue
+        }
+        if trimmed == ":version" || trimmed == ":v" {
+            println("Aerix Self-Hosting Bootstrap Compiler (" + bin + ") v1.2.22b")
+            continue
+        }
+        if trimmed == ":clear" || trimmed == ":cls" {
+            if Env.os_name() == "windows" {
+                Process.execute("cls")
+            } else {
+                Process.execute("clear")
+            }
+            continue
+        }
+        if trimmed == "" {
+            continue
+        }
+
+        mut harness = ""
+        if trimmed.starts_with("let ") || trimmed.starts_with("mut ") || trimmed.starts_with("const ") || trimmed.starts_with("println") || trimmed.starts_with("print(") || trimmed.starts_with("for ") || trimmed.starts_with("while ") || trimmed.starts_with("if ") || trimmed.starts_with("fn ") {
+            harness = "fn main() \{\n    " + trimmed + "\n\}\n"
+        } else {
+            harness = "fn main() \{\n    let __res = (" + trimmed + ")\n    println(\"=> \" + (__res as str))\n\}\n"
+        }
+
+        File.write_string(tmp_src, harness)
+        let prog_args = List<str>()
+        cmd_run(tmp_src, "-O0", "c", prog_args, 0)
+        if File.exists(tmp_src) {
+            File.remove(tmp_src)
+        }
+        line_num = line_num + 1
+    }
+    return 0
+}
+
 fn main() -> i64 {
     let cli_args = Env.args()
     let cli_argc = Env.arg_count()
@@ -898,7 +991,7 @@ fn main() -> i64 {
                 return 0
             }
         }
-        println("Aerix Self-Hosting Bootstrap Compiler (arxc) v1.2.21b")
+        println("Aerix Self-Hosting Bootstrap Compiler (arxc) v1.2.22b")
         maybe_trigger_bg_update()
         return 0
     }
@@ -912,6 +1005,8 @@ fn main() -> i64 {
             if sub == "fmt" { print_fmt_usage(); return 0 }
             if sub == "test" { print_test_usage(); return 0 }
             if sub == "lsp" { print_lsp_usage(); return 0 }
+            if sub == "doc" { print_doc_usage(); return 0 }
+            if sub == "repl" { print_repl_usage(); return 0 }
             if sub == "vm" || sub == "toolchain" { print_vm_usage(); return 0 }
             if sub == "update" || sub == "upgrade" { print_update_usage(); return 0 }
             if sub == "version" { print_version_usage(); return 0 }
@@ -981,6 +1076,44 @@ fn main() -> i64 {
             }
         }
         return run_lsp_server()
+    }
+    if first == "doc" {
+        mut target = ""
+        mut out_dir = "docs"
+        mut di = 2
+        while di < cli_argc {
+            let da = cli_args.get(di)
+            if da == "--help" || da == "-h" {
+                print_doc_usage()
+                return 0
+            } else if da == "-o" || da == "--output" {
+                di = di + 1
+                if di < cli_argc {
+                    out_dir = cli_args.get(di)
+                }
+            } else if da.starts_with("-o=") || da.starts_with("--output=") {
+                let eq = da.index_of("=")
+                out_dir = da.slice(eq + 1, da.len())
+            } else if !da.starts_with("-") && target == "" {
+                target = da
+            } else {
+                eprintln("error: unknown option '" + da + "' for 'arx doc'")
+                eprintln("  = help: run 'arx doc --help' for supported options")
+                return 1
+            }
+            di = di + 1
+        }
+        return cmd_doc(target, out_dir)
+    }
+    if first == "repl" {
+        if cli_argc >= 3 {
+            let a2 = cli_args.get(2)
+            if a2 == "--help" || a2 == "-h" {
+                print_repl_usage()
+                return 0
+            }
+        }
+        return cmd_repl()
     }
     if first == "vm" || first == "toolchain" {
         return cmd_vm(cli_args, cli_argc, 2, "")

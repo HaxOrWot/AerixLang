@@ -1043,10 +1043,13 @@ fn lsp_extract_quoted_after(text: str, marker: str) -> str {
 pub fn lsp_build_code_action_json(source: str, az: Analyzer, doc_path: str, doc_uri: str, start_line0: i64, end_line0: i64) -> str {
     let jb = JsonBuf()
     jb.lbrack()
+    let norm_doc = bpath_normalize(doc_path).to_lower()
     mut first = true
     mut i = 0
     while i < az.err_count {
-        if az.err_files.get(i) != doc_path {
+        let ef = az.err_files.get(i)
+        let norm_ef = bpath_normalize(ef).to_lower()
+        if norm_ef != "" && norm_ef != norm_doc {
             i = i + 1
             continue
         }

@@ -1391,6 +1391,9 @@ pub class Parser {
 
     priv fn parse_stmt() -> i64 {
         let k = self.cur_kind()
+        if k == TK_LBRACE() {
+            return self.parse_block()
+        }
         if k == TK_LET() || k == TK_MUT() || k == TK_CONST() {
             return self.parse_var_decl()
         }

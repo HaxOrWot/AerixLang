@@ -1764,6 +1764,7 @@ pub class Analyzer {
                 res_t = "f64"
             } else if op_s == "??" {
                 res_t = lt
+                if res_t == "" || res_t == "void" { res_t = rt }
             }
             self.node_types.set(nid, res_t)
             return res_t
@@ -2438,7 +2439,7 @@ pub class Analyzer {
     }
 
     priv fn str_method_ret(mname: str) -> str {
-        if mname == "len" || mname == "length" || mname == "byte_at" || mname == "index_of" || mname == "to_i64" || mname == "char_len" { return "i64" }
+        if mname == "len" || mname == "length" || mname == "byte_at" || mname == "index_of" || mname == "find" || mname == "to_i64" || mname == "char_len" { return "i64" }
         if mname == "to_f64" { return "f64" }
         if mname == "is_empty" || mname == "contains" || mname == "starts_with" || mname == "ends_with" { return "bool" }
         if mname == "split" || mname == "lines" { return "List<str>" }
@@ -2449,7 +2450,7 @@ pub class Analyzer {
 
     priv fn string_cls_method_ret(mname: str) -> str {
         if mname == "trim" || mname == "to_upper" || mname == "to_lower" || mname == "replace" || mname == "slice" || mname == "repeat" || mname == "append" { return "String" }
-        if mname == "len" || mname == "length" || mname == "byte_at" || mname == "index_of" { return "i64" }
+        if mname == "len" || mname == "length" || mname == "byte_at" || mname == "index_of" || mname == "find" { return "i64" }
         if mname == "is_empty" || mname == "contains" || mname == "starts_with" || mname == "ends_with" { return "bool" }
         if mname == "split" { return "List<str>" }
         if mname == "as_str" || mname == "char_at" || mname == "get" { return "str" }

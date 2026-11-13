@@ -1,0 +1,304 @@
+// Aerix Documentation Generator (arx doc)
+// Extracts doc-comments and public declarations to generate standalone interactive HTML API docs.
+
+import "./paths.arx"
+
+priv fn collect_arx_files(dir: str, out_list: List<str>) {
+    let files = Directory.list_files(dir)
+    mut i = 0
+    while i < files.len() {
+        let name = files.get(i)
+        if name.ends_with(".arx") {
+            out_list.push(bpath_join(dir, name))
+        }
+        i = i + 1
+    }
+    let subdirs = Directory.list_dirs(dir)
+    mut di = 0
+    while di < subdirs.len() {
+        let dname = subdirs.get(di)
+        if dname != ".git" && dname != "build" && dname != "stage" && dname != "dist" && dname != "seed" {
+            collect_arx_files(bpath_join(dir, dname), out_list)
+        }
+        di = di + 1
+    }
+}
+
+priv fn write_css(bb: ByteBuffer, sel: str, body: str) {
+    bb.write_str(sel)
+    bb.write_str(" ")
+    bb.write_u8(123)
+    bb.write_str(" ")
+    bb.write_str(body)
+    bb.write_str(" ")
+    bb.write_u8(125)
+    bb.write_str("\n")
+}
+
+priv fn write_js(bb: ByteBuffer) {
+    bb.write_str("<script>\nfunction filterDocs() ")
+    bb.write_u8(123)
+    bb.write_str("\n  const q = document.getElementById(\"search\").value.toLowerCase().trim();\n  let count = 0;\n  document.querySelectorAll(\".doc-card\").forEach(c => ")
+    bb.write_u8(123)
+    bb.write_str("\n    const match = !q || c.innerText.toLowerCase().includes(q) || c.getAttribute(\"data-name\").toLowerCase().includes(q);\n    c.style.display = match ? \"\" : \"none\";\n    if (match) count++;\n  ")
+    bb.write_u8(125)
+    bb.write_str(");\n  document.getElementById(\"counter\").innerText = count + \" matching items\";\n")
+    bb.write_u8(125)
+    bb.write_str("\n</script>\n")
+}
+
+pub fn generate_docs(input_path: str, out_dir: str) -> i64 {
+    mut target = input_path
+    if target == "" { target = "." }
+    mut out = out_dir
+    if out == "" { out = "docs" }
+
+    let norm_target = bpath_normalize(target)
+    let norm_out = bpath_normalize(out)
+
+    let files = List<str>()
+    if File.exists(norm_target) && norm_target.ends_with(".arx") {
+        files.push(norm_target)
+    } else if Directory.exists(norm_target) {
+        collect_arx_files(norm_target, files)
+    } else {
+        eprintln("error: cannot access doc target path: " + target)
+        return 1
+    }
+
+    if files.len() == 0 {
+        eprintln("error: no .arx source files found in: " + target)
+        return 1
+    }
+
+    Directory.create(norm_out)
+
+    let item_kinds = List<str>()
+    let item_names = List<str>()
+    let item_sigs = List<str>()
+    let item_docs = List<str>()
+    let item_files = List<str>()
+
+    mut fi = 0
+    while fi < files.len() {
+        let fp = files.get(fi)
+        let content = File.read_to_string(fp)
+        let lines = content.split("\n")
+        mut cur_doc = ""
+        mut li = 0
+        while li < lines.len() {
+            let raw_l = lines.get(li)
+            let tl = raw_l.trim()
+            if tl.starts_with("///") {
+                let doc_line = tl.slice(3, tl.len()).trim()
+                if cur_doc == "" {
+                    cur_doc = doc_line
+                } else {
+                    cur_doc = cur_doc + "\n" + doc_line
+                }
+            } else if tl.starts_with("//") {
+                // Regular comment
+            } else if tl.starts_with("pub fn ") || tl.starts_with("fn ") {
+                let is_pub = tl.starts_with("pub fn ")
+                mut sig = tl
+                let brace_pos = sig.index_of("\{")
+                if brace_pos > 0 { sig = sig.slice(0, brace_pos).trim() }
+                
+                // Extract function name
+                mut name_start = 7
+                if !is_pub { name_start = 3 }
+                let lparen = sig.index_of("(")
+                if lparen > name_start {
+                    let fname = sig.slice(name_start, lparen).trim()
+                    item_kinds.push("fn")
+                    item_names.push(fname)
+                    item_sigs.push(sig)
+                    item_docs.push(cur_doc)
+                    item_files.push(bpath_basename(fp))
+                }
+                cur_doc = ""
+            } else if tl.starts_with("pub class ") || tl.starts_with("class ") {
+                let is_pub = tl.starts_with("pub class ")
+                mut name_start = 10
+                if !is_pub { name_start = 6 }
+                mut cname = tl.slice(name_start, tl.len()).trim()
+                let brace = cname.index_of("\{")
+                if brace > 0 { cname = cname.slice(0, brace).trim() }
+                let colon = cname.index_of(":")
+                if colon > 0 { cname = cname.slice(0, colon).trim() }
+                let spc = cname.index_of(" ")
+                if spc > 0 { cname = cname.slice(0, spc).trim() }
+
+                item_kinds.push("class")
+                item_names.push(cname)
+                item_sigs.push("class " + cname)
+                item_docs.push(cur_doc)
+                item_files.push(bpath_basename(fp))
+                cur_doc = ""
+            } else if tl.starts_with("pub struct ") || tl.starts_with("struct ") {
+                let is_pub = tl.starts_with("pub struct ")
+                mut name_start = 11
+                if !is_pub { name_start = 7 }
+                mut sname = tl.slice(name_start, tl.len()).trim()
+                let brace = sname.index_of("\{")
+                if brace > 0 { sname = sname.slice(0, brace).trim() }
+                let colon = sname.index_of(":")
+                if colon > 0 { sname = sname.slice(0, colon).trim() }
+                let spc = sname.index_of(" ")
+                if spc > 0 { sname = sname.slice(0, spc).trim() }
+
+                item_kinds.push("struct")
+                item_names.push(sname)
+                item_sigs.push("struct " + sname)
+                item_docs.push(cur_doc)
+                item_files.push(bpath_basename(fp))
+                cur_doc = ""
+            } else if tl.starts_with("pub enum ") || tl.starts_with("enum ") {
+                let is_pub = tl.starts_with("pub enum ")
+                mut name_start = 9
+                if !is_pub { name_start = 5 }
+                mut ename = tl.slice(name_start, tl.len()).trim()
+                let brace = ename.index_of("\{")
+                if brace > 0 { ename = ename.slice(0, brace).trim() }
+                let colon = ename.index_of(":")
+                if colon > 0 { ename = ename.slice(0, colon).trim() }
+                let spc = ename.index_of(" ")
+                if spc > 0 { ename = ename.slice(0, spc).trim() }
+
+                item_kinds.push("enum")
+                item_names.push(ename)
+                item_sigs.push("enum " + ename)
+                item_docs.push(cur_doc)
+                item_files.push(bpath_basename(fp))
+                cur_doc = ""
+            } else if tl.starts_with("pub trait ") || tl.starts_with("trait ") {
+                let is_pub = tl.starts_with("pub trait ")
+                mut name_start = 10
+                if !is_pub { name_start = 6 }
+                mut tname = tl.slice(name_start, tl.len()).trim()
+                let brace = tname.index_of("\{")
+                if brace > 0 { tname = tname.slice(0, brace).trim() }
+                let spc = tname.index_of(" ")
+                if spc > 0 { tname = tname.slice(0, spc).trim() }
+
+                item_kinds.push("trait")
+                item_names.push(tname)
+                item_sigs.push("trait " + tname)
+                item_docs.push(cur_doc)
+                item_files.push(bpath_basename(fp))
+                cur_doc = ""
+            } else if tl != "" {
+                cur_doc = ""
+            }
+            li = li + 1
+        }
+        fi = fi + 1
+    }
+
+    // Build standalone HTML output
+    let bb = ByteBuffer()
+    bb.write_str("<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n")
+    bb.write_str("<meta charset=\"UTF-8\">\n")
+    bb.write_str("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n")
+    bb.write_str("<title>Aerix API Documentation</title>\n")
+    bb.write_str("<style>\n")
+    write_css(bb, ":root", "--bg: #0b0f19; --card: #111827; --card-border: #1f2937; --text: #f3f4f6; --text-muted: #9ca3af; --cyan: #00DCFF; --purple: #a78bfa; --emerald: #10b981; --font: system-ui, -apple-system, sans-serif; --mono: Consolas, monospace;")
+    write_css(bb, "*", "box-sizing: border-box; margin: 0; padding: 0;")
+    write_css(bb, "body", "background: var(--bg); color: var(--text); font-family: var(--font); line-height: 1.6; padding: 24px;")
+    write_css(bb, ".container", "max-width: 1200px; margin: 0 auto;")
+    write_css(bb, "header", "display: flex; align-items: center; justify-content: space-between; padding-bottom: 24px; border-bottom: 1px solid var(--card-border); margin-bottom: 24px; flex-wrap: wrap; gap: 16px;")
+    write_css(bb, ".logo", "display: flex; align-items: center; gap: 12px; font-size: 24px; font-weight: 700; color: var(--cyan); letter-spacing: -0.5px;")
+    write_css(bb, ".search-box", "position: relative; width: 360px; max-width: 100%;")
+    write_css(bb, ".search-box input", "width: 100%; background: var(--card); border: 1px solid var(--card-border); color: var(--text); padding: 10px 16px; border-radius: 8px; font-size: 14px; outline: none; transition: border-color 0.2s;")
+    write_css(bb, ".search-box input:focus", "border-color: var(--cyan);")
+    write_css(bb, ".stats", "font-size: 13px; color: var(--text-muted);")
+    write_css(bb, ".grid", "display: grid; grid-template-columns: 260px 1fr; gap: 24px;")
+    write_css(bb, ".sidebar", "background: var(--card); border: 1px solid var(--card-border); border-radius: 12px; padding: 16px; height: fit-content; position: sticky; top: 24px;")
+    write_css(bb, ".sidebar h3", "font-size: 12px; text-transform: uppercase; color: var(--text-muted); letter-spacing: 1px; margin-bottom: 12px;")
+    write_css(bb, ".sidebar ul", "list-style: none;")
+    write_css(bb, ".sidebar li", "margin-bottom: 6px;")
+    write_css(bb, ".sidebar a", "color: var(--text-muted); text-decoration: none; font-size: 14px; display: block; padding: 4px 8px; border-radius: 6px; transition: 0.15s;")
+    write_css(bb, ".sidebar a:hover", "color: var(--cyan); background: rgba(0, 220, 255, 0.08);")
+    write_css(bb, ".cards", "display: flex; flex-direction: column; gap: 16px;")
+    write_css(bb, ".doc-card", "background: var(--card); border: 1px solid var(--card-border); border-radius: 12px; padding: 20px; transition: transform 0.15s, border-color 0.15s;")
+    write_css(bb, ".doc-card:hover", "border-color: rgba(0, 220, 255, 0.4);")
+    write_css(bb, ".card-header", "display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;")
+    write_css(bb, ".item-title", "font-size: 18px; font-weight: 600; color: var(--text); display: flex; align-items: center; gap: 10px;")
+    write_css(bb, ".badge", "font-size: 11px; text-transform: uppercase; font-weight: 700; padding: 2px 8px; border-radius: 4px; letter-spacing: 0.5px;")
+    write_css(bb, ".badge-fn", "background: rgba(0, 220, 255, 0.15); color: var(--cyan); border: 1px solid rgba(0, 220, 255, 0.3);")
+    write_css(bb, ".badge-class", "background: rgba(167, 139, 250, 0.15); color: var(--purple); border: 1px solid rgba(167, 139, 250, 0.3);")
+    write_css(bb, ".badge-struct", "background: rgba(16, 185, 129, 0.15); color: var(--emerald); border: 1px solid rgba(16, 185, 129, 0.3);")
+    write_css(bb, ".badge-enum", "background: rgba(245, 158, 11, 0.15); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.3);")
+    write_css(bb, ".badge-trait", "background: rgba(236, 72, 153, 0.15); color: #ec4899; border: 1px solid rgba(236, 72, 153, 0.3);")
+    write_css(bb, ".item-file", "font-size: 12px; color: var(--text-muted); font-family: var(--mono);")
+    write_css(bb, ".sig-box", "background: #070a11; border: 1px solid rgba(255, 255, 255, 0.06); border-radius: 8px; padding: 12px 16px; font-family: var(--mono); font-size: 13px; color: #38bdf8; overflow-x: auto; margin-bottom: 12px;")
+    write_css(bb, ".item-desc", "font-size: 14px; color: #d1d5db; white-space: pre-wrap; line-height: 1.6;")
+    write_css(bb, ".no-desc", "font-style: italic; color: #6b7280; font-size: 13px;")
+    bb.write_str("</style>\n</head>\n<body>\n")
+    bb.write_str("<div class=\"container\">\n")
+    bb.write_str("<header>\n")
+    bb.write_str("  <div class=\"logo\"><span>Docs</span> Aerix API Documentation</div>\n")
+    bb.write_str("  <div class=\"search-box\"><input type=\"text\" id=\"search\" placeholder=\"Search functions, classes, types...\" oninput=\"filterDocs()\"></div>\n")
+    let total_cnt = (item_names.len() as str) + " items across " + (files.len() as str) + " files"
+    bb.write_str("  <div class=\"stats\" id=\"counter\">" + total_cnt + "</div>\n")
+    bb.write_str("</header>\n")
+    bb.write_str("<div class=\"grid\">\n")
+    bb.write_str("  <nav class=\"sidebar\">\n")
+    bb.write_str("    <h3>Quick Index</h3>\n    <ul>\n")
+
+    mut si = 0
+    while si < item_names.len() {
+        let iname = item_names.get(si)
+        let ikind = item_kinds.get(si)
+        bb.write_str("      <li><a href=\"#item-" + iname + "\">" + iname + " <small>(" + ikind + ")</small></a></li>\n")
+        si = si + 1
+    }
+
+    bb.write_str("    </ul>\n  </nav>\n")
+    bb.write_str("  <main class=\"cards\">\n")
+
+    mut ii = 0
+    while ii < item_names.len() {
+        let iname = item_names.get(ii)
+        let ikind = item_kinds.get(ii)
+        let isig = item_sigs.get(ii)
+        let idoc = item_docs.get(ii)
+        let ifile = item_files.get(ii)
+
+        bb.write_str("    <article class=\"doc-card\" id=\"item-" + iname + "\" data-name=\"" + iname + " " + ikind + "\">\n")
+        bb.write_str("      <div class=\"card-header\">\n")
+        bb.write_str("        <div class=\"item-title\"><span class=\"badge badge-" + ikind + "\">" + ikind + "</span> " + iname + "</div>\n")
+        bb.write_str("        <span class=\"item-file\">" + ifile + "</span>\n")
+        bb.write_str("      </div>\n")
+        bb.write_str("      <div class=\"sig-box\">" + isig + "</div>\n")
+        if idoc != "" {
+            bb.write_str("      <div class=\"item-desc\">" + idoc + "</div>\n")
+        } else {
+            bb.write_str("      <div class=\"no-desc\">No doc-comments provided for this declaration.</div>\n")
+        }
+        bb.write_str("    </article>\n")
+        ii = ii + 1
+    }
+
+    bb.write_str("  </main>\n")
+    bb.write_str("</div>\n</div>\n")
+    write_js(bb)
+    bb.write_str("</body>\n</html>\n")
+
+    let html_out = bpath_join(norm_out, "index.html")
+    let success = File.write_string(html_out, bb.to_str())
+    bb.free()
+
+    if !success {
+        eprintln("error: failed to write documentation HTML file: " + html_out)
+        return 1
+    }
+
+    println("==================================================================")
+    println("  [arx doc] Successfully generated API documentation!")
+    println("  Files scanned: " + (files.len() as str))
+    println("  Declarations:  " + (item_names.len() as str))
+    println("  Output HTML:   " + html_out)
+    println("==================================================================")
+    return 0
+}
