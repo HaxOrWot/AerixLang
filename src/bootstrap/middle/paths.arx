@@ -223,28 +223,49 @@ pub fn find_module_dir(mod_name: str, entry_dir: str) -> str {
         cands.push(bpath_join(exe_dir, "../../../modules/" + norm_name))
     }
 
-    // Capitalized and casing variants (e.g. 'Window/gui' -> 'Window/Gui')
+    // Capitalized and casing variants (e.g. 'Window/gui' -> 'Window/Gui', 'Window/gui/canvas' -> 'Window/Gui/Canvas')
     let parts = norm_name.split("/")
     if parts.len() > 1 {
-        let p0 = parts.get(0)
-        let p1 = parts.get(1)
-        let p0_cap = p0.slice(0, 1).to_upper() + p0.slice(1, p0.len())
-        let p1_cap = p1.slice(0, 1).to_upper() + p1.slice(1, p1.len())
-        let p1_low = p1.slice(0, 1).to_lower() + p1.slice(1, p1.len())
-        let p1_upp = p1.to_upper()
+        mut title_var = ""
+        mut lower_var = ""
+        mut pi = 0
+        while pi < parts.len() {
+            let seg = parts.get(pi)
+            if seg.len() > 0 {
+                let seg_cap = seg.slice(0, 1).to_upper() + seg.slice(1, seg.len())
+                let seg_low = seg.slice(0, 1).to_lower() + seg.slice(1, seg.len())
+                if pi > 0 {
+                    title_var = title_var + "/" + seg_cap
+                    lower_var = lower_var + "/" + seg_low
+                } else {
+                    title_var = seg_cap
+                    lower_var = seg_low
+                }
+            }
+            pi = pi + 1
+        }
         let alts = List<str>()
-        alts.push(p0_cap + "/" + p1_cap)
-        alts.push(p0_cap + "/" + p1_low)
-        alts.push(p0_cap + "/" + p1_upp)
-        alts.push(p0.to_lower() + "/" + p1_low)
+        alts.push(title_var)
+        alts.push(lower_var)
+        if parts.len() == 2 {
+            let p0 = parts.get(0)
+            let p1 = parts.get(1)
+            let p0_cap = p0.slice(0, 1).to_upper() + p0.slice(1, p0.len())
+            let p1_low = p1.slice(0, 1).to_lower() + p1.slice(1, p1.len())
+            let p1_upp = p1.to_upper()
+            alts.push(p0_cap + "/" + p1_low)
+            alts.push(p0_cap + "/" + p1_upp)
+        }
         mut ai = 0
         while ai < alts.len() {
             let alt = alts.get(ai)
-            cands.push("C:/Aerix/modules/" + alt)
-            cands.push(bpath_join(entry_dir, "modules/" + alt))
-            cands.push(bpath_join(cwd, "modules/" + alt))
-            cands.push(bpath_join(entry_dir, alt))
-            cands.push(bpath_join(cwd, alt))
+            if alt != norm_name {
+                cands.push("C:/Aerix/modules/" + alt)
+                cands.push(bpath_join(entry_dir, "modules/" + alt))
+                cands.push(bpath_join(cwd, "modules/" + alt))
+                cands.push(bpath_join(entry_dir, alt))
+                cands.push(bpath_join(cwd, alt))
+            }
             ai = ai + 1
         }
     } else if norm_name.len() > 0 {

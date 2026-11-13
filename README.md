@@ -12,7 +12,7 @@
 ### **The Expressive Native Systems Programming Language**
 *The velocity and elegance of modern scripting — fused with the raw speed, minimal footprint, and bare-metal power of native C.*
 
-[![Version](https://img.shields.io/badge/version-1.1.12b--stable-00DCFF.svg?style=for-the-badge&logo=visualstudiocode)](#)
+[![Version](https://img.shields.io/badge/version-1.1.12c--stable-00DCFF.svg?style=for-the-badge&logo=visualstudiocode)](#)
 [![Backend](https://img.shields.io/badge/backend-ANSI%20C99%20%2F%20GCC-1E90FF.svg?style=for-the-badge&logo=c)](#)
 [![Performance](https://img.shields.io/badge/performance-100%25%20C%20Native-00E676.svg?style=for-the-badge&logo=speedtest)](#)
 [![Tests](https://img.shields.io/badge/test%20suite-198%2F198%20PASS%20(100%25)-00E5FF.svg?style=for-the-badge)](#)
@@ -62,7 +62,7 @@ fn main() {
 > **Repository Branches:**
 > * **`master`** *(default)* — Minimal self-hosting Aerix compiler tree (`src/bootstrap/` + C bootstrap seed `src/bootstrap/seed/arxc.c`, `stdlib/`, `modules/`, and docs). Builds natively with GCC/Clang alone — **no Python required**.
 > * **`pre`** — Pre-release development repository (`*-pre` releases) including the Stage 0 Python compiler (`src/`), bootstrap source (`src/bootstrap/`), automated test suite (`198` tests in `src/tests/`), `41` example files (`examples/`), VS Code / Antigravity extension (`editors/`), C++ installer (`AerixInstaller/`), installer scripts (`install.ps1` / `install.sh`), LSP, formatter, linter, REPL, and WASM backend.
-> * **`stable`** — Verified stable release branch (`1.1.12b-stable`) carrying production `*-stable` releases, the C# Windows installer (`AerixSetup-1.1.12b-stable.exe`), and editor extension (`aerix-1.1.12b-stable.vsix`).
+> * **`stable`** — Verified stable release branch (`1.1.12c-stable`) carrying production `*-stable` releases, the C# Windows installer (`AerixSetup-1.1.12c-stable.exe`), and editor extension (`aerix-1.1.12c-stable.vsix`).
 
 <details open>
 <summary><b>🧬 Option A: Self-Hosting Native Compiler (<code>arxc</code> — Zero Python Required, <code>master</code> / <code>pre</code> / <code>stable</code>)</b></summary>
@@ -85,7 +85,7 @@ cc -std=c99 -O2 -Wno-unused-function -I stdlib src/bootstrap/seed/arxc.c -o arxc
 ```powershell
 .\arxc.exe build src/bootstrap/main.arx -o arxc_self.exe
 .\arxc_self.exe version
-# Output: Aerix Self-Hosting Bootstrap Compiler (arxc) v1.1.12b-stable
+# Output: Aerix Self-Hosting Bootstrap Compiler (arxc) v1.1.12c-stable
 ```
 
 **3. Use `arxc` to check, transpile, build, or run Aerix programs:**
@@ -433,7 +433,7 @@ Phase 05: AIR Lowering & Custom Optimizer         ✅ COMPLETE (22/22 tests pass
 Phase 06: C99 Machine Codegen & Linker Orchestr. ✅ COMPLETE (25/25 tests passed)
 Phase 07: Unified Developer CLI (`arx`, `arxc`)  ✅ COMPLETE (Turnkey CLI toolchain)
 Phase 08: Benchmarks & Standard Performance       ✅ COMPLETE (Fibonacci 100.2% C-speed)
-Phase 09: Packaging & VS Code Extension           ✅ COMPLETE (v1.1.12b-stable VSIX & C# Setup)
+Phase 09: Packaging & VS Code Extension           ✅ COMPLETE (v1.1.12c-stable VSIX & C# Setup)
 Phase 10: Method & Constructor Overloading        ✅ COMPLETE (Type & arity mangling)
 Phase 11: Reactive Properties & Operator Overload ✅ COMPLETE (prop & op keywords)
 Phase 12: Modern Flow Control & Type Extensions   ✅ COMPLETE (guard, extend, ~>)
@@ -477,12 +477,12 @@ Aerix provides first-class tooling across both **Visual Studio Code** and the **
 
 **Install into Visual Studio Code:**
 ```powershell
-code --install-extension editors/vscode-aerix/aerix-1.1.12b-stable.vsix --force
+code --install-extension editors/vscode-aerix/aerix-1.1.12c-stable.vsix --force
 ```
 
 **Install into Antigravity IDE:**
 ```powershell
-antigravity --install-extension editors/vscode-aerix/aerix-1.1.12b-stable.vsix --force
+antigravity --install-extension editors/vscode-aerix/aerix-1.1.12c-stable.vsix --force
 ```
 
 </details>

@@ -22,6 +22,9 @@ fn print_usage() {
     println("  arxc update [--check] [--force] [--verbose] [--no-ide]")
     println("  arxc vm <status|list|list-remote|install|use|remove|sync> [...]")
     println("  arxc install <version>")
+    println("  arxc use <version|channel>")
+    println("  arxc versions")
+    println("  arxc current")
     println("  arxc <file.arx> [-o <out>]")
     println("  arxc version")
 }
@@ -41,6 +44,9 @@ fn print_vm_usage() {
     println("  arx vm remove <ver> [--force]    Delete a cached toolchain version")
     println("  arx vm sync                      Snapshot current active toolchain into local cache")
     println("  arx install <ver>                Shorthand for 'arx vm install <ver>'")
+    println("  arx use <ver>                    Shorthand for 'arx vm use <ver>'")
+    println("  arx versions                     Shorthand for 'arx vm list'")
+    println("  arx current                      Shorthand for 'arx vm status'")
 }
 
 fn print_update_usage() {
@@ -211,7 +217,7 @@ fn cmd_vm(cli_args: List<str>, cli_argc: i64, start_idx: i64, default_sub: str) 
         }
     } else if sub == "install" || sub == "add" {
         if target == "" {
-            eprintln("error: missing version for 'arx vm install' (e.g. 'arx vm install 1.1.12b-stable')")
+            eprintln("error: missing version for 'arx vm install' (e.g. 'arx vm install 1.1.12c-stable')")
             return 1
         }
         cmd = cmd + " " + quote_shell_arg("--vm-install=" + target)
@@ -553,7 +559,7 @@ fn main() -> i64 {
 
     let first = cli_args.get(1)
     if first == "version" || first == "--version" || first == "-v" {
-        println("Aerix Self-Hosting Bootstrap Compiler (arxc) v1.1.12b-stable")
+        println("Aerix Self-Hosting Bootstrap Compiler (arxc) v1.1.12c-stable")
         maybe_trigger_bg_update()
         return 0
     }
@@ -569,6 +575,15 @@ fn main() -> i64 {
     }
     if first == "install" {
         return cmd_vm(cli_args, cli_argc, 2, "install")
+    }
+    if first == "use" || first == "switch" {
+        return cmd_vm(cli_args, cli_argc, 2, "use")
+    }
+    if first == "versions" || first == "toolchains" {
+        return cmd_vm(cli_args, cli_argc, 2, "list")
+    }
+    if first == "current" {
+        return cmd_vm(cli_args, cli_argc, 2, "status")
     }
     if first == "update" || first == "upgrade" {
         mut upd_check = false

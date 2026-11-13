@@ -87,7 +87,7 @@ namespace AerixSetup
 
     public static class InstallerEngine
     {
-        public const string DefaultVersion = "1.1.12b-stable";
+        public const string DefaultVersion = "1.1.12c-stable";
         public const string VmMinVersion = "1.1.3b";
         private const string UninstallRegPath = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\AerixLang";
         private const string ExtensionIdPrefix = "aerix-lang.aerix-";
@@ -1137,9 +1137,9 @@ namespace AerixSetup
             return GetVersion();
         }
 
-        private static void ParseSemVer(string raw, out int major, out int minor, out int patch, out string preTag)
+        private static void ParseSemVer(string raw, out int major, out int minor, out int patch, out int patchLetter, out string preTag)
         {
-            major = 0; minor = 0; patch = 0; preTag = "";
+            major = 0; minor = 0; patch = 0; patchLetter = 0; preTag = "";
             if (string.IsNullOrWhiteSpace(raw)) return;
             string s = raw.Trim();
             if (s.StartsWith("v", StringComparison.OrdinalIgnoreCase)) s = s.Substring(1);
@@ -1151,11 +1151,24 @@ namespace AerixSetup
             if (parts.Length > 1) int.TryParse(parts[1], out minor);
             if (parts.Length > 2)
             {
-                Match m = Regex.Match(parts[2], "^([0-9]+)(.*)$");
+                Match m = Regex.Match(parts[2], @"^([0-9]+)([a-zA-Z]*)(.*)$");
                 if (m.Success)
                 {
                     int.TryParse(m.Groups[1].Value, out patch);
-                    string trailing = m.Groups[2].Value.Trim().ToLowerInvariant();
+                    string letters = m.Groups[2].Value.Trim().ToLowerInvariant();
+                    if (!string.IsNullOrEmpty(letters))
+                    {
+                        int lrank = 0;
+                        foreach (char ch in letters)
+                        {
+                            if (ch >= 'a' && ch <= 'z')
+                            {
+                                lrank = lrank * 26 + (ch - 'a' + 1);
+                            }
+                        }
+                        patchLetter = lrank;
+                    }
+                    string trailing = m.Groups[3].Value.Trim().ToLowerInvariant();
                     if (!string.IsNullOrEmpty(trailing) && string.IsNullOrEmpty(preTag))
                     {
                         preTag = trailing;
@@ -1175,14 +1188,18 @@ namespace AerixSetup
 
         public static int CompareVersions(string a, string b)
         {
-            int aMaj, aMin, aPat, bMaj, bMin, bPat;
+            int aMaj, aMin, aPat, aLet, bMaj, bMin, bPat, bLet;
             string aTag, bTag;
-            ParseSemVer(a, out aMaj, out aMin, out aPat, out aTag);
-            ParseSemVer(b, out bMaj, out bMin, out bPat, out bTag);
+            ParseSemVer(a, out aMaj, out aMin, out aPat, out aLet, out aTag);
+            ParseSemVer(b, out bMaj, out bMin, out bPat, out bLet, out bTag);
             if (aMaj != bMaj) return aMaj.CompareTo(bMaj);
             if (aMin != bMin) return aMin.CompareTo(bMin);
             if (aPat != bPat) return aPat.CompareTo(bPat);
-            return TagStabilityRank(aTag).CompareTo(TagStabilityRank(bTag));
+            if (aLet != bLet) return aLet.CompareTo(bLet);
+            int aRank = TagStabilityRank(aTag);
+            int bRank = TagStabilityRank(bTag);
+            if (aRank != bRank) return aRank.CompareTo(bRank);
+            return string.Compare(aTag, bTag, StringComparison.OrdinalIgnoreCase);
         }
 
         private static bool BoolVal(Dictionary<string, object> dict, string key)
@@ -1212,100 +1229,107 @@ namespace AerixSetup
 
         public static List<StableReleaseInfo> FetchReleases(bool includePreAndBeta)
         {
-            ServicePointManager.SecurityProtocol |= (SecurityProtocolType)3072 | SecurityProtocolType.Tls | SecurityProtocolType.Tls11;
-            string json = "";
-            HttpWebRequest req = (HttpWebRequest)WebRequest.Create(GitHubReleasesApiUrl);
-            req.Method = "GET";
-            req.UserAgent = "AerixSetup-Updater";
-            req.Accept = "application/vnd.github+json";
-            req.Timeout = 15000;
-            req.ReadWriteTimeout = 15000;
-            using (HttpWebResponse resp = (HttpWebResponse)req.GetResponse())
-            using (Stream st = resp.GetResponseStream())
-            using (StreamReader sr = new StreamReader(st, Encoding.UTF8))
-            {
-                json = sr.ReadToEnd();
-            }
-
             var list = new List<StableReleaseInfo>();
-            var ser = new JavaScriptSerializer();
-            object[] releases = ser.DeserializeObject(json) as object[];
-            if (releases == null) return list;
-
-            foreach (object item in releases)
+            try
             {
-                var rel = item as Dictionary<string, object>;
-                if (rel == null) continue;
-                if (BoolVal(rel, "draft")) continue;
-
-                bool isPre = BoolVal(rel, "prerelease");
-                string tag = StrVal(rel, "tag_name");
-                if (string.IsNullOrWhiteSpace(tag)) continue;
-
-                string channel = ClassifyReleaseChannel(tag, isPre);
-                if (!includePreAndBeta && (isPre || channel != "stable"))
+                ServicePointManager.SecurityProtocol |= (SecurityProtocolType)3072 | SecurityProtocolType.Tls | SecurityProtocolType.Tls11;
+                string json = "";
+                HttpWebRequest req = (HttpWebRequest)WebRequest.Create(GitHubReleasesApiUrl);
+                req.Method = "GET";
+                req.UserAgent = "AerixSetup-Updater";
+                req.Accept = "application/vnd.github+json";
+                req.Timeout = 15000;
+                req.ReadWriteTimeout = 15000;
+                using (HttpWebResponse resp = (HttpWebResponse)req.GetResponse())
+                using (Stream st = resp.GetResponseStream())
+                using (StreamReader sr = new StreamReader(st, Encoding.UTF8))
                 {
-                    continue;
+                    json = sr.ReadToEnd();
                 }
 
-                object assetsObj;
-                if (!rel.TryGetValue("assets", out assetsObj)) continue;
-                object[] assets = assetsObj as object[];
-                if (assets == null) continue;
+                var ser = new JavaScriptSerializer();
+                object[] releases = ser.DeserializeObject(json) as object[];
+                if (releases == null) return list;
 
-                string assetName = "";
-                string downloadUrl = "";
-                long assetSize = 0;
-
-                foreach (object ao in assets)
+                foreach (object item in releases)
                 {
-                    var asset = ao as Dictionary<string, object>;
-                    if (asset == null) continue;
-                    string name = StrVal(asset, "name");
-                    string url = StrVal(asset, "browser_download_url");
-                    if (string.IsNullOrEmpty(name) || string.IsNullOrEmpty(url)) continue;
-                    if (!name.StartsWith("AerixSetup-", StringComparison.OrdinalIgnoreCase) ||
-                        !name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+                    var rel = item as Dictionary<string, object>;
+                    if (rel == null) continue;
+                    if (BoolVal(rel, "draft")) continue;
+
+                    bool isPre = BoolVal(rel, "prerelease");
+                    string tag = StrVal(rel, "tag_name");
+                    if (string.IsNullOrWhiteSpace(tag)) continue;
+
+                    string channel = ClassifyReleaseChannel(tag, isPre);
+                    if (!includePreAndBeta && (isPre || channel != "stable"))
                     {
                         continue;
                     }
 
-                    bool isPreferred = (channel == "stable" && name.IndexOf("-stable.exe", StringComparison.OrdinalIgnoreCase) >= 0) ||
-                                       (channel == "beta" && name.IndexOf("b.exe", StringComparison.OrdinalIgnoreCase) >= 0) ||
-                                       (channel == "pre" && name.IndexOf("p.exe", StringComparison.OrdinalIgnoreCase) >= 0);
-                    if (string.IsNullOrEmpty(downloadUrl) || isPreferred)
+                    object assetsObj;
+                    if (!rel.TryGetValue("assets", out assetsObj)) continue;
+                    object[] assets = assetsObj as object[];
+                    if (assets == null) continue;
+
+                    string assetName = "";
+                    string downloadUrl = "";
+                    long assetSize = 0;
+
+                    foreach (object ao in assets)
                     {
-                        assetName = name;
-                        downloadUrl = url;
-                        object szObj;
-                        if (asset.TryGetValue("size", out szObj) && szObj != null)
+                        var asset = ao as Dictionary<string, object>;
+                        if (asset == null) continue;
+                        string name = StrVal(asset, "name");
+                        string url = StrVal(asset, "browser_download_url");
+                        if (string.IsNullOrEmpty(name) || string.IsNullOrEmpty(url)) continue;
+                        if (!name.StartsWith("AerixSetup-", StringComparison.OrdinalIgnoreCase) ||
+                            !name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
                         {
-                            long.TryParse(szObj.ToString(), out assetSize);
+                            continue;
                         }
-                        if (isPreferred) break;
+
+                        bool isPreferred = (channel == "stable" && name.IndexOf("-stable.exe", StringComparison.OrdinalIgnoreCase) >= 0) ||
+                                           (channel == "beta" && name.IndexOf("b.exe", StringComparison.OrdinalIgnoreCase) >= 0) ||
+                                           (channel == "pre" && name.IndexOf("p.exe", StringComparison.OrdinalIgnoreCase) >= 0);
+                        if (string.IsNullOrEmpty(downloadUrl) || isPreferred)
+                        {
+                            assetName = name;
+                            downloadUrl = url;
+                            object szObj;
+                            if (asset.TryGetValue("size", out szObj) && szObj != null)
+                            {
+                                long.TryParse(szObj.ToString(), out assetSize);
+                            }
+                            if (isPreferred) break;
+                        }
                     }
+
+                    if (string.IsNullOrEmpty(downloadUrl)) continue;
+                    string ver = tag.Trim().TrimStart('v', 'V');
+                    list.Add(new StableReleaseInfo
+                    {
+                        TagName = tag,
+                        Version = ver,
+                        Channel = channel,
+                        SetupAssetName = assetName,
+                        SetupDownloadUrl = downloadUrl,
+                        SetupSize = assetSize,
+                        PublishedAt = StrVal(rel, "published_at"),
+                        HtmlUrl = StrVal(rel, "html_url"),
+                        ReleaseNotes = StrVal(rel, "body")
+                    });
                 }
 
-                if (string.IsNullOrEmpty(downloadUrl)) continue;
-                string ver = tag.Trim().TrimStart('v', 'V');
-                list.Add(new StableReleaseInfo
+                list.Sort(delegate(StableReleaseInfo a, StableReleaseInfo b)
                 {
-                    TagName = tag,
-                    Version = ver,
-                    Channel = channel,
-                    SetupAssetName = assetName,
-                    SetupDownloadUrl = downloadUrl,
-                    SetupSize = assetSize,
-                    PublishedAt = StrVal(rel, "published_at"),
-                    HtmlUrl = StrVal(rel, "html_url"),
-                    ReleaseNotes = StrVal(rel, "body")
+                    return CompareVersions(b.Version, a.Version);
                 });
             }
-
-            list.Sort(delegate(StableReleaseInfo a, StableReleaseInfo b)
+            catch (Exception ex)
             {
-                return CompareVersions(b.Version, a.Version);
-            });
+                WriteUpdaterLog("FetchReleases warning: " + ex.Message);
+            }
             return list;
         }
 
@@ -1455,7 +1479,7 @@ namespace AerixSetup
 
             string tcDir = Path.Combine(GetToolchainsRootDir(), key);
             Directory.CreateDirectory(tcDir);
-            foreach (string sub in new[] { "bin", "stdlib", "modules", "docs", "assets" })
+            foreach (string sub in new[] { "bin", "stdlib", "modules", "docs", "assets", "editors" })
             {
                 string s = Path.Combine(activeDir, sub);
                 if (Directory.Exists(s))
@@ -1540,16 +1564,48 @@ namespace AerixSetup
                 errorMsg = string.Format("Cached toolchain v{0} not found in {1}.", key, tcDir);
                 return false;
             }
-            foreach (string sub in new[] { "bin", "stdlib", "modules", "docs", "assets" })
+            foreach (string sub in new[] { "bin", "stdlib", "modules", "docs", "assets", "editors" })
             {
                 string srcSub = Path.Combine(tcDir, sub);
+                string dstSub = Path.Combine(activeDir, sub);
                 if (Directory.Exists(srcSub))
                 {
-                    CopyDirectorySafe(srcSub, Path.Combine(activeDir, sub));
+                    if (sub == "modules" || sub == "stdlib" || sub == "docs")
+                    {
+                        try
+                        {
+                            if (Directory.Exists(dstSub)) Directory.Delete(dstSub, true);
+                        }
+                        catch { }
+                    }
+                    CopyDirectorySafe(srcSub, dstSub);
                 }
             }
             string lic = Path.Combine(tcDir, "LICENSE");
             if (File.Exists(lic)) File.Copy(lic, Path.Combine(activeDir, "LICENSE"), true);
+
+            try
+            {
+                string vsix = Path.Combine(activeDir, "editors", string.Format("aerix-{0}.vsix", key));
+                if (!File.Exists(vsix) && Directory.Exists(Path.Combine(activeDir, "editors")))
+                {
+                    string[] vf = Directory.GetFiles(Path.Combine(activeDir, "editors"), "*.vsix");
+                    if (vf.Length > 0) vsix = vf[0];
+                }
+                string unpacked = Path.Combine(activeDir, "editors", "extension");
+                if (File.Exists(vsix) || Directory.Exists(unpacked))
+                {
+                    List<EditorInfo> eds = DetectEditors();
+                    foreach (EditorInfo ed in eds)
+                    {
+                        if (ed.IsDetected)
+                        {
+                            InstallExtensionToEditor(ed, key, vsix, unpacked, null, 100);
+                        }
+                    }
+                }
+            }
+            catch { }
 
             try
             {
@@ -1755,36 +1811,68 @@ namespace AerixSetup
                     SnapshotToolchainVersion(targetDir, res.CurrentVersion);
                 }
 
-                // 1. Check local cache first for exact non-alias versions (unless --force)
-                if (!isChannelAlias && !force)
+                // 1. Check local cache first (for exact versions, or channel aliases if not forced)
+                if (!force)
                 {
-                    if (string.Equals(NormalizeVersionKey(res.CurrentVersion), cleanKey, StringComparison.OrdinalIgnoreCase))
+                    string targetCachedKey = null;
+                    if (!isChannelAlias)
                     {
-                        res.Success = true;
-                        res.LatestVersion = res.CurrentVersion;
-                        res.ElapsedSeconds = sw.Elapsed.TotalSeconds;
-                        res.Message = string.Format("Aerix v{0} is already the active toolchain.", res.CurrentVersion);
-                        Report(progress, 100, res.Message, res.Message);
-                        return res;
-                    }
-
-                    string cachedDir = Path.Combine(GetToolchainsRootDir(), cleanKey);
-                    if (File.Exists(Path.Combine(cachedDir, "bin", "arx.exe")))
-                    {
-                        Report(progress, 35, "Found cached toolchain v" + cleanKey + " in local store...", cachedDir);
-                        if (!activateAfter)
+                        if (string.Equals(NormalizeVersionKey(res.CurrentVersion), cleanKey, StringComparison.OrdinalIgnoreCase))
                         {
                             res.Success = true;
-                            res.LatestVersion = cleanKey;
+                            res.LatestVersion = res.CurrentVersion;
                             res.ElapsedSeconds = sw.Elapsed.TotalSeconds;
-                            res.Message = string.Format("Toolchain v{0} is already installed locally (cached at {1}).", cleanKey, cachedDir);
+                            res.Message = string.Format("Aerix v{0} is already the active toolchain.", res.CurrentVersion);
                             Report(progress, 100, res.Message, res.Message);
                             return res;
                         }
 
-                        Report(progress, 70, "Switching active toolchain to cached v" + cleanKey + "...", targetDir);
+                        string cachedDir = Path.Combine(GetToolchainsRootDir(), cleanKey);
+                        if (File.Exists(Path.Combine(cachedDir, "bin", "arx.exe")))
+                        {
+                            targetCachedKey = cleanKey;
+                        }
+                    }
+                    else
+                    {
+                        List<CachedToolchainInfo> cached = GetCachedToolchains(targetDir, res.CurrentVersion);
+                        foreach (var c in cached)
+                        {
+                            string cChan = ClassifyReleaseChannel(c.Version, false);
+                            if (lowReq == "latest" || cChan == lowReq)
+                            {
+                                if (c.IsActive)
+                                {
+                                    res.Success = true;
+                                    res.LatestVersion = c.Version;
+                                    res.ElapsedSeconds = sw.Elapsed.TotalSeconds;
+                                    res.Message = string.Format("Aerix v{0} is already the active toolchain ({1} channel).", c.Version, lowReq);
+                                    Report(progress, 100, res.Message, res.Message);
+                                    return res;
+                                }
+                                targetCachedKey = c.Version;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (!string.IsNullOrEmpty(targetCachedKey))
+                    {
+                        string cachedDir = Path.Combine(GetToolchainsRootDir(), targetCachedKey);
+                        Report(progress, 35, "Found cached toolchain v" + targetCachedKey + " in local store...", cachedDir);
+                        if (!activateAfter)
+                        {
+                            res.Success = true;
+                            res.LatestVersion = targetCachedKey;
+                            res.ElapsedSeconds = sw.Elapsed.TotalSeconds;
+                            res.Message = string.Format("Toolchain v{0} is already installed locally (cached at {1}).", targetCachedKey, cachedDir);
+                            Report(progress, 100, res.Message, res.Message);
+                            return res;
+                        }
+
+                        Report(progress, 70, "Switching active toolchain to cached v" + targetCachedKey + "...", targetDir);
                         string actErr;
-                        if (!ActivateCachedToolchain(targetDir, cleanKey, out actErr))
+                        if (!ActivateCachedToolchain(targetDir, targetCachedKey, out actErr))
                         {
                             res.Success = false;
                             res.ElapsedSeconds = sw.Elapsed.TotalSeconds;
@@ -1798,7 +1886,7 @@ namespace AerixSetup
                         res.Success = true;
                         res.Updated = true;
                         res.LatestVersion = GetInstalledVersionFromDisk(targetDir);
-                        if (string.IsNullOrEmpty(res.LatestVersion)) res.LatestVersion = cleanKey;
+                        if (string.IsNullOrEmpty(res.LatestVersion)) res.LatestVersion = targetCachedKey;
                         res.ElapsedSeconds = sw.Elapsed.TotalSeconds;
                         res.Message = string.Format("Switched Aerix v{0} -> v{1} (from local cache).", res.CurrentVersion, res.LatestVersion);
                         WriteUpdaterLog(res.Message);
@@ -1838,6 +1926,53 @@ namespace AerixSetup
 
                 if (chosen == null)
                 {
+                    // Fallback to local cache if network unreachable or release query returned nothing
+                    List<CachedToolchainInfo> cached = GetCachedToolchains(targetDir, res.CurrentVersion);
+                    string fallbackKey = null;
+                    if (isChannelAlias)
+                    {
+                        foreach (var c in cached)
+                        {
+                            string cChan = ClassifyReleaseChannel(c.Version, false);
+                            if (lowReq == "latest" || cChan == lowReq)
+                            {
+                                fallbackKey = c.Version;
+                                break;
+                            }
+                        }
+                    }
+                    else
+                    {
+                        foreach (var c in cached)
+                        {
+                            if (string.Equals(NormalizeVersionKey(c.Version), cleanKey, StringComparison.OrdinalIgnoreCase))
+                            {
+                                fallbackKey = c.Version;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (!string.IsNullOrEmpty(fallbackKey))
+                    {
+                        Report(progress, 70, "Remote release query unavailable; switching to cached v" + fallbackKey + "...", targetDir);
+                        string actErr;
+                        if (ActivateCachedToolchain(targetDir, fallbackKey, out actErr))
+                        {
+                            CleanupStaleBackups(targetDir);
+                            CleanupStaleBackups(Path.Combine(targetDir, "bin"));
+                            PopulateToolchainStats(targetDir, res);
+                            res.Success = true;
+                            res.Updated = true;
+                            res.LatestVersion = fallbackKey;
+                            res.ElapsedSeconds = sw.Elapsed.TotalSeconds;
+                            res.Message = string.Format("Switched Aerix v{0} -> v{1} (from local cache; remote offline/unreachable).", res.CurrentVersion, res.LatestVersion);
+                            WriteUpdaterLog(res.Message);
+                            Report(progress, 100, res.Message, res.Message);
+                            return res;
+                        }
+                    }
+
                     res.Success = false;
                     res.ElapsedSeconds = sw.Elapsed.TotalSeconds;
                     res.Message = string.Format(

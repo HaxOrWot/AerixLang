@@ -620,28 +620,81 @@ pub class Parser {
         }
 
         // Automatic Submodule Registry:
-        // Automatically discover all subdirectories and register them as submodules
-        let subdirs = Directory.list_dirs(mod_dir)
+        // Automatically discover all subdirectories recursively and register them as submodules
+        self.register_submodules_recursive(mod_dir, dotted_norm)
+    }
+
+    priv fn register_submodules_recursive(dir_path: str, pfx_dotted: str) {
+        let subdirs = Directory.list_dirs(dir_path)
         mut sdi = 0
         while sdi < subdirs.len() {
             let sname = subdirs.get(sdi)
-            let sub_dotted = dotted_norm + "." + sname
-            let sub_slash = mod_name + "/" + sname
+            let sub_dotted = pfx_dotted + "." + sname
+            let sub_slash = pfx_dotted.replace(".", "/") + "/" + sname
             self.loaded_mods.insert(sub_dotted, 1)
             self.loaded_mods.insert(sub_slash, 1)
             self.loaded_mods.insert(sname, 1)
             self.mod_aliases.insert(sub_dotted, sub_dotted)
+            self.mod_aliases.insert(sub_slash, sub_dotted)
             self.mod_aliases.insert(sname, sub_dotted)
             if sname.len() > 0 {
                 let cap_sub = sname.slice(0, 1).to_upper() + sname.slice(1, sname.len())
                 let low_sub = sname.slice(0, 1).to_lower() + sname.slice(1, sname.len())
                 self.mod_aliases.insert(cap_sub, sub_dotted)
                 self.mod_aliases.insert(low_sub, sub_dotted)
-                self.mod_aliases.insert(dotted_norm + "." + cap_sub, sub_dotted)
-                self.mod_aliases.insert(dotted_norm + "." + low_sub, sub_dotted)
+                self.mod_aliases.insert(pfx_dotted + "." + cap_sub, sub_dotted)
+                self.mod_aliases.insert(pfx_dotted + "." + low_sub, sub_dotted)
             }
+            let child_dir = bpath_join(dir_path, sname)
+            self.register_submodules_recursive(child_dir, sub_dotted)
             sdi = sdi + 1
         }
+    }
+
+    priv fn register_imported_item(parent_mod: str, orig_nm: str, alias_nm: str) {
+        if alias_nm != "" && alias_nm != orig_nm {
+            self.item_aliases.insert(alias_nm, orig_nm)
+        }
+        let full_sub = parent_mod + "." + orig_nm
+        if self.loaded_mods.has_key(full_sub) || self.mod_aliases.has_key(full_sub) {
+            self.mod_aliases.insert(orig_nm, full_sub)
+            self.loaded_mods.insert(orig_nm, 1)
+            if alias_nm != "" {
+                self.mod_aliases.insert(alias_nm, full_sub)
+                self.loaded_mods.insert(alias_nm, 1)
+            }
+            for k in self.mod_aliases.keys() {
+                if k.starts_with(full_sub + ".") {
+                    let sub_rest = k.slice(full_sub.len() + 1, k.len())
+                    self.mod_aliases.insert(orig_nm + "." + sub_rest, k)
+                    if alias_nm != "" {
+                        self.mod_aliases.insert(alias_nm + "." + sub_rest, k)
+                    }
+                }
+            }
+        }
+    }
+
+    priv fn str_has_dot(s: str) -> bool {
+        let n = s.len()
+        mut i = 0
+        while i < n {
+            if s.byte_at(i) == 46 { return true }
+            i = i + 1
+        }
+        return false
+    }
+
+    priv fn str_last_dot_seg(s: str) -> str {
+        let n = s.len()
+        mut i = n
+        while i > 0 {
+            if s.byte_at(i - 1) == 46 {
+                return s.slice(i, n)
+            }
+            i = i - 1
+        }
+        return s
     }
 
     // --- Type Parsing ---
@@ -715,6 +768,17 @@ pub class Parser {
         }
         let name_idx = self.expect_k(TK_IDENT(), "Expected type name")
         mut base = self.tok_vals.get(name_idx)
+        while self.match_k(TK_DOT()) {
+            let sub_idx = self.expect_k(TK_IDENT(), "Expected identifier after '.' in type path")
+            let sub_name = self.tok_vals.get(sub_idx)
+            base = base + "." + sub_name
+        }
+        if self.str_has_dot(base) {
+            base = self.str_last_dot_seg(base)
+        }
+        if self.item_aliases.has_key(base) {
+            base = self.item_aliases.get(base)
+        }
         if self.match_k(TK_LT()) {
             let targs = List<str>()
             mut acount = 0
@@ -780,27 +844,29 @@ pub class Parser {
         if self.cur_kind() == TK_FROM() {
             self.adv()
             mut mod_src = ""
+            mut from_dotted = ""
             if self.cur_kind() == TK_STR() {
                 let t = self.adv()
                 mod_src = self.tok_vals.get(t)
                 self.load_file(mod_src)
+                from_dotted = mod_src
             } else if self.cur_kind() == TK_IDENT() {
                 let t = self.adv()
                 mut mpath = self.tok_vals.get(t)
-                mut dotted_nm = mpath
+                from_dotted = mpath
                 mut last_seg = mpath
                 while self.match_k(TK_DOT()) {
                     let sub_t = self.expect_k(TK_IDENT(), "Expected identifier after '.' in module path")
                     let sub_nm = self.tok_vals.get(sub_t)
                     mpath = mpath + "/" + sub_nm
-                    dotted_nm = dotted_nm + "." + sub_nm
+                    from_dotted = from_dotted + "." + sub_nm
                     last_seg = sub_nm
                 }
                 mod_src = mpath
                 self.load_module(mod_src)
-                self.mod_aliases.insert(dotted_nm, dotted_nm)
-                self.mod_aliases.insert(last_seg, dotted_nm)
-                self.loaded_mods.insert(dotted_nm, 1)
+                self.mod_aliases.insert(from_dotted, from_dotted)
+                self.mod_aliases.insert(last_seg, from_dotted)
+                self.loaded_mods.insert(from_dotted, 1)
                 self.loaded_mods.insert(last_seg, 1)
             } else {
                 self.fail("Expected path or module name after 'from'")
@@ -812,11 +878,12 @@ pub class Parser {
                     if self.cur_kind() == TK_IDENT() {
                         let orig_tok = self.adv()
                         let orig_nm = self.tok_vals.get(orig_tok)
+                        mut alias_nm = ""
                         if self.match_k(TK_AS()) {
                             let atok = self.expect_k(TK_IDENT(), "Expected alias identifier after 'as'")
-                            let alias_nm = self.tok_vals.get(atok)
-                            self.item_aliases.insert(alias_nm, orig_nm)
+                            alias_nm = self.tok_vals.get(atok)
                         }
+                        self.register_imported_item(from_dotted, orig_nm, alias_nm)
                     } else {
                         self.adv()
                     }
@@ -829,11 +896,12 @@ pub class Parser {
                 while self.cur_kind() == TK_IDENT() {
                     let orig_tok = self.adv()
                     let orig_nm = self.tok_vals.get(orig_tok)
+                    mut alias_nm = ""
                     if self.match_k(TK_AS()) {
                         let atok = self.expect_k(TK_IDENT(), "Expected alias identifier after 'as'")
-                        let alias_nm = self.tok_vals.get(atok)
-                        self.item_aliases.insert(alias_nm, orig_nm)
+                        alias_nm = self.tok_vals.get(atok)
                     }
+                    self.register_imported_item(from_dotted, orig_nm, alias_nm)
                     if !self.match_k(TK_COMMA()) { break }
                 }
             }
@@ -863,35 +931,34 @@ pub class Parser {
             }
             self.expect_k(TK_RBRACE(), "Expected closing brace in selective import")
             self.expect_k(TK_FROM(), "Expected 'from' in selective import")
+            mut sel_dotted = ""
             if self.cur_kind() == TK_STR() {
                 let t = self.adv()
-                self.load_file(self.tok_vals.get(t))
+                sel_dotted = self.tok_vals.get(t)
+                self.load_file(sel_dotted)
             } else if self.cur_kind() == TK_IDENT() {
                 let t = self.adv()
                 mut mpath = self.tok_vals.get(t)
-                mut dotted_nm = mpath
+                sel_dotted = mpath
                 mut last_seg = mpath
                 while self.match_k(TK_DOT()) {
                     let sub_t = self.expect_k(TK_IDENT(), "Expected identifier after '.' in module path")
                     let sub_nm = self.tok_vals.get(sub_t)
                     mpath = mpath + "/" + sub_nm
-                    dotted_nm = dotted_nm + "." + sub_nm
+                    sel_dotted = sel_dotted + "." + sub_nm
                     last_seg = sub_nm
                 }
                 self.load_module(mpath)
-                self.mod_aliases.insert(dotted_nm, dotted_nm)
-                self.mod_aliases.insert(last_seg, dotted_nm)
-                self.loaded_mods.insert(dotted_nm, 1)
+                self.mod_aliases.insert(sel_dotted, sel_dotted)
+                self.mod_aliases.insert(last_seg, sel_dotted)
+                self.loaded_mods.insert(sel_dotted, 1)
                 self.loaded_mods.insert(last_seg, 1)
             } else {
                 self.fail("Expected path or module name after 'from'")
             }
             mut ni = 0
             while ni < names.len() {
-                let al = aliases.get(ni)
-                if al != "" {
-                    self.item_aliases.insert(al, names.get(ni))
-                }
+                self.register_imported_item(sel_dotted, names.get(ni), aliases.get(ni))
                 ni = ni + 1
             }
             return

@@ -313,6 +313,68 @@ pub class Analyzer {
         return ""
     }
 
+    priv fn resolve_mod_path(raw_path: str) -> str {
+        if raw_path == "" { return "" }
+        if self.mod_aliases.has_key(raw_path) {
+            return self.mod_aliases.get(raw_path)
+        }
+        if self.loaded_mods.has_key(raw_path) {
+            return raw_path
+        }
+        let parts = raw_path.split(".")
+        if parts.len() > 1 {
+            let p0 = parts.get(0)
+            if self.mod_aliases.has_key(p0) {
+                let resolved_p0 = self.mod_aliases.get(p0)
+                mut rest = ""
+                mut pi = 1
+                while pi < parts.len() {
+                    if pi > 1 { rest = rest + "." + parts.get(pi) }
+                    else { rest = parts.get(pi) }
+                    pi = pi + 1
+                }
+                let full = resolved_p0 + "." + rest
+                if self.mod_aliases.has_key(full) { return self.mod_aliases.get(full) }
+                if self.loaded_mods.has_key(full) { return full }
+                return full
+            }
+        }
+        return raw_path
+    }
+
+    priv fn is_module_path(path: str) -> bool {
+        if path == "" { return false }
+        let resolved = self.resolve_mod_path(path)
+        return self.mod_aliases.has_key(resolved) || self.loaded_mods.has_key(resolved) || self.mod_aliases.has_key(path) || self.loaded_mods.has_key(path)
+    }
+
+    priv fn str_last_dot_seg(s: str) -> str {
+        let n = s.len()
+        mut i = n
+        while i > 0 {
+            if s.byte_at(i - 1) == 46 {
+                return s.slice(i, n)
+            }
+            i = i - 1
+        }
+        return s
+    }
+
+    priv fn norm_type_name(t: str) -> str {
+        let nt = btype_norm(t)
+        if self.item_aliases.has_key(nt) {
+            return self.item_aliases.get(nt)
+        }
+        if nt.contains(".") {
+            let last = self.str_last_dot_seg(nt)
+            if self.item_aliases.has_key(last) {
+                return self.item_aliases.get(last)
+            }
+            return last
+        }
+        return nt
+    }
+
     pub fn ensure_generic_type(raw_t: str) {
         let nt = btype_norm(raw_t)
         if btype_is_ptr(nt) {
@@ -633,8 +695,8 @@ pub class Analyzer {
     }
 
     priv fn types_compatible(expected_raw: str, actual_raw: str) -> bool {
-        let exp = btype_norm(expected_raw)
-        let act = btype_norm(actual_raw)
+        let exp = self.norm_type_name(expected_raw)
+        let act = self.norm_type_name(actual_raw)
         if exp == "" || act == "" || exp == "void" && act == "void" { return true }
         if exp == act { return true }
         if exp.ends_with("?") {
@@ -1051,8 +1113,8 @@ pub class Analyzer {
                     mut ai = 0
                     while ai < argc {
                         let pid = self.child_at(pg, ai)
-                        let pt = btype_norm(self.sb.get(pid))
-                        let at = btype_norm(arg_types.get(ai))
+                        let pt = self.norm_type_name(self.sb.get(pid))
+                        let at = self.norm_type_name(arg_types.get(ai))
                         if pt == at {
                             score = score + 50
                         } else if btype_is_numeric(pt) && btype_is_numeric(at) {
@@ -1108,7 +1170,7 @@ pub class Analyzer {
             let init_id = self.la.get(gid)
             mut res_t = "i64"
             if decl_t != "" {
-                res_t = btype_norm(decl_t)
+                res_t = self.norm_type_name(decl_t)
                 if init_id >= 0 { self.analyze_expr(init_id) }
             } else if init_id >= 0 {
                 res_t = self.analyze_expr(init_id)
@@ -1263,7 +1325,7 @@ pub class Analyzer {
             let init_id = self.la.get(nid)
             mut res_t = "i64"
             if decl_t != "" {
-                res_t = btype_norm(decl_t)
+                res_t = self.norm_type_name(decl_t)
                 if init_id >= 0 {
                     let it = self.analyze_expr(init_id)
                     if it == "null" && btype_is_ptr(res_t) {
@@ -1727,7 +1789,7 @@ pub class Analyzer {
             let lhs = self.la.get(nid)
             let mname = self.sa.get(nid)
             let full_p = self.get_member_path(nid)
-            if full_p != "" && (self.mod_aliases.has_key(full_p) || self.loaded_mods.has_key(full_p)) {
+            if full_p != "" && self.is_module_path(full_p) {
                 self.node_types.set(nid, "module")
                 return "module"
             }
@@ -1750,7 +1812,7 @@ pub class Analyzer {
 
             mut is_mod_access = false
             if lpath != "" {
-                if self.mod_aliases.has_key(lpath) || self.loaded_mods.has_key(lpath) {
+                if self.is_module_path(lpath) {
                     is_mod_access = true
                 } else if self.nk.get(lhs) == NK_IDENT() {
                     let lname = self.sa.get(lhs)
@@ -2103,7 +2165,7 @@ pub class Analyzer {
             // Module-qualified function or constructor call: Mod.func(args) or Mod.Sub.func(args) or Alias.func(args)
             mut is_mod_call = false
             if lpath != "" {
-                if self.mod_aliases.has_key(lpath) || self.loaded_mods.has_key(lpath) {
+                if self.is_module_path(lpath) {
                     is_mod_call = true
                 } else if self.nk.get(lhs) == NK_IDENT() {
                     let lname = self.sa.get(lhs)
@@ -2137,8 +2199,7 @@ pub class Analyzer {
                     self.node_types.set(nid, lookup_target)
                     return lookup_target
                 }
-                mut mod_name = lpath
-                if self.mod_aliases.has_key(lpath) { mod_name = self.mod_aliases.get(lpath) }
+                mut mod_name = self.resolve_mod_path(lpath)
                 if mod_name == "Math" {
                     if mname == "sqrt" || mname == "sin" || mname == "cos" || mname == "tan" || mname == "pow" || mname == "floor" || mname == "ceil" || mname == "round" || mname == "log" || mname == "exp" {
                         self.call_kinds.set(nid, CK_BUILTIN())
