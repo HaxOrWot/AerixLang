@@ -1,6 +1,19 @@
 // ==============================================================================
 // Aerix Standard Library: Window::Core
-// Native Windows Dialogs, Audio Alerts, Window Handles, and Console Controls
+// Native Windows Dialogs, Audio Alerts, Window Handles, and Window Geometry
+//
+// Overview:
+//   Provides direct bindings to Windows User32 and Kernel32 APIs for manipulating
+//   window states (topmost, position, maximize/minimize, flashing), playing system
+//   and frequency-based audio alerts, and presenting standard OS message boxes.
+//
+// Usage:
+//   import "Window/core.arx"
+//
+//   alert("Success", "Operation completed successfully!");
+//   if confirm("Confirm", "Do you wish to proceed?") {
+//       beep(880, 150); // 880Hz beep for 150ms
+//   }
 // ==============================================================================
 
 #[extern("user32.dll", "MessageBoxA")]
@@ -8,6 +21,11 @@ pub fn messageBox(hwnd: i64, text: str, caption: str, utype: i64) -> i64;
 
 cextern fn arx_gui_play_beep(freq: i64, duration_ms: i64) -> void;
 
+/// Generates a non-blocking asynchronous audio tone through the PC sound card or speaker.
+///
+/// Parameters:
+///   `freq`       : Frequency in Hertz (e.g. 440 for A4, 880 for A5).
+///   `duration_ms`: Duration in milliseconds.
 pub fn beep(freq: i64, duration_ms: i64) -> i64 {
     arx_gui_play_beep(freq, duration_ms);
     return 1;
@@ -43,6 +61,7 @@ pub fn win32SetWindowPos(hwnd: i64, hwndInsertAfter: i64, x: i32, y: i32, cx: i3
 #[extern("user32.dll", "ShowWindow")]
 pub fn win32ShowWindow(hwnd: i64, nCmdShow: i32) -> i32;
 
+/// Retrieves the title string of the currently focused foreground window on Windows.
 pub fn getActiveWindowTitle() -> str {
     let hwnd = getForegroundWindow();
     if hwnd == 0 {
@@ -56,11 +75,24 @@ pub fn getActiveWindowTitle() -> str {
     return buf.slice(0, len);
 }
 
+/// Changes the coordinates and dimensions of a window on screen.
+///
+/// Parameters:
+///   `hwnd`  : Window handle.
+///   `x`     : New X coordinate in screen pixels.
+///   `y`     : New Y coordinate in screen pixels.
+///   `width` : New width in pixels.
+///   `height`: New height in pixels.
 pub fn setWindowPosition(hwnd: i64, x: i64, y: i64, width: i64, height: i64) -> bool {
     // SWP_NOZORDER = 0x0004
     return win32SetWindowPos(hwnd, 0, x as i32, y as i32, width as i32, height as i32, 4) != 0;
 }
 
+/// Toggles whether a window stays pinned above all non-topmost windows (HWND_TOPMOST).
+///
+/// Parameters:
+///   `hwnd` : Window handle.
+///   `onTop`: `true` to pin on top, `false` to revert to normal Z-order.
 pub fn setWindowAlwaysOnTop(hwnd: i64, onTop: bool) -> bool {
     // HWND_TOPMOST = -1, HWND_NOTOPMOST = -2, SWP_NOMOVE = 0x0002, SWP_NOSIZE = 0x0001
     mut insertAfter: i64 = -2;
@@ -68,46 +100,61 @@ pub fn setWindowAlwaysOnTop(hwnd: i64, onTop: bool) -> bool {
     return win32SetWindowPos(hwnd, insertAfter, 0, 0, 0, 0, 3) != 0;
 }
 
+/// Minimizes the specified window to the Windows taskbar.
 pub fn minimizeWindow(hwnd: i64) -> bool {
     // SW_MINIMIZE = 6
     return win32ShowWindow(hwnd, 6) != 0;
 }
 
+/// Maximizes the specified window to occupy the full monitor screen.
 pub fn maximizeWindow(hwnd: i64) -> bool {
     // SW_MAXIMIZE = 3
     return win32ShowWindow(hwnd, 3) != 0;
 }
 
+/// Restores a minimized or maximized window to its original non-zoomed size and position.
 pub fn restoreWindow(hwnd: i64) -> bool {
     // SW_RESTORE = 9
     return win32ShowWindow(hwnd, 9) != 0;
 }
 
+/// Retrieves a window handle by matching its registered class name or window caption.
 pub fn findWindow(className: str, windowName: str) -> i64 {
     return win32FindWindow(className, windowName);
 }
 
+/// Displays an informational message box modal dialog with an OK button and blue info icon.
+///
+/// Parameters:
+///   `title`  : Dialog window caption text.
+///   `message`: Body message text.
 pub fn alert(title: str, message: str) -> void {
     // MB_OK (0x0) | MB_ICONINFORMATION (0x40)
     messageBox(0, message, title, 64);
 }
 
+/// Displays a warning message box modal dialog with an OK button and yellow exclamation mark icon.
 pub fn warn(title: str, message: str) -> void {
     // MB_OK (0x0) | MB_ICONWARNING (0x30)
     messageBox(0, message, title, 48);
 }
 
+/// Displays a critical error message box modal dialog with an OK button and red error icon.
 pub fn error(title: str, message: str) -> void {
     // MB_OK (0x0) | MB_ICONERROR (0x10)
     messageBox(0, message, title, 16);
 }
 
+/// Displays a confirmation dialog with OK and Cancel buttons.
+/// Returns `true` if the user clicks OK, `false` otherwise.
 pub fn confirm(title: str, message: str) -> bool {
     // MB_OKCANCEL (0x1) | MB_ICONQUESTION (0x20)
     let res = messageBox(0, message, title, 33);
     return res == 1;
 }
 
+/// Displays a question dialog with Yes and No buttons.
+/// Returns `true` if the user clicks Yes, `false` if they click No.
 pub fn promptYesNo(title: str, message: str) -> bool {
     // MB_YESNO (0x4) | MB_ICONQUESTION (0x20)
     let res = messageBox(0, message, title, 36);

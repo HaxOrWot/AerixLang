@@ -11,49 +11,195 @@ import "./backend/linker.arx"
 import "./backend/native/codegen.arx"
 import "./lsp/server.arx"
 
+fn resolve_bin_name() -> str {
+    let a0 = bpath_normalize(Env.arg(0))
+    if a0.ends_with("arxc.exe") || a0.ends_with("arxc") {
+        return "arxc"
+    }
+    return "arx"
+}
+
 fn print_usage() {
-    println("Aerix Self-Hosting Bootstrap Compiler (arxc)")
+    let bin = resolve_bin_name()
+    println("Aerix Native Systems Programming Language Toolchain (" + bin + ")")
+    println("Version: 1.1.16b (Beta Channel) - x86_64-windows")
+    println("")
     println("Usage:")
-    println("  arxc build <file.arx> [-o <out>] [--emit-c] [--backend=native|c] [-O0|-O1|-O2|-O3]")
-    println("  arxc run <file.arx> [--backend=native|c] [-- <args...>]")
-    println("  arxc emit-c <file.arx> [-o <out.c>]")
-    println("  arxc check <file.arx>")
-    println("  arxc lsp")
-    println("  arxc update [--check] [--force] [--verbose] [--no-ide]")
-    println("  arxc vm <status|list|list-remote|install|use|remove|sync> [...]")
-    println("  arxc install <version>")
-    println("  arxc use <version|channel>")
-    println("  arxc versions")
-    println("  arxc current")
-    println("  arxc <file.arx> [-o <out>]")
-    println("  arxc version")
+    println("  " + bin + " <command> [arguments...] [options]")
+    println("  " + bin + " <file.arx> [-o <out>]          (Shorthand build)")
+    println("")
+    println("Core Commands:")
+    println("  build        Compile an Aerix program into a standalone native binary")
+    println("  run          Compile and immediately execute an Aerix program")
+    println("  emit-c       Transpile Aerix source code into standalone ANSI C99")
+    println("  check        Parse, validate, and type-check without code generation")
+    println("")
+    println("Developer & IDE Tooling:")
+    println("  lsp          Start the Language Server Protocol (LSP) JSON-RPC daemon")
+    println("")
+    println("Version & Toolchain Management:")
+    println("  vm           Manage multiple compiler toolchains and release channels")
+    println("  install      Download & install a toolchain version (alias: " + bin + " vm install)")
+    println("  use          Switch active toolchain version (alias: " + bin + " vm use)")
+    println("  versions     List installed toolchains (alias: " + bin + " vm list)")
+    println("  current      Show active toolchain version info (alias: " + bin + " vm status)")
+    println("  update       Check for and install updates from GitHub (alias: " + bin + " upgrade)")
+    println("")
+    println("Information & Help:")
+    println("  version      Show compiler version and release channel")
+    println("  help         Show general help or help for a specific command")
+    println("")
+    println("Common Options:")
+    println("  -o, --output <path>    Specify output executable name or destination path")
+    println("  -O0, -O1, -O2, -O3     Optimization level (default: -O2)")
+    println("  --gui, --windows       Target Windows GUI subsystem (no console window)")
+    println("  --emit-c               Keep intermediate generated C99 source file")
+    println("  -h, --help             Show help for any command (e.g. '" + bin + " build --help')")
+    println("  -v, --version          Show compiler version information")
+    println("")
+    println("Quick Examples:")
+    println("  " + bin + " build main.arx                  Compile to standalone 'main.exe'")
+    println("  " + bin + " build app.arx --gui -o app.exe  Build Windows GUI app (no console)")
+    println("  " + bin + " run main.arx                    Compile and immediately execute")
+    println("  " + bin + " run server.arx -- -p 8080       Forward CLI arguments to program")
+    println("  " + bin + " emit-c main.arx -o main.c       Transpile to standalone ANSI C99")
+    println("  " + bin + " check main.arx                  Validate syntax and types only")
+    println("")
+    println("Run '" + bin + " <command> --help' or '" + bin + " help <command>' for detailed command options.")
+}
+
+fn print_build_usage() {
+    let bin = resolve_bin_name()
+    println("Aerix Build Driver (" + bin + " build)")
+    println("Compiles Aerix source files (.arx) into standalone native executables.")
+    println("")
+    println("Usage:")
+    println("  " + bin + " build <file.arx> [-o <out>] [options]")
+    println("")
+    println("Options:")
+    println("  -o, --output <path>    Specify output executable name or destination path")
+    println("                         (defaults to input filename with .exe on Windows)")
+    println("  -O0, -O1, -O2, -O3     Optimization level (default: -O2)")
+    println("  --gui, --windows       Target Windows GUI subsystem (no console window);")
+    println("  --no-console           automatically enabled when Window.Gui module is imported")
+    println("  --emit-c               Keep intermediate generated C99 source file")
+    println("  --backend=c|native     Code generation backend (default: c with GCC)")
+    println("  -h, --help             Show this help message")
+    println("")
+    println("Examples:")
+    println("  " + bin + " build main.arx")
+    println("  " + bin + " build SnakeGame.arx -o SnakeGame.exe")
+    println("  " + bin + " build app.arx --gui -o app.exe")
+    println("  " + bin + " build benchmark.arx -O3 --emit-c")
+}
+
+fn print_run_usage() {
+    let bin = resolve_bin_name()
+    println("Aerix Execution Runner (" + bin + " run)")
+    println("Compiles and immediately executes an Aerix program in a fast temporary build pipeline.")
+    println("")
+    println("Usage:")
+    println("  " + bin + " run <file.arx> [options] [-- <program-args...>]")
+    println("")
+    println("Options:")
+    println("  -O0, -O1, -O2, -O3     Optimization level for JIT/run (default: -O2)")
+    println("  --backend=c|native     Code generation backend (default: c)")
+    println("  -- <args...>           Pass all arguments after '--' directly to program via Env.args()")
+    println("  -h, --help             Show this help message")
+    println("")
+    println("Examples:")
+    println("  " + bin + " run hello.arx")
+    println("  " + bin + " run server.arx -- -p 8080 --debug")
+    println("  " + bin + " run script.arx -- foo bar baz")
+}
+
+fn print_emit_c_usage() {
+    let bin = resolve_bin_name()
+    println("Aerix C99 Transpiler (" + bin + " emit-c)")
+    println("Transpiles Aerix source code into clean, standalone ANSI C99 code without linking.")
+    println("")
+    println("Usage:")
+    println("  " + bin + " emit-c <file.arx> [-o <out.c>]")
+    println("")
+    println("Options:")
+    println("  -o, --output <path>    Output C file path (defaults to <file>.c or stdout)")
+    println("  -h, --help             Show this help message")
+    println("")
+    println("Examples:")
+    println("  " + bin + " emit-c main.arx -o main.c")
+    println("  " + bin + " emit-c src/bootstrap/main.arx -o src/bootstrap/seed/arxc.c")
+}
+
+fn print_check_usage() {
+    let bin = resolve_bin_name()
+    println("Aerix Syntax & Semantic Checker (" + bin + " check)")
+    println("Parses, resolves symbols, and type-checks Aerix source files without compiling.")
+    println("")
+    println("Usage:")
+    println("  " + bin + " check <file.arx>")
+    println("")
+    println("Options:")
+    println("  -h, --help             Show this help message")
+    println("")
+    println("Examples:")
+    println("  " + bin + " check main.arx")
+    println("  " + bin + " check src/app.arx")
+}
+
+fn print_lsp_usage() {
+    let bin = resolve_bin_name()
+    println("Aerix Language Server Daemon (" + bin + " lsp)")
+    println("Starts the JSON-RPC 2.0 Language Server Protocol daemon on standard input/output.")
+    println("Powers IDE features: auto-completion, hover docs, go-to-definition, and inlay hints.")
+    println("")
+    println("Usage:")
+    println("  " + bin + " lsp")
+    println("")
+    println("Options:")
+    println("  -h, --help             Show this help message")
+    println("")
+    println("Integration:")
+    println("  Used automatically by the Aerix VS Code and Antigravity extension.")
+}
+
+fn print_version_usage() {
+    let bin = resolve_bin_name()
+    println("Aerix Version Information (" + bin + " version)")
+    println("Displays compiler version, release channel, platform architecture, and update status.")
+    println("")
+    println("Usage:")
+    println("  " + bin + " version")
+    println("  " + bin + " --version")
+    println("  " + bin + " -v")
 }
 
 fn print_vm_usage() {
-    println("Aerix Version Manager (alias: arx toolchain)")
+    let bin = resolve_bin_name()
+    println("Aerix Version Manager (alias: " + bin + " toolchain)")
     println("Install, cache, and switch between Aerix versions (starting from v1.1.3b)")
     println("")
     println("Usage:")
-    println("  arx vm [status]                  Show active version and toolchain store info")
-    println("  arx vm list | ls                 List locally installed/cached versions")
-    println("  arx vm list-remote [--all]       List available GitHub releases (>= 1.1.3b)")
+    println("  " + bin + " vm [status]                  Show active version and toolchain store info")
+    println("  " + bin + " vm list | ls                 List locally installed/cached versions")
+    println("  " + bin + " vm list-remote [--all]       List available GitHub releases (>= 1.1.3b)")
     println("      [--beta|--pre|--stable]      Filter remote list by release channel")
-    println("  arx vm install <ver|channel>     Download & install version (or latest/beta/pre/stable)")
+    println("  " + bin + " vm install <ver|channel>     Download & install version (or latest/beta/pre/stable)")
     println("      [--no-use] [--force] [--all] [--no-ide]")
-    println("  arx vm use <ver|channel>         Switch active toolchain (instant offline if cached)")
-    println("  arx vm remove <ver> [--force]    Delete a cached toolchain version")
-    println("  arx vm sync                      Snapshot current active toolchain into local cache")
-    println("  arx install <ver>                Shorthand for 'arx vm install <ver>'")
-    println("  arx use <ver>                    Shorthand for 'arx vm use <ver>'")
-    println("  arx versions                     Shorthand for 'arx vm list'")
-    println("  arx current                      Shorthand for 'arx vm status'")
+    println("  " + bin + " vm use <ver|channel>         Switch active toolchain (instant offline if cached)")
+    println("  " + bin + " vm remove <ver> [--force]    Delete a cached toolchain version")
+    println("  " + bin + " vm sync                      Snapshot current active toolchain into local cache")
+    println("  " + bin + " install <ver>                Shorthand for '" + bin + " vm install <ver>'")
+    println("  " + bin + " use <ver>                    Shorthand for '" + bin + " vm use <ver>'")
+    println("  " + bin + " versions                     Shorthand for '" + bin + " vm list'")
+    println("  " + bin + " current                      Shorthand for '" + bin + " vm status'")
 }
 
 fn print_update_usage() {
-    println("Aerix Toolchain Updater (alias: arx upgrade)")
+    let bin = resolve_bin_name()
+    println("Aerix Toolchain Updater (alias: " + bin + " upgrade)")
     println("Usage:")
-    println("  arx update [options]")
-    println("  arx upgrade [options]")
+    println("  " + bin + " update [options]")
+    println("  " + bin + " upgrade [options]")
     println("")
     println("Options:")
     println("  -c, --check     Check GitHub for the latest stable release without installing")
@@ -217,7 +363,7 @@ fn cmd_vm(cli_args: List<str>, cli_argc: i64, start_idx: i64, default_sub: str) 
         }
     } else if sub == "install" || sub == "add" {
         if target == "" {
-            eprintln("error: missing version for 'arx vm install' (e.g. 'arx vm install 1.1.14b')")
+            eprintln("error: missing version for 'arx vm install' (e.g. 'arx vm install 1.1.16b')")
             return 1
         }
         cmd = cmd + " " + quote_shell_arg("--vm-install=" + target)
@@ -559,15 +705,40 @@ fn main() -> i64 {
 
     let first = cli_args.get(1)
     if first == "version" || first == "--version" || first == "-v" {
-        println("Aerix Self-Hosting Bootstrap Compiler (arxc) v1.1.14b")
+        if cli_argc >= 3 {
+            let a2 = cli_args.get(2)
+            if a2 == "--help" || a2 == "-h" {
+                print_version_usage()
+                return 0
+            }
+        }
+        println("Aerix Self-Hosting Bootstrap Compiler (arxc) v1.1.16b")
         maybe_trigger_bg_update()
         return 0
     }
     if first == "help" || first == "--help" || first == "-h" {
+        if cli_argc >= 3 {
+            let sub = cli_args.get(2)
+            if sub == "build" { print_build_usage(); return 0 }
+            if sub == "run" { print_run_usage(); return 0 }
+            if sub == "emit-c" { print_emit_c_usage(); return 0 }
+            if sub == "check" { print_check_usage(); return 0 }
+            if sub == "lsp" { print_lsp_usage(); return 0 }
+            if sub == "vm" || sub == "toolchain" { print_vm_usage(); return 0 }
+            if sub == "update" || sub == "upgrade" { print_update_usage(); return 0 }
+            if sub == "version" { print_version_usage(); return 0 }
+        }
         print_usage()
         return 0
     }
     if first == "lsp" {
+        if cli_argc >= 3 {
+            let a2 = cli_args.get(2)
+            if a2 == "--help" || a2 == "-h" {
+                print_lsp_usage()
+                return 0
+            }
+        }
         return run_lsp_server()
     }
     if first == "vm" || first == "toolchain" {
@@ -653,6 +824,15 @@ fn main() -> i64 {
             backend = "native"
         } else if a == "-O0" || a == "-O1" || a == "-O2" || a == "-O3" {
             opt_flag = a
+        } else if a == "--gui" || a == "--windows" || a == "--no-console" || a == "-mwindows" {
+            // Flag accepted for windowed GUI subsystem mode
+        } else if a == "--help" || a == "-h" {
+            if mode == "build" { print_build_usage(); return 0 }
+            if mode == "run" { print_run_usage(); return 0 }
+            if mode == "emit-c" { print_emit_c_usage(); return 0 }
+            if mode == "check" { print_check_usage(); return 0 }
+            print_usage()
+            return 0
         } else if input_file == "" {
             input_file = a
         } else {

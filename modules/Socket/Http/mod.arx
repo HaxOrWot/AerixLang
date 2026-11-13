@@ -1,6 +1,24 @@
 // ==============================================================================
 // Aerix Standard Library: Socket::Http
-// Native HTTP 1.1 Client, Request Methods, and Response Handling
+// Native Lightweight HTTP 1.1 Client Engine and Response Model
+//
+// Overview:
+//   Provides a synchronous HTTP 1.1 client stack with complete support for
+//   GET, POST, PUT, DELETE, and HEAD verbs, URL host/path parsing, and structured
+//   response modeling with status code interpretation.
+//
+// Submodules:
+//   - Socket::Http::Client  : httpGet, httpPost, httpPut, httpDelete, httpHead
+//   - Socket::Http::Response: HttpResponse class with status parsing and body extraction
+//
+// Usage:
+//   import "Socket/Http/mod.arx"
+//   // or: import "Socket"
+//
+//   let resp = httpGet("http://httpbin.org/get");
+//   if resp.isSuccess() {
+//       println("Payload:\n" + resp.body);
+//   }
 // ==============================================================================
 
 import "./response.arx"

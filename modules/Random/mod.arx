@@ -1,6 +1,25 @@
 // ==============================================================================
 // Aerix Standard Library: Random
-// Pseudo-Random Number Generation, Distributions, and Sequence Helpers
+// Unified Pseudo-Random Generation, Probability Distributions, and CSPRNG
+//
+// Overview:
+//   The Random module provides statistical sampling, pseudo-random number
+//   generation (PRNG), array shuffling, probability distributions, and
+//   cryptographically secure hardware entropy (CSPRNG via Win32 CryptoAPI).
+//
+// Submodules:
+//   - Random::Core         : Fast PRNG seeding, state persistence, uniform floats [0.0, 1.0).
+//   - Random::Integers     : Discrete random integers, inclusive ranges, and stepped intervals.
+//   - Random::Distributions: Gaussian (Box-Muller), log-normal, exponential, Pareto, and Weibull.
+//   - Random::Sequences    : Slice operations: random choice, Fisher-Yates in-place shuffle.
+//   - Random::Crypto       : Cryptographically secure random bytes, hex, UUID v4, and API tokens.
+//
+// Usage:
+//   import "Random"
+//
+//   let dice = randInt(1, 6);
+//   let roll = randomFloat();
+//   let token = generateToken(32);
 // ==============================================================================
 
 import "./core.arx"

@@ -1,29 +1,57 @@
 // ==============================================================================
-// Aerix Standard Modules: Random::Core
-// Core pseudo-random number generator, seeding, state, and uniform float generation.
-// Standard ANSI C99 runtime PRNG integration.
+// Aerix Standard Library: Random::Core
+// Core Pseudo-Random Number Generator, Seeding, State, and Uniform Floats
+//
+// Overview:
+//   Provides core pseudo-random operations backed by the Aerix runtime's 64-bit
+//   generator. Includes seed initialization, state save/restore for deterministic
+//   reproducibility, raw bit extraction, and uniform floating-point variates.
+//
+// Usage:
+//   import "Random/core.arx"
+//
+//   seed(1337);
+//   let f = random();              // in [0.0, 1.0)
+//   let height = uniform(1.5, 2.0); // in [1.5, 2.0)
 // ==============================================================================
 
+/// Seeds the runtime pseudo-random number generator.
+/// Passing a fixed seed produces a deterministic sequence of random values.
+///
+/// Parameters:
+///   `s`: 64-bit integer seed value.
 pub fn seed(s: i64) {
     arx_prng_seed(s);
 }
 
+/// Retrieves the internal 64-bit state of the pseudo-random number generator.
+/// Useful for checkpointing and restoring PRNG progress.
 pub fn getState() -> i64 {
     return arx_prng_get_state();
 }
 
+/// Restores the internal 64-bit state of the pseudo-random number generator.
+///
+/// Parameters:
+///   `state`: Previously saved PRNG state value.
 pub fn setState(state: i64) {
     arx_prng_set_state(state);
 }
 
+/// Returns a pseudo-random 64-bit float uniformly distributed in the half-open interval `[0.0, 1.0)`.
 pub fn random() -> f64 {
     return arx_prng_next_f64();
 }
 
+/// Alias for `random()`; returns a pseudo-random float in `[0.0, 1.0)`.
 pub fn randomFloat() -> f64 {
     return arx_prng_next_f64();
 }
 
+/// Returns a non-negative integer with `k` random bits (in `[0, 2^k - 1]`).
+///
+/// Parameters:
+///   `k`: Number of random bits requested (`1 <= k <= 62`).
 pub fn getRandBits(k: i64) -> i64 {
     if k <= 0 {
         return 0;
@@ -46,6 +74,11 @@ pub fn getRandBits(k: i64) -> i64 {
     return r % (mask + 1);
 }
 
+/// Returns a pseudo-random floating-point number uniformly distributed in `[a, b)`.
+///
+/// Parameters:
+///   `a`: Range lower bound.
+///   `b`: Range upper bound.
 pub fn uniform(a: f64, b: f64) -> f64 {
     return a + (b - a) * random();
 }

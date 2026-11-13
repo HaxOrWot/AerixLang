@@ -1,37 +1,49 @@
 // ==============================================================================
 // Aerix Standard Library: Window::Metrics
 // Operating System Display Resolution, Monitor Setup, and UI Geometry
+//
+// Overview:
+//   Queries the Windows subsystem via `GetSystemMetrics` for physical monitor
+//   resolutions, virtual desktop spans across multi-monitor workstations,
+//   and attached hardware capabilities (such as mouse presence).
+//
+// Usage:
+//   import "Window/metrics.arx"
+//
+//   let width = screenWidth();
+//   let height = screenHeight();
+//   println("Primary display: " + (width as str) + "x" + (height as str));
 // ==============================================================================
 
 #[extern("user32.dll", "GetSystemMetrics")]
 pub fn getSystemMetrics(nIndex: i64) -> i64;
 
+/// Retrieves the width of the primary display monitor in screen pixels (SM_CXSCREEN = 0).
 pub fn screenWidth() -> i64 {
-    // SM_CXSCREEN = 0
     return getSystemMetrics(0);
 }
 
+/// Retrieves the height of the primary display monitor in screen pixels (SM_CYSCREEN = 1).
 pub fn screenHeight() -> i64 {
-    // SM_CYSCREEN = 1
     return getSystemMetrics(1);
 }
 
+/// Retrieves the width of the virtual screen spanning all active display monitors (SM_CXVIRTUALSCREEN = 78).
 pub fn virtualScreenWidth() -> i64 {
-    // SM_CXVIRTUALSCREEN = 78
     return getSystemMetrics(78);
 }
 
+/// Retrieves the height of the virtual screen spanning all active display monitors (SM_CYVIRTUALSCREEN = 79).
 pub fn virtualScreenHeight() -> i64 {
-    // SM_CYVIRTUALSCREEN = 79
     return getSystemMetrics(79);
 }
 
+/// Retrieves the total number of display monitors attached to the computer system (SM_CMONITORS = 80).
 pub fn monitorCount() -> i64 {
-    // SM_CMONITORS = 80
     return getSystemMetrics(80);
 }
 
+/// Checks whether an installed mouse or pointing device is detected by the operating system (SM_MOUSEPRESENT = 19).
 pub fn mousePresent() -> bool {
-    // SM_MOUSEPRESENT = 19
     return getSystemMetrics(19) != 0;
 }

@@ -1,6 +1,33 @@
 // ==============================================================================
 // Aerix Standard Library: Window::Gui::Canvas
-// Hardware-accelerated 2D Double-Buffered Graphics & Drawing Primitives
+// Hardware-Accelerated 2D Double-Buffered Graphics & Drawing Primitives
+//
+// Overview:
+//   Provides a high-performance 2D drawing canvas for desktop windows.
+//   Utilizes memory device contexts and off-screen compatible bitmaps for
+//   complete double-buffering, eliminating visual tearing and flicker in games,
+//   visualizers, and dynamic desktop interfaces.
+//
+// Rendering Flow:
+//   1. `canvas.beginPaint()` or `canvas.begin()`: Prepares off-screen backbuffer for the frame.
+//   2. Call drawing primitives (`clear`, `fillRect`, `drawCircle`, `drawText`, etc.).
+//   3. `canvas.endPaint()` or `canvas.end()`    : BitBlts composite backbuffer to the physical window DC.
+//
+// Color Format:
+//   Colors are packed 24-bit RGB values in Windows COLORREF format: `0x00BBGGRR`.
+//   Use the `rgb(r, g, b)` helper or built-in color presets (`colorRed()`, `colorCyan()`).
+//
+// Usage:
+//   import "Window/Gui/Canvas/canvas.arx"
+//
+//   let cvs = Canvas(win.hwnd);
+//   cvs.setSize(640, 480);
+//   if cvs.beginPaint() {
+//       cvs.clear(colorBlack(), 640, 480);
+//       cvs.fillRect(20, 20, 100, 100, rgb(0, 255, 128));
+//       cvs.drawText("FPS: 60", 30, 30, colorWhite());
+//       cvs.endPaint();
+//   }
 // ==============================================================================
 
 cextern fn arx_gui_canvas_begin(hwnd: i64, width: i64, height: i64) -> i64;
@@ -13,7 +40,12 @@ cextern fn arx_gui_draw_text(canvas_handle: i64, text: str, x: i64, y: i64, colo
 cextern fn arx_gui_draw_line(canvas_handle: i64, x1: i64, y1: i64, x2: i64, y2: i64, color: i64, width: i64) -> void;
 cextern fn arx_gui_clear(canvas_handle: i64, width: i64, height: i64, color: i64) -> void;
 
-// RGB Color Packing Helper: 0x00BBGGRR
+/// Packs red, green, and blue color channels (0 - 255) into a Win32 COLORREF value (`0x00BBGGRR`).
+///
+/// Parameters:
+///   `r`: Red channel intensity (0 - 255).
+///   `g`: Green channel intensity (0 - 255).
+///   `b`: Blue channel intensity (0 - 255).
 pub fn rgb(r: i64, g: i64, b: i64) -> i64 {
     let red = r & 255;
     let green = g & 255;
@@ -21,17 +53,38 @@ pub fn rgb(r: i64, g: i64, b: i64) -> i64 {
     return red | (green << 8) | (blue << 16);
 }
 
-// Common Standard Colors
+// ==============================================================================
+// Standard Color Presets
+// ==============================================================================
+
+/// Solid black color (`rgb(0, 0, 0)`)
 pub fn colorBlack() -> i64 { return rgb(0, 0, 0); }
+
+/// Pure white color (`rgb(255, 255, 255)`)
 pub fn colorWhite() -> i64 { return rgb(255, 255, 255); }
+
+/// Pure red color (`rgb(255, 0, 0)`)
 pub fn colorRed() -> i64 { return rgb(255, 0, 0); }
+
+/// Pure green color (`rgb(0, 255, 0)`)
 pub fn colorGreen() -> i64 { return rgb(0, 255, 0); }
+
+/// Pure blue color (`rgb(0, 0, 255)`)
 pub fn colorBlue() -> i64 { return rgb(0, 0, 255); }
+
+/// Bright yellow color (`rgb(255, 255, 0)`)
 pub fn colorYellow() -> i64 { return rgb(255, 255, 0); }
+
+/// Vibrant cyan color (`rgb(0, 255, 255)`)
 pub fn colorCyan() -> i64 { return rgb(0, 255, 255); }
+
+/// Bright magenta color (`rgb(255, 0, 255)`)
 pub fn colorMagenta() -> i64 { return rgb(255, 0, 255); }
+
+/// Medium neutral gray color (`rgb(128, 128, 128)`)
 pub fn colorGray() -> i64 { return rgb(128, 128, 128); }
 
+/// Double-buffered 2D drawing canvas bound to an `HWND` window.
 pub class Canvas {
     pub hwnd: i64
     pub width: i64
@@ -45,17 +98,26 @@ pub class Canvas {
         self.handle = 0
     }
 
+    /// Updates internal canvas width and height dimensions.
     pub fn setSize(w: i64, h: i64) -> void {
         self.width = w
         self.height = h
     }
 
+    /// Prepares the off-screen backbuffer for a new frame of 2D rendering.
+    /// Returns `true` if backbuffer successfully allocated.
     pub fn beginPaint() -> bool {
         if self.hwnd == 0 { return false }
         self.handle = arx_gui_canvas_begin(self.hwnd, self.width, self.height)
         return self.handle != 0
     }
 
+    /// Alias for `beginPaint()`.
+    pub fn begin() -> bool {
+        return self.beginPaint()
+    }
+
+    /// Blits the composed off-screen backbuffer to the physical window DC and releases frame memory.
     pub fn endPaint() -> void {
         if self.handle != 0 {
             arx_gui_canvas_end(self.handle)
@@ -63,38 +125,55 @@ pub class Canvas {
         }
     }
 
+    /// Alias for `endPaint()`.
+    pub fn end() -> void {
+        self.endPaint()
+    }
+
+    /// Fills the entire canvas surface with a solid background color.
+    ///
+    /// Parameters:
+    ///   `bgColor`: RGB color code.
+    ///   `width`  : Target surface width in pixels.
+    ///   `height` : Target surface height in pixels.
+    pub fn clear(bgColor: i64, width: i64, height: i64) -> void {
+        if self.handle == 0 { return }
+        arx_gui_clear(self.handle, width, height, bgColor)
+    }
+
+    /// Draws a straight line between `(x1, y1)` and `(x2, y2)`.
     pub fn drawLine(x1: i64, y1: i64, x2: i64, y2: i64, color: i64, width: i64) -> void {
         if self.handle == 0 { return }
         arx_gui_draw_line(self.handle, x1, y1, x2, y2, color, width)
     }
 
+    /// Draws an outlined rectangle stroke with specified line width.
     pub fn drawRect(x: i64, y: i64, width: i64, height: i64, color: i64, lineWidth: i64) -> void {
         if self.handle == 0 { return }
         arx_gui_draw_rect(self.handle, x, y, width, height, color, lineWidth)
     }
 
+    /// Fills a solid rectangle with specified color.
     pub fn fillRect(x: i64, y: i64, width: i64, height: i64, color: i64) -> void {
         if self.handle == 0 { return }
         arx_gui_fill_rect(self.handle, x, y, width, height, color)
     }
 
+    /// Draws an outlined circular stroke with specified center, radius, and line width.
     pub fn drawCircle(centerX: i64, centerY: i64, radius: i64, color: i64, lineWidth: i64) -> void {
         if self.handle == 0 { return }
         arx_gui_draw_circle(self.handle, centerX, centerY, radius, color, lineWidth)
     }
 
+    /// Fills a solid circle with specified center and radius.
     pub fn fillCircle(centerX: i64, centerY: i64, radius: i64, color: i64) -> void {
         if self.handle == 0 { return }
         arx_gui_fill_circle(self.handle, centerX, centerY, radius, color)
     }
 
+    /// Renders a text string at specified coordinates using transparent background.
     pub fn drawText(text: str, x: i64, y: i64, color: i64) -> void {
         if self.handle == 0 { return }
         arx_gui_draw_text(self.handle, text, x, y, color)
-    }
-
-    pub fn clear(bgColor: i64, width: i64, height: i64) -> void {
-        if self.handle == 0 { return }
-        arx_gui_clear(self.handle, width, height, bgColor)
     }
 }

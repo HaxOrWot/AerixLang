@@ -1,6 +1,20 @@
 // ==============================================================================
 // Aerix Standard Library: Socket::Core
-// Low-level Winsock2 Interop and Socket Lifecycle Management
+// Low-Level Winsock2 Interop and Socket Lifecycle Management
+//
+// Overview:
+//   Provides low-level bindings to the Windows Sockets 2 (`ws2_32.dll`) API.
+//   Handles WSAStartup/WSACleanup lifecycle, socket creation, IPv4 sockaddr_in
+//   packing, non-blocking mode configuration, and send/recv timeouts.
+//
+// Usage:
+//   import "Socket/core.arx"
+//
+//   socketInit();
+//   let sock = createTcpSocket();
+//   setSocketTimeout(sock, 5000); // 5s timeout
+//   closesocket(sock);
+//   socketCleanup();
 // ==============================================================================
 
 import "./constants.arx"
@@ -59,7 +73,8 @@ pub fn win32Setsockopt(s: i64, level: i64, optname: i64, optval: str, optlen: i6
 #[extern("ws2_32.dll", "ioctlsocket")]
 pub fn win32Ioctlsocket(s: i64, cmd: i64, argp: str) -> i32;
 
-// Initialize Winsock 2.2 subsystem
+/// Initializes the Windows Sockets 2.2 subsystem (WSAStartup version 0x0202).
+/// Called automatically by socket constructors.
 pub fn socketInit() -> bool {
     let wsadata_buf = mem_calloc(1, 512);
     let res = wsa_startup(514, wsadata_buf);
@@ -67,25 +82,35 @@ pub fn socketInit() -> bool {
     return res == 0;
 }
 
-// Clean up Winsock subsystem
+/// Terminates use of the Winsock 2 DLL (WSACleanup).
 pub fn socketCleanup() -> void {
     wsa_cleanup();
 }
 
+/// Retrieves the error status for the last Windows Sockets operation that failed.
 pub fn lastError() -> i64 {
     return wsa_get_last_error();
 }
 
+/// Creates a new TCP stream socket (AF_INET, SOCK_STREAM, IPPROTO_TCP).
+/// Initializes Winsock if not already started.
 pub fn createTcpSocket() -> i64 {
     socketInit();
     return socket(AF_INET(), SOCK_STREAM(), IPPROTO_TCP());
 }
 
+/// Creates a new UDP datagram socket (AF_INET, SOCK_DGRAM, IPPROTO_UDP).
+/// Initializes Winsock if not already started.
 pub fn createUdpSocket() -> i64 {
     socketInit();
     return socket(AF_INET(), SOCK_DGRAM(), IPPROTO_UDP());
 }
 
+/// Sets receive and send timeouts on a socket in milliseconds.
+///
+/// Parameters:
+///   `s`        : Socket handle.
+///   `timeoutMs`: Timeout in milliseconds.
 pub fn setSocketTimeout(s: i64, timeoutMs: i64) -> bool {
     let bb = ByteBuffer();
     bb.write_u8(timeoutMs & 255);
@@ -100,6 +125,11 @@ pub fn setSocketTimeout(s: i64, timeoutMs: i64) -> bool {
     return r1 == 0 && r2 == 0;
 }
 
+/// Enables or disables non-blocking I/O mode on a socket using `ioctlsocket(FIONBIO)`.
+///
+/// Parameters:
+///   `s`          : Socket handle.
+///   `nonBlocking`: `true` for non-blocking, `false` for blocking mode.
 pub fn setSocketNonBlocking(s: i64, nonBlocking: bool) -> bool {
     let bb = ByteBuffer();
     mut mode: i64 = 0;
@@ -110,10 +140,15 @@ pub fn setSocketNonBlocking(s: i64, nonBlocking: bool) -> bool {
     bb.write_u8((mode >> 24) & 255);
     let buf = bb.to_str();
     bb.free();
+    // FIONBIO = 0x8004667E = 2147772030
     return win32Ioctlsocket(s, 2147772030, buf) == 0;
 }
 
-// Constructs a 16-byte sockaddr_in binary structure for IPv4
+/// Constructs a 16-byte packed `sockaddr_in` binary structure for IPv4 address binding or connection.
+///
+/// Parameters:
+///   `ip`  : IPv4 address string (e.g. "127.0.0.1" or "0.0.0.0").
+///   `port`: Port number (0 - 65535).
 pub fn makeSockAddrIn(ip: str, port: i64) -> str {
     let bb = ByteBuffer();
     // sin_family: AF_INET = 2 (little-endian: 0x02, 0x00)

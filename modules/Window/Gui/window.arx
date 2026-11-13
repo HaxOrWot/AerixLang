@@ -1,6 +1,23 @@
 // ==============================================================================
 // Aerix Standard Library: Window::Gui::Window
 // Native Windows OS GUI Window Management Primitives & Event Loop
+//
+// Overview:
+//   Provides the core windowing foundation for desktop applications on Windows.
+//   Manages Win32 window creation, window procedures, sizing, visibility,
+//   focus, and non-blocking event pump message dispatch (`pollEvents`).
+//
+// Usage:
+//   import "Window/Gui/window.arx"
+//
+//   let win = AppWindow("Game Window", 800, 600);
+//   win.show();
+//   while win.isOpen() {
+//       if !win.poll() {
+//           break; // WM_QUIT received
+//       }
+//   }
+//   win.close();
 // ==============================================================================
 
 cextern fn arx_gui_create_window(title: str, width: i64, height: i64) -> i64;
@@ -28,53 +45,95 @@ pub fn win32_show_window_cmd(hwnd: i64, cmd: i32) -> i32;
 #[extern("user32.dll", "SetForegroundWindow")]
 pub fn win32_set_foreground_window(hwnd: i64) -> i32;
 
-// Window Styles & Constants
+// ==============================================================================
+// Win32 Window Styles & Command Constants
+// ==============================================================================
+
+/// Overlapped window style mask (titlebar, border, sysmenu, min/max buttons: 0x00CF0000)
 pub let WS_OVERLAPPED_WINDOW: i64 = 13565952;
+
+/// Popup window style mask (0x80880000)
 pub let WS_POPUP_WINDOW: i64 = 2156396544;
+
+/// Window visible style flag (0x10000000)
 pub let WS_VISIBLE_FLAG: i64 = 268435456;
+
+/// ShowWindow command: SW_SHOWNORMAL (1)
 pub let SW_SHOW_NORMAL: i64 = 1;
+
+/// ShowWindow command: SW_SHOW (5)
 pub let SW_SHOW_CMD: i64 = 5;
+
+/// ShowWindow command: SW_HIDE (0)
 pub let SW_HIDE_CMD: i64 = 0;
+
+/// ShowWindow command: SW_MINIMIZE (6)
 pub let SW_MINIMIZE_CMD: i64 = 6;
+
+/// ShowWindow command: SW_MAXIMIZE (3)
 pub let SW_MAXIMIZE_CMD: i64 = 3;
+
+/// ShowWindow command: SW_RESTORE (9)
 pub let SW_RESTORE_CMD: i64 = 9;
+
+/// PeekMessage option: remove message from queue after processing (PM_REMOVE = 1)
 pub let PM_REMOVE: i64 = 1;
 
+/// Creates a top-level native desktop window with the specified title and client area size.
+/// Automatically centers the window on the primary monitor.
+///
+/// Parameters:
+///   `title` : Window caption bar title string.
+///   `width` : Client area width in pixels.
+///   `height`: Client area height in pixels.
+/// Returns:
+///   Operating system `HWND` window handle, or 0 on failure.
 pub fn createWindow(title: str, width: i64, height: i64) -> i64 {
     return arx_gui_create_window(title, width, height);
 }
 
+/// Makes a window visible on screen and updates its client area.
 pub fn showWindow(hwnd: i64, cmd: i64) -> bool {
     return arx_gui_show_window(hwnd);
 }
 
+/// Hides a window from the screen without destroying its resources.
 pub fn hideWindow(hwnd: i64) -> bool {
     return arx_gui_hide_window(hwnd);
 }
 
+/// Updates the caption title text displayed in the window's title bar.
 pub fn setWindowTitle(hwnd: i64, title: str) -> bool {
     let res = win32_set_window_text(hwnd, title);
     return res != 0;
 }
 
+/// Destroys a window and releases associated OS handles.
 pub fn destroyWindow(hwnd: i64) -> bool {
     return arx_gui_destroy_window(hwnd);
 }
 
+/// Relocates and resizes a window in screen coordinates.
 pub fn moveWindow(hwnd: i64, x: i64, y: i64, width: i64, height: i64) -> bool {
     let res = win32_move_window(hwnd, x, y, width, height, 1);
     return res != 0;
 }
 
+/// Checks whether a window is currently visible on screen.
 pub fn isWindowVisible(hwnd: i64) -> bool {
     return arx_gui_is_window_visible(hwnd);
 }
 
-// Pumps all pending Windows OS messages; returns false if WM_QUIT received
+/// Pumps all pending Windows OS messages in the thread queue.
+/// Dispatches keyboard, mouse, paint, and system events.
+///
+/// Returns:
+///   `false` if `WM_QUIT` was received (window closed by user), `true` otherwise.
 pub fn pollEvents() -> bool {
     return arx_gui_poll_events();
 }
 
+/// High-level object-oriented application window controller.
 pub class AppWindow {
     pub hwnd: i64
     pub title: str
@@ -90,18 +149,21 @@ pub class AppWindow {
         self.is_open = self.hwnd != 0
     }
 
+    /// Makes the application window visible on screen.
     pub fn show() -> void {
         if self.hwnd != 0 {
             showWindow(self.hwnd, SW_SHOW_CMD)
         }
     }
 
+    /// Hides the application window from screen.
     pub fn hide() -> void {
         if self.hwnd != 0 {
             hideWindow(self.hwnd)
         }
     }
 
+    /// Changes the window's title bar caption.
     pub fn setTitle(new_title: str) -> void {
         self.title = new_title
         if self.hwnd != 0 {
@@ -109,6 +171,7 @@ pub class AppWindow {
         }
     }
 
+    /// Resizes the application window to new dimensions.
     pub fn resize(w: i64, h: i64) -> void {
         self.width = w
         self.height = h
@@ -117,38 +180,45 @@ pub class AppWindow {
         }
     }
 
+    /// Dispatches pending OS messages. Returns `false` when window is closed.
     pub fn poll() -> bool {
         return pollEvents()
     }
 
+    /// Brings the window into the foreground and gives it keyboard focus.
     pub fn setFocus() -> void {
         if self.hwnd != 0 {
             win32_set_foreground_window(self.hwnd)
         }
     }
 
+    /// Minimizes the window to the taskbar.
     pub fn minimize() -> void {
         if self.hwnd != 0 {
             win32_show_window_cmd(self.hwnd, SW_MINIMIZE_CMD as i32)
         }
     }
 
+    /// Maximizes the window to fill the screen.
     pub fn maximize() -> void {
         if self.hwnd != 0 {
             win32_show_window_cmd(self.hwnd, SW_MAXIMIZE_CMD as i32)
         }
     }
 
+    /// Restores a minimized or maximized window to normal bounds.
     pub fn restore() -> void {
         if self.hwnd != 0 {
             win32_show_window_cmd(self.hwnd, SW_RESTORE_CMD as i32)
         }
     }
 
+    /// Checks if the window is currently open and visible.
     pub fn isOpen() -> bool {
         return self.is_open && isWindowVisible(self.hwnd)
     }
 
+    /// Closes and destroys the window.
     pub fn close() -> void {
         if self.hwnd != 0 {
             destroyWindow(self.hwnd)

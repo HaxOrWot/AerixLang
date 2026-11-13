@@ -1,6 +1,18 @@
 // ==============================================================================
-// Aerix Standard Modules: Time::Core
-// Time measurement, delays, and timestamp primitives.
+// Aerix Standard Library: Time::Core
+// Time Measurement, High-Resolution Monotonic Ticks, and Sleep Primitives
+//
+// Overview:
+//   Provides access to UNIX epoch timestamps (floating-point seconds and integer
+//   milliseconds), monotonic system uptime tick counters (via GetTickCount64),
+//   and thread sleeping functions.
+//
+// Usage:
+//   import "Time/core.arx"
+//
+//   let start = epochMs();
+//   sleepMs(100);
+//   let duration = epochMs() - start;
 // ==============================================================================
 
 cextern fn arx_sleep_ms(ms: i64) -> void;
@@ -11,34 +23,51 @@ pub fn ticks() -> i64;
 #[extern("kernel32.dll", "Sleep")]
 pub fn win32Sleep(ms: i64) -> void;
 
+/// Returns current UNIX timestamp in fractional seconds since Jan 1, 1970 00:00:00 UTC.
 pub fn now() -> f64 {
     return arx_time_now();
 }
 
+/// Alias for `now()`; returns current UNIX epoch timestamp in fractional seconds.
 pub fn time() -> f64 {
     return arx_time_now();
 }
 
+/// Alias for `now()`; returns current UNIX epoch timestamp in fractional seconds.
 pub fn epoch() -> f64 {
     return arx_time_now();
 }
 
+/// Returns current UNIX timestamp truncated to whole seconds.
 pub fn epochSecs() -> i64 {
     return arx_time_now() as i64;
 }
 
+/// Returns current UNIX timestamp converted to integer milliseconds.
 pub fn epochMs() -> i64 {
     return (arx_time_now() * 1000.0) as i64;
 }
 
+/// Suspends execution of the current thread for the specified number of milliseconds.
+///
+/// Parameters:
+///   `ms`: Sleep duration in milliseconds.
 pub fn sleep(ms: i64) -> void {
     arx_sleep_ms(ms);
 }
 
+/// Explicit millisecond sleep suspension.
+///
+/// Parameters:
+///   `ms`: Sleep duration in milliseconds.
 pub fn sleepMs(ms: i64) -> void {
     arx_sleep_ms(ms);
 }
 
+/// Suspends execution of the current thread for the specified number of fractional seconds.
+///
+/// Parameters:
+///   `secs`: Sleep duration in seconds (e.g. 0.25 for 250 milliseconds).
 pub fn sleepSecs(secs: f64) -> void {
     if secs <= 0.0 {
         return;

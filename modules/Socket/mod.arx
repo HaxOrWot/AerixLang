@@ -1,6 +1,24 @@
 // ==============================================================================
 // Aerix Standard Library: Socket
-// Network Sockets, Winsock2 Interop, and TCP/UDP Communication
+// Unified TCP/UDP Networking, Client/Server Sockets, and HTTP 1.1 Stack
+//
+// Overview:
+//   The Socket module provides cross-platform networking capabilities implemented
+//   via low-level Winsock 2.2 bindings and object-oriented network streams.
+//
+// Submodules:
+//   - Socket::Constants : Winsock address families (AF_INET), socket types, protocol IDs.
+//   - Socket::Core      : Winsock lifecycle, binary sockaddr_in construction, socket options.
+//   - Socket::Client    : Object-oriented TcpClient for outgoing stream connections.
+//   - Socket::Server    : Object-oriented TcpServer for listening and accepting client sockets.
+//   - Socket::Http      : High-level HTTP 1.1 client supporting GET, POST, PUT, DELETE, and HEAD.
+//
+// Usage:
+//   import "Socket"
+//
+//   let resp = httpGet("http://example.com/");
+//   println("Status: " + (resp.statusCode as str));
+//   println("Body:\n" + resp.body);
 // ==============================================================================
 
 import "./constants.arx"

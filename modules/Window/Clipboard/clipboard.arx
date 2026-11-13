@@ -1,6 +1,20 @@
 // ==============================================================================
 // Aerix Standard Library: Window::Clipboard
 // Operating System Global Clipboard Read/Write & Text Management
+//
+// Overview:
+//   Provides access to the Windows system clipboard using global movable memory
+//   blocks (`GlobalAlloc`), CF_TEXT text format handles, and proper lock/unlock
+//   lifecycle semantics.
+//
+// Usage:
+//   import "Window/Clipboard/clipboard.arx"
+//
+//   if hasText() {
+//       let content = getText();
+//       println("Clipboard contains: " + content);
+//   }
+//   setText("Copied to clipboard!");
 // ==============================================================================
 
 #[extern("user32.dll", "OpenClipboard")]
@@ -33,14 +47,19 @@ pub fn win32_global_unlock(hMem: i64) -> i32;
 #[extern("msvcrt.dll", "strcpy")]
 pub fn win32_strcpy(dest: str, src: str) -> i64;
 
-// CF_TEXT = 1, GMEM_MOVEABLE = 2
+/// Windows Standard Clipboard Format: CF_TEXT (1)
 pub let CF_TEXT: i64 = 1;
+
+/// Windows Global Memory Allocation Flag: GMEM_MOVEABLE (2)
 pub let GMEM_MOVEABLE: i64 = 2;
 
+/// Checks whether the system clipboard currently contains plain text.
 pub fn hasText() -> bool {
     return win32_is_clipboard_format_available(CF_TEXT) != 0;
 }
 
+/// Reads plain text contents from the Windows clipboard.
+/// Returns `""` if the clipboard cannot be opened or does not hold text.
 pub fn getText() -> str {
     if win32_open_clipboard(0) == 0 {
         return "";
@@ -56,6 +75,12 @@ pub fn getText() -> str {
     return ptr;
 }
 
+/// Writes a string to the system clipboard in CF_TEXT format.
+///
+/// Parameters:
+///   `text`: String content to copy.
+/// Returns:
+///   `true` if successfully written, `false` otherwise.
 pub fn setText(text: str) -> bool {
     if win32_open_clipboard(0) == 0 {
         return false;
@@ -75,6 +100,7 @@ pub fn setText(text: str) -> bool {
     return ok != 0;
 }
 
+/// Empties and clears the system clipboard.
 pub fn clear() -> bool {
     if win32_open_clipboard(0) == 0 {
         return false;

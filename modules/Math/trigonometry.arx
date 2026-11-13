@@ -1,8 +1,30 @@
 // ==============================================================================
-// Aerix Standard Modules: Math::Trigonometry
-// Pure Aerix implementations of trigonometric algorithms via polynomial expansions.
+// Aerix Standard Library: Math::Trigonometry
+// Pure Aerix Trigonometric Algorithms via High-Precision Polynomial Expansions
+//
+// Overview:
+//   Provides circular trigonometric functions and their inverses without external
+//   C runtime math library dependencies (libm). Implemented using modular range
+//   reduction to [-π, π] and high-order Maclaurin / Chebyshev polynomial series.
+//
+// Functions Included:
+//   - Circular : sin, cos, tan, cot, sec, csc
+//   - Inverse  : atan, atan2, asin, acos
+//
+// Usage:
+//   import "Math/trigonometry.arx"
+//   import "Math/advanced.arx"
+//
+//   let rad = degToRad(90.0);
+//   let val = sin(rad); // 1.0
 // ==============================================================================
 
+/// Computes the sine of an angle `x` specified in radians.
+///
+/// Parameters:
+///   `x`: Angle in radians.
+/// Returns:
+///   Sine value in the range `[-1.0, 1.0]`.
 pub fn sin(x: f64) -> f64 {
     let pi: f64 = 3.141592653589793;
     let tau: f64 = 6.283185307179586;
@@ -40,6 +62,12 @@ pub fn sin(x: f64) -> f64 {
     return sum;
 }
 
+/// Computes the cosine of an angle `x` specified in radians.
+///
+/// Parameters:
+///   `x`: Angle in radians.
+/// Returns:
+///   Cosine value in the range `[-1.0, 1.0]`.
 pub fn cos(x: f64) -> f64 {
     let pi: f64 = 3.141592653589793;
     let tau: f64 = 6.283185307179586;
@@ -77,6 +105,12 @@ pub fn cos(x: f64) -> f64 {
     return sum;
 }
 
+/// Computes the tangent of an angle `x` specified in radians (`sin(x) / cos(x)`).
+///
+/// Parameters:
+///   `x`: Angle in radians.
+/// Returns:
+///   Tangent value, or infinity if `cos(x) == 0`.
 pub fn tan(x: f64) -> f64 {
     let c: f64 = cos(x);
     if c == 0.0 {
@@ -85,6 +119,7 @@ pub fn tan(x: f64) -> f64 {
     return sin(x) / c;
 }
 
+/// Computes the cotangent of an angle `x` specified in radians (`cos(x) / sin(x)`).
 pub fn cot(x: f64) -> f64 {
     let s: f64 = sin(x);
     if s == 0.0 {
@@ -93,6 +128,7 @@ pub fn cot(x: f64) -> f64 {
     return cos(x) / s;
 }
 
+/// Computes the secant of an angle `x` specified in radians (`1.0 / cos(x)`).
 pub fn sec(x: f64) -> f64 {
     let c: f64 = cos(x);
     if c == 0.0 {
@@ -101,6 +137,7 @@ pub fn sec(x: f64) -> f64 {
     return 1.0 / c;
 }
 
+/// Computes the cosecant of an angle `x` specified in radians (`1.0 / sin(x)`).
 pub fn csc(x: f64) -> f64 {
     let s: f64 = sin(x);
     if s == 0.0 {
@@ -109,6 +146,12 @@ pub fn csc(x: f64) -> f64 {
     return 1.0 / s;
 }
 
+/// Computes the principal value of the arc tangent of `x` in radians.
+///
+/// Parameters:
+///   `x`: Floating-point value.
+/// Returns:
+///   Arc tangent in the interval `[-π/2, π/2]`.
 pub fn atan(x: f64) -> f64 {
     let pi: f64 = 3.141592653589793;
     if x == 0.0 {
@@ -135,6 +178,12 @@ pub fn atan(x: f64) -> f64 {
     return sum;
 }
 
+/// Computes the 2-argument arc tangent of `y` and `x` in radians.
+/// Correctly determines the quadrant of `(x, y)` in `[-π, π]`.
+///
+/// Parameters:
+///   `y`: Y-coordinate.
+///   `x`: X-coordinate.
 pub fn atan2(y: f64, x: f64) -> f64 {
     let pi: f64 = 3.141592653589793;
     if x > 0.0 {
@@ -155,6 +204,12 @@ pub fn atan2(y: f64, x: f64) -> f64 {
     return 0.0;
 }
 
+/// Computes the arc sine of `x` in radians.
+///
+/// Parameters:
+///   `x`: Floating-point value in `[-1.0, 1.0]`.
+/// Returns:
+///   Arc sine in `[-π/2, π/2]`.
 pub fn asin(x: f64) -> f64 {
     let pi: f64 = 3.141592653589793;
     if x > 1.0 || x < 0.0 - 1.0 {
@@ -175,6 +230,12 @@ pub fn asin(x: f64) -> f64 {
     return atan(x / guess);
 }
 
+/// Computes the arc cosine of `x` in radians.
+///
+/// Parameters:
+///   `x`: Floating-point value in `[-1.0, 1.0]`.
+/// Returns:
+///   Arc cosine in `[0, π]`.
 pub fn acos(x: f64) -> f64 {
     let pi: f64 = 3.141592653589793;
     return (pi / 2.0) - asin(x);

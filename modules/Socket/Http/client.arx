@@ -1,11 +1,30 @@
 // ==============================================================================
 // Aerix Standard Library: Socket::Http::Client
-// Lightweight Native HTTP 1.1 Client with GET and POST requests
+// Lightweight Native HTTP 1.1 Client with GET, POST, PUT, DELETE, and HEAD Verbs
+//
+// Overview:
+//   Synchronous HTTP client implementation built on top of native TCP streams.
+//   Handles URL host and path parsing, automatic Content-Length headers, and
+//   structured response generation.
+//
+// Usage:
+//   import "Socket/Http/client.arx"
+//
+//   let res = httpGet("http://127.0.0.1:8080/api/status");
+//   if res.isSuccess() {
+//       println("Response: " + res.body);
+//   }
 // ==============================================================================
 
 import "../client.arx"
 import "./response.arx"
 
+/// Parses a URL into a tuple containing `(host, port, path)`.
+///
+/// Parameters:
+///   `raw_url`: URL string (e.g. "http://example.com:8080/path/to/resource").
+/// Returns:
+///   3-element tuple `(host, port, path)` with defaults `port = 80` and `path = "/"`.
 pub fn parseHostAndPath(raw_url: str) -> (str, i64, str) {
     mut u = raw_url
     if u.starts_with("http://") {
@@ -29,6 +48,12 @@ pub fn parseHostAndPath(raw_url: str) -> (str, i64, str) {
     return (host, port, path)
 }
 
+/// Executes a synchronous HTTP GET request.
+///
+/// Parameters:
+///   `url`: Target HTTP URL.
+/// Returns:
+///   Parsed `HttpResponse` object.
 pub fn httpGet(url: str) -> HttpResponse {
     let resp = HttpResponse()
     let parsed = parseHostAndPath(url)
@@ -42,6 +67,14 @@ pub fn httpGet(url: str) -> HttpResponse {
     return resp
 }
 
+/// Executes a synchronous HTTP POST request with payload body and Content-Type header.
+///
+/// Parameters:
+///   `url`        : Target HTTP URL.
+///   `body`       : Request payload body string.
+///   `contentType`: MIME type string (e.g. "application/json" or "text/plain").
+/// Returns:
+///   Parsed `HttpResponse` object.
 pub fn httpPost(url: str, body: str, contentType: str) -> HttpResponse {
     let resp = HttpResponse()
     let parsed = parseHostAndPath(url)
@@ -56,6 +89,12 @@ pub fn httpPost(url: str, body: str, contentType: str) -> HttpResponse {
     return resp
 }
 
+/// Executes a synchronous HTTP PUT request.
+///
+/// Parameters:
+///   `url`        : Target HTTP URL.
+///   `body`       : Request payload body string.
+///   `contentType`: MIME type string.
 pub fn httpPut(url: str, body: str, contentType: str) -> HttpResponse {
     let resp = HttpResponse()
     let parsed = parseHostAndPath(url)
@@ -70,6 +109,10 @@ pub fn httpPut(url: str, body: str, contentType: str) -> HttpResponse {
     return resp
 }
 
+/// Executes a synchronous HTTP DELETE request.
+///
+/// Parameters:
+///   `url`: Target HTTP URL.
 pub fn httpDelete(url: str) -> HttpResponse {
     let resp = HttpResponse()
     let parsed = parseHostAndPath(url)
@@ -83,6 +126,10 @@ pub fn httpDelete(url: str) -> HttpResponse {
     return resp
 }
 
+/// Executes a synchronous HTTP HEAD request (headers only).
+///
+/// Parameters:
+///   `url`: Target HTTP URL.
 pub fn httpHead(url: str) -> HttpResponse {
     let resp = HttpResponse()
     let parsed = parseHostAndPath(url)

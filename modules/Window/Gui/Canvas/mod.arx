@@ -1,6 +1,21 @@
 // ==============================================================================
 // Aerix Standard Library: Window::Gui::Canvas
-// Hardware-accelerated 2D GDI Graphics Engine and Canvas Drawing
+// Hardware-Accelerated 2D Double-Buffered Graphics & Drawing Primitives
+//
+// Overview:
+//   Re-exports the Canvas 2D double-buffered rendering engine. Provides flicker-free
+//   primitives for drawing rectangles, circles, lines, text strings, and filling
+//   backgrounds with 24-bit RGB colors.
+//
+// Usage:
+//   import "Window/Gui/Canvas/mod.arx"
+//   // or: import "Window"
+//
+//   let cvs = Canvas(win.hwnd, 800, 600);
+//   cvs.begin();
+//   cvs.clear(colorBlack());
+//   cvs.fillRect(50, 50, 100, 100, colorGreen());
+//   cvs.end();
 // ==============================================================================
 
 import "./canvas.arx"

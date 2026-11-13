@@ -1,8 +1,22 @@
 // ==============================================================================
 // Aerix Standard Library: Socket::Http::Response
 // Structured HTTP 1.1 Response Model and Header Parser
+//
+// Overview:
+//   Represents an HTTP 1.1 server response, parsing status codes, status text,
+//   headers, and payload body from raw RFC 7230 socket text streams.
+//
+// Usage:
+//   import "Socket/Http/response.arx"
+//
+//   let resp = HttpResponse();
+//   resp.parse(raw_http_stream);
+//   if resp.isOk() {
+//       println("Success: " + resp.body);
+//   }
 // ==============================================================================
 
+/// Encapsulates a parsed HTTP 1.1 response message.
 pub class HttpResponse {
     pub statusCode: i64
     pub statusText: str
@@ -16,14 +30,20 @@ pub class HttpResponse {
         self.raw = ""
     }
 
+    /// Checks if the response status code is exactly 200 OK.
     pub fn isOk() -> bool {
         return self.statusCode == 200
     }
 
+    /// Checks if the response indicates success (2xx HTTP status code: 200..299).
     pub fn isSuccess() -> bool {
         return self.statusCode >= 200 && self.statusCode < 300
     }
 
+    /// Parses raw HTTP stream text into status code, status message, and body.
+    ///
+    /// Parameters:
+    ///   `raw_data`: Full response text received over socket.
     pub fn parse(raw_data: str) -> void {
         self.raw = raw_data
         let double_crlf = "\r\n\r\n"

@@ -1,8 +1,26 @@
 // ==============================================================================
 // Aerix Standard Library: Time
-// High-resolution clocks, millisecond timers, thread delays, stopwatches, and dates.
+// Unified High-Resolution Timing, Calendar Dates, Delays, and Benchmarking
+//
+// Overview:
+//   The Time module provides primitives for real-time clocks, high-precision
+//   millisecond/microsecond interval timing, CPU thread sleeping, ISO 8601
+//   date/time formatting, and benchmarking stopwatches.
+//
+// Submodules:
+//   - Time::Core     : Wall-clock epoch timestamps (now, epochMs), delays (sleep, sleepMs).
+//   - Time::Date     : Gregorian calendar logic (DateTime, nowLocal, nowUtc, isLeapYear).
+//   - Time::Stopwatch: High-resolution monotonic elapsed timer for benchmarks and loops.
+//
+// Usage:
+//   import "Time"
+//
+//   let sw = Stopwatch();
+//   sw.start();
+//   sleepMs(50);
+//   println("Elapsed ms: " + (sw.elapsedMs() as str));
 // ==============================================================================
 
 import "./core.arx"
-import "./stopwatch.arx"
 import "./date.arx"
+import "./stopwatch.arx"

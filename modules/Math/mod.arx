@@ -1,6 +1,31 @@
 // ==============================================================================
 // Aerix Standard Library: Math
 // Unified Mathematical Algorithms, Constants, Combinatorics, and Geometry
+//
+// Overview:
+//   The Math module provides a complete numerical computing foundation for Aerix.
+//   It re-exports submodules for core arithmetic, exponential and logarithmic
+//   operations, advanced number theory and combinatorics, and trigonometry.
+//
+// Submodules:
+//   - Math::Core        : Fundamental constants (PI, E, TAU), rounding, clamping,
+//                         absolute values, distance metrics (2D/3D), and lerp.
+//   - Math::Exponential : Natural exponential (exp), logarithms (ln, log10, log2),
+//                         and arbitrary power functions (powF64).
+//   - Math::Advanced    : Square roots, cube roots, hypotenuse, factorials,
+//                         permutations (nPr), combinations (nCr), GCD, LCM,
+//                         and prime testing/generation.
+//   - Math::Trigonometry: Full trigonometric and inverse functions (sin, cos, tan,
+//                         cot, sec, csc, atan, atan2, asin, acos).
+//
+// Usage:
+//   import "Math"
+//
+//   fn main() {
+//       let angle_rad = degToRad(45.0);
+//       let s = sin(angle_rad);
+//       println("sin(45 deg) = " + (s as str));
+//   }
 // ==============================================================================
 
 import "./core.arx"

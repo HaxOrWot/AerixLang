@@ -1,36 +1,67 @@
 // ==============================================================================
-// Aerix Standard Modules: Math::Core
-// Fundamental mathematical constants, basic arithmetic, rounding, and interpolation.
+// Aerix Standard Library: Math::Core
+// Fundamental Mathematical Constants, Arithmetic, Rounding, and Interpolation
+//
+// Overview:
+//   Provides fundamental constants of mathematics (PI, E, TAU, etc.) alongside
+//   essential primitive operations: absolute values, bounds clamping, minimum /
+//   maximum selection, floating-point rounding/truncation, Euclidean distance
+//   in 2D/3D coordinate spaces, and linear / Hermite interpolation (lerp, smoothstep).
+//
+// Usage:
+//   import "Math/core.arx"
+//   // or: import "Math"
+//
+//   let half_pi = PI() / 2.0;
+//   let clamped = clamp(val, 0.0, 100.0);
+//   let blend = lerp(0.0, 50.0, 0.5);
 // ==============================================================================
 
+/// Returns the mathematical constant Pi (π ≈ 3.141592653589793).
+/// Ratio of a circle's circumference to its diameter.
 pub fn PI() -> f64 {
     return 3.141592653589793;
 }
 
+/// Returns Euler's number e (e ≈ 2.718281828459045).
+/// Base of the natural logarithm.
 pub fn E() -> f64 {
     return 2.718281828459045;
 }
 
+/// Returns the circle constant Tau (τ = 2π ≈ 6.283185307179586).
+/// Angle measure of a complete turn in radians.
 pub fn TAU() -> f64 {
     return 6.283185307179586;
 }
 
+/// Returns the square root of 2 (√2 ≈ 1.4142135623730951).
+/// Diagonal of a unit square.
 pub fn SQRT2() -> f64 {
     return 1.4142135623730951;
 }
 
+/// Returns the natural logarithm of 2 (ln(2) ≈ 0.6931471805599453).
 pub fn LN2() -> f64 {
     return 0.6931471805599453;
 }
 
+/// Returns the natural logarithm of 10 (ln(10) ≈ 2.302585092994046).
 pub fn LN10() -> f64 {
     return 2.302585092994046;
 }
 
+/// Returns positive floating-point infinity (+∞).
 pub fn INF() -> f64 {
     return 1.0 / 0.0;
 }
 
+/// Computes the absolute value of a 64-bit floating-point number.
+///
+/// Parameters:
+///   `x`: Input floating-point value.
+/// Returns:
+///   Non-negative magnitude `|x|`.
 pub fn abs(x: f64) -> f64 {
     if x < 0.0 {
         return 0.0 - x;
@@ -38,6 +69,12 @@ pub fn abs(x: f64) -> f64 {
     return x;
 }
 
+/// Computes the absolute value of a 64-bit signed integer.
+///
+/// Parameters:
+///   `x`: Input signed integer.
+/// Returns:
+///   Non-negative magnitude `|x|`.
 pub fn absI64(x: i64) -> i64 {
     if x < 0 {
         return 0 - x;
@@ -45,6 +82,13 @@ pub fn absI64(x: i64) -> i64 {
     return x;
 }
 
+/// Returns the lesser of two 64-bit floating-point values.
+///
+/// Parameters:
+///   `a`: First floating-point value.
+///   `b`: Second floating-point value.
+/// Returns:
+///   `a` if `a < b`, else `b`.
 pub fn min(a: f64, b: f64) -> f64 {
     if a < b {
         return a;
@@ -52,6 +96,13 @@ pub fn min(a: f64, b: f64) -> f64 {
     return b;
 }
 
+/// Returns the lesser of two 64-bit signed integers.
+///
+/// Parameters:
+///   `a`: First integer.
+///   `b`: Second integer.
+/// Returns:
+///   `a` if `a < b`, else `b`.
 pub fn minI64(a: i64, b: i64) -> i64 {
     if a < b {
         return a;
@@ -59,6 +110,13 @@ pub fn minI64(a: i64, b: i64) -> i64 {
     return b;
 }
 
+/// Returns the greater of two 64-bit floating-point values.
+///
+/// Parameters:
+///   `a`: First floating-point value.
+///   `b`: Second floating-point value.
+/// Returns:
+///   `a` if `a > b`, else `b`.
 pub fn max(a: f64, b: f64) -> f64 {
     if a > b {
         return a;
@@ -66,6 +124,13 @@ pub fn max(a: f64, b: f64) -> f64 {
     return b;
 }
 
+/// Returns the greater of two 64-bit signed integers.
+///
+/// Parameters:
+///   `a`: First integer.
+///   `b`: Second integer.
+/// Returns:
+///   `a` if `a > b`, else `b`.
 pub fn maxI64(a: i64, b: i64) -> i64 {
     if a > b {
         return a;
@@ -73,6 +138,14 @@ pub fn maxI64(a: i64, b: i64) -> i64 {
     return b;
 }
 
+/// Clamps a floating-point value within the inclusive range `[low, high]`.
+///
+/// Parameters:
+///   `val` : Value to clamp.
+///   `low` : Minimum allowable bound.
+///   `high`: Maximum allowable bound.
+/// Returns:
+///   `low` if `val < low`, `high` if `val > high`, otherwise `val`.
 pub fn clamp(val: f64, low: f64, high: f64) -> f64 {
     if val < low {
         return low;
@@ -83,6 +156,14 @@ pub fn clamp(val: f64, low: f64, high: f64) -> f64 {
     return val;
 }
 
+/// Clamps a 64-bit signed integer within the inclusive range `[low, high]`.
+///
+/// Parameters:
+///   `val` : Value to clamp.
+///   `low` : Minimum allowable bound.
+///   `high`: Maximum allowable bound.
+/// Returns:
+///   `low` if `val < low`, `high` if `val > high`, otherwise `val`.
 pub fn clampI64(val: i64, low: i64, high: i64) -> i64 {
     if val < low {
         return low;
@@ -93,6 +174,10 @@ pub fn clampI64(val: i64, low: i64, high: i64) -> i64 {
     return val;
 }
 
+/// Returns the signum of a floating-point number:
+/// - `1.0` if `x > 0.0`
+/// - `-1.0` if `x < 0.0`
+/// - `0.0` if `x == 0.0`
 pub fn sign(x: f64) -> f64 {
     if x > 0.0 {
         return 1.0;
@@ -103,18 +188,29 @@ pub fn sign(x: f64) -> f64 {
     return 0.0;
 }
 
+/// Tests whether an integer is divisible by 2.
 pub fn isEven(n: i64) -> bool {
     return n % 2 == 0;
 }
 
+/// Tests whether an integer is not divisible by 2.
 pub fn isOdd(n: i64) -> bool {
     return n % 2 != 0;
 }
 
+/// Checks if two floating-point values are approximately equal within a tolerance `epsilon`.
+///
+/// Parameters:
+///   `a`      : First value.
+///   `b`      : Second value.
+///   `epsilon`: Maximum allowable absolute difference.
+/// Returns:
+///   `true` if `|a - b| <= epsilon`, false otherwise.
 pub fn approxEqual(a: f64, b: f64, epsilon: f64) -> bool {
     return abs(a - b) <= epsilon;
 }
 
+/// Returns the largest integer less than or equal to `x` as a float.
 pub fn floor(x: f64) -> f64 {
     let i: i64 = x as i64;
     let fi: f64 = i as f64;
@@ -124,6 +220,7 @@ pub fn floor(x: f64) -> f64 {
     return fi;
 }
 
+/// Returns the smallest integer greater than or equal to `x` as a float.
 pub fn ceil(x: f64) -> f64 {
     let i: i64 = x as i64;
     let fi: f64 = i as f64;
@@ -133,11 +230,13 @@ pub fn ceil(x: f64) -> f64 {
     return fi;
 }
 
+/// Truncates the fractional part of `x`, rounding toward zero.
 pub fn trunc(x: f64) -> f64 {
     let i: i64 = x as i64;
     return i as f64;
 }
 
+/// Rounds `x` to the nearest integer value (half-way cases rounded away from zero).
 pub fn round(x: f64) -> f64 {
     if x >= 0.0 {
         return floor(x + 0.5);
@@ -145,14 +244,24 @@ pub fn round(x: f64) -> f64 {
     return ceil(x - 0.5);
 }
 
+/// Returns the fractional component of `x` (`x - trunc(x)`).
 pub fn fract(x: f64) -> f64 {
     return x - trunc(x);
 }
 
+/// Computes linear interpolation between `a` and `b` by weight factor `t`.
+/// Formula: `a + (b - a) * t`
+///
+/// Parameters:
+///   `a`: Start value (`t = 0.0`).
+///   `b`: End value (`t = 1.0`).
+///   `t`: Weight factor (typically `[0.0, 1.0]`).
 pub fn lerp(a: f64, b: f64, t: f64) -> f64 {
     return a + (b - a) * t;
 }
 
+/// Computes the normalized linear interpolation factor `t` for `val` in `[a, b]`,
+/// clamped to `[0.0, 1.0]`.
 pub fn inverseLerp(a: f64, b: f64, val: f64) -> f64 {
     if a == b {
         return 0.0;
@@ -160,11 +269,17 @@ pub fn inverseLerp(a: f64, b: f64, val: f64) -> f64 {
     return clamp((val - a) / (b - a), 0.0, 1.0);
 }
 
+/// Maps a value `val` from an input range `[inMin, inMax]` to an output range `[outMin, outMax]`.
 pub fn remap(inMin: f64, inMax: f64, outMin: f64, outMax: f64, val: f64) -> f64 {
     let t = inverseLerp(inMin, inMax, val);
     return lerp(outMin, outMax, t);
 }
 
+/// Rounds a floating-point value to a specified number of decimal digits.
+///
+/// Parameters:
+///   `val`     : Input float value.
+///   `decimals`: Number of decimal digits to preserve.
 pub fn roundTo(val: f64, decimals: i64) -> f64 {
     if decimals <= 0 {
         return round(val);
@@ -178,6 +293,8 @@ pub fn roundTo(val: f64, decimals: i64) -> f64 {
     return round(val * factor) / factor;
 }
 
+/// Calculates the 2D Euclidean distance between points `(x1, y1)` and `(x2, y2)`.
+/// Formula: `sqrt((x2 - x1)^2 + (y2 - y1)^2)` using Newton-Raphson approximation.
 pub fn dist2D(x1: f64, y1: f64, x2: f64, y2: f64) -> f64 {
     let dx = x2 - x1;
     let dy = y2 - y1;
@@ -193,6 +310,7 @@ pub fn dist2D(x1: f64, y1: f64, x2: f64, y2: f64) -> f64 {
     return guess;
 }
 
+/// Calculates the 3D Euclidean distance between points `(x1, y1, z1)` and `(x2, y2, z2)`.
 pub fn dist3D(x1: f64, y1: f64, z1: f64, x2: f64, y2: f64, z2: f64) -> f64 {
     let dx = x2 - x1;
     let dy = y2 - y1;
@@ -209,6 +327,8 @@ pub fn dist3D(x1: f64, y1: f64, z1: f64, x2: f64, y2: f64, z2: f64) -> f64 {
     return guess;
 }
 
+/// Performs smooth Hermite interpolation between 0.0 and 1.0 when `edge0 < x < edge1`.
+/// Useful for smooth animations, audio fade envelopes, and shader-style transitions.
 pub fn smoothstep(edge0: f64, edge1: f64, x: f64) -> f64 {
     let t: f64 = clamp((x - edge0) / (edge1 - edge0), 0.0, 1.0);
     return t * t * (3.0 - 2.0 * t);

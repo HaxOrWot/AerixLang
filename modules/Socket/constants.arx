@@ -1,21 +1,32 @@
 // ==============================================================================
 // Aerix Standard Library: Socket::Constants
-// Standard Winsock2 Address Families, Socket Types, and Protocol Identifiers
+// Winsock2 Networking Constants, Protocol Families, and Error Codes
+//
+// Overview:
+//   Standard Winsock2 numerical constants for address families, socket types,
+//   transport protocols, and return codes.
 // ==============================================================================
 
-// Address Families
+/// IPv4 Internet protocol address family (AF_INET = 2)
 pub fn AF_INET() -> i64 { return 2; }
+
+/// IPv6 Internet protocol address family (AF_INET6 = 23)
 pub fn AF_INET6() -> i64 { return 23; }
 
-// Socket Types
+/// Sequenced, reliable, two-way connection-based byte stream socket type (SOCK_STREAM = 1)
 pub fn SOCK_STREAM() -> i64 { return 1; }
-pub fn SOCK_DGRAM() -> i64 { return 2; }
-pub fn SOCK_RAW() -> i64 { return 3; }
 
-// Protocols
+/// Connectionless, unreliable datagram socket type (SOCK_DGRAM = 2)
+pub fn SOCK_DGRAM() -> i64 { return 2; }
+
+/// Transmission Control Protocol identifier (IPPROTO_TCP = 6)
 pub fn IPPROTO_TCP() -> i64 { return 6; }
+
+/// User Datagram Protocol identifier (IPPROTO_UDP = 17)
 pub fn IPPROTO_UDP() -> i64 { return 17; }
 
-// Return codes
+/// Sentinel value indicating an invalid socket descriptor (INVALID_SOCKET = -1)
 pub fn INVALID_SOCKET() -> i64 { return -1; }
+
+/// Sentinel return code indicating socket operation failure (SOCKET_ERROR = -1)
 pub fn SOCKET_ERROR() -> i64 { return -1; }

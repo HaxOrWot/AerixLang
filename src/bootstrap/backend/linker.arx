@@ -90,7 +90,11 @@ pub fn link_c_to_exe_from(c_source: str, c_path: str, exe_path: str, opt_flag: s
     let q = "\""
     mut libs = " -lm"
     if Env.os_name() == "windows" {
-        libs = " -lm -luser32 -lgdi32 -lkernel32 -lwinmm -lws2_32"
+        if c_source.contains("arx_gui_create_window") || c_source.contains("AerixWindowClass") {
+            libs = " -mwindows -lm -luser32 -lgdi32 -lkernel32 -lwinmm -lws2_32"
+        } else {
+            libs = " -lm -luser32 -lgdi32 -lkernel32 -lwinmm -lws2_32"
+        }
     } else {
         libs = " -lm -lpthread"
     }
@@ -99,7 +103,7 @@ pub fn link_c_to_exe_from(c_source: str, c_path: str, exe_path: str, opt_flag: s
     bb.write_str(cc)
     bb.write_str(" -std=c99 ")
     bb.write_str(opt_flag)
-    bb.write_str(" -Wno-unused-function -I")
+    bb.write_str(" -w -Wno-unused-function -I")
     bb.write_str(q)
     bb.write_str(c_dir)
     bb.write_str(q)
