@@ -2048,8 +2048,11 @@ pub class Analyzer {
     }
 
     priv fn analyze_call_arg(arg_id: i64) -> str {
+        if arg_id < 0 { return "i64" }
         if self.nk.get(arg_id) == NK_NAMED_ARG() {
-            let vt = self.analyze_expr(self.la.get(arg_id))
+            let val_node = self.la.get(arg_id)
+            if val_node < 0 { return "i64" }
+            let vt = self.analyze_expr(val_node)
             self.node_types.set(arg_id, vt)
             return vt
         }
