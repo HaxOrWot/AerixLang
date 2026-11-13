@@ -3,6 +3,8 @@
 // Time measurement, delays, and timestamp primitives.
 // ==============================================================================
 
+cextern fn arx_sleep_ms(ms: i64) -> void;
+
 #[extern("kernel32.dll", "GetTickCount64")]
 pub fn ticks() -> i64;
 
@@ -30,11 +32,11 @@ pub fn epochMs() -> i64 {
 }
 
 pub fn sleep(ms: i64) -> void {
-    arx_sleep(ms);
+    arx_sleep_ms(ms);
 }
 
 pub fn sleepMs(ms: i64) -> void {
-    arx_sleep(ms);
+    arx_sleep_ms(ms);
 }
 
 pub fn sleepSecs(secs: f64) -> void {
@@ -42,5 +44,5 @@ pub fn sleepSecs(secs: f64) -> void {
         return;
     }
     let ms = (secs * 1000.0) as i64;
-    arx_sleep(ms);
+    arx_sleep_ms(ms);
 }

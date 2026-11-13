@@ -3,17 +3,18 @@
 // Native Windows OS GUI Window Management Primitives & Event Loop
 // ==============================================================================
 
+cextern fn arx_gui_create_window(title: str, width: i64, height: i64) -> i64;
+cextern fn arx_gui_show_window(hwnd: i64) -> bool;
+cextern fn arx_gui_hide_window(hwnd: i64) -> bool;
+cextern fn arx_gui_destroy_window(hwnd: i64) -> bool;
+cextern fn arx_gui_is_window_visible(hwnd: i64) -> bool;
+cextern fn arx_gui_poll_events() -> bool;
+
 #[extern("user32.dll", "CreateWindowExA")]
 pub fn win32_create_window_ex(ex_style: i64, class_name: str, window_name: str, style: i64, x: i64, y: i64, width: i64, height: i64, parent: i64, menu: i64, instance: i64, param: i64) -> i64;
 
-#[extern("user32.dll", "ShowWindow")]
-pub fn win32_show_window(hwnd: i64, cmd_show: i64) -> i32;
-
-#[extern("user32.dll", "UpdateWindow")]
-pub fn win32_update_window(hwnd: i64) -> i32;
-
-#[extern("user32.dll", "DestroyWindow")]
-pub fn win32_destroy_window(hwnd: i64) -> i32;
+#[extern("user32.dll", "EnableWindow")]
+pub fn win32_enable_window(hwnd: i64, enable: i32) -> i32;
 
 #[extern("user32.dll", "SetWindowTextA")]
 pub fn win32_set_window_text(hwnd: i64, title: str) -> i32;
@@ -21,44 +22,34 @@ pub fn win32_set_window_text(hwnd: i64, title: str) -> i32;
 #[extern("user32.dll", "MoveWindow")]
 pub fn win32_move_window(hwnd: i64, x: i64, y: i64, width: i64, height: i64, repaint: i32) -> i32;
 
-#[extern("user32.dll", "IsWindowVisible")]
-pub fn win32_is_window_visible(hwnd: i64) -> i32;
+#[extern("user32.dll", "ShowWindow")]
+pub fn win32_show_window_cmd(hwnd: i64, cmd: i32) -> i32;
 
-#[extern("user32.dll", "EnableWindow")]
-pub fn win32_enable_window(hwnd: i64, enable: i32) -> i32;
+#[extern("user32.dll", "SetForegroundWindow")]
+pub fn win32_set_foreground_window(hwnd: i64) -> i32;
 
-#[extern("user32.dll", "PeekMessageA")]
-pub fn win32_peek_message(lpMsg: str, hwnd: i64, msgFilterMin: i64, msgFilterMax: i64, removeMsg: i64) -> i32;
-
-#[extern("user32.dll", "TranslateMessage")]
-pub fn win32_translate_message(lpMsg: str) -> i32;
-
-#[extern("user32.dll", "DispatchMessageA")]
-pub fn win32_dispatch_message(lpMsg: str) -> i64;
-
-// Window Styles
-pub let WS_OVERLAPPED_WINDOW: i64 = 13565952; // WS_OVERLAPPEDWINDOW
-pub let WS_POPUP_WINDOW: i64 = 2156396544;   // WS_POPUPWINDOW
-pub let WS_VISIBLE_FLAG: i64 = 268435456;    // WS_VISIBLE
+// Window Styles & Constants
+pub let WS_OVERLAPPED_WINDOW: i64 = 13565952;
+pub let WS_POPUP_WINDOW: i64 = 2156396544;
+pub let WS_VISIBLE_FLAG: i64 = 268435456;
 pub let SW_SHOW_NORMAL: i64 = 1;
 pub let SW_SHOW_CMD: i64 = 5;
 pub let SW_HIDE_CMD: i64 = 0;
+pub let SW_MINIMIZE_CMD: i64 = 6;
+pub let SW_MAXIMIZE_CMD: i64 = 3;
+pub let SW_RESTORE_CMD: i64 = 9;
 pub let PM_REMOVE: i64 = 1;
 
 pub fn createWindow(title: str, width: i64, height: i64) -> i64 {
-    let hwnd = win32_create_window_ex(0, "STATIC", title, WS_OVERLAPPED_WINDOW, 100, 100, width, height, 0, 0, 0, 0);
-    return hwnd;
+    return arx_gui_create_window(title, width, height);
 }
 
 pub fn showWindow(hwnd: i64, cmd: i64) -> bool {
-    let res = win32_show_window(hwnd, cmd);
-    win32_update_window(hwnd);
-    return res != 0;
+    return arx_gui_show_window(hwnd);
 }
 
 pub fn hideWindow(hwnd: i64) -> bool {
-    let res = win32_show_window(hwnd, SW_HIDE_CMD);
-    return res != 0;
+    return arx_gui_hide_window(hwnd);
 }
 
 pub fn setWindowTitle(hwnd: i64, title: str) -> bool {
@@ -67,8 +58,7 @@ pub fn setWindowTitle(hwnd: i64, title: str) -> bool {
 }
 
 pub fn destroyWindow(hwnd: i64) -> bool {
-    let res = win32_destroy_window(hwnd);
-    return res != 0;
+    return arx_gui_destroy_window(hwnd);
 }
 
 pub fn moveWindow(hwnd: i64, x: i64, y: i64, width: i64, height: i64) -> bool {
@@ -77,19 +67,12 @@ pub fn moveWindow(hwnd: i64, x: i64, y: i64, width: i64, height: i64) -> bool {
 }
 
 pub fn isWindowVisible(hwnd: i64) -> bool {
-    return win32_is_window_visible(hwnd) != 0;
+    return arx_gui_is_window_visible(hwnd);
 }
 
-// Pumps all pending Windows OS messages without blocking
+// Pumps all pending Windows OS messages; returns false if WM_QUIT received
 pub fn pollEvents() -> bool {
-    let msg_buf = " ".repeat(48);
-    mut dispatched = false;
-    while win32_peek_message(msg_buf, 0, 0, 0, PM_REMOVE) != 0 {
-        win32_translate_message(msg_buf);
-        win32_dispatch_message(msg_buf);
-        dispatched = true;
-    }
-    return dispatched;
+    return arx_gui_poll_events();
 }
 
 pub class AppWindow {
@@ -138,8 +121,32 @@ pub class AppWindow {
         return pollEvents()
     }
 
+    pub fn setFocus() -> void {
+        if self.hwnd != 0 {
+            win32_set_foreground_window(self.hwnd)
+        }
+    }
+
+    pub fn minimize() -> void {
+        if self.hwnd != 0 {
+            win32_show_window_cmd(self.hwnd, SW_MINIMIZE_CMD as i32)
+        }
+    }
+
+    pub fn maximize() -> void {
+        if self.hwnd != 0 {
+            win32_show_window_cmd(self.hwnd, SW_MAXIMIZE_CMD as i32)
+        }
+    }
+
+    pub fn restore() -> void {
+        if self.hwnd != 0 {
+            win32_show_window_cmd(self.hwnd, SW_RESTORE_CMD as i32)
+        }
+    }
+
     pub fn isOpen() -> bool {
-        return self.is_open && self.hwnd != 0
+        return self.is_open && isWindowVisible(self.hwnd)
     }
 
     pub fn close() -> void {
