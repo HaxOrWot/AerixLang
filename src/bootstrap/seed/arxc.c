@@ -19958,9 +19958,9 @@ const char* Arx_Emitter_gen_builtin_call(Arx_Emitter* self, int64_t nid, const c
         int64_t __t8372 = Arx_Emitter_child_at(self, nid, ((int64_t)0LL));
         const char* __t8373 = Arx_Emitter_gen_expr(self, __t8372);
         const char* av = __t8373;
-        const char* __t8374 = "((int64_t)(unsigned char)(";
+        const char* __t8374 = "((int64_t)(unsigned char)((";
         const char* __t8375 = arx_str_concat(__t8374, av);
-        const char* __t8376 = "))";
+        const char* __t8376 = ")[0]))";
         const char* __t8377 = arx_str_concat(__t8375, __t8376);
         const char* __t8378 = __t8377;
         return __t8378;

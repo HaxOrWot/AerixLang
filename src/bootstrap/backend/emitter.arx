@@ -2758,7 +2758,7 @@ pub class Emitter {
         }
         if name == "ord" && ac >= 1 {
             let av = self.gen_expr(self.child_at(nid, 0))
-            return "((int64_t)(unsigned char)(" + av + "))"
+            return "((int64_t)(unsigned char)((" + av + ")[0]))"
         }
         if name == "len" && ac >= 1 {
             let a0 = self.child_at(nid, 0)
