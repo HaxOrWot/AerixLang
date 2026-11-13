@@ -1892,6 +1892,7 @@ pub class Parser {
     }
 
     priv fn parse_infix(left: i64, prec: i64) -> i64 {
+        if left < 0 { return -1 }
         let op_idx = self.adv()
         let k = self.tok_kinds.get(op_idx)
         let op_str = self.tok_vals.get(op_idx)
@@ -1949,6 +1950,7 @@ pub class Parser {
 
     pub fn parse_expr(min_prec: i64) -> i64 {
         mut left = self.parse_prefix()
+        if left < 0 { return -1 }
         while true {
             let k = self.cur_kind()
             let p = self.get_prec(k)
@@ -1956,6 +1958,7 @@ pub class Parser {
                 break
             }
             left = self.parse_infix(left, p)
+            if left < 0 { return -1 }
         }
         return left
     }

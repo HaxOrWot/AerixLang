@@ -2058,6 +2058,10 @@ pub class Analyzer {
 
     priv fn analyze_call(nid: i64) -> str {
         let callee = self.la.get(nid)
+        if callee < 0 {
+            self.node_types.set(nid, "i64")
+            return "i64"
+        }
         let arg_types = List<str>()
         let ac = self.child_count(nid)
         mut i = 0
