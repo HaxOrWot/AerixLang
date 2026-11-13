@@ -22,6 +22,80 @@ const TOKEN_MODIFIERS = [
     'declaration', 'definition', 'readonly', 'static', 'defaultLibrary', 'documentation', 'abstract', 'controlFlow'
 ];
 
+const AERIX_FALLBACK_COMPLETIONS = [
+    // Keywords & Declarations
+    { label: 'fn', kind: vscode.CompletionItemKind.Keyword, detail: 'fn name(params) -> type', insertText: 'fn ${1:name}(${2:params}) -> ${3:void} {\n\t${0}\n}' },
+    { label: 'struct', kind: vscode.CompletionItemKind.Struct, detail: 'struct Name { pub field: type }', insertText: 'struct ${1:Name} {\n\tpub ${2:field}: ${3:i64}\n\n\tinit(${2:field}: ${3:i64}) {\n\t\tself.${2:field} = ${2:field}\n\t}\n}' },
+    { label: 'class', kind: vscode.CompletionItemKind.Class, detail: 'class Name { pub field: type }', insertText: 'class ${1:Name} {\n\tpub ${2:field}: ${3:str}\n\n\tinit(${2:field}: ${3:str}) {\n\t\tself.${2:field} = ${2:field}\n\t}\n}' },
+    { label: 'enum', kind: vscode.CompletionItemKind.Enum, detail: 'enum Name { Variant1, Variant2 }', insertText: 'enum ${1:Name} {\n\t${2:Variant1},\n\t${3:Variant2}\n}' },
+    { label: 'trait', kind: vscode.CompletionItemKind.Interface, detail: 'trait Name { fn method() }', insertText: 'trait ${1:Name} {\n\tfn ${2:method}() -> ${3:void}\n}' },
+    { label: 'extend', kind: vscode.CompletionItemKind.Keyword, detail: 'extend Type { pub fn ... }', insertText: 'extend ${1:Type} {\n\tpub fn ${2:method}() -> ${3:void} {\n\t\t${0}\n\t}\n}' },
+    { label: 'let', kind: vscode.CompletionItemKind.Keyword, detail: 'let var = value', insertText: 'let ${1:name} = ${0}' },
+    { label: 'mut', kind: vscode.CompletionItemKind.Keyword, detail: 'mut var = value', insertText: 'mut ${1:name} = ${0}' },
+    { label: 'const', kind: vscode.CompletionItemKind.Keyword, detail: 'const NAME: type = val', insertText: 'const ${1:NAME}: ${2:i64} = ${0}' },
+    { label: 'if', kind: vscode.CompletionItemKind.Keyword, detail: 'if condition { ... }', insertText: 'if ${1:condition} {\n\t${0}\n}' },
+    { label: 'ifelse', kind: vscode.CompletionItemKind.Snippet, detail: 'if cond { ... } else { ... }', insertText: 'if ${1:condition} {\n\t${2}\n} else {\n\t${0}\n}' },
+    { label: 'for', kind: vscode.CompletionItemKind.Keyword, detail: 'for i in 0..10', insertText: 'for ${1:i} in ${2:0}..${3:10} {\n\t${0}\n}' },
+    { label: 'for_in', kind: vscode.CompletionItemKind.Snippet, detail: 'for item in collection', insertText: 'for ${1:item} in ${2:items} {\n\t${0}\n}' },
+    { label: 'while', kind: vscode.CompletionItemKind.Keyword, detail: 'while condition { ... }', insertText: 'while ${1:condition} {\n\t${0}\n}' },
+    { label: 'guard', kind: vscode.CompletionItemKind.Keyword, detail: 'guard cond else { return }', insertText: 'guard ${1:condition} else {\n\t${0:return}\n}' },
+    { label: 'defer', kind: vscode.CompletionItemKind.Keyword, detail: 'defer cleanup()', insertText: 'defer ${0:cleanup()}' },
+    { label: 'match', kind: vscode.CompletionItemKind.Keyword, detail: 'match expr { case ... => ... }', insertText: 'match ${1:expr} {\n\tcase ${2:pattern} => {\n\t\t${0}\n\t}\n}' },
+    { label: 'try', kind: vscode.CompletionItemKind.Keyword, detail: 'try { ... } catch err { ... }', insertText: 'try {\n\t${1}\n} catch ${2:err} {\n\t${0}\n}' },
+    { label: 'return', kind: vscode.CompletionItemKind.Keyword, detail: 'return value', insertText: 'return ${0};' },
+    { label: 'spawn', kind: vscode.CompletionItemKind.Keyword, detail: 'spawn { ... }', insertText: 'let ${1:th} = spawn {\n\t${0}\n}' },
+    { label: 'import', kind: vscode.CompletionItemKind.Keyword, detail: 'import Module', insertText: 'import ${0:Math}' },
+    { label: 'from', kind: vscode.CompletionItemKind.Keyword, detail: 'from Module import ...', insertText: 'from ${1:Window.Gui.Canvas} import ${0:colorRed}' },
+    // Standard Built-in Functions & Methods
+    { label: 'println', kind: vscode.CompletionItemKind.Function, detail: 'println(text: str) -> void', insertText: 'println(${1:"${0}"})' },
+    { label: 'print', kind: vscode.CompletionItemKind.Function, detail: 'print(text: str) -> void', insertText: 'print(${1:val})' },
+    { label: 'eprintln', kind: vscode.CompletionItemKind.Function, detail: 'eprintln(text: str) -> void', insertText: 'eprintln(${1:val})' },
+    { label: 'len', kind: vscode.CompletionItemKind.Function, detail: 'len(collection) -> i64', insertText: 'len(${1:coll})' },
+    { label: 'assert', kind: vscode.CompletionItemKind.Function, detail: 'assert(cond: bool)', insertText: 'assert(${1:condition})' },
+    { label: 'assert_eq', kind: vscode.CompletionItemKind.Function, detail: 'assert_eq(actual, expected)', insertText: 'assert_eq(${1:actual}, ${2:expected})' },
+    { label: 'rgb', kind: vscode.CompletionItemKind.Function, detail: 'rgb(r: i64, g: i64, b: i64) -> i64', insertText: 'rgb(${1:255}, ${2:0}, ${3:0})' },
+    { label: 'RGB', kind: vscode.CompletionItemKind.Function, detail: 'RGB(r: i64, g: i64, b: i64) -> i64', insertText: 'RGB(${1:255}, ${2:0}, ${3:0})' },
+    { label: 'colorRed', kind: vscode.CompletionItemKind.Function, detail: 'colorRed() -> i64 (0x0000FF)', insertText: 'colorRed()' },
+    { label: 'colorBlack', kind: vscode.CompletionItemKind.Function, detail: 'colorBlack() -> i64 (0x000000)', insertText: 'colorBlack()' },
+    { label: 'colorWhite', kind: vscode.CompletionItemKind.Function, detail: 'colorWhite() -> i64 (0xFFFFFF)', insertText: 'colorWhite()' },
+    { label: 'colorGreen', kind: vscode.CompletionItemKind.Function, detail: 'colorGreen() -> i64 (0x00FF00)', insertText: 'colorGreen()' },
+    { label: 'colorBlue', kind: vscode.CompletionItemKind.Function, detail: 'colorBlue() -> i64 (0xFF0000)', insertText: 'colorBlue()' },
+    { label: 'colorYellow', kind: vscode.CompletionItemKind.Function, detail: 'colorYellow() -> i64 (0x00FFFF)', insertText: 'colorYellow()' },
+    { label: 'colorCyan', kind: vscode.CompletionItemKind.Function, detail: 'colorCyan() -> i64 (0xFFFF00)', insertText: 'colorCyan()' },
+    { label: 'colorGray', kind: vscode.CompletionItemKind.Function, detail: 'colorGray() -> i64 (0x808080)', insertText: 'colorGray()' },
+    // Standard Primitive Types
+    { label: 'i64', kind: vscode.CompletionItemKind.TypeParameter, detail: '64-bit signed integer' },
+    { label: 'i32', kind: vscode.CompletionItemKind.TypeParameter, detail: '32-bit signed integer' },
+    { label: 'u8', kind: vscode.CompletionItemKind.TypeParameter, detail: '8-bit unsigned byte' },
+    { label: 'f64', kind: vscode.CompletionItemKind.TypeParameter, detail: '64-bit IEEE 754 float' },
+    { label: 'bool', kind: vscode.CompletionItemKind.TypeParameter, detail: 'Boolean (true / false)' },
+    { label: 'char', kind: vscode.CompletionItemKind.TypeParameter, detail: 'Unicode codepoint character' },
+    { label: 'str', kind: vscode.CompletionItemKind.TypeParameter, detail: 'Immutable UTF-8 string' },
+    { label: 'void', kind: vscode.CompletionItemKind.TypeParameter, detail: 'Unit / void return type' },
+    // Standard Collections & Modules
+    { label: 'List', kind: vscode.CompletionItemKind.Class, detail: 'Dynamic growable array List<T>', insertText: 'List<${1:i64}>()' },
+    { label: 'Map', kind: vscode.CompletionItemKind.Class, detail: 'Key-value hash map Map<K, V>', insertText: 'Map<${1:str}, ${2:i64}>()' },
+    { label: 'Set', kind: vscode.CompletionItemKind.Class, detail: 'Unique element hash set Set<T>', insertText: 'Set<${1:str}>()' },
+    { label: 'Channel', kind: vscode.CompletionItemKind.Class, detail: 'Thread-safe bounded channel Channel<T>', insertText: 'Channel<${1:str}>(${2:32})' },
+    { label: 'Math', kind: vscode.CompletionItemKind.Module, detail: 'Standard mathematics module' },
+    { label: 'Random', kind: vscode.CompletionItemKind.Module, detail: 'PRNG pseudo-random generator module' },
+    { label: 'Time', kind: vscode.CompletionItemKind.Module, detail: 'High-resolution timing & clock module' },
+    { label: 'Socket', kind: vscode.CompletionItemKind.Module, detail: 'TCP/UDP networking module' },
+    { label: 'Canvas', kind: vscode.CompletionItemKind.Class, detail: 'Double-buffered GDI graphics canvas', insertText: 'Canvas(${1:hwnd})' },
+    { label: 'Application', kind: vscode.CompletionItemKind.Class, detail: 'Native Win32 GUI application window', insertText: 'Application("${1:Title}", ${2:800}, ${3:600})' }
+];
+
+function buildFallbackCompletions() {
+    return AERIX_FALLBACK_COMPLETIONS.map((fb) => {
+        const ci = new vscode.CompletionItem(fb.label, fb.kind);
+        ci.detail = fb.detail;
+        if (fb.insertText) {
+            ci.insertText = new vscode.SnippetString(fb.insertText);
+        }
+        return ci;
+    });
+}
+
 const SEMANTIC_LEGEND = new vscode.SemanticTokensLegend(TOKEN_TYPES, TOKEN_MODIFIERS);
 
 function resolveAerixBinary() {
@@ -461,6 +535,9 @@ function activate(context) {
                     position: toLspPos(pos)
                 }, doc);
                 const items = res && Array.isArray(res.items) ? res.items : (Array.isArray(res) ? res : []);
+                if (!items.length) {
+                    return buildFallbackCompletions();
+                }
                 return items.map((it) => {
                     const labelObj = it.labelDetails
                         ? {
@@ -493,7 +570,7 @@ function activate(context) {
                     return ci;
                 });
             }
-        }, '.', '>', ':', '<', '"', '/'),
+        }, '.', '>', ':', '<', '"', '/', '$', '~', '@', '#', '{', ' '),
 
         vscode.languages.registerHoverProvider(sel, {
             async provideHover(doc, pos) {
@@ -720,7 +797,64 @@ function activate(context) {
                     return action;
                 });
             }
-        }, { providedCodeActionKinds: [vscode.CodeActionKind.QuickFix] })
+        }, { providedCodeActionKinds: [vscode.CodeActionKind.QuickFix] }),
+
+        vscode.languages.registerColorProvider(sel, {
+            provideDocumentColors(doc) {
+                const text = doc.getText();
+                const colors = [];
+                const rgbRegex = /\b(?:RGB|rgb)\s*\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)/g;
+                let match;
+                while ((match = rgbRegex.exec(text)) !== null) {
+                    const startPos = doc.positionAt(match.index);
+                    const endPos = doc.positionAt(match.index + match[0].length);
+                    const r = Math.min(255, Math.max(0, parseInt(match[1], 10))) / 255;
+                    const g = Math.min(255, Math.max(0, parseInt(match[2], 10))) / 255;
+                    const b = Math.min(255, Math.max(0, parseInt(match[3], 10))) / 255;
+                    colors.push(new vscode.ColorInformation(new vscode.Range(startPos, endPos), new vscode.Color(r, g, b, 1)));
+                }
+                const hexRegex = /(?:#|0x)([0-9a-fA-F]{6})\b/g;
+                while ((match = hexRegex.exec(text)) !== null) {
+                    const startPos = doc.positionAt(match.index);
+                    const endPos = doc.positionAt(match.index + match[0].length);
+                    const hex = match[1];
+                    const r = parseInt(hex.slice(0, 2), 16) / 255;
+                    const g = parseInt(hex.slice(2, 4), 16) / 255;
+                    const b = parseInt(hex.slice(4, 6), 16) / 255;
+                    colors.push(new vscode.ColorInformation(new vscode.Range(startPos, endPos), new vscode.Color(r, g, b, 1)));
+                }
+                return colors;
+            },
+            provideColorPresentations(color) {
+                const r = Math.round(color.red * 255);
+                const g = Math.round(color.green * 255);
+                const b = Math.round(color.blue * 255);
+                const hex = ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1).toUpperCase();
+                return [
+                    new vscode.ColorPresentation(`RGB(${r}, ${g}, ${b})`),
+                    new vscode.ColorPresentation(`rgb(${r}, ${g}, ${b})`),
+                    new vscode.ColorPresentation(`"#${hex.toLowerCase()}"`),
+                    new vscode.ColorPresentation(`0x${hex}`)
+                ];
+            }
+        }),
+
+        vscode.languages.registerDocumentLinkProvider(sel, {
+            provideDocumentLinks(doc) {
+                const text = doc.getText();
+                const links = [];
+                const impRegex = /(?:import|from)\s+["']([^"']+\.arx)["']/g;
+                let match;
+                const dir = path.dirname(doc.fileName);
+                while ((match = impRegex.exec(text)) !== null) {
+                    const targetPath = path.resolve(dir, match[1]);
+                    const startPos = doc.positionAt(match.index + match[0].indexOf(match[1]));
+                    const endPos = doc.positionAt(match.index + match[0].indexOf(match[1]) + match[1].length);
+                    links.push(new vscode.DocumentLink(new vscode.Range(startPos, endPos), vscode.Uri.file(targetPath)));
+                }
+                return links;
+            }
+        })
     );
 
     // Commands

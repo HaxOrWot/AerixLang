@@ -2,7 +2,7 @@
   "name": "aerix",
   "displayName": "Aerix Language & IntelliSense Support",
   "description": "Official language support, IntelliSense completions, hover documentation, syntax highlighting, and X file icon for Aerix (.arx).",
-  "version": "1.1.16-b",
+  "version": "1.2.20-b",
   "publisher": "aerix-lang",
   "icon": "icons/aerix-icon.png",
   "engines": {
@@ -40,6 +40,9 @@
         "extensions": [
           ".arx"
         ],
+        "filenamePatterns": [
+          "*.arx"
+        ],
         "configuration": "./language-configuration.json",
         "icon": {
           "light": "./icons/aerix-icon.svg",
@@ -55,6 +58,9 @@
       }
     ],
     "configurationDefaults": {
+      "files.associations": {
+        "*.arx": "aerix"
+      },
       "[aerix]": {
         "editor.semanticHighlighting.enabled": true,
         "editor.quickSuggestions": {
@@ -63,7 +69,10 @@
           "strings": "on"
         },
         "editor.suggest.showStatusBar": true,
-        "editor.parameterHints.enabled": true
+        "editor.parameterHints.enabled": true,
+        "editor.suggestOnTriggerCharacters": true,
+        "editor.acceptSuggestionOnEnter": "on",
+        "editor.snippetSuggestions": "top"
       }
     },
     "semanticTokenScopes": [

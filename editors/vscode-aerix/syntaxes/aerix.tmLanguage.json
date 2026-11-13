@@ -15,7 +15,8 @@
     { "include": "#types" },
     { "include": "#builtins" },
     { "include": "#operators" },
-    { "include": "#calls" }
+    { "include": "#calls" },
+    { "include": "#identifiers" }
   ],
   "repository": {
     "comments": {
@@ -59,23 +60,63 @@
     "strings": {
       "patterns": [
         {
-          "name": "string.quoted.double.aerix",
-          "begin": "\"",
-          "end": "\"",
+          "name": "string.quoted.triple.double.aerix",
+          "begin": "\"\"\"",
+          "beginCaptures": { "0": { "name": "punctuation.definition.string.begin.aerix" } },
+          "end": "\"\"\"",
+          "endCaptures": { "0": { "name": "punctuation.definition.string.end.aerix" } },
           "patterns": [
-            {
-              "name": "constant.character.escape.aerix",
-              "match": "\\\\."
-            },
+            { "name": "constant.character.escape.aerix", "match": "\\\\." },
             {
               "name": "meta.embedded.expression.aerix",
               "begin": "\\{",
               "beginCaptures": { "0": { "name": "punctuation.definition.template-expression.begin.aerix" } },
               "end": "\\}",
               "endCaptures": { "0": { "name": "punctuation.definition.template-expression.end.aerix" } },
-              "patterns": [
-                { "include": "$self" }
-              ]
+              "patterns": [ { "include": "$self" } ]
+            }
+          ]
+        },
+        {
+          "name": "string.quoted.double.interpolated.aerix",
+          "begin": "\\$\"",
+          "beginCaptures": { "0": { "name": "punctuation.definition.string.begin.interpolated.aerix" } },
+          "end": "\"",
+          "endCaptures": { "0": { "name": "punctuation.definition.string.end.aerix" } },
+          "patterns": [
+            { "name": "constant.character.escape.aerix", "match": "\\\\." },
+            {
+              "name": "meta.embedded.expression.aerix",
+              "begin": "\\{",
+              "beginCaptures": { "0": { "name": "punctuation.definition.template-expression.begin.aerix" } },
+              "end": "\\}",
+              "endCaptures": { "0": { "name": "punctuation.definition.template-expression.end.aerix" } },
+              "patterns": [ { "include": "$self" } ]
+            }
+          ]
+        },
+        {
+          "name": "string.quoted.double.raw.aerix",
+          "begin": "\\br\"",
+          "beginCaptures": { "0": { "name": "punctuation.definition.string.begin.raw.aerix" } },
+          "end": "\"",
+          "endCaptures": { "0": { "name": "punctuation.definition.string.end.aerix" } }
+        },
+        {
+          "name": "string.quoted.double.aerix",
+          "begin": "\"",
+          "beginCaptures": { "0": { "name": "punctuation.definition.string.begin.aerix" } },
+          "end": "\"",
+          "endCaptures": { "0": { "name": "punctuation.definition.string.end.aerix" } },
+          "patterns": [
+            { "name": "constant.character.escape.aerix", "match": "\\\\." },
+            {
+              "name": "meta.embedded.expression.aerix",
+              "begin": "\\{",
+              "beginCaptures": { "0": { "name": "punctuation.definition.template-expression.begin.aerix" } },
+              "end": "\\}",
+              "endCaptures": { "0": { "name": "punctuation.definition.template-expression.end.aerix" } },
+              "patterns": [ { "include": "$self" } ]
             }
           ]
         }
@@ -116,24 +157,62 @@
     "declarations": {
       "patterns": [
         {
-          "match": "\\b(fn|init|drop)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+          "match": "\\b(pub|priv|prot)?\\s*(fn|init|drop|prop|op)\\s+([A-Za-z_][A-Za-z0-9_]*)",
           "captures": {
-            "1": { "name": "keyword.declaration.function.aerix" },
-            "2": { "name": "entity.name.function.aerix" }
+            "1": { "name": "storage.modifier.aerix" },
+            "2": { "name": "keyword.declaration.function.aerix" },
+            "3": { "name": "entity.name.function.aerix" }
           }
         },
         {
-          "match": "\\b(class|struct|trait|extend|type)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+          "match": "\\b(pub|priv|prot)?\\s*(class|struct|trait|extend|type)\\s+([A-Za-z_][A-Za-z0-9_]*)",
           "captures": {
-            "1": { "name": "storage.type.aerix" },
-            "2": { "name": "entity.name.type.class.aerix" }
+            "1": { "name": "storage.modifier.aerix" },
+            "2": { "name": "storage.type.aerix" },
+            "3": { "name": "entity.name.type.class.aerix" }
           }
         },
         {
-          "match": "\\b(enum)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+          "match": "\\b(pub|priv|prot)?\\s*(enum)\\s+([A-Za-z_][A-Za-z0-9_]*)",
           "captures": {
-            "1": { "name": "storage.type.enum.aerix" },
-            "2": { "name": "entity.name.type.enum.aerix" }
+            "1": { "name": "storage.modifier.aerix" },
+            "2": { "name": "storage.type.enum.aerix" },
+            "3": { "name": "entity.name.type.enum.aerix" }
+          }
+        },
+        {
+          "match": "\\b(let|mut)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": { "name": "keyword.declaration.variable.aerix" },
+            "2": { "name": "variable.other.readwrite.aerix" }
+          }
+        },
+        {
+          "match": "\\b(const)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": { "name": "storage.modifier.aerix" },
+            "2": { "name": "variable.other.constant.aerix" }
+          }
+        },
+        {
+          "match": "\\b(pub|priv|prot)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*(?=:)",
+          "captures": {
+            "1": { "name": "storage.modifier.aerix" },
+            "2": { "name": "variable.other.property.aerix" }
+          }
+        },
+        {
+          "match": "(:)\\s*([A-Za-z_][A-Za-z0-9_]*(?:<[^>]+>)?)",
+          "captures": {
+            "1": { "name": "punctuation.separator.type.aerix" },
+            "2": { "name": "entity.name.type.aerix" }
+          }
+        },
+        {
+          "match": "(->|=>)\\s*([A-Za-z_][A-Za-z0-9_]*(?:<[^>]+>)?)",
+          "captures": {
+            "1": { "name": "keyword.operator.arrow.aerix" },
+            "2": { "name": "entity.name.type.aerix" }
           }
         }
       ]
@@ -151,33 +230,11 @@
           "end": "(?=[;\\n]|$)",
           "patterns": [
             {
-              "match": "\\b(as)\\s+([A-Z_][A-Z0-9_]*)\\b",
+              "match": "\\b(as)\\s+([A-Za-z_][A-Za-z0-9_]*)\\b",
               "captures": {
                 "1": { "name": "keyword.control.as.aerix" },
                 "2": { "name": "variable.other.constant.aerix" }
               }
-            },
-            {
-              "match": "\\b(as)\\s+([A-Z][A-Za-z0-9_]*)\\b",
-              "captures": {
-                "1": { "name": "keyword.control.as.aerix" },
-                "2": { "name": "entity.name.type.class.aerix" }
-              }
-            },
-            {
-              "match": "\\b(as)\\s+([a-z_][A-Za-z0-9_]*)\\b",
-              "captures": {
-                "1": { "name": "keyword.control.as.aerix" },
-                "2": { "name": "entity.name.function.aerix" }
-              }
-            },
-            {
-              "name": "keyword.control.as.aerix",
-              "match": "\\bas\\b"
-            },
-            {
-              "name": "variable.other.constant.aerix",
-              "match": "\\b[A-Z_][A-Z0-9_]*\\b"
             },
             {
               "name": "entity.name.type.class.aerix",
@@ -211,33 +268,11 @@
           },
           "patterns": [
             {
-              "match": "\\b(as)\\s+([A-Z_][A-Z0-9_]*)\\b",
+              "match": "\\b(as)\\s+([A-Za-z_][A-Za-z0-9_]*)\\b",
               "captures": {
                 "1": { "name": "keyword.control.as.aerix" },
                 "2": { "name": "variable.other.constant.aerix" }
               }
-            },
-            {
-              "match": "\\b(as)\\s+([A-Z][A-Za-z0-9_]*)\\b",
-              "captures": {
-                "1": { "name": "keyword.control.as.aerix" },
-                "2": { "name": "entity.name.type.class.aerix" }
-              }
-            },
-            {
-              "match": "\\b(as)\\s+([a-z_][A-Za-z0-9_]*)\\b",
-              "captures": {
-                "1": { "name": "keyword.control.as.aerix" },
-                "2": { "name": "entity.name.function.aerix" }
-              }
-            },
-            {
-              "name": "keyword.control.as.aerix",
-              "match": "\\bas\\b"
-            },
-            {
-              "name": "variable.other.constant.aerix",
-              "match": "\\b[A-Z_][A-Z0-9_]*\\b"
             },
             {
               "name": "entity.name.type.class.aerix",
@@ -294,7 +329,7 @@
         },
         {
           "name": "keyword.control.aerix",
-          "match": "\\b(if|else|elif|match|for|in|while|loop|break|continue|return|guard|defer|try|catch|finally|throw|spawn)\\b"
+          "match": "\\b(if|else|elif|match|case|for|in|while|loop|break|continue|return|guard|defer|try|catch|finally|throw|spawn|yield|async|await)\\b"
         },
         {
           "name": "keyword.declaration.aerix",
@@ -306,7 +341,7 @@
         },
         {
           "name": "keyword.other.aerix",
-          "match": "\\b(use|cinclude|cextern|new|delete|sizeof)\\b"
+          "match": "\\b(use|cinclude|cextern|new|delete|sizeof|typeof|is)\\b"
         },
         {
           "name": "variable.language.aerix",
@@ -323,6 +358,10 @@
         {
           "name": "constant.language.null.aerix",
           "match": "\\bnull\\b"
+        },
+        {
+          "name": "variable.other.constant.aerix",
+          "match": "\\b[A-Z_][A-Z0-9_]{2,}\\b"
         }
       ]
     },
@@ -334,7 +373,11 @@
         },
         {
           "name": "support.class.aerix",
-          "match": "\\b(List|Map|Set|Stack|Queue|Deque|ByteBuffer|String|Channel|LinearArena|File|Directory|Env|Process|Math|Random)\\b"
+          "match": "\\b(List|Map|Set|Stack|Queue|Deque|ByteBuffer|String|Channel|LinearArena|File|Directory|Env|Process|Math|Random|Time|Socket|Window|Canvas|Clipboard|Application|Gui)\\b"
+        },
+        {
+          "name": "entity.name.type.class.aerix",
+          "match": "\\b[A-Z][a-zA-Z0-9_]*\\b"
         }
       ]
     },
@@ -342,7 +385,7 @@
       "patterns": [
         {
           "name": "support.function.builtin.aerix",
-          "match": "\\b(println|print|eprintln|input|read_line|to_string|parse_int|parse_float|chr|ord|len|abs|min|max|sqrt|sin|cos|tan|pow|floor|ceil|round|log|exp|assert|assert_eq|panic|abort|exit|typeof|enumerate|arx_free|arx_time_now|arx_sleep_ms|arx_thread_join|arx_channel_new|arx_channel_send|arx_channel_recv|arx_channel_close|arx_channel_free|arx_prng_seed|arx_prng_next_i64|arx_prng_next_f64)\\b"
+          "match": "\\b(println|print|eprintln|input|read_line|to_string|parse_int|parse_float|chr|ord|len|abs|min|max|sqrt|sin|cos|tan|pow|floor|ceil|round|log|exp|assert|assert_eq|panic|abort|exit|typeof|enumerate|rgb|RGB|colorRed|colorGreen|colorBlue|colorYellow|colorCyan|colorMagenta|colorWhite|colorBlack|colorGray|arx_free|arx_time_now|arx_sleep_ms|arx_thread_join|arx_channel_new|arx_channel_send|arx_channel_recv|arx_channel_close|arx_channel_free|arx_prng_seed|arx_prng_next_i64|arx_prng_next_f64)\\b"
         }
       ]
     },
@@ -355,7 +398,8 @@
         { "name": "keyword.operator.optional.aerix", "match": "\\?\\.|\\?\\?" },
         { "name": "keyword.operator.comparison.aerix", "match": "==|!=|<=|>=|<|>" },
         { "name": "keyword.operator.logical.aerix", "match": "&&|\\|\\||!" },
-        { "name": "keyword.operator.assignment.aerix", "match": "\\+=|-=|\\*=|/=|%=|=" },
+        { "name": "keyword.operator.assignment.aerix", "match": "\\+=|-=|\\*=|/=|%=|&=|\\|=|\\^=|<<=|>>=|=" },
+        { "name": "keyword.operator.bitwise.aerix", "match": "<<|>>>|>>|&|\\||\\^|~" },
         { "name": "keyword.operator.arithmetic.aerix", "match": "\\+\\*?|-|\\*\\*|\\*|/|%" }
       ]
     },
@@ -368,10 +412,28 @@
           }
         },
         {
+          "match": "(\\.(?!\\d)|~>|\\?\\.)([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "2": { "name": "variable.other.property.aerix" }
+          }
+        },
+        {
           "match": "\\b([A-Za-z_][A-Za-z0-9_]*)(?=\\s*(<[^>]*>)?\\s*\\()",
           "captures": {
             "1": { "name": "entity.name.function.call.aerix" }
           }
+        }
+      ]
+    },
+    "identifiers": {
+      "patterns": [
+        {
+          "name": "variable.other.constant.aerix",
+          "match": "\\b[A-Z_][A-Z0-9_]{2,}\\b"
+        },
+        {
+          "name": "variable.other.readwrite.aerix",
+          "match": "\\b[a-z_][A-Za-z0-9_]*\\b"
         }
       ]
     }

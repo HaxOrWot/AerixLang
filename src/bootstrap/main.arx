@@ -9,6 +9,7 @@ import "./middle/analyzer.arx"
 import "./backend/emitter.arx"
 import "./backend/linker.arx"
 import "./backend/native/codegen.arx"
+import "./lsp/features.arx"
 import "./lsp/server.arx"
 
 fn resolve_bin_name() -> str {
@@ -22,7 +23,7 @@ fn resolve_bin_name() -> str {
 fn print_usage() {
     let bin = resolve_bin_name()
     println("Aerix Native Systems Programming Language Toolchain (" + bin + ")")
-    println("Version: 1.1.16b (Beta Channel) - x86_64-windows")
+    println("Version: 1.2.20b (Beta Channel) - x86_64-windows")
     println("")
     println("Usage:")
     println("  " + bin + " <command> [arguments...] [options]")
@@ -33,6 +34,8 @@ fn print_usage() {
     println("  run          Compile and immediately execute an Aerix program")
     println("  emit-c       Transpile Aerix source code into standalone ANSI C99")
     println("  check        Parse, validate, and type-check without code generation")
+    println("  fmt          Format Aerix source files in-place or check formatting")
+    println("  test         Discover and execute unit and integration test suites")
     println("")
     println("Developer & IDE Tooling:")
     println("  lsp          Start the Language Server Protocol (LSP) JSON-RPC daemon")
@@ -51,6 +54,8 @@ fn print_usage() {
     println("")
     println("Common Options:")
     println("  -o, --output <path>    Specify output executable name or destination path")
+    println("  --debug                Build with debug symbols (-g) and runtime safety bounds")
+    println("  --release              Build with full optimizations (-O3 -flto -s)")
     println("  -O0, -O1, -O2, -O3     Optimization level (default: -O2)")
     println("  --gui, --windows       Target Windows GUI subsystem (no console window)")
     println("  --emit-c               Keep intermediate generated C99 source file")
@@ -59,11 +64,14 @@ fn print_usage() {
     println("")
     println("Quick Examples:")
     println("  " + bin + " build main.arx                  Compile to standalone 'main.exe'")
+    println("  " + bin + " build main.arx --release -o app  Optimized release build")
     println("  " + bin + " build app.arx --gui -o app.exe  Build Windows GUI app (no console)")
     println("  " + bin + " run main.arx                    Compile and immediately execute")
     println("  " + bin + " run server.arx -- -p 8080       Forward CLI arguments to program")
+    println("  " + bin + " fmt src/                        Format all .arx source files in src/")
+    println("  " + bin + " test                            Discover and run all test suites")
     println("  " + bin + " emit-c main.arx -o main.c       Transpile to standalone ANSI C99")
-    println("  " + bin + " check main.arx                  Validate syntax and types only")
+    println("  " + bin + " check main.arx                  Validate syntax and static warnings")
     println("")
     println("Run '" + bin + " <command> --help' or '" + bin + " help <command>' for detailed command options.")
 }
@@ -79,6 +87,8 @@ fn print_build_usage() {
     println("Options:")
     println("  -o, --output <path>    Specify output executable name or destination path")
     println("                         (defaults to input filename with .exe on Windows)")
+    println("  --debug                Build with debug symbols (-g) and runtime safety bounds")
+    println("  --release              Build with -O3 -flto -s for production performance")
     println("  -O0, -O1, -O2, -O3     Optimization level (default: -O2)")
     println("  --gui, --windows       Target Windows GUI subsystem (no console window);")
     println("  --no-console           automatically enabled when Window.Gui module is imported")
@@ -88,6 +98,7 @@ fn print_build_usage() {
     println("")
     println("Examples:")
     println("  " + bin + " build main.arx")
+    println("  " + bin + " build main.arx --release -o app.exe")
     println("  " + bin + " build SnakeGame.arx -o SnakeGame.exe")
     println("  " + bin + " build app.arx --gui -o app.exe")
     println("  " + bin + " build benchmark.arx -O3 --emit-c")
@@ -102,6 +113,8 @@ fn print_run_usage() {
     println("  " + bin + " run <file.arx> [options] [-- <program-args...>]")
     println("")
     println("Options:")
+    println("  --debug                Run with debug symbols and bounds checks enabled")
+    println("  --release              Run with full optimization (-O3 -flto)")
     println("  -O0, -O1, -O2, -O3     Optimization level for JIT/run (default: -O2)")
     println("  --backend=c|native     Code generation backend (default: c)")
     println("  -- <args...>           Pass all arguments after '--' directly to program via Env.args()")
@@ -111,6 +124,50 @@ fn print_run_usage() {
     println("  " + bin + " run hello.arx")
     println("  " + bin + " run server.arx -- -p 8080 --debug")
     println("  " + bin + " run script.arx -- foo bar baz")
+}
+
+fn print_fmt_usage() {
+    let bin = resolve_bin_name()
+    println("Aerix Source Code Formatter (" + bin + " fmt)")
+    println("Enforces canonical code formatting across files and directories.")
+    println("")
+    println("Usage:")
+    println("  " + bin + " fmt [target] [options]")
+    println("")
+    println("Arguments:")
+    println("  [target]               File or directory to format (default: current directory)")
+    println("")
+    println("Options:")
+    println("  -c, --check            Check formatting without rewriting files (exit 1 if unformatted)")
+    println("  -h, --help             Show this help message")
+    println("")
+    println("Examples:")
+    println("  " + bin + " fmt main.arx")
+    println("  " + bin + " fmt src/")
+    println("  " + bin + " fmt --check src/")
+}
+
+fn print_test_usage() {
+    let bin = resolve_bin_name()
+    println("Aerix Test Runner (" + bin + " test)")
+    println("Discovers and runs test suites matching 'test_*.arx' or '*_test.arx'.")
+    println("")
+    println("Usage:")
+    println("  " + bin + " test [target] [options]")
+    println("")
+    println("Arguments:")
+    println("  [target]               File or directory containing tests (default: current directory)")
+    println("")
+    println("Options:")
+    println("  -O0, -O1, -O2, -O3     Optimization level for test builds (default: -O0)")
+    println("  --debug                Compile tests with debug symbols and runtime bounds checks")
+    println("  --backend=c|native     Code generation backend (default: c)")
+    println("  -h, --help             Show this help message")
+    println("")
+    println("Examples:")
+    println("  " + bin + " test")
+    println("  " + bin + " test tests/")
+    println("  " + bin + " test test_math.arx")
 }
 
 fn print_emit_c_usage() {
@@ -363,7 +420,7 @@ fn cmd_vm(cli_args: List<str>, cli_argc: i64, start_idx: i64, default_sub: str) 
         }
     } else if sub == "install" || sub == "add" {
         if target == "" {
-            eprintln("error: missing version for 'arx vm install' (e.g. 'arx vm install 1.1.16b')")
+            eprintln("error: missing version for 'arx vm install' (e.g. 'arx vm install 1.2.20b')")
             return 1
         }
         cmd = cmd + " " + quote_shell_arg("--vm-install=" + target)
@@ -577,6 +634,146 @@ fn cmd_check(input_file: str) -> i64 {
     return 0
 }
 
+fn cmd_fmt(target_path: str, check_only: bool) -> i64 {
+    mut target = "."
+    if target_path != "" { target = target_path }
+    let norm = bpath_normalize(target)
+    if !File.exists(norm) && !Directory.exists(norm) {
+        eprintln("error: path not found: " + target)
+        return 1
+    }
+
+    let files_to_format = List<str>()
+    if Directory.exists(norm) {
+        let all_files = Directory.list_files(norm)
+        mut fi = 0
+        while fi < all_files.len() {
+            let f = all_files.get(fi)
+            if f.ends_with(".arx") {
+                files_to_format.push(f)
+            }
+            fi = fi + 1
+        }
+    } else {
+        files_to_format.push(norm)
+    }
+
+    if files_to_format.len() == 0 {
+        println("No .arx files found to format in '" + target + "'")
+        return 0
+    }
+
+    mut unformatted_count = 0
+    mut formatted_count = 0
+    mut i = 0
+    while i < files_to_format.len() {
+        let fpath = files_to_format.get(i)
+        let orig = File.read_to_string(fpath)
+        let formatted = lsp_format_source(orig)
+        if orig != formatted {
+            if check_only {
+                eprintln("  ✕ unformatted: " + fpath)
+                unformatted_count = unformatted_count + 1
+            } else {
+                File.write_string(fpath, formatted)
+                println("  ✓ formatted: " + fpath)
+                formatted_count = formatted_count + 1
+            }
+        } else if !check_only {
+            println("  - unchanged: " + fpath)
+        }
+        i = i + 1
+    }
+
+    if check_only {
+        if unformatted_count > 0 {
+            eprintln("Formatting check failed: " + (unformatted_count as str) + " file(s) need formatting.")
+            return 1
+        }
+        println("All " + (files_to_format.len() as str) + " file(s) are cleanly formatted.")
+        return 0
+    }
+
+    println("Done: formatted " + (formatted_count as str) + " of " + (files_to_format.len() as str) + " file(s).")
+    return 0
+}
+
+fn cmd_test(target_path: str, opt_flag: str, backend: str) -> i64 {
+    mut scan_dir = "."
+    if target_path != "" {
+        scan_dir = target_path
+    }
+    let norm = bpath_normalize(scan_dir)
+
+    let test_files = List<str>()
+    if File.exists(norm) && norm.ends_with(".arx") {
+        test_files.push(norm)
+    } else if Directory.exists(norm) {
+        let files = Directory.list_files(norm)
+        mut fi = 0
+        while fi < files.len() {
+            let f = files.get(fi)
+            let base = bpath_basename(f)
+            if (base.starts_with("test_") || base.ends_with("_test.arx")) && base.ends_with(".arx") {
+                test_files.push(f)
+            }
+            fi = fi + 1
+        }
+        let sub_tests = bpath_join(norm, "tests")
+        if Directory.exists(sub_tests) {
+            let tfiles = Directory.list_files(sub_tests)
+            mut ti = 0
+            while ti < tfiles.len() {
+                let tf = tfiles.get(ti)
+                let tbase = bpath_basename(tf)
+                if tbase.ends_with(".arx") {
+                    test_files.push(tf)
+                }
+                ti = ti + 1
+            }
+        }
+    } else {
+        eprintln("error: target path not found: " + target_path)
+        return 1
+    }
+
+    let ntests = test_files.len()
+    if ntests == 0 {
+        println("No test files found matching 'test_*.arx' or '*_test.arx'.")
+        return 0
+    }
+
+    println("Running " + (ntests as str) + " Aerix test suite(s)...")
+    println("")
+
+    mut passed = 0
+    mut failed = 0
+    let empty_args = List<str>()
+
+    mut i = 0
+    while i < ntests {
+        let tf = test_files.get(i)
+        let tname = bpath_basename(tf)
+        let rc = cmd_run(tf, opt_flag, backend, empty_args, 0)
+        if rc == 0 {
+            println("  ✓ " + tname + " ... ok")
+            passed = passed + 1
+        } else {
+            eprintln("  ✕ " + tname + " ... FAILED (exit code " + (rc as str) + ")")
+            failed = failed + 1
+        }
+        i = i + 1
+    }
+
+    println("")
+    if failed > 0 {
+        eprintln("test result: FAILED. " + (passed as str) + " passed, " + (failed as str) + " failed.")
+        return 1
+    }
+    println("test result: ok. " + (passed as str) + " passed, 0 failed.")
+    return 0
+}
+
 fn cmd_emit_c(input_file: str, out_file: str) -> i64 {
     mut target = out_file
     if target == "" {
@@ -712,7 +909,7 @@ fn main() -> i64 {
                 return 0
             }
         }
-        println("Aerix Self-Hosting Bootstrap Compiler (arxc) v1.1.16b")
+        println("Aerix Self-Hosting Bootstrap Compiler (arxc) v1.2.20b")
         maybe_trigger_bg_update()
         return 0
     }
@@ -723,6 +920,8 @@ fn main() -> i64 {
             if sub == "run" { print_run_usage(); return 0 }
             if sub == "emit-c" { print_emit_c_usage(); return 0 }
             if sub == "check" { print_check_usage(); return 0 }
+            if sub == "fmt" { print_fmt_usage(); return 0 }
+            if sub == "test" { print_test_usage(); return 0 }
             if sub == "lsp" { print_lsp_usage(); return 0 }
             if sub == "vm" || sub == "toolchain" { print_vm_usage(); return 0 }
             if sub == "update" || sub == "upgrade" { print_update_usage(); return 0 }
@@ -730,6 +929,59 @@ fn main() -> i64 {
         }
         print_usage()
         return 0
+    }
+    if first == "fmt" {
+        mut check_only = false
+        mut target = ""
+        mut fi = 2
+        while fi < cli_argc {
+            let fa = cli_args.get(fi)
+            if fa == "--help" || fa == "-h" {
+                print_fmt_usage()
+                return 0
+            } else if fa == "--check" || fa == "-c" {
+                check_only = true
+            } else if !fa.starts_with("-") && target == "" {
+                target = fa
+            } else {
+                eprintln("error: unknown option '" + fa + "' for 'arx fmt'")
+                eprintln("  = help: run 'arx fmt --help' for supported options")
+                return 1
+            }
+            fi = fi + 1
+        }
+        return cmd_fmt(target, check_only)
+    }
+    if first == "test" {
+        mut target = ""
+        mut test_opt = "-O0"
+        mut test_backend = "c"
+        mut ti = 2
+        while ti < cli_argc {
+            let ta = cli_args.get(ti)
+            if ta == "--help" || ta == "-h" {
+                print_test_usage()
+                return 0
+            } else if ta == "--debug" || ta == "-g" {
+                test_opt = "-O0 -g"
+            } else if ta == "--release" {
+                test_opt = "-O3 -flto"
+            } else if ta == "-O0" || ta == "-O1" || ta == "-O2" || ta == "-O3" {
+                test_opt = ta
+            } else if ta == "--backend=c" {
+                test_backend = "c"
+            } else if ta == "--backend=native" {
+                test_backend = "native"
+            } else if !ta.starts_with("-") && target == "" {
+                target = ta
+            } else {
+                eprintln("error: unknown option '" + ta + "' for 'arx test'")
+                eprintln("  = help: run 'arx test --help' for supported options")
+                return 1
+            }
+            ti = ti + 1
+        }
+        return cmd_test(target, test_opt, test_backend)
     }
     if first == "lsp" {
         if cli_argc >= 3 {
@@ -824,6 +1076,10 @@ fn main() -> i64 {
             backend = "native"
         } else if a == "-O0" || a == "-O1" || a == "-O2" || a == "-O3" {
             opt_flag = a
+        } else if a == "--debug" || a == "-g" {
+            opt_flag = "-O0 -g"
+        } else if a == "--release" {
+            opt_flag = "-O3 -flto -s"
         } else if a == "--gui" || a == "--windows" || a == "--no-console" || a == "-mwindows" {
             // Flag accepted for windowed GUI subsystem mode
         } else if a == "--help" || a == "-h" {

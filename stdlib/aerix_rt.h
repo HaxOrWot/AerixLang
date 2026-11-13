@@ -975,6 +975,81 @@ static inline const char* arx_str_trim(const char* s) {
     return trimmed;
 }
 
+static inline const char* arx_str_trim_start(const char* s) {
+    if (!s) return "";
+    while (*s && isspace((unsigned char)*s)) s++;
+    return s;
+}
+
+static inline const char* arx_str_trim_end(const char* s) {
+    if (!s) return "";
+    size_t len = strlen(s);
+    if (len == 0) return "";
+    const char* end = s + len - 1;
+    while (end >= s && isspace((unsigned char)*end)) end--;
+    if (end < s) return "";
+    size_t rlen = (size_t)(end - s + 1);
+    char* res = (char*)arx_alloc(rlen + 1);
+    memcpy(res, s, rlen);
+    res[rlen] = '\0';
+    return res;
+}
+
+static inline int64_t arx_str_char_len(const char* s) {
+    if (!s) return 0;
+    int64_t count = 0;
+    while (*s) {
+        if ((*s & 0xC0) != 0x80) count++;
+        s++;
+    }
+    return count;
+}
+
+static inline const char* arx_str_pad_left(const char* s, int64_t width, const char* pad_char) {
+    if (!s) s = "";
+    int64_t slen = (int64_t)strlen(s);
+    if (slen >= width) return s;
+    char pchar = (pad_char && pad_char[0] != '\0') ? pad_char[0] : ' ';
+    int64_t pad_count = width - slen;
+    char* buf = (char*)arx_alloc((size_t)width + 1);
+    memset(buf, pchar, (size_t)pad_count);
+    memcpy(buf + pad_count, s, (size_t)slen);
+    buf[width] = '\0';
+    return buf;
+}
+
+static inline const char* arx_str_pad_right(const char* s, int64_t width, const char* pad_char) {
+    if (!s) s = "";
+    int64_t slen = (int64_t)strlen(s);
+    if (slen >= width) return s;
+    char pchar = (pad_char && pad_char[0] != '\0') ? pad_char[0] : ' ';
+    int64_t pad_count = width - slen;
+    char* buf = (char*)arx_alloc((size_t)width + 1);
+    memcpy(buf, s, (size_t)slen);
+    memset(buf + slen, pchar, (size_t)pad_count);
+    buf[width] = '\0';
+    return buf;
+}
+
+static inline int64_t arx_str_lines(const char* s) {
+    int64_t list_handle = arx_list_new(8);
+    if (!s || s[0] == '\0') return list_handle;
+    const char* p = s;
+    while (*p) {
+        const char* start = p;
+        while (*p && *p != '\n') p++;
+        const char* end = p;
+        if (end > start && *(end - 1) == '\r') end--;
+        size_t len = (size_t)(end - start);
+        char* line = (char*)arx_alloc(len + 1);
+        memcpy(line, start, len);
+        line[len] = '\0';
+        arx_list_push(list_handle, (int64_t)(intptr_t)line);
+        if (*p == '\n') p++;
+    }
+    return list_handle;
+}
+
 static inline const char* arx_str_to_upper(const char* s) {
     if (!s) return "";
     size_t len = strlen(s);
@@ -2452,6 +2527,14 @@ static inline const char* arx_path_basename(const char* p) {
         }
     }
     return arx_str_slice(p, 0, (int64_t)len);
+}
+
+static inline const char* arx_path_extension(const char* p) {
+    if (!p || !*p) return "";
+    const char* base = arx_path_basename(p);
+    const char* dot = strrchr(base, '.');
+    if (!dot || dot == base) return "";
+    return dot;
 }
 
 static inline int64_t arx_proc_execute(const char* cmdline) {

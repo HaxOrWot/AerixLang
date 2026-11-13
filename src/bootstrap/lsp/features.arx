@@ -25,6 +25,7 @@ pub fn CKIND_FILE() -> i64 { return 17 }
 pub fn CKIND_FOLDER() -> i64 { return 19 }
 pub fn CKIND_ENUM_MEM() -> i64 { return 20 }
 pub fn CKIND_CONSTANT() -> i64 { return 21 }
+pub fn CKIND_STRUCT() -> i64 { return 22 }
 
 // LSP SymbolKind constants
 pub fn SKIND_CLASS() -> i64 { return 5 }
@@ -35,6 +36,7 @@ pub fn SKIND_ENUM() -> i64 { return 10 }
 pub fn SKIND_FUNCTION() -> i64 { return 12 }
 pub fn SKIND_VAR() -> i64 { return 13 }
 pub fn SKIND_ENUM_MEM() -> i64 { return 22 }
+pub fn SKIND_STRUCT() -> i64 { return 23 }
 
 pub fn lsp_analyze_document(doc_path: str, source: str, docs_by_path: Map<str, str>) -> Analyzer {
     let norm = bpath_normalize(doc_path)
@@ -1160,6 +1162,57 @@ pub fn lsp_build_code_action_json(source: str, az: Analyzer, doc_path: str, doc_
             jb.rbrace()
         }
 
+        // Quick Fix 4: Change 'mut' to 'let' on W0003
+        if code == "W0003" && ln0 >= 0 {
+            let eline = lsp_get_line_text(source, ln0)
+            let pos_mut = lsp_str_find(eline, "mut ", 0)
+            if pos_mut >= 0 {
+                if !first { jb.comma() }
+                first = false
+                jb.lbrace()
+                jb.kv_str("title", "Change 'mut' to 'let'", true)
+                jb.kv_str("kind", "quickfix", false)
+                jb.kv_bool("isPreferred", true, false)
+                jb.comma(); jb.key("edit"); jb.lbrace()
+                jb.key("changes"); jb.lbrace()
+                jb.key(doc_uri); jb.lbrack(); jb.lbrace()
+                jb.key("range"); jb.lbrace()
+                jb.key("start"); jb.lbrace(); jb.kv_int("line", ln0, true); jb.kv_int("character", pos_mut, false); jb.rbrace()
+                jb.comma()
+                jb.key("end"); jb.lbrace(); jb.kv_int("line", ln0, true); jb.kv_int("character", pos_mut + 3, false); jb.rbrace()
+                jb.rbrace()
+                jb.kv_str("newText", "let", false)
+                jb.rbrace(); jb.rbrack()
+                jb.rbrace(); jb.rbrace()
+                jb.rbrace()
+            }
+        }
+
+        // Quick Fix 5: Prefix unused variable with '_' on W0002
+        if code == "W0002" && ln0 >= 0 && cl0 >= 0 {
+            let vname = lsp_extract_quoted_after(msg, "unused variable '")
+            if vname != "" {
+                if !first { jb.comma() }
+                first = false
+                jb.lbrace()
+                jb.kv_str("title", "Prefix with '_' to ignore ('_" + vname + "')", true)
+                jb.kv_str("kind", "quickfix", false)
+                jb.kv_bool("isPreferred", true, false)
+                jb.comma(); jb.key("edit"); jb.lbrace()
+                jb.key("changes"); jb.lbrace()
+                jb.key(doc_uri); jb.lbrack(); jb.lbrace()
+                jb.key("range"); jb.lbrace()
+                jb.key("start"); jb.lbrace(); jb.kv_int("line", ln0, true); jb.kv_int("character", cl0, false); jb.rbrace()
+                jb.comma()
+                jb.key("end"); jb.lbrace(); jb.kv_int("line", ln0, true); jb.kv_int("character", cl0, false); jb.rbrace()
+                jb.rbrace()
+                jb.kv_str("newText", "_", false)
+                jb.rbrace(); jb.rbrack()
+                jb.rbrace(); jb.rbrace()
+                jb.rbrace()
+            }
+        }
+
         i = i + 1
     }
     jb.rbrack()
@@ -1701,7 +1754,13 @@ fn lsp_emit_type_completions(az: Analyzer, source: str, doc_path: str, line0: i6
             if cdoc != "" { cdoc = cdoc + "\n\n" + src_note } else { cdoc = src_note }
             let fst = is_first.get(0) == 1
             is_first.set(0, 0)
-            emit_comp_item_ex(jb, cnm, "", bpath_basename(az.nf.get(cid)), CKIND_CLASS(), "class " + cnm, cdoc,
+            mut dkw1 = "class "
+            mut ckind1 = CKIND_CLASS()
+            if has_flag(az.ia.get(cid), FLAG_STRUCT()) {
+                dkw1 = "struct "
+                ckind1 = CKIND_STRUCT()
+            }
+            emit_comp_item_ex(jb, cnm, "", bpath_basename(az.nf.get(cid)), ckind1, dkw1 + cnm, cdoc,
                               "", stxt, "", -1, 0, 0, "", false, fst)
         }
         ci = ci + 1
@@ -1886,7 +1945,15 @@ fn collect_module_or_file_completions(az: Analyzer, source: str, doc_path: str, 
                 if cdoc != "" { cdoc = cdoc + "\n\n" + src_note } else { cdoc = src_note }
                 let fst = is_first_box.get(0) == 1
                 is_first_box.set(0, 0)
-                emit_comp_item_ex(jb, cnm, "", "class", CKIND_CLASS(), "class " + cnm, cdoc,
+                mut dkw2 = "class "
+                mut cdesc2 = "class"
+                mut ckind2 = CKIND_CLASS()
+                if has_flag(az.ia.get(cid), FLAG_STRUCT()) {
+                    dkw2 = "struct "
+                    cdesc2 = "struct"
+                    ckind2 = CKIND_STRUCT()
+                }
+                emit_comp_item_ex(jb, cnm, "", cdesc2, ckind2, dkw2 + cnm, cdoc,
                                   "", "1_" + cnm, "", -1, 0, 0, "", false, fst)
                 matched_any = true
             }
@@ -2311,15 +2378,30 @@ pub fn lsp_build_completion_json(source: str, az: Analyzer, doc_path: str, line0
             }
             if cdoc != "" { cdoc = cdoc + "\n\n" + src_note } else { cdoc = src_note }
             let matched = lsp_type_matches(cnm, expected_t)
+            mut is_st = has_flag(az.ia.get(cid), FLAG_STRUCT())
+            if !is_st && c_file != "" && az.ln.get(cid) > 0 {
+                let cln_txt = lsp_get_line_text(source, az.ln.get(cid) - 1)
+                if cln_txt.contains("struct ") || cln_txt.contains("struct\t") { is_st = true }
+            }
             mut cdesc = "class"
-            if mod_lbl != "" { cdesc = "class (" + mod_lbl + ")" }
+            mut ckind = CKIND_CLASS()
+            mut dkw = "class "
+            if is_st {
+                cdesc = "struct"
+                ckind = CKIND_STRUCT()
+                dkw = "struct "
+            }
+            if mod_lbl != "" {
+                if is_st { cdesc = "struct (" + mod_lbl + ")" }
+                else { cdesc = "class (" + mod_lbl + ")" }
+            }
             mut stxt = "2_" + cnm
             if same_file { stxt = "1_" + cnm }
             else if mod_lbl != "" { stxt = "1a_" + cnm }
             if matched { stxt = "00_" + cnm }
             let fst = is_first.get(0) == 1
             is_first.set(0, 0)
-            emit_comp_item_ex(jb, cnm, cdetail, cdesc, CKIND_CLASS(), "class " + cnm, cdoc,
+            emit_comp_item_ex(jb, cnm, cdetail, cdesc, ckind, dkw + cnm, cdoc,
                               csnip, stxt, "", -1, 0, 0, "", matched, fst)
         }
         ci = ci + 1
@@ -2778,9 +2860,20 @@ pub fn lsp_build_hover_json(source: str, az: Analyzer, doc_path: str, line0: i64
         mut hdr = ""
         if has_flag(az.ia.get(cid), FLAG_PUB()) { hdr = "pub " }
         if has_flag(az.ia.get(cid), FLAG_PACKED()) { hdr = hdr + "#[packed] " }
-        hdr = hdr + "class " + word
+        mut is_st = has_flag(az.ia.get(cid), FLAG_STRUCT())
+        if !is_st && cfile != "" && cln > 0 {
+            let cln_txt = lsp_get_line_text(source, cln - 1)
+            if cln_txt.contains("struct ") || cln_txt.contains("struct\t") {
+                is_st = true
+            }
+        }
+        if is_st {
+            hdr = hdr + "struct " + word
+        } else {
+            hdr = hdr + "class " + word
+        }
         let base_c = btype_norm(az.sb.get(cid))
-        if base_c != "" { hdr = hdr + " extends " + base_c }
+        if base_c != "" && base_c != "void" { hdr = hdr + " extends " + base_c }
         bb.write_str(lsp_format_hover_block(hdr, doc, cfile, cln))
 
         let fg = az.la.get(cid)
@@ -3351,8 +3444,14 @@ pub fn lsp_build_document_symbols_json(az: Analyzer, doc_path: str) -> str {
             first = false
             jb.lbrace()
             jb.kv_str("name", nm, true)
-            jb.kv_str("detail", "class", false)
-            jb.kv_int("kind", SKIND_CLASS(), false)
+            mut cdetail = "class"
+            mut sk = SKIND_CLASS()
+            if has_flag(az.ia.get(nid), FLAG_STRUCT()) {
+                cdetail = "struct"
+                sk = SKIND_STRUCT()
+            }
+            jb.kv_str("detail", cdetail, false)
+            jb.kv_int("kind", sk, false)
             jb.comma(); jb.key("range"); emit_symbol_range(jb, ln1)
             jb.comma(); jb.key("selectionRange"); emit_symbol_range(jb, ln1)
             jb.comma(); jb.key("children"); jb.lbrack()

@@ -68,6 +68,7 @@ pub fn FLAG_STATIC() -> i64 { return 2 }
 pub fn FLAG_MUT() -> i64 { return 4 }
 pub fn FLAG_INCLUSIVE() -> i64 { return 8 }
 pub fn FLAG_PACKED() -> i64 { return 16 }
+pub fn FLAG_STRUCT() -> i64 { return 32 }
 
 pub fn has_flag(flags: i64, bit: i64) -> bool {
     if bit <= 0 { return false }
