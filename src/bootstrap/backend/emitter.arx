@@ -17,6 +17,8 @@ pub class Emitter {
     pub ls: List<i64>
     pub ll: List<i64>
     pub ln: List<i64>
+    pub nc: List<i64>
+    pub nf: List<str>
     pub ch: List<i64>
     pub ncount: i64
     pub c_includes: List<str>
@@ -96,6 +98,8 @@ pub class Emitter {
         self.ls = az.ls
         self.ll = az.ll
         self.ln = az.ln
+        self.nc = az.nc
+        self.nf = az.nf
         self.ch = az.ch
         self.ncount = az.ncount
         self.c_includes = az.c_includes
@@ -447,6 +451,12 @@ pub class Emitter {
         self.wcl("static inline bool Arx_File_append_string(const char* p, const char* c) @ return arx_file_append_string(p, c); `")
         self.wcl("static inline bool Arx_File_remove(const char* p) @ return arx_file_remove(p); `")
         self.wcl("static inline bool Arx_File_copy(const char* a, const char* b) @ return arx_file_copy(a, b); `")
+        self.w_nl()
+        self.wcl("typedef struct Arx_Path @ int64_t _dummy; ` Arx_Path;")
+        self.wcl("static inline const char* Arx_Path_join(const char* a, const char* b) @ return arx_path_join(a, b); `")
+        self.wcl("static inline const char* Arx_Path_basename(const char* p) @ return arx_path_basename(p); `")
+        self.wcl("static inline const char* Arx_Path_dirname(const char* p) @ return arx_path_dirname(p); `")
+        self.wcl("static inline const char* Arx_Path_extension(const char* p) @ return arx_path_extension(p); `")
         self.w_nl()
         self.wcl("typedef struct Arx_Process @ int64_t _dummy; ` Arx_Process;")
         self.wcl("static inline int64_t Arx_Process_execute(const char* cmd) @ return arx_proc_execute(cmd); `")
@@ -2641,7 +2651,11 @@ pub class Emitter {
         }
         if name == "assert" && ac >= 1 {
             let cond = self.gen_expr(self.child_at(nid, 0))
-            self.wcl("if (!(" + cond + ")) @ fprintf(stderr, \"Assertion failed!\\n\"); exit(1); `")
+            mut loc_file = "unknown"
+            if nid < self.nf.len() && self.nf.get(nid) != "" { loc_file = self.nf.get(nid).replace("\\", "/") }
+            mut loc_line = 1
+            if nid < self.ln.len() && self.ln.get(nid) > 0 { loc_line = self.ln.get(nid) }
+            self.wcl("if (!(" + cond + ")) @ fprintf(stderr, \"AssertionError: assertion failed at " + loc_file + ":" + (loc_line as str) + "\\n\"); exit(1); `")
             return "0"
         }
         if name == "assert_eq" && ac >= 2 {
@@ -2649,10 +2663,31 @@ pub class Emitter {
             let a1 = self.child_at(nid, 1)
             let lval = self.gen_expr(a0)
             let rval = self.gen_expr(a1)
-            if btype_is_str(self.node_types.get(a0)) {
-                self.wcl("if (arx_str_compare(" + lval + ", " + rval + ") != 0) @ fprintf(stderr, \"assert_eq failed\\n\"); exit(1); `")
+            let t0 = self.node_types.get(a0)
+            mut loc_file = "unknown"
+            if nid < self.nf.len() && self.nf.get(nid) != "" { loc_file = self.nf.get(nid).replace("\\", "/") }
+            mut loc_line = 1
+            if nid < self.ln.len() && self.ln.get(nid) > 0 { loc_line = self.ln.get(nid) }
+            let loc_str = loc_file + ":" + (loc_line as str)
+
+            if btype_is_str(t0) {
+                let tl = self.next_tmp()
+                let tr = self.next_tmp()
+                self.wl("const char* " + tl + " = " + lval + ";")
+                self.wl("const char* " + tr + " = " + rval + ";")
+                self.wcl("if (arx_str_compare(" + tl + ", " + tr + ") != 0) @ fprintf(stderr, \"AssertionError: assert_eq failed at " + loc_str + "\\n  left:  \\\"%s\\\"\\n  right: \\\"%s\\\"\\n\", " + tl + " ? " + tl + " : \"null\", " + tr + " ? " + tr + " : \"null\"); exit(1); `")
+            } else if btype_is_float(t0) {
+                let tl = self.next_tmp()
+                let tr = self.next_tmp()
+                self.wl("double " + tl + " = (double)(" + lval + ");")
+                self.wl("double " + tr + " = (double)(" + rval + ");")
+                self.wcl("if (" + tl + " != " + tr + ") @ fprintf(stderr, \"AssertionError: assert_eq failed at " + loc_str + "\\n  left:  %g\\n  right: %g\\n\", " + tl + ", " + tr + "); exit(1); `")
             } else {
-                self.wcl("if ((" + lval + ") != (" + rval + ")) @ fprintf(stderr, \"assert_eq failed\\n\"); exit(1); `")
+                let tl = self.next_tmp()
+                let tr = self.next_tmp()
+                self.wl("int64_t " + tl + " = (int64_t)(intptr_t)(" + lval + ");")
+                self.wl("int64_t " + tr + " = (int64_t)(intptr_t)(" + rval + ");")
+                self.wcl("if (" + tl + " != " + tr + ") @ fprintf(stderr, \"AssertionError: assert_eq failed at " + loc_str + "\\n  left:  %lld\\n  right: %lld\\n\", (long long)" + tl + ", (long long)" + tr + "); exit(1); `")
             }
             return "0"
         }
@@ -2736,6 +2771,9 @@ pub class Emitter {
         if mname == "to_i64" { return "arx_str_to_i64(" + recv + ")" }
         if mname == "to_f64" { return "arx_str_to_f64(" + recv + ")" }
         if mname == "trim" { return "arx_str_trim(" + recv + ")" }
+        if mname == "trim_start" { return "arx_str_trim_start(" + recv + ")" }
+        if mname == "trim_end" { return "arx_str_trim_end(" + recv + ")" }
+        if mname == "char_len" { return "arx_str_char_len(" + recv + ")" }
         if mname == "to_upper" { return "arx_str_to_upper(" + recv + ")" }
         if mname == "to_lower" { return "arx_str_to_lower(" + recv + ")" }
         if mname == "byte_at" && ac >= 1 {
@@ -2764,6 +2802,21 @@ pub class Emitter {
         }
         if mname == "repeat" && ac >= 1 {
             return "arx_str_repeat(" + recv + ", " + self.gen_expr(self.child_at(nid, 0)) + ")"
+        }
+        if mname == "pad_left" && ac >= 2 {
+            let w = self.gen_expr(self.child_at(nid, 0))
+            let c = self.gen_expr(self.child_at(nid, 1))
+            return "arx_str_pad_left(" + recv + ", " + w + ", " + c + ")"
+        }
+        if mname == "pad_right" && ac >= 2 {
+            let w = self.gen_expr(self.child_at(nid, 0))
+            let c = self.gen_expr(self.child_at(nid, 1))
+            return "arx_str_pad_right(" + recv + ", " + w + ", " + c + ")"
+        }
+        if mname == "lines" {
+            let tmp = self.next_tmp()
+            self.wl("Arx_List_str " + tmp + "; " + tmp + ".data_handle = arx_str_lines(" + recv + "); " + tmp + ".length = arx_list_len(" + tmp + ".data_handle);")
+            return tmp
         }
         if mname == "split" && ac >= 1 {
             let d = self.gen_expr(self.child_at(nid, 0))

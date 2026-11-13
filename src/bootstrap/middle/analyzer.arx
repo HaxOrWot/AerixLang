@@ -118,6 +118,10 @@ pub class Analyzer {
     pub scope_types: List<str>
     pub scope_mut: List<i64>
     pub scope_lines: List<i64>
+    pub scope_nids: List<i64>
+    pub scope_reads: List<i64>
+    pub scope_writes: List<i64>
+    pub scope_is_param: List<i64>
     pub scope_count: i64
     pub scope_marks: List<i64>
     pub scope_depth: i64
@@ -223,6 +227,10 @@ pub class Analyzer {
         self.scope_types = List<str>()
         self.scope_mut = List<i64>()
         self.scope_lines = List<i64>()
+        self.scope_nids = List<i64>()
+        self.scope_reads = List<i64>()
+        self.scope_writes = List<i64>()
+        self.scope_is_param = List<i64>()
         self.scope_count = 0
         self.scope_marks = List<i64>()
         self.scope_depth = 0
@@ -466,26 +474,86 @@ pub class Analyzer {
         self.scope_depth = self.scope_depth - 1
         let target = self.scope_marks.pop()
         while self.scope_count > target {
+            let last_idx = self.scope_count - 1
+            let name = self.scope_names.get(last_idx)
+            let is_m = self.scope_mut.get(last_idx)
+            let r_cnt = self.scope_reads.get(last_idx)
+            let w_cnt = self.scope_writes.get(last_idx)
+            let nid = self.scope_nids.get(last_idx)
+            let is_p = self.scope_is_param.get(last_idx)
+
+            if nid >= 0 && is_p == 0 && name != "" && name != "self" && name != "_" && !name.starts_with("_") {
+                if r_cnt == 0 {
+                    self.add_diag(nid, name.len(), "W0002", "unused variable '" + name + "'", "if this is intentional, prefix with an underscore: '_" + name + "'", 2)
+                } else if is_m == 1 && w_cnt == 0 {
+                    self.add_diag(nid, name.len(), "W0003", "variable '" + name + "' does not need to be mutable", "remove 'mut' or declare with 'let'", 2)
+                }
+            }
+
             self.scope_names.pop()
             self.scope_types.pop()
             self.scope_mut.pop()
             self.scope_lines.pop()
+            self.scope_nids.pop()
+            self.scope_reads.pop()
+            self.scope_writes.pop()
+            self.scope_is_param.pop()
             self.scope_count = self.scope_count - 1
         }
     }
 
-    priv fn scope_def_full(name: str, raw_t: str, is_mut: i64, decl_ln: i64) {
+    priv fn scope_def_full(name: str, raw_t: str, is_mut: i64, decl_ln: i64, decl_nid: i64, is_param: i64) {
         let nt = btype_norm(raw_t)
         self.ensure_generic_type(nt)
         self.scope_names.push(name)
         self.scope_types.push(nt)
         self.scope_mut.push(is_mut)
         self.scope_lines.push(decl_ln)
+        self.scope_nids.push(decl_nid)
+        self.scope_reads.push(0)
+        self.scope_writes.push(0)
+        self.scope_is_param.push(is_param)
         self.scope_count = self.scope_count + 1
     }
 
     priv fn scope_def(name: str, raw_t: str) {
-        self.scope_def_full(name, raw_t, 1, 0)
+        self.scope_def_full(name, raw_t, 1, 0, -1, 1)
+    }
+
+    priv fn scope_mark_used(name: str) {
+        mut i = self.scope_count - 1
+        while i >= 0 {
+            if self.scope_names.get(i) == name {
+                let r = self.scope_reads.get(i)
+                self.scope_reads.set(i, r + 1)
+                return
+            }
+            i = i - 1
+        }
+    }
+
+    priv fn scope_unmark_used(name: str) {
+        mut i = self.scope_count - 1
+        while i >= 0 {
+            if self.scope_names.get(i) == name {
+                let r = self.scope_reads.get(i)
+                if r > 0 { self.scope_reads.set(i, r - 1) }
+                return
+            }
+            i = i - 1
+        }
+    }
+
+    priv fn scope_mark_mutated(name: str) {
+        mut i = self.scope_count - 1
+        while i >= 0 {
+            if self.scope_names.get(i) == name {
+                let w = self.scope_writes.get(i)
+                self.scope_writes.set(i, w + 1)
+                return
+            }
+            i = i - 1
+        }
     }
 
     priv fn scope_is_mut(name: str) -> i64 {
@@ -644,7 +712,7 @@ pub class Analyzer {
         builtins.push("panic"); builtins.push("assert"); builtins.push("assert_eq")
         builtins.push("len"); builtins.push("to_string"); builtins.push("parse_int")
         builtins.push("parse_float"); builtins.push("chr"); builtins.push("ord")
-        builtins.push("exit"); builtins.push("File"); builtins.push("Directory")
+        builtins.push("exit"); builtins.push("File"); builtins.push("Directory"); builtins.push("Path")
         builtins.push("Process"); builtins.push("Env"); builtins.push("Math")
         builtins.push("ByteBuffer"); builtins.push("String"); builtins.push("List")
         builtins.push("Map"); builtins.push("Set"); builtins.push("Stack")
@@ -668,7 +736,7 @@ pub class Analyzer {
         if name == "println" || name == "print" || name == "eprintln" || name == "panic" || name == "abort" || name == "assert" || name == "assert_eq" || name == "arx_free" || name == "arx_sleep" { return true }
         if name == "input" || name == "read_line" || name == "to_string" || name == "chr" || name == "parse_int" || name == "ord" || name == "len" { return true }
         if name == "parse_float" || name == "sqrt" || name == "sin" || name == "cos" || name == "tan" || name == "pow" || name == "floor" || name == "ceil" || name == "round" || name == "log" || name == "exp" || name == "abs" || name == "min" || name == "max" || name == "exit" { return true }
-        if name == "File" || name == "Directory" || name == "Process" || name == "Env" || name == "Math" || name == "ByteBuffer" || name == "String" || name == "List" || name == "Map" || name == "Set" || name == "Stack" || name == "Queue" || name == "Deque" { return true }
+        if name == "File" || name == "Directory" || name == "Path" || name == "Process" || name == "Env" || name == "Math" || name == "ByteBuffer" || name == "String" || name == "List" || name == "Map" || name == "Set" || name == "Stack" || name == "Queue" || name == "Deque" { return true }
         if name == "stdin" || name == "stdout" || name == "stderr" || name.starts_with("arx_") { return true }
         return false
     }
@@ -1341,7 +1409,7 @@ pub class Analyzer {
             self.node_types.set(nid, res_t)
             mut is_m = 0
             if has_flag(self.ia.get(nid), FLAG_MUT()) { is_m = 1 }
-            self.scope_def_full(vname, res_t, is_m, self.ln.get(nid))
+            self.scope_def_full(vname, res_t, is_m, self.ln.get(nid), nid, 0)
             return
         }
         if k == NK_TUPLE_DESTR() {
@@ -1370,6 +1438,8 @@ pub class Analyzer {
             let rt = self.analyze_expr(rhs_id)
             if lhs_id >= 0 && self.nk.get(lhs_id) == NK_IDENT() {
                 let vname = self.sa.get(lhs_id)
+                self.scope_mark_mutated(vname)
+                self.scope_unmark_used(vname)
                 if self.scope_lookup(vname) != "" && self.scope_is_mut(vname) == 0 {
                     self.add_diag(lhs_id, vname.len(), "E0204", "cannot assign twice to immutable variable '" + vname + "'", "declare '" + vname + "' with 'mut " + vname + "' instead of 'let " + vname + "'", 1)
                 }
@@ -1631,7 +1701,9 @@ pub class Analyzer {
         if k == NK_IDENT() {
             let name = self.sa.get(nid)
             mut t = self.scope_lookup(name)
-            if t == "" {
+            if t != "" {
+                self.scope_mark_used(name)
+            } else {
                 if name == "true" || name == "false" {
                     t = "bool"
                 } else if self.cls_idx_map.has_key(name) {
@@ -1687,10 +1759,13 @@ pub class Analyzer {
         }
 
         if k == NK_CAST() {
-            self.analyze_expr(self.la.get(nid))
+            let src_t = btype_norm(self.analyze_expr(self.la.get(nid)))
             let tt = btype_norm(self.sa.get(nid))
             self.ensure_generic_type(tt)
             self.node_types.set(nid, tt)
+            if src_t != "" && src_t != "void" && src_t == tt {
+                self.add_diag(nid, tt.len() + 3, "W0006", "redundant cast to '" + tt + "'", "expression is already of type '" + tt + "'", 2)
+            }
             return tt
         }
 
@@ -2139,7 +2214,7 @@ pub class Analyzer {
                 }
 
                 // Static prelude classes
-                if lname == "File" || lname == "Directory" || lname == "Process" || lname == "Env" {
+                if lname == "File" || lname == "Directory" || lname == "Path" || lname == "Process" || lname == "Env" {
                     let rt = self.prelude_static_ret(lname, mname)
                     self.ensure_generic_type(rt)
                     self.call_kinds.set(nid, CK_STATIC())
@@ -2326,6 +2401,10 @@ pub class Analyzer {
             if mname == "list_files" || mname == "list_dirs" { return "List<str>" }
             return "bool"
         }
+        if cls == "Path" {
+            if mname == "join" || mname == "basename" || mname == "dirname" || mname == "extension" { return "str" }
+            return "str"
+        }
         if cls == "Process" {
             if mname == "run_capture" { return "str" }
             return "i64"
@@ -2344,10 +2423,10 @@ pub class Analyzer {
     }
 
     priv fn str_method_ret(mname: str) -> str {
-        if mname == "len" || mname == "length" || mname == "byte_at" || mname == "index_of" || mname == "to_i64" { return "i64" }
+        if mname == "len" || mname == "length" || mname == "byte_at" || mname == "index_of" || mname == "to_i64" || mname == "char_len" { return "i64" }
         if mname == "to_f64" { return "f64" }
         if mname == "is_empty" || mname == "contains" || mname == "starts_with" || mname == "ends_with" { return "bool" }
-        if mname == "split" { return "List<str>" }
+        if mname == "split" || mname == "lines" { return "List<str>" }
         if mname == "char_at" || mname == "get" { return "char" }
         if mname == "append" { return "void" }
         return "str"

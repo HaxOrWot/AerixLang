@@ -1162,6 +1162,57 @@ pub fn lsp_build_code_action_json(source: str, az: Analyzer, doc_path: str, doc_
             jb.rbrace()
         }
 
+        // Quick Fix 4: Change 'mut' to 'let' on W0003
+        if code == "W0003" && ln0 >= 0 {
+            let eline = lsp_get_line_text(source, ln0)
+            let pos_mut = lsp_str_find(eline, "mut ", 0)
+            if pos_mut >= 0 {
+                if !first { jb.comma() }
+                first = false
+                jb.lbrace()
+                jb.kv_str("title", "Change 'mut' to 'let'", true)
+                jb.kv_str("kind", "quickfix", false)
+                jb.kv_bool("isPreferred", true, false)
+                jb.comma(); jb.key("edit"); jb.lbrace()
+                jb.key("changes"); jb.lbrace()
+                jb.key(doc_uri); jb.lbrack(); jb.lbrace()
+                jb.key("range"); jb.lbrace()
+                jb.key("start"); jb.lbrace(); jb.kv_int("line", ln0, true); jb.kv_int("character", pos_mut, false); jb.rbrace()
+                jb.comma()
+                jb.key("end"); jb.lbrace(); jb.kv_int("line", ln0, true); jb.kv_int("character", pos_mut + 3, false); jb.rbrace()
+                jb.rbrace()
+                jb.kv_str("newText", "let", false)
+                jb.rbrace(); jb.rbrack()
+                jb.rbrace(); jb.rbrace()
+                jb.rbrace()
+            }
+        }
+
+        // Quick Fix 5: Prefix unused variable with '_' on W0002
+        if code == "W0002" && ln0 >= 0 && cl0 >= 0 {
+            let vname = lsp_extract_quoted_after(msg, "unused variable '")
+            if vname != "" {
+                if !first { jb.comma() }
+                first = false
+                jb.lbrace()
+                jb.kv_str("title", "Prefix with '_' to ignore ('_" + vname + "')", true)
+                jb.kv_str("kind", "quickfix", false)
+                jb.kv_bool("isPreferred", true, false)
+                jb.comma(); jb.key("edit"); jb.lbrace()
+                jb.key("changes"); jb.lbrace()
+                jb.key(doc_uri); jb.lbrack(); jb.lbrace()
+                jb.key("range"); jb.lbrace()
+                jb.key("start"); jb.lbrace(); jb.kv_int("line", ln0, true); jb.kv_int("character", cl0, false); jb.rbrace()
+                jb.comma()
+                jb.key("end"); jb.lbrace(); jb.kv_int("line", ln0, true); jb.kv_int("character", cl0, false); jb.rbrace()
+                jb.rbrace()
+                jb.kv_str("newText", "_", false)
+                jb.rbrace(); jb.rbrack()
+                jb.rbrace(); jb.rbrace()
+                jb.rbrace()
+            }
+        }
+
         i = i + 1
     }
     jb.rbrack()
