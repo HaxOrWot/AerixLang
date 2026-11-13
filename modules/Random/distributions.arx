@@ -1,6 +1,19 @@
 // ==============================================================================
-// Aerix Standard Modules: Random::Distributions
-// Continuous probability distributions: uniform, gaussian, and exponential.
+// Aerix Standard Library: Random::Distributions
+// Continuous Probability Distributions: Gaussian, Exponential, Triangular, Pareto
+//
+// Overview:
+//   Provides statistical sampling across continuous probability distributions.
+//   Includes the Box-Muller transform for normal/Gaussian variates, log-normal
+//   transformations, exponential decay distributions, triangular distributions,
+//   and power-law Pareto/Weibull models.
+//
+// Usage:
+//   import "Random/distributions.arx"
+//
+//   let sample = gauss(0.0, 1.0);        // Standard normal (mean=0, std=1)
+//   let delay = expoVariate(1.5);        // Exponential arrival rate λ=1.5
+//   let est = triangular(10.0, 50.0, 20.0);
 // ==============================================================================
 
 import "./core.arx"
@@ -8,6 +21,12 @@ import "../Math/exponential.arx"
 import "../Math/advanced.arx"
 import "../Math/trigonometry.arx"
 
+/// Generates a normal (Gaussian) random variate with mean `mu` and standard deviation `sigma`
+/// using the Box-Muller polar transformation.
+///
+/// Parameters:
+///   `mu`   : Distribution mean (center).
+///   `sigma`: Standard deviation (spread).
 pub fn gauss(mu: f64, sigma: f64) -> f64 {
     mut u1: f64 = random();
     while u1 <= 0.000000000000001 {
@@ -18,14 +37,22 @@ pub fn gauss(mu: f64, sigma: f64) -> f64 {
     return mu + z0 * sigma;
 }
 
+/// Alias for `gauss(mu, sigma)`.
 pub fn normalVariate(mu: f64, sigma: f64) -> f64 {
     return gauss(mu, sigma);
 }
 
+/// Generates a log-normal random variate where the natural logarithm is normally distributed
+/// with mean `mu` and standard deviation `sigma`.
 pub fn logNormVariate(mu: f64, sigma: f64) -> f64 {
     return exp(gauss(mu, sigma));
 }
 
+/// Generates an exponentially distributed random variate with rate parameter `lambd`.
+/// Useful for simulating arrival times in Poisson processes.
+///
+/// Parameters:
+///   `lambd`: Rate parameter λ (must be > 0.0).
 pub fn expoVariate(lambd: f64) -> f64 {
     if lambd <= 0.0 {
         return 0.0;
@@ -37,6 +64,12 @@ pub fn expoVariate(lambd: f64) -> f64 {
     return (0.0 - ln(u)) / lambd;
 }
 
+/// Generates a triangular continuous distribution bounded by `low` and `high`, peaking at `mode`.
+///
+/// Parameters:
+///   `low` : Minimum bound.
+///   `high`: Maximum bound.
+///   `mode`: Peak location (`low <= mode <= high`).
 pub fn triangular(low: f64, high: f64, mode: f64) -> f64 {
     let u = random();
     let c = (mode - low) / (high - low);
@@ -46,6 +79,10 @@ pub fn triangular(low: f64, high: f64, mode: f64) -> f64 {
     return high - sqrt((1.0 - u) * (high - low) * (high - mode));
 }
 
+/// Generates a Pareto distribution variate (power-law distribution) with shape parameter `alpha`.
+///
+/// Parameters:
+///   `alpha`: Shape parameter α (> 0.0).
 pub fn pareto(alpha: f64) -> f64 {
     let u = random();
     if alpha <= 0.0 || u == 0.0 {
@@ -54,6 +91,11 @@ pub fn pareto(alpha: f64) -> f64 {
     return 1.0 / pow(1.0 - u, 1.0 / alpha);
 }
 
+/// Generates a Weibull distribution variate with scale parameter `alpha` and shape parameter `beta`.
+///
+/// Parameters:
+///   `alpha`: Scale parameter α (> 0.0).
+///   `beta` : Shape parameter β (> 0.0).
 pub fn weibull(alpha: f64, beta: f64) -> f64 {
     let u = random();
     if u <= 0.000000000000001 || beta <= 0.0 {

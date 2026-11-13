@@ -1,6 +1,21 @@
 // ==============================================================================
-// Aerix Standard Modules: Time::Date
-// Calendar calculations, local system time, DateTime struct, and duration formatting.
+// Aerix Standard Library: Time::Date
+// Gregorian Calendar Calculations, Local/UTC DateTime, and ISO Formatting
+//
+// Overview:
+//   Provides a comprehensive date and time model including local system time
+//   (via Windows GetLocalTime), UTC conversions, leap year verification, month
+//   day counts, date arithmetic (addDays, addHours), weekday determination
+//   using Zeller's congruence, and ISO 8601 formatting.
+//
+// Usage:
+//   import "Time/date.arx"
+//
+//   let now = nowLocal();
+//   println("Current time: " + now.formatIso());
+//   if isWeekend(now) {
+//       println("Enjoy the weekend!");
+//   }
 // ==============================================================================
 
 #[extern("kernel32.dll", "GetLocalTime")]
@@ -9,6 +24,7 @@ pub fn get_local_time(lp_system_time: str) -> void;
 #[extern("msvcrt.dll", "time")]
 pub fn c_time(timer: i64) -> i64;
 
+/// Encapsulates a calendar date and wall-clock time record.
 pub class DateTime {
     pub year: i64
     pub month: i64
@@ -28,6 +44,7 @@ pub class DateTime {
         self.millisecond = 0
     }
 
+    /// Formats the DateTime as an ISO 8601 string: `YYYY-MM-DD HH:MM:SS`.
     pub fn formatIso() -> str {
         mut m_str = self.month as str
         if self.month < 10 { m_str = "0" + m_str }
@@ -47,6 +64,7 @@ pub class DateTime {
         return (self.year as str) + "-" + m_str + "-" + d_str + " " + h_str + ":" + min_str + ":" + s_str
     }
 
+    /// Formats date components only: `YYYY-MM-DD`.
     pub fn formatDate() -> str {
         mut m_str = self.month as str
         if self.month < 10 { m_str = "0" + m_str }
@@ -57,6 +75,7 @@ pub class DateTime {
         return (self.year as str) + "-" + m_str + "-" + d_str
     }
 
+    /// Formats time components only: `HH:MM:SS`.
     pub fn formatTime() -> str {
         mut h_str = self.hour as str
         if self.hour < 10 { h_str = "0" + h_str }
@@ -71,13 +90,15 @@ pub class DateTime {
     }
 }
 
+/// Retrieves the current system local date and time according to user time zone settings.
 pub fn nowLocal() -> DateTime {
     let dt = DateTime()
     let buf = " ".repeat(16)
     get_local_time(buf)
 
-    // SYSTEMTIME: wYear(0..1), wMonth(2..3), wDayOfWeek(4..5), wDay(6..7),
-    //             wHour(8..9), wMinute(10..11), wSecond(12..13), wMilliseconds(14..15)
+    // Windows SYSTEMTIME layout:
+    // wYear(0..1), wMonth(2..3), wDayOfWeek(4..5), wDay(6..7),
+    // wHour(8..9), wMinute(10..11), wSecond(12..13), wMilliseconds(14..15)
     dt.year = (buf.byte_at(0) & 255) | ((buf.byte_at(1) & 255) << 8)
     dt.month = (buf.byte_at(2) & 255) | ((buf.byte_at(3) & 255) << 8)
     dt.day = (buf.byte_at(6) & 255) | ((buf.byte_at(7) & 255) << 8)
@@ -88,12 +109,21 @@ pub fn nowLocal() -> DateTime {
     return dt
 }
 
+/// Tests whether the given Gregorian calendar year is a leap year (366 days).
+///
+/// Parameters:
+///   `year`: Gregorian calendar year (e.g. 2024).
 pub fn isLeapYear(year: i64) -> bool {
     if year % 400 == 0 { return true }
     if year % 100 == 0 { return false }
     return year % 4 == 0
 }
 
+/// Returns the number of days in the specified month of a given year (taking leap years into account).
+///
+/// Parameters:
+///   `year` : Calendar year.
+///   `month`: Month number (1 = January, ..., 12 = December).
 pub fn daysInMonth(year: i64, month: i64) -> i64 {
     if month == 2 {
         if isLeapYear(year) { return 29 }
@@ -105,6 +135,7 @@ pub fn daysInMonth(year: i64, month: i64) -> i64 {
     return 31
 }
 
+/// Retrieves the current date and time in Coordinated Universal Time (UTC).
 pub fn nowUtc() -> DateTime {
     let dt = DateTime()
     let t = c_time(0)
@@ -144,6 +175,7 @@ pub fn nowUtc() -> DateTime {
     return dt
 }
 
+/// Computes a new DateTime by adding `days` to an existing DateTime instance.
 pub fn addDays(dt: DateTime, days: i64) -> DateTime {
     let res = DateTime()
     res.year = dt.year
@@ -164,6 +196,7 @@ pub fn addDays(dt: DateTime, days: i64) -> DateTime {
     return res
 }
 
+/// Computes a new DateTime by adding `hours` to an existing DateTime instance.
 pub fn addHours(dt: DateTime, hours: i64) -> DateTime {
     let extraDays = (dt.hour + hours) / 24
     let newHour = (dt.hour + hours) % 24
@@ -172,8 +205,8 @@ pub fn addHours(dt: DateTime, hours: i64) -> DateTime {
     return res
 }
 
+/// Checks if a DateTime falls on a weekend (Saturday or Sunday) using Zeller's congruence.
 pub fn isWeekend(dt: DateTime) -> bool {
-    // Zeller's congruence to determine day of week (0=Saturday, 1=Sunday, 6=Friday)
     mut m = dt.month
     mut y = dt.year
     if m <= 2 {
@@ -183,5 +216,5 @@ pub fn isWeekend(dt: DateTime) -> bool {
     let k = y % 100
     let j = y / 100
     let h = (dt.day + (13 * (m + 1)) / 5 + k + k / 4 + j / 4 + 5 * j) % 7
-    return h == 0 || h == 1 // Saturday or Sunday
+    return h == 0 || h == 1 // 0 = Saturday, 1 = Sunday
 }

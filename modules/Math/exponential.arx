@@ -1,8 +1,32 @@
 // ==============================================================================
-// Aerix Standard Modules: Math::Exponential
-// Pure Aerix implementations of natural exponentials and logarithmic functions.
+// Aerix Standard Library: Math::Exponential
+// Pure Aerix Implementations of Natural Exponentials and Logarithms
+//
+// Overview:
+//   Implements exponential and logarithmic functions using Taylor series and
+//   binary exponent reduction algorithms, eliminating external C runtime math
+//   dependencies.
+//
+// Functions Included:
+//   - exp     : Natural exponential (e^x)
+//   - ln / log: Natural logarithm (base e)
+//   - log10   : Common logarithm (base 10)
+//   - log2    : Binary logarithm (base 2)
+//   - powF64  : Generalized exponentiation (base^exp for real numbers)
+//
+// Usage:
+//   import "Math/exponential.arx"
+//
+//   let e_squared = exp(2.0);
+//   let half_decay = powF64(0.5, 3.5);
 // ==============================================================================
 
+/// Computes the exponential function e^x (Euler's constant raised to the power `x`).
+///
+/// Parameters:
+///   `x`: Exponent value.
+/// Returns:
+///   `e^x` computed using power-series summation.
 pub fn exp(x: f64) -> f64 {
     if x == 0.0 {
         return 1.0;
@@ -27,10 +51,17 @@ pub fn exp(x: f64) -> f64 {
     return sum;
 }
 
+/// Alias for natural logarithm `ln(x)`.
 pub fn log(x: f64) -> f64 {
     return ln(x);
 }
 
+/// Computes the natural logarithm (base e) of `x`.
+///
+/// Parameters:
+///   `x`: Positive real number (`x > 0.0`).
+/// Returns:
+///   `ln(x)`, or `-INF` if `x <= 0.0`.
 pub fn ln(x: f64) -> f64 {
     if x <= 0.0 {
         return 0.0 - (1.0 / 0.0);
@@ -65,21 +96,26 @@ pub fn ln(x: f64) -> f64 {
     return 2.0 * sum + (k as f64) * ln2_const;
 }
 
+/// Computes the base-10 logarithm of `x`.
 pub fn log10(x: f64) -> f64 {
     let ln10_const: f64 = 2.302585092994046;
     return ln(x) / ln10_const;
 }
 
+/// Computes the base-2 logarithm of `x`.
 pub fn log2(x: f64) -> f64 {
     let ln2_const: f64 = 0.6931471805599453;
     return ln(x) / ln2_const;
 }
 
+/// Computes `base` raised to the real power `exponent` (`base^exponent = exp(exponent * ln(base))`).
+///
+/// Parameters:
+///   `base`    : Non-negative base.
+///   `exponent`: Real exponent.
 pub fn powF64(base: f64, exponent: f64) -> f64 {
     if base <= 0.0 {
         return 0.0;
     }
     return exp(exponent * ln(base));
 }
-
-

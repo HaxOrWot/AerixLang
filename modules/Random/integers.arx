@@ -1,8 +1,28 @@
 // ==============================================================================
-// Aerix Standard Modules: Random::Integers
-// Discrete integer random variates: randInt, randRange, and stepped ranges.
+// Aerix Standard Library: Random::Integers
+// Discrete Integer Random Variates, Inclusive Ranges, and Stepped Intervals
+//
+// Overview:
+//   Provides functions for generating discrete integer random variates within
+//   closed intervals [a, b], half-open intervals [start, stop), stepped arithmetic
+//   progressions, and boolean coin flips.
+//
+// Usage:
+//   import "Random/integers.arx"
+//
+//   let d20 = randInt(1, 20);           // inclusive [1, 20]
+//   let coin = randomBool();            // true or false
+//   let even_digit = randRangeStep(0, 10, 2); // 0, 2, 4, 6, 8
 // ==============================================================================
 
+/// Returns a pseudo-random integer uniformly distributed in the closed interval `[a, b]`.
+/// Automatically handles reversed arguments (`a > b`).
+///
+/// Parameters:
+///   `a`: First boundary of the interval.
+///   `b`: Second boundary of the interval.
+/// Returns:
+///   Random integer `n` such that `min(a, b) <= n <= max(a, b)`.
 pub fn randInt(a: i64, b: i64) -> i64 {
     if a == b {
         return a;
@@ -21,14 +41,21 @@ pub fn randInt(a: i64, b: i64) -> i64 {
     return low + (r % span);
 }
 
+/// Alias for `randInt(a, b)`; returns an integer uniformly in `[a, b]`.
 pub fn randomInt(a: i64, b: i64) -> i64 {
     return randInt(a, b);
 }
 
+/// Returns a random boolean value (`true` or `false`) with equal 50% probability.
 pub fn randomBool() -> bool {
     return randInt(0, 1) == 1;
 }
 
+/// Returns a pseudo-random integer in the half-open range `[start, stop)`.
+///
+/// Parameters:
+///   `start`: Inclusive lower bound.
+///   `stop` : Exclusive upper bound.
 pub fn randRange(start: i64, stop: i64) -> i64 {
     if start >= stop {
         return start;
@@ -41,10 +68,17 @@ pub fn randRange(start: i64, stop: i64) -> i64 {
     return start + (r % span);
 }
 
+/// Alias for `randRange(start, stop)`; returns an integer in `[start, stop)`.
 pub fn randomRange(start: i64, stop: i64) -> i64 {
     return randRange(start, stop);
 }
 
+/// Returns a pseudo-random element chosen from `range(start, stop, step)`.
+///
+/// Parameters:
+///   `start`: Start value of arithmetic progression.
+///   `stop` : Exclusive upper limit.
+///   `step` : Increment between allowable values (`step > 0`).
 pub fn randRangeStep(start: i64, stop: i64, step: i64) -> i64 {
     if step <= 0 {
         return start;

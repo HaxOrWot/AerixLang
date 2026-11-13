@@ -1,6 +1,26 @@
 // ==============================================================================
 // Aerix Standard Library: Random::Crypto
 // Cryptographically Secure Pseudo-Random Number Generation (CSPRNG)
+//
+// Overview:
+//   Re-exports cryptographic random number utilities backed by operating system
+//   entropy sources (Windows CryptoAPI via advapi32.dll).
+//
+// Functions Included:
+//   - cryptoRandomBytes(count)     : Raw cryptographically strong bytes
+//   - cryptoRandomHex(byte_count)  : Hex-encoded entropy string
+//   - cryptoRandomInt(min, max)    : Secure uniform integer within [min, max]
+//   - cryptoRandomFloat()          : 53-bit precision float in [0.0, 1.0)
+//   - generateUuid()               : RFC 4122 compliant UUID Version 4
+//   - generateToken(length)        : URL-safe alphanumeric random token
+//   - generateApiKey(prefix, len)  : Prefixed cryptographic API key
+//
+// Usage:
+//   import "Random/Crypto/mod.arx"
+//   // or: import "Random"
+//
+//   let session_id = generateUuid();
+//   let secret_key = generateApiKey("sk_live", 32);
 // ==============================================================================
 
 import "./crypto.arx"

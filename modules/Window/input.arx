@@ -1,6 +1,20 @@
 // ==============================================================================
 // Aerix Standard Library: Window::Input
 // Keyboard and Mouse Real-Time Hardware State and Global Cursor Positioning
+//
+// Overview:
+//   Provides real-time non-blocking input polling for desktop applications and games.
+//   Supports asynchronous key state checks (`isKeyDown`), screen-space mouse cursor
+//   position querying and programmatic warping, and standard Windows virtual key codes.
+//
+// Usage:
+//   import "Window/input.arx"
+//
+//   if isKeyDown(VK_ESCAPE()) {
+//       println("Escape key pressed!");
+//   }
+//   let mouse = getMousePosition();
+//   println("Cursor: " + (mouse.f0 as str) + ", " + (mouse.f1 as str));
 // ==============================================================================
 
 cextern fn arx_gui_is_key_down(vkey: i64) -> bool;
@@ -11,14 +25,27 @@ pub fn setCursorPos(x: i64, y: i64) -> i32;
 #[extern("user32.dll", "GetCursorPos")]
 pub fn getCursorPos(lp_point: str) -> i32;
 
+/// Checks whether the specified physical keyboard key is currently held down.
+/// Performs asynchronous hardware-level polling via `GetAsyncKeyState`.
+///
+/// Parameters:
+///   `vk_code`: Virtual key code (e.g., `VK_SPACE()`, `VK_RETURN()`, or ASCII 'W' = 87).
+/// Returns:
+///   `true` if currently pressed down, `false` otherwise.
 pub fn isKeyDown(vk_code: i64) -> bool {
     return arx_gui_is_key_down(vk_code);
 }
 
+/// Moves the mouse cursor to the specified absolute screen coordinates.
+///
+/// Parameters:
+///   `x`: Screen X coordinate in pixels.
+///   `y`: Screen Y coordinate in pixels.
 pub fn setMousePosition(x: i64, y: i64) -> bool {
     return setCursorPos(x, y) != 0;
 }
 
+/// Retrieves the current screen coordinates of the mouse cursor as a `(x, y)` tuple.
 pub fn getMousePosition() -> (i64, i64) {
     let buf = " ".repeat(8);
     let ok = getCursorPos(buf);
@@ -30,19 +57,51 @@ pub fn getMousePosition() -> (i64, i64) {
     return (x, y);
 }
 
-// Common Virtual Key Codes
+// ==============================================================================
+// Standard Virtual Key Codes (VK_*)
+// ==============================================================================
+
+/// Left mouse button virtual key code (0x01)
 pub fn VK_LBUTTON() -> i64 { return 1; }
+
+/// Right mouse button virtual key code (0x02)
 pub fn VK_RBUTTON() -> i64 { return 2; }
+
+/// Middle mouse button (mouse wheel click) virtual key code (0x04)
 pub fn VK_MBUTTON() -> i64 { return 4; }
+
+/// Backspace key virtual key code (0x08)
 pub fn VK_BACKSPACE() -> i64 { return 8; }
+
+/// Tab key virtual key code (0x09)
 pub fn VK_TAB() -> i64 { return 9; }
+
+/// Enter / Return key virtual key code (0x0D)
 pub fn VK_RETURN() -> i64 { return 13; }
+
+/// Shift key virtual key code (0x10)
 pub fn VK_SHIFT() -> i64 { return 16; }
+
+/// Control (Ctrl) key virtual key code (0x11)
 pub fn VK_CONTROL() -> i64 { return 17; }
+
+/// Alt key virtual key code (0x12)
 pub fn VK_ALT() -> i64 { return 18; }
+
+/// Escape key virtual key code (0x1B)
 pub fn VK_ESCAPE() -> i64 { return 27; }
+
+/// Spacebar key virtual key code (0x20)
 pub fn VK_SPACE() -> i64 { return 32; }
+
+/// Left arrow navigation key virtual key code (0x25)
 pub fn VK_LEFT() -> i64 { return 37; }
+
+/// Up arrow navigation key virtual key code (0x26)
 pub fn VK_UP() -> i64 { return 38; }
+
+/// Right arrow navigation key virtual key code (0x27)
 pub fn VK_RIGHT() -> i64 { return 39; }
+
+/// Down arrow navigation key virtual key code (0x28)
 pub fn VK_DOWN() -> i64 { return 40; }

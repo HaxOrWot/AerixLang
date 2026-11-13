@@ -1,10 +1,29 @@
 // ==============================================================================
-// Aerix Standard Modules: Math::Advanced
-// Advanced algorithms: roots, combinatorics, number theory, and conversions.
+// Aerix Standard Library: Math::Advanced
+// Advanced Numerical Algorithms: Roots, Combinatorics, and Number Theory
+//
+// Overview:
+//   Provides advanced mathematical algorithms including square roots and cube roots
+//   via Newton-Raphson approximation, integer exponentiation by squaring,
+//   combinatorics (permutations and combinations), angular degree/radian conversion,
+//   Euclidean GCD/LCM, and deterministic prime number testing.
+//
+// Usage:
+//   import "Math/advanced.arx"
+//
+//   let r = sqrt(144.0);         // 12.0
+//   let ways = nCr(10, 3);       // 120
+//   let prime = isPrime(997);    // true
 // ==============================================================================
 
 import "./exponential.arx"
 
+/// Computes the square root of a non-negative floating-point number using Newton-Raphson iteration.
+///
+/// Parameters:
+///   `x`: Non-negative real number.
+/// Returns:
+///   `√x`, or `0.0` if `x <= 0.0`.
 pub fn sqrt(x: f64) -> f64 {
     if x <= 0.0 {
         return 0.0;
@@ -19,6 +38,12 @@ pub fn sqrt(x: f64) -> f64 {
     return guess;
 }
 
+/// Computes the cube root of a floating-point number (preserves negative signs).
+///
+/// Parameters:
+///   `x`: Real number.
+/// Returns:
+///   `∛x` computed via Newton-Raphson iteration.
 pub fn cbrt(x: f64) -> f64 {
     if x == 0.0 {
         return 0.0;
@@ -39,10 +64,16 @@ pub fn cbrt(x: f64) -> f64 {
     return guess * sign_mult;
 }
 
+/// Computes the length of the hypotenuse of a right-angled triangle (`sqrt(a^2 + b^2)`).
 pub fn hypot(a: f64, b: f64) -> f64 {
     return sqrt(a * a + b * b);
 }
 
+/// Computes `base` raised to an integer power `exp` using binary exponentiation (exponentiation by squaring).
+///
+/// Parameters:
+///   `base`: Base value.
+///   `exp` : Signed integer power.
 pub fn pow(base: f64, exp: i64) -> f64 {
     if exp == 0 {
         return 1.0;
@@ -64,6 +95,7 @@ pub fn pow(base: f64, exp: i64) -> f64 {
     return res;
 }
 
+/// Computes `base` raised to a floating-point `exponent` (`base^exponent`).
 pub fn pow(base: f64, exponent: f64) -> f64 {
     if base <= 0.0 {
         return 0.0;
@@ -71,6 +103,10 @@ pub fn pow(base: f64, exponent: f64) -> f64 {
     return exp(exponent * ln(base));
 }
 
+/// Computes the factorial of a non-negative integer `n!` (`1 * 2 * ... * n`).
+///
+/// Parameters:
+///   `n`: Integer in `[0, 20]` (larger integers exceed 64-bit limits).
 pub fn factorial(n: i64) -> i64 {
     if n <= 1 {
         return 1;
@@ -82,6 +118,11 @@ pub fn factorial(n: i64) -> i64 {
     return res;
 }
 
+/// Computes the number of permutations `nPr = n! / (n - r)!`.
+///
+/// Parameters:
+///   `n`: Total number of items.
+///   `r`: Number of chosen items.
 pub fn nPr(n: i64, r: i64) -> i64 {
     if r < 0 || r > n {
         return 0;
@@ -93,6 +134,11 @@ pub fn nPr(n: i64, r: i64) -> i64 {
     return res;
 }
 
+/// Computes the number of combinations (binomial coefficient) `nCr = n! / (r! * (n - r)!)`.
+///
+/// Parameters:
+///   `n`: Total number of items.
+///   `r`: Number of chosen items.
 pub fn nCr(n: i64, r: i64) -> i64 {
     if r < 0 || r > n {
         return 0;
@@ -108,14 +154,17 @@ pub fn nCr(n: i64, r: i64) -> i64 {
     return res;
 }
 
+/// Converts an angle from degrees to radians (`deg * π / 180`).
 pub fn degToRad(deg: f64) -> f64 {
     return deg * (3.141592653589793 / 180.0);
 }
 
+/// Converts an angle from radians to degrees (`rad * 180 / π`).
 pub fn radToDeg(rad: f64) -> f64 {
     return rad * (180.0 / 3.141592653589793);
 }
 
+/// Computes the Greatest Common Divisor (GCD) of two integers using the Euclidean algorithm.
 pub fn gcd(a: i64, b: i64) -> i64 {
     mut x: i64 = a;
     mut y: i64 = b;
@@ -133,6 +182,7 @@ pub fn gcd(a: i64, b: i64) -> i64 {
     return x;
 }
 
+/// Computes the Least Common Multiple (LCM) of two integers (`|a * b| / gcd(a, b)`).
 pub fn lcm(a: i64, b: i64) -> i64 {
     if a == 0 || b == 0 {
         return 0;
@@ -145,6 +195,7 @@ pub fn lcm(a: i64, b: i64) -> i64 {
     return prod / g;
 }
 
+/// Determines whether an integer `n` is prime using 6k ± 1 trial division.
 pub fn isPrime(n: i64) -> bool {
     if n <= 1 {
         return false;
@@ -165,6 +216,7 @@ pub fn isPrime(n: i64) -> bool {
     return true;
 }
 
+/// Finds the smallest prime number strictly greater than `n`.
 pub fn nextPrime(n: i64) -> i64 {
     mut cand: i64 = n + 1;
     while !isPrime(cand) {

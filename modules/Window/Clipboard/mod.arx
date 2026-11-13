@@ -1,6 +1,18 @@
 // ==============================================================================
 // Aerix Standard Library: Window::Clipboard
-// Native Windows Operating System Clipboard Interop
+// Operating System Global Clipboard Read/Write & Text Management
+//
+// Overview:
+//   Re-exports functions for interacting with the global Windows clipboard
+//   allowing apps to check clipboard content formats, copy text, paste text,
+//   and clear clipboard history.
+//
+// Usage:
+//   import "Window/Clipboard/mod.arx"
+//   // or: import "Window"
+//
+//   setText("Hello from Aerix!");
+//   let clip = getText();
 // ==============================================================================
 
 import "./clipboard.arx"

@@ -1,6 +1,19 @@
 // ==============================================================================
 // Aerix Standard Library: Random::Crypto
 // Cryptographically Secure Pseudo-Random Number Generation (CSPRNG)
+//
+// Overview:
+//   Implements hardware-backed cryptographic random number generation using the
+//   Windows CryptoAPI subsystem (`advapi32.dll` -> `CryptGenRandom`).
+//   Guarantees non-predictability suitable for cryptographic keys, session tokens,
+//   salts, nonces, and RFC 4122 UUID v4 identifiers.
+//
+// Usage:
+//   import "Random/Crypto/crypto.arx"
+//
+//   let uuid = generateUuid();
+//   let token = generateToken(32);
+//   let apiKey = generateApiKey("app", 24);
 // ==============================================================================
 
 #[extern("advapi32.dll", "CryptAcquireContextA")]
@@ -12,10 +25,13 @@ pub fn crypt_gen_random(hProv: i64, dwLen: i64, pbBuffer: str) -> i32;
 #[extern("advapi32.dll", "CryptReleaseContext")]
 pub fn crypt_release_context(hProv: i64, dwFlags: i64) -> i32;
 
+/// Windows CryptoAPI RSA full provider type
 pub let PROV_RSA_FULL: i64 = 1;
-// 0xF0000000: CRYPT_VERIFYCONTEXT
+
+/// Windows CryptoAPI flag: acquire context without accessing persistent user private keys (0xF0000000)
 pub let CRYPT_VERIFYCONTEXT: i64 = 4026531840;
 
+/// Acquires a transient handle to the Windows CryptoAPI cryptographic service provider (CSP).
 fn get_crypto_provider() -> i64 {
     let prov_buf = " ".repeat(8);
     let ok = crypt_acquire_context(prov_buf, 0, 0, PROV_RSA_FULL, CRYPT_VERIFYCONTEXT);
@@ -33,6 +49,12 @@ fn get_crypto_provider() -> i64 {
     return p0 | (p1 << 8) | (p2 << 16) | (p3 << 24) | (p4 << 32) | (p5 << 40) | (p6 << 48) | (p7 << 56);
 }
 
+/// Generates a string containing `count` cryptographically strong random bytes from OS entropy.
+///
+/// Parameters:
+///   `count`: Number of secure bytes requested.
+/// Returns:
+///   Binary string containing the raw random bytes.
 pub fn cryptoRandomBytes(count: i64) -> str {
     if count <= 0 {
         return "";
@@ -47,6 +69,10 @@ pub fn cryptoRandomBytes(count: i64) -> str {
     return buf;
 }
 
+/// Generates a hexadecimal string representing `byte_count` cryptographically strong random bytes (2 * byte_count characters).
+///
+/// Parameters:
+///   `byte_count`: Number of raw entropy bytes to encode.
 pub fn cryptoRandomHex(byte_count: i64) -> str {
     let bytes = cryptoRandomBytes(byte_count);
     let hex_chars = "0123456789abcdef";
@@ -65,6 +91,11 @@ pub fn cryptoRandomHex(byte_count: i64) -> str {
     return res;
 }
 
+/// Generates a cryptographically strong random integer within the closed range `[min, max]`.
+///
+/// Parameters:
+///   `min`: Minimum allowable value.
+///   `max`: Maximum allowable value.
 pub fn cryptoRandomInt(min: i64, max: i64) -> i64 {
     if min >= max {
         return min;
@@ -84,6 +115,7 @@ pub fn cryptoRandomInt(min: i64, max: i64) -> i64 {
     return min + (val % span);
 }
 
+/// Generates a cryptographically secure 64-bit float with 53 bits of random mantissa precision in `[0.0, 1.0)`.
 pub fn cryptoRandomFloat() -> f64 {
     let bytes = cryptoRandomBytes(8);
     mut val: i64 = 0;
@@ -101,7 +133,8 @@ pub fn cryptoRandomFloat() -> f64 {
     return (mantissa as f64) / 9007199254740992.0;
 }
 
-// Generates an RFC 4122 compliant UUID Version 4
+/// Generates an RFC 4122 compliant UUID Version 4 (Universally Unique Identifier).
+/// Format: `xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx` (where y is 8, 9, a, or b).
 pub fn generateUuid() -> str {
     let raw = cryptoRandomBytes(16);
     let hex = "0123456789abcdef";
@@ -130,6 +163,11 @@ pub fn generateUuid() -> str {
     return res;
 }
 
+/// Generates a cryptographically secure alphanumeric random token of specified character length.
+/// Suitable for session IDs, CSRF tokens, and password reset codes.
+///
+/// Parameters:
+///   `length`: Number of alphanumeric characters in the generated token.
 pub fn generateToken(length: i64) -> str {
     if length <= 0 {
         return "";
@@ -149,6 +187,11 @@ pub fn generateToken(length: i64) -> str {
     return res;
 }
 
+/// Generates a prefixed cryptographic API key (e.g. `sk_live_9a4f2b...`).
+///
+/// Parameters:
+///   `prefix`    : Key prefix (e.g., "sk", "pk", "api").
+///   `byteLength`: Number of random bytes of entropy encoded as hex.
 pub fn generateApiKey(prefix: str, byteLength: i64) -> str {
     let keyHex = cryptoRandomHex(byteLength);
     if prefix == "" {

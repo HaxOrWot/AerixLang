@@ -1,11 +1,27 @@
 // ==============================================================================
 // Aerix Standard Library: Socket::Client
-// Object-oriented TCP Client and Network Stream Wrapper
+// Object-Oriented TCP Client and Network Stream Wrapper
+//
+// Overview:
+//   Provides a high-level `TcpClient` class for connecting to remote TCP servers,
+//   sending textual and binary payloads, receiving stream chunks, and safe teardown.
+//
+// Usage:
+//   import "Socket/client.arx"
+//
+//   let client = TcpClient();
+//   if client.connect("127.0.0.1", 8080) {
+//       client.sendStr("PING\r\n");
+//       let reply = client.recvStr(1024);
+//       println("Received: " + reply);
+//       client.close();
+//   }
 // ==============================================================================
 
 import "./constants.arx"
 import "./core.arx"
 
+/// High-level TCP client connection wrapper.
 pub class TcpClient {
     pub sock: i64
     pub connected: bool
@@ -15,6 +31,13 @@ pub class TcpClient {
         self.connected = false
     }
 
+    /// Connects to a remote host on specified port.
+    ///
+    /// Parameters:
+    ///   `ip`  : Destination IPv4 address string (e.g., "192.168.1.1").
+    ///   `port`: Remote port number.
+    /// Returns:
+    ///   `true` if connection succeeded, `false` otherwise.
     pub fn connect(ip: str, port: i64) -> bool {
         self.sock = createTcpSocket()
         if self.sock == INVALID_SOCKET() {
@@ -30,6 +53,12 @@ pub class TcpClient {
         return true
     }
 
+    /// Sends a string payload over the connected socket.
+    ///
+    /// Parameters:
+    ///   `data`: String to transmit.
+    /// Returns:
+    ///   Number of bytes sent, or `-1` on error.
     pub fn sendStr(data: str) -> i64 {
         if !self.connected {
             return -1
@@ -37,6 +66,12 @@ pub class TcpClient {
         return send(self.sock, data, data.len(), 0)
     }
 
+    /// Receives up to `max_bytes` from the connected socket stream.
+    ///
+    /// Parameters:
+    ///   `max_bytes`: Buffer size limit.
+    /// Returns:
+    ///   String containing data read from stream, or `""` on disconnect or error.
     pub fn recvStr(max_bytes: i64) -> str {
         if !self.connected {
             return ""
@@ -49,6 +84,7 @@ pub class TcpClient {
         return buf.slice(0, bytes_read)
     }
 
+    /// Closes the socket connection and releases OS socket resources.
     pub fn close() -> void {
         if self.sock != INVALID_SOCKET() {
             closesocket(self.sock)
@@ -57,11 +93,20 @@ pub class TcpClient {
         self.connected = false
     }
 
+    /// Checks if the client socket is currently active and marked connected.
     pub fn isConnected() -> bool {
         return self.connected
     }
 }
 
+/// Convenience helper to perform a one-shot TCP request and response exchange.
+///
+/// Parameters:
+///   `host`   : Target IPv4 address.
+///   `port`   : Target port number.
+///   `request`: String payload to transmit.
+/// Returns:
+///   Response string received from remote server, or `""` on failure.
 pub fn tcpRequest(host: str, port: i64, request: str) -> str {
     let client = TcpClient()
     if !client.connect(host, port) {

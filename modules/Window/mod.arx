@@ -1,10 +1,33 @@
 // ==============================================================================
 // Aerix Standard Library: Window
-// Native OS Windowing, Dialogs, Message Boxes, System Metrics, and Input State
+// Native OS Windowing, Input Polling, Display Metrics, Clipboard, and GUI Engine
+//
+// Overview:
+//   The Window module provides complete desktop GUI and OS window management
+//   primitives for Windows. It integrates window lifecycle, modal message boxes,
+//   global hardware input polling, display geometry inspection, system clipboard,
+//   native controls (buttons, inputs, lists), and a high-performance 2D Canvas.
+//
+// Submodules:
+//   - Window::Core      : MessageBox alerts, audio beeps, window handles (Z-order, title, minimize).
+//   - Window::Metrics   : Screen resolutions, multi-monitor configuration, virtual desktop bounds.
+//   - Window::Input     : Asynchronous keyboard polling (isKeyDown), virtual keys, mouse cursor positioning.
+//   - Window::Clipboard : System clipboard text read, write, and clear operations.
+//   - Window::Gui       : AppWindow lifecycle, controls (Button, TextBox, ListBox, ComboBox),
+//                         dialogs, and the hardware-accelerated 2D Canvas drawing engine.
+//
+// Usage:
+//   import "Window"
+//
+//   let win = AppWindow("Aerix App", 800, 600);
+//   win.show();
+//   while win.isOpen() {
+//       win.poll();
+//   }
 // ==============================================================================
 
 import "./core.arx"
 import "./metrics.arx"
 import "./input.arx"
-import "./Gui/mod.arx"
 import "./Clipboard/mod.arx"
+import "./Gui/mod.arx"

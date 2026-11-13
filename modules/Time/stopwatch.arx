@@ -1,10 +1,25 @@
 // ==============================================================================
-// Aerix Standard Modules: Time::Stopwatch
-// High-resolution precision stopwatch for benchmarking and interval timing.
+// Aerix Standard Library: Time::Stopwatch
+// High-Resolution Monotonic Stopwatch for Benchmarking and Interval Timing
+//
+// Overview:
+//   Provides the `Stopwatch` class for benchmarking code blocks, measuring
+//   performance durations, and managing delta time in interactive loops.
+//   Backed by Windows `GetTickCount64` for non-decreasing, monotonic precision.
+//
+// Usage:
+//   import "Time/stopwatch.arx"
+//
+//   let sw = Stopwatch();
+//   sw.start();
+//   // perform computational task...
+//   sw.stop();
+//   println("Execution time: " + (sw.elapsedMs() as str) + " ms");
 // ==============================================================================
 
 import "./core.arx"
 
+/// High-resolution monotonic interval timer.
 pub class Stopwatch {
     pub start_time: i64
     pub stop_time: i64
@@ -16,11 +31,13 @@ pub class Stopwatch {
         self.running = false
     }
 
+    /// Starts measuring elapsed time from the current system tick.
     pub fn start() -> void {
         self.start_time = ticks()
         self.running = true
     }
 
+    /// Stops measuring elapsed time and captures final duration.
     pub fn stop() -> void {
         if self.running {
             self.stop_time = ticks()
@@ -28,17 +45,21 @@ pub class Stopwatch {
         }
     }
 
+    /// Resets elapsed time counter to zero and stops the stopwatch.
     pub fn reset() -> void {
         self.start_time = 0
         self.stop_time = 0
         self.running = false
     }
 
+    /// Stops, resets, and immediately starts measuring anew.
     pub fn restart() -> void {
         self.reset()
         self.start()
     }
 
+    /// Returns elapsed time in milliseconds.
+    /// If still running, computes duration relative to current moment.
     pub fn elapsedMs() -> i64 {
         if self.running {
             return ticks() - self.start_time
@@ -46,15 +67,18 @@ pub class Stopwatch {
         return self.stop_time - self.start_time
     }
 
+    /// Returns elapsed time in fractional seconds (e.g. 1.250).
     pub fn elapsedSec() -> f64 {
         let ms = self.elapsedMs()
         return (ms as f64) / 1000.0
     }
 
+    /// Alias for `elapsedSec()`.
     pub fn elapsedSecs() -> f64 {
         return self.elapsedSec()
     }
 
+    /// Returns `true` if the stopwatch is currently active and measuring time.
     pub fn isRunning() -> bool {
         return self.running
     }

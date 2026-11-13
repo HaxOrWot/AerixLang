@@ -1,6 +1,18 @@
 // ==============================================================================
-// Aerix Standard Modules: Random::Sequences
-// Sequence operations on slices: choice, shuffle, and sample.
+// Aerix Standard Library: Random::Sequences
+// Sequence Operations on Slices: Random Choice and In-Place Shuffling
+//
+// Overview:
+//   Provides sequence sampling utilities: selecting a random element from a
+//   slice, and in-place random permutations via the Fisher-Yates (Knuth)
+//   shuffling algorithm for integers, floating-point numbers, and strings.
+//
+// Usage:
+//   import "Random/sequences.arx"
+//
+//   let items = [10, 20, 30, 40];
+//   let picked = choice(&items);
+//   shuffle(&mut items);
 // ==============================================================================
 
 fn _seq_randint(a: i64, b: i64) -> i64 {
@@ -15,6 +27,8 @@ fn _seq_randint(a: i64, b: i64) -> i64 {
     return a + (r % span);
 }
 
+/// Selects a pseudo-random element uniformly from a slice of 64-bit integers.
+/// Returns `0` if the slice is empty.
 pub fn choice(s: &[i64]) -> i64 {
     if s.len == 0 {
         return 0;
@@ -23,6 +37,8 @@ pub fn choice(s: &[i64]) -> i64 {
     return s[idx];
 }
 
+/// Selects a pseudo-random element uniformly from a slice of 64-bit floats.
+/// Returns `0.0` if the slice is empty.
 pub fn choiceF64(s: &[f64]) -> f64 {
     if s.len == 0 {
         return 0.0;
@@ -31,6 +47,8 @@ pub fn choiceF64(s: &[f64]) -> f64 {
     return s[idx];
 }
 
+/// Selects a pseudo-random string element uniformly from a slice of strings.
+/// Returns `""` if the slice is empty.
 pub fn choiceStr(s: &[str]) -> str {
     if s.len == 0 {
         return "";
@@ -39,6 +57,8 @@ pub fn choiceStr(s: &[str]) -> str {
     return s[idx];
 }
 
+/// Shuffles an integer slice in-place using the Fisher-Yates algorithm.
+/// Guarantees an unbiased, uniform permutation of all elements in O(N) time.
 pub fn shuffle(s: &mut [i64]) {
     let n: i64 = s.len;
     if n <= 1 {
@@ -52,6 +72,7 @@ pub fn shuffle(s: &mut [i64]) {
     }
 }
 
+/// Shuffles a 64-bit float slice in-place using the Fisher-Yates algorithm.
 pub fn shuffleF64(s: &mut [f64]) {
     let n: i64 = s.len;
     if n <= 1 {
@@ -65,6 +86,7 @@ pub fn shuffleF64(s: &mut [f64]) {
     }
 }
 
+/// Shuffles a string slice in-place using the Fisher-Yates algorithm.
 pub fn shuffleStr(s: &mut [str]) {
     let n: i64 = s.len;
     if n <= 1 {

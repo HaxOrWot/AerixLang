@@ -1,47 +1,85 @@
 // ==============================================================================
 // Aerix Standard Library: Window::Gui::Controls
-// Native Windows OS GUI UI Controls (Buttons, Labels, TextBoxes, CheckBoxes)
+// Native Windows OS GUI UI Controls (Buttons, Labels, TextBoxes, CheckBoxes, etc.)
+//
+// Overview:
+//   Provides standard Win32 common controls wrapped into clean Aerix classes:
+//   push buttons, static text labels, single-line text input fields, toggle
+//   checkboxes, progress indicators, item list boxes, and dropdown combo boxes.
+//
+// Usage:
+//   import "Window/Gui/controls.arx"
+//   import "Window/Gui/window.arx"
+//
+//   let win = AppWindow("Form", 400, 300);
+//   let lbl = Label(win.hwnd, "Enter Name:", 20, 20, 100, 24);
+//   let txt = TextBox(win.hwnd, "User", 130, 20, 150, 24, 101);
+//   let btn = Button(win.hwnd, "Submit", 130, 60, 100, 30, 102);
+//   win.show();
 // ==============================================================================
 
 import "./window.arx"
 
-// Control Styles
-pub let WS_CHILD_FLAG: i64 = 1073741824;     // WS_CHILD
-pub let WS_VISIBLE_STYLE: i64 = 268435456;   // WS_VISIBLE
-pub let WS_BORDER_STYLE: i64 = 8388608;      // WS_BORDER
-pub let ES_AUTOHSCROLL_STYLE: i64 = 128;     // ES_AUTOHSCROLL
-pub let BS_PUSHBUTTON_STYLE: i64 = 0;        // BS_PUSHBUTTON
-pub let BS_CHECKBOX_STYLE: i64 = 2;          // BS_CHECKBOX
+// ==============================================================================
+// Win32 Control Styles & Messages
+// ==============================================================================
+
+/// Window style: Child window (WS_CHILD = 0x40000000)
+pub let WS_CHILD_FLAG: i64 = 1073741824;
+
+/// Window style: Initially visible (WS_VISIBLE = 0x10000000)
+pub let WS_VISIBLE_STYLE: i64 = 268435456;
+
+/// Window style: Thin line border (WS_BORDER = 0x00800000)
+pub let WS_BORDER_STYLE: i64 = 8388608;
+
+/// Edit control style: Auto-scroll horizontally on overflow (ES_AUTOHSCROLL = 0x80)
+pub let ES_AUTOHSCROLL_STYLE: i64 = 128;
+
+/// Button control style: Push button (BS_PUSHBUTTON = 0x00)
+pub let BS_PUSHBUTTON_STYLE: i64 = 0;
+
+/// Button control style: Two-state checkbox (BS_CHECKBOX = 0x02)
+pub let BS_CHECKBOX_STYLE: i64 = 2;
+
+/// Checkbox message: Retrieve check state (BM_GETCHECK = 0x00F0)
 pub let BM_GETCHECK: i64 = 240;
+
+/// Checkbox message: Set check state (BM_SETCHECK = 0x00F1)
 pub let BM_SETCHECK: i64 = 241;
 
 #[extern("user32.dll", "SendMessageA")]
 pub fn win32SendMessage(hwnd: i64, msg: i64, wParam: i64, lParam: i64) -> i64;
 
+/// Creates a native Win32 pushbutton child control.
 pub fn createButton(parent_hwnd: i64, text: str, x: i64, y: i64, width: i64, height: i64, id: i64) -> i64 {
     let style = WS_CHILD_FLAG + WS_VISIBLE_STYLE + BS_PUSHBUTTON_STYLE;
     let hwnd = win32_create_window_ex(0, "BUTTON", text, style, x, y, width, height, parent_hwnd, id, 0, 0);
     return hwnd;
 }
 
+/// Creates a native Win32 static text label child control.
 pub fn createLabel(parent_hwnd: i64, text: str, x: i64, y: i64, width: i64, height: i64) -> i64 {
     let style = WS_CHILD_FLAG + WS_VISIBLE_STYLE;
     let hwnd = win32_create_window_ex(0, "STATIC", text, style, x, y, width, height, parent_hwnd, 0, 0, 0);
     return hwnd;
 }
 
+/// Creates a native Win32 single-line edit/text-entry child control.
 pub fn createTextBox(parent_hwnd: i64, default_text: str, x: i64, y: i64, width: i64, height: i64, id: i64) -> i64 {
     let style = WS_CHILD_FLAG + WS_VISIBLE_STYLE + WS_BORDER_STYLE + ES_AUTOHSCROLL_STYLE;
     let hwnd = win32_create_window_ex(512, "EDIT", default_text, style, x, y, width, height, parent_hwnd, id, 0, 0);
     return hwnd;
 }
 
+/// Creates a native Win32 toggle checkbox child control.
 pub fn createCheckBox(parent_hwnd: i64, text: str, x: i64, y: i64, width: i64, height: i64, id: i64) -> i64 {
     let style = WS_CHILD_FLAG + WS_VISIBLE_STYLE + BS_CHECKBOX_STYLE;
     let hwnd = win32_create_window_ex(0, "BUTTON", text, style, x, y, width, height, parent_hwnd, id, 0, 0);
     return hwnd;
 }
 
+/// Push button UI control.
 pub class Button {
     pub hwnd: i64
     pub text: str
@@ -61,6 +99,7 @@ pub class Button {
         self.hwnd = createButton(parent_hwnd, text, x, y, width, height, id)
     }
 
+    /// Updates the button's label text.
     pub fn setText(new_text: str) -> void {
         self.text = new_text
         if self.hwnd != 0 {
@@ -68,6 +107,7 @@ pub class Button {
         }
     }
 
+    /// Enables or disables user interaction with the button.
     pub fn enable(is_enabled: bool) -> void {
         if self.hwnd != 0 {
             mut flag: i32 = 0
@@ -77,6 +117,7 @@ pub class Button {
     }
 }
 
+/// Static text label UI control.
 pub class Label {
     pub hwnd: i64
     pub text: str
@@ -94,6 +135,7 @@ pub class Label {
         self.hwnd = createLabel(parent_hwnd, text, x, y, width, height)
     }
 
+    /// Updates the text displayed by the label.
     pub fn setText(new_text: str) -> void {
         self.text = new_text
         if self.hwnd != 0 {
@@ -102,6 +144,7 @@ pub class Label {
     }
 }
 
+/// Text input field control.
 pub class TextBox {
     pub hwnd: i64
     pub text: str
@@ -121,6 +164,7 @@ pub class TextBox {
         self.hwnd = createTextBox(parent_hwnd, default_text, x, y, width, height, id)
     }
 
+    /// Sets the contents of the text input field.
     pub fn setText(new_text: str) -> void {
         self.text = new_text
         if self.hwnd != 0 {
@@ -129,6 +173,7 @@ pub class TextBox {
     }
 }
 
+/// Checkbox toggle UI control.
 pub class CheckBox {
     pub hwnd: i64
     pub text: str
@@ -148,12 +193,14 @@ pub class CheckBox {
         self.hwnd = createCheckBox(parent_hwnd, text, x, y, width, height, id)
     }
 
+    /// Checks whether the checkbox is currently checked.
     pub fn isChecked() -> bool {
         if self.hwnd == 0 { return false }
         let state = win32SendMessage(self.hwnd, BM_GETCHECK, 0, 0)
         return state != 0
     }
 
+    /// Sets the checked state of the checkbox.
     pub fn setChecked(checked: bool) -> void {
         if self.hwnd != 0 {
             mut val = 0
@@ -162,6 +209,7 @@ pub class CheckBox {
         }
     }
 
+    /// Updates the checkbox label text.
     pub fn setText(new_text: str) -> void {
         self.text = new_text
         if self.hwnd != 0 {
@@ -170,12 +218,14 @@ pub class CheckBox {
     }
 }
 
+/// Creates a native Windows progress bar child control (msctls_progress32).
 pub fn createProgressBar(parent_hwnd: i64, x: i64, y: i64, width: i64, height: i64, id: i64) -> i64 {
     let style = WS_CHILD_FLAG + WS_VISIBLE_STYLE + WS_BORDER_STYLE;
     let hwnd = win32_create_window_ex(0, "msctls_progress32", "", style, x, y, width, height, parent_hwnd, id, 0, 0);
     return hwnd;
 }
 
+/// Native visual progress indicator control.
 pub class ProgressBar {
     pub hwnd: i64
     pub x: i64
@@ -193,6 +243,7 @@ pub class ProgressBar {
         self.hwnd = createProgressBar(parent_hwnd, x, y, width, height, id)
     }
 
+    /// Sets the current progress position.
     pub fn setProgress(pos: i64) -> void {
         if self.hwnd != 0 {
             // PBM_SETPOS = 1026
@@ -200,6 +251,7 @@ pub class ProgressBar {
         }
     }
 
+    /// Configures the minimum and maximum progress range bounds.
     pub fn setRange(min: i64, max: i64) -> void {
         if self.hwnd != 0 {
             // PBM_SETRANGE32 = 1030
@@ -208,6 +260,7 @@ pub class ProgressBar {
     }
 }
 
+/// Creates a native Windows listbox control.
 pub fn createListBox(parent_hwnd: i64, x: i64, y: i64, width: i64, height: i64, id: i64) -> i64 {
     // LBS_NOTIFY = 1
     let style = WS_CHILD_FLAG + WS_VISIBLE_STYLE + WS_BORDER_STYLE + 1;
@@ -215,6 +268,7 @@ pub fn createListBox(parent_hwnd: i64, x: i64, y: i64, width: i64, height: i64, 
     return hwnd;
 }
 
+/// Item list selector control.
 pub class ListBox {
     pub hwnd: i64
     pub x: i64
@@ -232,18 +286,21 @@ pub class ListBox {
         self.hwnd = createListBox(parent_hwnd, x, y, width, height, id)
     }
 
+    /// Retrieves the zero-based index of the currently selected item (-1 if none selected).
     pub fn getSelectedIndex() -> i64 {
         if self.hwnd == 0 { return -1 }
         // LB_GETCURSEL = 392
         return win32SendMessage(self.hwnd, 392, 0, 0)
     }
 
+    /// Retrieves the total count of items present in the listbox.
     pub fn getItemCount() -> i64 {
         if self.hwnd == 0 { return 0 }
         // LB_GETCOUNT = 395
         return win32SendMessage(self.hwnd, 395, 0, 0)
     }
 
+    /// Removes all items from the listbox.
     pub fn clear() -> void {
         if self.hwnd != 0 {
             // LB_RESETCONTENT = 388
@@ -252,6 +309,7 @@ pub class ListBox {
     }
 }
 
+/// Creates a native Windows dropdown combobox control.
 pub fn createComboBox(parent_hwnd: i64, x: i64, y: i64, width: i64, height: i64, id: i64) -> i64 {
     // CBS_DROPDOWNLIST = 3
     let style = WS_CHILD_FLAG + WS_VISIBLE_STYLE + WS_BORDER_STYLE + 3;
@@ -259,6 +317,7 @@ pub fn createComboBox(parent_hwnd: i64, x: i64, y: i64, width: i64, height: i64,
     return hwnd;
 }
 
+/// Dropdown selection combobox control.
 pub class ComboBox {
     pub hwnd: i64
     pub x: i64
@@ -276,12 +335,14 @@ pub class ComboBox {
         self.hwnd = createComboBox(parent_hwnd, x, y, width, height, id)
     }
 
+    /// Retrieves the zero-based index of the currently selected dropdown item (-1 if none selected).
     pub fn getSelectedIndex() -> i64 {
         if self.hwnd == 0 { return -1 }
         // CB_GETCURSEL = 327
         return win32SendMessage(self.hwnd, 327, 0, 0)
     }
 
+    /// Selects the dropdown item at the specified zero-based index.
     pub fn setSelectedIndex(idx: i64) -> void {
         if self.hwnd != 0 {
             // CB_SETCURSEL = 334

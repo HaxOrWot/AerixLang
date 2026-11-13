@@ -1,6 +1,28 @@
 // ==============================================================================
 // Aerix Standard Library: Window::Gui
-// Graphical User Interface Controls, Windows, Modals, and Components
+// Complete Native Windows Graphical User Interface (GUI) Framework
+//
+// Overview:
+//   Provides the full desktop GUI stack for Aerix applications on Windows.
+//   Includes the `AppWindow` application lifecycle and message pump, native Win32
+//   controls (buttons, textboxes, labels, checkboxes, progress bars, listboxes,
+//   comboboxes), modal confirmation dialogs, and the double-buffered 2D Canvas.
+//
+// Submodules:
+//   - Window::Gui::Window  : AppWindow class, Win32 window creation, event dispatch loop.
+//   - Window::Gui::Controls: Native UI controls (Button, TextBox, CheckBox, ProgressBar, ListBox, ComboBox).
+//   - Window::Gui::Dialogs : Modal dialog prompts (info, warning, error, yes/no/cancel).
+//   - Window::Gui::Canvas  : Double-buffered GDI 2D graphics engine (lines, rects, circles, text).
+//
+// Usage:
+//   import "Window/Gui/mod.arx"
+//   // or: import "Window"
+//
+//   let win = AppWindow("Aerix GUI Demo", 640, 480);
+//   win.show();
+//   while win.isOpen() {
+//       win.poll();
+//   }
 // ==============================================================================
 
 import "./window.arx"

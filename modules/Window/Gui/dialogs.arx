@@ -1,35 +1,65 @@
 // ==============================================================================
 // Aerix Standard Library: Window::Gui::Dialogs
 // Native OS Modal Dialogs, Message Prompts, and Confirmations
+//
+// Overview:
+//   Wraps standard Win32 `MessageBox` modal dialogs with icon and button presets
+//   for displaying informational notices, warnings, error dialogs, OK/Cancel
+//   confirmations, and Yes/No/Cancel decision prompts.
+//
+// Usage:
+//   import "Window/Gui/dialogs.arx"
+//
+//   showInfoDialog("Welcome", "Aerix GUI system ready!");
+//   if showConfirmDialog("Quit", "Are you sure you want to exit?") {
+//       // handle quit
+//   }
 // ==============================================================================
 
 #[extern("user32.dll", "MessageBoxA")]
 pub fn win32_msgbox(hwnd: i64, text: str, caption: str, utype: i64) -> i64;
 
+/// Displays an informational dialog with an OK button (MB_ICONINFORMATION).
+///
+/// Parameters:
+///   `title`  : Caption text in dialog title bar.
+///   `message`: Dialog body message.
 pub fn showInfoDialog(title: str, message: str) -> void {
-    // MB_OK (0x0) | MB_ICONINFORMATION (0x40)
     win32_msgbox(0, message, title, 64);
 }
 
+/// Displays a warning dialog with an OK button (MB_ICONWARNING).
+///
+/// Parameters:
+///   `title`  : Caption text in dialog title bar.
+///   `message`: Dialog body message.
 pub fn showWarningDialog(title: str, message: str) -> void {
-    // MB_OK (0x0) | MB_ICONWARNING (0x30)
     win32_msgbox(0, message, title, 48);
 }
 
+/// Displays an error dialog with an OK button (MB_ICONERROR).
+///
+/// Parameters:
+///   `title`  : Caption text in dialog title bar.
+///   `message`: Dialog body message.
 pub fn showErrorDialog(title: str, message: str) -> void {
-    // MB_OK (0x0) | MB_ICONERROR (0x10)
     win32_msgbox(0, message, title, 16);
 }
 
+/// Displays an OK / Cancel confirmation prompt.
+///
+/// Returns:
+///   `true` if OK was clicked, `false` if Cancel was clicked.
 pub fn showConfirmDialog(title: str, message: str) -> bool {
-    // MB_OKCANCEL (0x1) | MB_ICONQUESTION (0x20)
     let res = win32_msgbox(0, message, title, 33);
     return res == 1; // IDOK = 1
 }
 
+/// Displays a question dialog with Yes, No, and Cancel buttons (MB_YESNOCANCEL).
+///
+/// Returns:
+///   `6` for Yes (IDYES), `7` for No (IDNO), or `2` for Cancel (IDCANCEL).
 pub fn showYesNoCancelDialog(title: str, message: str) -> i64 {
-    // MB_YESNOCANCEL (0x3) | MB_ICONQUESTION (0x20)
     let res = win32_msgbox(0, message, title, 35);
-    // IDYES = 6, IDNO = 7, IDCANCEL = 2
     return res;
 }
