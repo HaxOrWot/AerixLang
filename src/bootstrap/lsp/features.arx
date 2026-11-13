@@ -564,7 +564,7 @@ fn lsp_generic_inner_arg(t: str, arg_idx: i64) -> str {
     mut cur_idx = 0
     mut i = 0
     while i <= inner.len() {
-        mut at_end = (i == inner.len())
+        let at_end = (i == inner.len())
         mut is_sep = false
         if !at_end {
             let b = inner.byte_at(i)
@@ -933,7 +933,7 @@ fn lsp_infer_expr_receiver_type(az: Analyzer, doc_path: str, line1: i64, expr: s
     // Check function / constructor call head e.g. Parser(p) or foo(x) or List<str>()
     let p_idx2 = lsp_str_find(trimmed, "(", 0)
     if p_idx2 > 0 {
-        mut head = trimmed.slice(0, p_idx2).trim()
+        let head = trimmed.slice(0, p_idx2).trim()
         let lt2 = lsp_str_find(head, "<", 0)
         mut base_head = head
         if lt2 > 0 { base_head = head.slice(0, lt2).trim() }
@@ -967,10 +967,16 @@ fn lsp_infer_expr_receiver_type(az: Analyzer, doc_path: str, line1: i64, expr: s
 pub fn lsp_build_diagnostics_json(az: Analyzer, doc_path: str, source: str) -> str {
     let jb = JsonBuf()
     jb.lbrack()
+    let norm_doc = bpath_normalize(doc_path).to_lower()
     mut first = true
     mut i = 0
     while i < az.err_count {
         let ef = az.err_files.get(i)
+        let norm_ef = bpath_normalize(ef).to_lower()
+        if norm_ef != "" && norm_ef != norm_doc {
+            i = i + 1
+            continue
+        }
         mut ln0 = az.err_lines.get(i) - 1
         mut cl0 = az.err_cols.get(i) - 1
         mut msg = az.err_msgs.get(i)
@@ -984,19 +990,13 @@ pub fn lsp_build_diagnostics_json(az: Analyzer, doc_path: str, source: str) -> s
         if i < az.err_lens.len() { elen_diag = az.err_lens.get(i) }
         if elen_diag < 1 { elen_diag = 1 }
 
-        let in_cur = (ef == doc_path)
-        if !in_cur {
-            ln0 = 0
-            cl0 = 0
-            msg = "[" + bpath_basename(ef) + ":" + az.err_lines.get(i) + "] " + msg
-        }
         if hmsg != "" {
             msg = msg + "\nhelp: " + hmsg
         }
         if ln0 < 0 { ln0 = 0 }
         if cl0 < 0 { cl0 = 0 }
         mut end_cl0 = cl0 + elen_diag
-        if in_cur && source != "" {
+        if source != "" {
             let eline = lsp_get_line_text(source, ln0)
             let elen = eline.len()
             if cl0 < elen && lsp_is_ident_char(eline.byte_at(cl0)) {
@@ -2178,14 +2178,11 @@ pub fn lsp_build_completion_json(source: str, az: Analyzer, doc_path: str, line0
     // Case 1: Member / Cascade completion after '.' / '?.' / '~>' + Postfix transforms
     mut is_member = false
     mut is_plain_dot = false
-    mut dot_col0 = -1
     if before_word.ends_with("?.") || before_word.ends_with("~>") {
         is_member = true
-        dot_col0 = before_word.len() - 2
     } else if before_word.ends_with(".") {
         is_member = true
         is_plain_dot = true
-        dot_col0 = before_word.len() - 1
     }
 
     if is_member {

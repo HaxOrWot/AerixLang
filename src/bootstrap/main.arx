@@ -23,7 +23,7 @@ fn resolve_bin_name() -> str {
 fn print_usage() {
     let bin = resolve_bin_name()
     println("Aerix Native Systems Programming Language Toolchain (" + bin + ")")
-    println("Version: 1.2.20b (Beta Channel) - x86_64-windows")
+    println("Version: 1.2.21b (Beta Channel) - x86_64-windows")
     println("")
     println("Usage:")
     println("  " + bin + " <command> [arguments...] [options]")
@@ -420,7 +420,7 @@ fn cmd_vm(cli_args: List<str>, cli_argc: i64, start_idx: i64, default_sub: str) 
         }
     } else if sub == "install" || sub == "add" {
         if target == "" {
-            eprintln("error: missing version for 'arx vm install' (e.g. 'arx vm install 1.2.20b')")
+            eprintln("error: missing version for 'arx vm install' (e.g. 'arx vm install 1.2.21b')")
             return 1
         }
         cmd = cmd + " " + quote_shell_arg("--vm-install=" + target)
@@ -617,7 +617,7 @@ fn compile_frontend(input_file: str) -> Analyzer {
 }
 
 fn emit_c_for_file(input_file: str) -> str {
-    mut az = compile_frontend(input_file)
+    let az = compile_frontend(input_file)
     if az.has_errors > 0 {
         Env.exit(1)
     }
@@ -796,7 +796,7 @@ fn emit_native_exe(input_file: str, exe_path: str) -> i64 {
     if dir != "" && dir != "." {
         Directory.create(dir)
     }
-    mut az = compile_frontend(input_file)
+    let az = compile_frontend(input_file)
     if az.has_errors > 0 {
         return 1
     }
@@ -909,7 +909,7 @@ fn main() -> i64 {
                 return 0
             }
         }
-        println("Aerix Self-Hosting Bootstrap Compiler (arxc) v1.2.20b")
+        println("Aerix Self-Hosting Bootstrap Compiler (arxc) v1.2.21b")
         maybe_trigger_bg_update()
         return 0
     }
