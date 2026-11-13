@@ -2,7 +2,7 @@
   "name": "aerix",
   "displayName": "Aerix Language & IntelliSense Support",
   "description": "Official language support, IntelliSense completions, hover documentation, syntax highlighting, and X file icon for Aerix (.arx).",
-  "version": "1.2.17-b",
+  "version": "1.2.18-b",
   "publisher": "aerix-lang",
   "icon": "icons/aerix-icon.png",
   "engines": {
@@ -14,7 +14,6 @@
   },
   "main": "./extension.js",
   "activationEvents": [
-    "onLanguage:aerix",
     "onStartupFinished"
   ],
   "categories": [
