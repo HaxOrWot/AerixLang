@@ -1,7 +1,8 @@
 // ==============================================================================
 // Aerix Standard Library: Window::Gui
-// Graphical User Interface Controls, Windows, and Components
+// Graphical User Interface Controls, Windows, Modals, and Components
 // ==============================================================================
 
 import "./window.arx"
 import "./controls.arx"
+import "./dialogs.arx"

@@ -1,6 +1,6 @@
 // ==============================================================================
 // Aerix Standard Library: Window::Gui::Window
-// Native Windows OS GUI Window Management Primitives
+// Native Windows OS GUI Window Management Primitives & Event Loop
 // ==============================================================================
 
 #[extern("user32.dll", "CreateWindowExA")]
@@ -27,6 +27,15 @@ pub fn win32_is_window_visible(hwnd: i64) -> i32;
 #[extern("user32.dll", "EnableWindow")]
 pub fn win32_enable_window(hwnd: i64, enable: i32) -> i32;
 
+#[extern("user32.dll", "PeekMessageA")]
+pub fn win32_peek_message(lpMsg: str, hwnd: i64, msgFilterMin: i64, msgFilterMax: i64, removeMsg: i64) -> i32;
+
+#[extern("user32.dll", "TranslateMessage")]
+pub fn win32_translate_message(lpMsg: str) -> i32;
+
+#[extern("user32.dll", "DispatchMessageA")]
+pub fn win32_dispatch_message(lpMsg: str) -> i64;
+
 // Window Styles
 pub let WS_OVERLAPPED_WINDOW: i64 = 13565952; // WS_OVERLAPPEDWINDOW
 pub let WS_POPUP_WINDOW: i64 = 2156396544;   // WS_POPUPWINDOW
@@ -34,40 +43,85 @@ pub let WS_VISIBLE_FLAG: i64 = 268435456;    // WS_VISIBLE
 pub let SW_SHOW_NORMAL: i64 = 1;
 pub let SW_SHOW_CMD: i64 = 5;
 pub let SW_HIDE_CMD: i64 = 0;
+pub let PM_REMOVE: i64 = 1;
 
-pub fn create_window(title: str, width: i64, height: i64) -> i64 {
+pub fn createWindow(title: str, width: i64, height: i64) -> i64 {
     let hwnd = win32_create_window_ex(0, "STATIC", title, WS_OVERLAPPED_WINDOW, 100, 100, width, height, 0, 0, 0, 0);
     return hwnd;
 }
 
-pub fn show_window(hwnd: i64, cmd: i64) -> bool {
+pub fn create_window(title: str, width: i64, height: i64) -> i64 {
+    return createWindow(title, width, height);
+}
+
+pub fn showWindow(hwnd: i64, cmd: i64) -> bool {
     let res = win32_show_window(hwnd, cmd);
     win32_update_window(hwnd);
     return res != 0;
 }
 
-pub fn hide_window(hwnd: i64) -> bool {
+pub fn show_window(hwnd: i64, cmd: i64) -> bool {
+    return showWindow(hwnd, cmd);
+}
+
+pub fn hideWindow(hwnd: i64) -> bool {
     let res = win32_show_window(hwnd, SW_HIDE_CMD);
     return res != 0;
 }
 
-pub fn set_window_title(hwnd: i64, title: str) -> bool {
+pub fn hide_window(hwnd: i64) -> bool {
+    return hideWindow(hwnd);
+}
+
+pub fn setWindowTitle(hwnd: i64, title: str) -> bool {
     let res = win32_set_window_text(hwnd, title);
     return res != 0;
 }
 
-pub fn destroy_window(hwnd: i64) -> bool {
+pub fn set_window_title(hwnd: i64, title: str) -> bool {
+    return setWindowTitle(hwnd, title);
+}
+
+pub fn destroyWindow(hwnd: i64) -> bool {
     let res = win32_destroy_window(hwnd);
     return res != 0;
 }
 
-pub fn move_window(hwnd: i64, x: i64, y: i64, width: i64, height: i64) -> bool {
+pub fn destroy_window(hwnd: i64) -> bool {
+    return destroyWindow(hwnd);
+}
+
+pub fn moveWindow(hwnd: i64, x: i64, y: i64, width: i64, height: i64) -> bool {
     let res = win32_move_window(hwnd, x, y, width, height, 1);
     return res != 0;
 }
 
-pub fn is_window_visible(hwnd: i64) -> bool {
+pub fn move_window(hwnd: i64, x: i64, y: i64, width: i64, height: i64) -> bool {
+    return moveWindow(hwnd, x, y, width, height);
+}
+
+pub fn isWindowVisible(hwnd: i64) -> bool {
     return win32_is_window_visible(hwnd) != 0;
+}
+
+pub fn is_window_visible(hwnd: i64) -> bool {
+    return isWindowVisible(hwnd);
+}
+
+// Pumps all pending Windows OS messages without blocking
+pub fn pollEvents() -> bool {
+    let msg_buf = " ".repeat(48);
+    mut dispatched = false;
+    while win32_peek_message(msg_buf, 0, 0, 0, PM_REMOVE) != 0 {
+        win32_translate_message(msg_buf);
+        win32_dispatch_message(msg_buf);
+        dispatched = true;
+    }
+    return dispatched;
+}
+
+pub fn poll_events() -> bool {
+    return pollEvents();
 }
 
 pub class AppWindow {
@@ -81,40 +135,56 @@ pub class AppWindow {
         self.title = title
         self.width = width
         self.height = height
-        self.hwnd = create_window(title, width, height)
+        self.hwnd = createWindow(title, width, height)
         self.is_open = self.hwnd != 0
     }
 
     pub fn show() -> void {
         if self.hwnd != 0 {
-            show_window(self.hwnd, SW_SHOW_CMD)
+            showWindow(self.hwnd, SW_SHOW_CMD)
         }
     }
 
     pub fn hide() -> void {
         if self.hwnd != 0 {
-            hide_window(self.hwnd)
+            hideWindow(self.hwnd)
+        }
+    }
+
+    pub fn setTitle(new_title: str) -> void {
+        self.title = new_title
+        if self.hwnd != 0 {
+            setWindowTitle(self.hwnd, new_title)
         }
     }
 
     pub fn set_title(new_title: str) -> void {
-        self.title = new_title
-        if self.hwnd != 0 {
-            set_window_title(self.hwnd, new_title)
-        }
+        self.setTitle(new_title)
     }
 
     pub fn resize(w: i64, h: i64) -> void {
         self.width = w
         self.height = h
         if self.hwnd != 0 {
-            move_window(self.hwnd, 100, 100, w, h)
+            moveWindow(self.hwnd, 100, 100, w, h)
         }
+    }
+
+    pub fn poll() -> bool {
+        return pollEvents()
+    }
+
+    pub fn isOpen() -> bool {
+        return self.is_open && self.hwnd != 0
+    }
+
+    pub fn is_open_state() -> bool {
+        return self.isOpen()
     }
 
     pub fn close() -> void {
         if self.hwnd != 0 {
-            destroy_window(self.hwnd)
+            destroyWindow(self.hwnd)
             self.hwnd = 0
             self.is_open = false
         }

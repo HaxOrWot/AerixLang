@@ -1,0 +1,153 @@
+// ==============================================================================
+// Aerix Standard Library: Random::Crypto
+// Cryptographically Secure Pseudo-Random Number Generation (CSPRNG)
+// ==============================================================================
+
+#[extern("advapi32.dll", "CryptAcquireContextA")]
+pub fn crypt_acquire_context(phProv: str, pszContainer: i64, pszProvider: i64, dwProvType: i64, dwFlags: i64) -> i32;
+
+#[extern("advapi32.dll", "CryptGenRandom")]
+pub fn crypt_gen_random(hProv: i64, dwLen: i64, pbBuffer: str) -> i32;
+
+#[extern("advapi32.dll", "CryptReleaseContext")]
+pub fn crypt_release_context(hProv: i64, dwFlags: i64) -> i32;
+
+pub let PROV_RSA_FULL: i64 = 1;
+// 0xF0000000: CRYPT_VERIFYCONTEXT
+pub let CRYPT_VERIFYCONTEXT: i64 = 4026531840;
+
+fn get_crypto_provider() -> i64 {
+    let prov_buf = " ".repeat(8);
+    let ok = crypt_acquire_context(prov_buf, 0, 0, PROV_RSA_FULL, CRYPT_VERIFYCONTEXT);
+    if ok == 0 {
+        return 0;
+    }
+    let p0 = prov_buf.byte_at(0) & 255;
+    let p1 = prov_buf.byte_at(1) & 255;
+    let p2 = prov_buf.byte_at(2) & 255;
+    let p3 = prov_buf.byte_at(3) & 255;
+    let p4 = prov_buf.byte_at(4) & 255;
+    let p5 = prov_buf.byte_at(5) & 255;
+    let p6 = prov_buf.byte_at(6) & 255;
+    let p7 = prov_buf.byte_at(7) & 255;
+    return p0 | (p1 << 8) | (p2 << 16) | (p3 << 24) | (p4 << 32) | (p5 << 40) | (p6 << 48) | (p7 << 56);
+}
+
+pub fn cryptoRandomBytes(count: i64) -> str {
+    if count <= 0 {
+        return "";
+    }
+    let hProv = get_crypto_provider();
+    if hProv == 0 {
+        return "";
+    }
+    let buf = " ".repeat(count);
+    crypt_gen_random(hProv, count, buf);
+    crypt_release_context(hProv, 0);
+    return buf;
+}
+
+pub fn crypto_random_bytes(count: i64) -> str {
+    return cryptoRandomBytes(count);
+}
+
+pub fn cryptoRandomHex(byte_count: i64) -> str {
+    let bytes = cryptoRandomBytes(byte_count);
+    let hex_chars = "0123456789abcdef";
+    let bb = ByteBuffer();
+    mut i = 0;
+    while i < bytes.len() {
+        let b = bytes.byte_at(i) & 255;
+        let hi = (b >> 4) & 15;
+        let lo = b & 15;
+        bb.write_u8(hex_chars.byte_at(hi));
+        bb.write_u8(hex_chars.byte_at(lo));
+        i = i + 1;
+    }
+    let res = bb.to_str();
+    bb.free();
+    return res;
+}
+
+pub fn crypto_random_hex(byte_count: i64) -> str {
+    return cryptoRandomHex(byte_count);
+}
+
+pub fn cryptoRandomInt(min: i64, max: i64) -> i64 {
+    if min >= max {
+        return min;
+    }
+    let span = max - min + 1;
+    let bytes = cryptoRandomBytes(8);
+    mut val: i64 = 0;
+    mut i = 0;
+    while i < 8 {
+        let b = bytes.byte_at(i) & 255;
+        val = (val << 8) | b;
+        i = i + 1;
+    }
+    if val < 0 {
+        val = 0 - val;
+    }
+    return min + (val % span);
+}
+
+pub fn crypto_random_int(min: i64, max: i64) -> i64 {
+    return cryptoRandomInt(min, max);
+}
+
+// Generates an RFC 4122 compliant UUID Version 4
+pub fn generateUuid() -> str {
+    let raw = cryptoRandomBytes(16);
+    let hex = "0123456789abcdef";
+    let bb = ByteBuffer();
+    mut i = 0;
+    while i < 16 {
+        mut b = raw.byte_at(i) & 255;
+        if i == 6 {
+            // UUID version 4: set bits 4-7 to 0100
+            b = (b & 15) | 64;
+        } else if i == 8 {
+            // UUID variant 1: set bits 6-7 to 10
+            b = (b & 63) | 128;
+        }
+        let hi = (b >> 4) & 15;
+        let lo = b & 15;
+        bb.write_u8(hex.byte_at(hi));
+        bb.write_u8(hex.byte_at(lo));
+        if i == 3 || i == 5 || i == 7 || i == 9 {
+            bb.write_u8(45); // '-'
+        }
+        i = i + 1;
+    }
+    let res = bb.to_str();
+    bb.free();
+    return res;
+}
+
+pub fn generate_uuid() -> str {
+    return generateUuid();
+}
+
+pub fn generateToken(length: i64) -> str {
+    if length <= 0 {
+        return "";
+    }
+    let chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+    let bytes = cryptoRandomBytes(length);
+    let bb = ByteBuffer();
+    mut i = 0;
+    while i < length {
+        let b = bytes.byte_at(i) & 255;
+        let idx = b % 62;
+        bb.write_u8(chars.byte_at(idx));
+        i = i + 1;
+    }
+    let res = bb.to_str();
+    bb.free();
+    return res;
+}
+
+pub fn generate_token(length: i64) -> str {
+    return generateToken(length);
+}

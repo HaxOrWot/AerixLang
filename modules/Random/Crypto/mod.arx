@@ -1,0 +1,6 @@
+// ==============================================================================
+// Aerix Standard Library: Random::Crypto
+// Cryptographically Secure Pseudo-Random Number Generation (CSPRNG)
+// ==============================================================================
+
+import "./crypto.arx"

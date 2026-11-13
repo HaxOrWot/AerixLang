@@ -285,11 +285,53 @@
     "description": "WebAssembly Canvas starter application"
   },
   "Aerix Import File": {
-    "prefix": "import",
+    "prefix": "import_file",
     "body": [
       "import \"./${1:module}.arx\""
     ],
-    "description": "Import a local .arx module"
+    "description": "Import a local .arx module file"
+  },
+  "Aerix Import Module": {
+    "prefix": "import",
+    "body": [
+      "import ${1:Module}"
+    ],
+    "description": "Import an Aerix standard or local module"
+  },
+  "Aerix Import Module As": {
+    "prefix": "import_as",
+    "body": [
+      "import ${1:Module} as ${2:Alias}"
+    ],
+    "description": "Import a module with an alias"
+  },
+  "Aerix Import Submodule": {
+    "prefix": "import_sub",
+    "body": [
+      "import ${1:Window.Gui}"
+    ],
+    "description": "Import a dotted submodule"
+  },
+  "Aerix From Import": {
+    "prefix": "from",
+    "body": [
+      "from ${1:Module} import ${2:item}"
+    ],
+    "description": "Selectively import symbols from a module"
+  },
+  "Aerix From Import As": {
+    "prefix": "from_as",
+    "body": [
+      "from ${1:Module} import ${2:item} as ${3:alias}"
+    ],
+    "description": "Selectively import symbols from a module with an alias"
+  },
+  "Aerix From Submodule Import": {
+    "prefix": "from_sub",
+    "body": [
+      "from ${1:Window.Gui} import ${2:create_window}"
+    ],
+    "description": "Selectively import from a dotted submodule"
   },
   "Aerix Struct": {
     "prefix": "struct",

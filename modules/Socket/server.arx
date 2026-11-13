@@ -18,11 +18,11 @@ pub class TcpServer {
     }
 
     pub fn listen(port: i64, backlog: i64) -> bool {
-        self.sock = create_tcp_socket()
+        self.sock = createTcpSocket()
         if self.sock == INVALID_SOCKET() {
             return false
         }
-        let addr_buf = make_sockaddr_in("0.0.0.0", port)
+        let addr_buf = makeSockAddrIn("0.0.0.0", port)
         if bind(self.sock, addr_buf, 16) == SOCKET_ERROR() {
             self.close()
             return false
@@ -36,11 +36,19 @@ pub class TcpServer {
         return true
     }
 
-    pub fn accept_client() -> i64 {
+    pub fn acceptClient() -> i64 {
         if !self.is_listening {
             return INVALID_SOCKET()
         }
         return accept(self.sock, 0, 0)
+    }
+
+    pub fn accept_client() -> i64 {
+        return self.acceptClient()
+    }
+
+    pub fn isListening() -> bool {
+        return self.is_listening
     }
 
     pub fn close() -> void {

@@ -1,6 +1,6 @@
 // ==============================================================================
 // Aerix Standard Library: Window::Gui::Controls
-// Native Windows OS GUI UI Controls (Buttons, Labels, TextBoxes)
+// Native Windows OS GUI UI Controls (Buttons, Labels, TextBoxes, CheckBoxes)
 // ==============================================================================
 
 import "./window.arx"
@@ -11,23 +11,51 @@ pub let WS_VISIBLE_STYLE: i64 = 268435456;   // WS_VISIBLE
 pub let WS_BORDER_STYLE: i64 = 8388608;      // WS_BORDER
 pub let ES_AUTOHSCROLL_STYLE: i64 = 128;     // ES_AUTOHSCROLL
 pub let BS_PUSHBUTTON_STYLE: i64 = 0;        // BS_PUSHBUTTON
+pub let BS_CHECKBOX_STYLE: i64 = 2;          // BS_CHECKBOX
+pub let BM_GETCHECK: i64 = 240;
+pub let BM_SETCHECK: i64 = 241;
 
-pub fn create_button(parent_hwnd: i64, text: str, x: i64, y: i64, width: i64, height: i64, id: i64) -> i64 {
+#[extern("user32.dll", "SendMessageA")]
+pub fn win32SendMessage(hwnd: i64, msg: i64, wParam: i64, lParam: i64) -> i64;
+
+pub fn createButton(parent_hwnd: i64, text: str, x: i64, y: i64, width: i64, height: i64, id: i64) -> i64 {
     let style = WS_CHILD_FLAG + WS_VISIBLE_STYLE + BS_PUSHBUTTON_STYLE;
     let hwnd = win32_create_window_ex(0, "BUTTON", text, style, x, y, width, height, parent_hwnd, id, 0, 0);
     return hwnd;
 }
 
-pub fn create_label(parent_hwnd: i64, text: str, x: i64, y: i64, width: i64, height: i64) -> i64 {
+pub fn create_button(parent_hwnd: i64, text: str, x: i64, y: i64, width: i64, height: i64, id: i64) -> i64 {
+    return createButton(parent_hwnd, text, x, y, width, height, id);
+}
+
+pub fn createLabel(parent_hwnd: i64, text: str, x: i64, y: i64, width: i64, height: i64) -> i64 {
     let style = WS_CHILD_FLAG + WS_VISIBLE_STYLE;
     let hwnd = win32_create_window_ex(0, "STATIC", text, style, x, y, width, height, parent_hwnd, 0, 0, 0);
     return hwnd;
 }
 
-pub fn create_text_box(parent_hwnd: i64, default_text: str, x: i64, y: i64, width: i64, height: i64, id: i64) -> i64 {
+pub fn create_label(parent_hwnd: i64, text: str, x: i64, y: i64, width: i64, height: i64) -> i64 {
+    return createLabel(parent_hwnd, text, x, y, width, height);
+}
+
+pub fn createTextBox(parent_hwnd: i64, default_text: str, x: i64, y: i64, width: i64, height: i64, id: i64) -> i64 {
     let style = WS_CHILD_FLAG + WS_VISIBLE_STYLE + WS_BORDER_STYLE + ES_AUTOHSCROLL_STYLE;
     let hwnd = win32_create_window_ex(512, "EDIT", default_text, style, x, y, width, height, parent_hwnd, id, 0, 0);
     return hwnd;
+}
+
+pub fn create_text_box(parent_hwnd: i64, default_text: str, x: i64, y: i64, width: i64, height: i64, id: i64) -> i64 {
+    return createTextBox(parent_hwnd, default_text, x, y, width, height, id);
+}
+
+pub fn createCheckBox(parent_hwnd: i64, text: str, x: i64, y: i64, width: i64, height: i64, id: i64) -> i64 {
+    let style = WS_CHILD_FLAG + WS_VISIBLE_STYLE + BS_CHECKBOX_STYLE;
+    let hwnd = win32_create_window_ex(0, "BUTTON", text, style, x, y, width, height, parent_hwnd, id, 0, 0);
+    return hwnd;
+}
+
+pub fn create_check_box(parent_hwnd: i64, text: str, x: i64, y: i64, width: i64, height: i64, id: i64) -> i64 {
+    return createCheckBox(parent_hwnd, text, x, y, width, height, id);
 }
 
 pub class Button {
@@ -46,14 +74,18 @@ pub class Button {
         self.width = width
         self.height = height
         self.id = id
-        self.hwnd = create_button(parent_hwnd, text, x, y, width, height, id)
+        self.hwnd = createButton(parent_hwnd, text, x, y, width, height, id)
+    }
+
+    pub fn setText(new_text: str) -> void {
+        self.text = new_text
+        if self.hwnd != 0 {
+            setWindowTitle(self.hwnd, new_text)
+        }
     }
 
     pub fn set_text(new_text: str) -> void {
-        self.text = new_text
-        if self.hwnd != 0 {
-            set_window_title(self.hwnd, new_text)
-        }
+        self.setText(new_text)
     }
 
     pub fn enable(is_enabled: bool) -> void {
@@ -79,13 +111,101 @@ pub class Label {
         self.y = y
         self.width = width
         self.height = height
-        self.hwnd = create_label(parent_hwnd, text, x, y, width, height)
+        self.hwnd = createLabel(parent_hwnd, text, x, y, width, height)
+    }
+
+    pub fn setText(new_text: str) -> void {
+        self.text = new_text
+        if self.hwnd != 0 {
+            setWindowTitle(self.hwnd, new_text)
+        }
     }
 
     pub fn set_text(new_text: str) -> void {
+        self.setText(new_text)
+    }
+}
+
+pub class TextBox {
+    pub hwnd: i64
+    pub text: str
+    pub x: i64
+    pub y: i64
+    pub width: i64
+    pub height: i64
+    pub id: i64
+
+    init(parent_hwnd: i64, default_text: str, x: i64, y: i64, width: i64, height: i64, id: i64) {
+        self.text = default_text
+        self.x = x
+        self.y = y
+        self.width = width
+        self.height = height
+        self.id = id
+        self.hwnd = createTextBox(parent_hwnd, default_text, x, y, width, height, id)
+    }
+
+    pub fn setText(new_text: str) -> void {
         self.text = new_text
         if self.hwnd != 0 {
-            set_window_title(self.hwnd, new_text)
+            setWindowTitle(self.hwnd, new_text)
         }
+    }
+
+    pub fn set_text(new_text: str) -> void {
+        self.setText(new_text)
+    }
+}
+
+pub class CheckBox {
+    pub hwnd: i64
+    pub text: str
+    pub x: i64
+    pub y: i64
+    pub width: i64
+    pub height: i64
+    pub id: i64
+
+    init(parent_hwnd: i64, text: str, x: i64, y: i64, width: i64, height: i64, id: i64) {
+        self.text = text
+        self.x = x
+        self.y = y
+        self.width = width
+        self.height = height
+        self.id = id
+        self.hwnd = createCheckBox(parent_hwnd, text, x, y, width, height, id)
+    }
+
+    pub fn isChecked() -> bool {
+        if self.hwnd == 0 { return false }
+        let state = win32SendMessage(self.hwnd, BM_GETCHECK, 0, 0)
+        return state != 0
+    }
+
+    pub fn is_checked() -> bool {
+        return self.isChecked()
+    }
+
+    pub fn setChecked(checked: bool) -> void {
+        if self.hwnd != 0 {
+            mut val = 0
+            if checked { val = 1 }
+            win32SendMessage(self.hwnd, BM_SETCHECK, val, 0)
+        }
+    }
+
+    pub fn set_checked(checked: bool) -> void {
+        self.setChecked(checked)
+    }
+
+    pub fn setText(new_text: str) -> void {
+        self.text = new_text
+        if self.hwnd != 0 {
+            setWindowTitle(self.hwnd, new_text)
+        }
+    }
+
+    pub fn set_text(new_text: str) -> void {
+        self.setText(new_text)
     }
 }

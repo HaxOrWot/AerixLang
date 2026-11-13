@@ -1,0 +1,65 @@
+// ==============================================================================
+// Aerix Standard Library: Socket::Http::Client
+// Lightweight Native HTTP 1.1 Client with GET and POST requests
+// ==============================================================================
+
+import "../client.arx"
+import "./response.arx"
+
+pub fn parseHostAndPath(raw_url: str) -> (str, i64, str) {
+    mut u = raw_url
+    if u.starts_with("http://") {
+        u = u.slice(7, u.len())
+    }
+    let slash_pos = u.find("/")
+    mut host_port = u
+    mut path = "/"
+    if slash_pos >= 0 {
+        host_port = u.slice(0, slash_pos)
+        path = u.slice(slash_pos, u.len())
+    }
+    let colon_pos = host_port.find(":")
+    mut host = host_port
+    mut port = 80
+    if colon_pos >= 0 {
+        host = host_port.slice(0, colon_pos)
+        let p_str = host_port.slice(colon_pos + 1, host_port.len())
+        port = p_str.to_i64()
+    }
+    return (host, port, path)
+}
+
+pub fn httpGet(url: str) -> HttpResponse {
+    let resp = HttpResponse()
+    let parsed = parseHostAndPath(url)
+    let host = parsed.f0
+    let port = parsed.f1
+    let path = parsed.f2
+
+    let req = "GET " + path + " HTTP/1.1\r\nHost: " + host + "\r\nUser-Agent: AerixLang/1.1\r\nConnection: close\r\n\r\n"
+    let raw_resp = tcpRequest(host, port, req)
+    resp.parse(raw_resp)
+    return resp
+}
+
+pub fn http_get(url: str) -> HttpResponse {
+    return httpGet(url)
+}
+
+pub fn httpPost(url: str, body: str, contentType: str) -> HttpResponse {
+    let resp = HttpResponse()
+    let parsed = parseHostAndPath(url)
+    let host = parsed.f0
+    let port = parsed.f1
+    let path = parsed.f2
+
+    let len_str = body.len() as str
+    let req = "POST " + path + " HTTP/1.1\r\nHost: " + host + "\r\nUser-Agent: AerixLang/1.1\r\nContent-Type: " + contentType + "\r\nContent-Length: " + len_str + "\r\nConnection: close\r\n\r\n" + body
+    let raw_resp = tcpRequest(host, port, req)
+    resp.parse(raw_resp)
+    return resp
+}
+
+pub fn http_post(url: str, body: str, contentType: str) -> HttpResponse {
+    return httpPost(url, body, contentType)
+}

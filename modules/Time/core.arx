@@ -7,7 +7,7 @@
 pub fn ticks() -> i64;
 
 #[extern("kernel32.dll", "Sleep")]
-pub fn sleep_ms(ms: i64) -> void;
+pub fn win32Sleep(ms: i64) -> void;
 
 pub fn now() -> f64 {
     return arx_time_now();
@@ -21,22 +21,42 @@ pub fn epoch() -> f64 {
     return arx_time_now();
 }
 
-pub fn epoch_secs() -> i64 {
+pub fn epochSecs() -> i64 {
     return arx_time_now() as i64;
 }
 
-pub fn epoch_ms() -> i64 {
+pub fn epoch_secs() -> i64 {
+    return epochSecs();
+}
+
+pub fn epochMs() -> i64 {
     return (arx_time_now() * 1000.0) as i64;
+}
+
+pub fn epoch_ms() -> i64 {
+    return epochMs();
 }
 
 pub fn sleep(ms: i64) -> void {
     arx_sleep(ms);
 }
 
-pub fn sleep_secs(secs: f64) -> void {
+pub fn sleepMs(ms: i64) -> void {
+    arx_sleep(ms);
+}
+
+pub fn sleep_ms(ms: i64) -> void {
+    sleepMs(ms);
+}
+
+pub fn sleepSecs(secs: f64) -> void {
     if secs <= 0.0 {
         return;
     }
     let ms = (secs * 1000.0) as i64;
     arx_sleep(ms);
+}
+
+pub fn sleep_secs(secs: f64) -> void {
+    sleepSecs(secs);
 }

@@ -1,40 +1,36 @@
 // ==============================================================================
 // Aerix Standard Modules: Time::Stopwatch
-// High-resolution interval stopwatch for benchmarking and timing.
+// High-resolution precision stopwatch for benchmarking and interval timing.
 // ==============================================================================
 
 import "./core.arx"
 
 pub class Stopwatch {
     pub start_time: i64
-    pub accumulated_ms: i64
+    pub stop_time: i64
     pub running: bool
 
     init() {
         self.start_time = 0
-        self.accumulated_ms = 0
+        self.stop_time = 0
         self.running = false
     }
 
     pub fn start() -> void {
-        if !self.running {
-            self.start_time = ticks()
-            self.running = true
-        }
+        self.start_time = ticks()
+        self.running = true
     }
 
-    pub fn stop() -> i64 {
+    pub fn stop() -> void {
         if self.running {
-            let now_t = ticks()
-            self.accumulated_ms = self.accumulated_ms + (now_t - self.start_time)
+            self.stop_time = ticks()
             self.running = false
         }
-        return self.accumulated_ms
     }
 
     pub fn reset() -> void {
         self.start_time = 0
-        self.accumulated_ms = 0
+        self.stop_time = 0
         self.running = false
     }
 
@@ -43,19 +39,31 @@ pub class Stopwatch {
         self.start()
     }
 
-    pub fn elapsed_ms() -> i64 {
+    pub fn elapsedMs() -> i64 {
         if self.running {
-            let now_t = ticks()
-            return self.accumulated_ms + (now_t - self.start_time)
+            return ticks() - self.start_time
         }
-        return self.accumulated_ms
+        return self.stop_time - self.start_time
     }
 
-    pub fn elapsed_secs() -> f64 {
-        return (self.elapsed_ms() as f64) / 1000.0
+    pub fn elapsed_ms() -> i64 {
+        return self.elapsedMs()
+    }
+
+    pub fn elapsedSec() -> f64 {
+        let ms = self.elapsedMs()
+        return (ms as f64) / 1000.0
+    }
+
+    pub fn elapsed_sec() -> f64 {
+        return self.elapsedSec()
+    }
+
+    pub fn isRunning() -> bool {
+        return self.running
     }
 
     pub fn is_running() -> bool {
-        return self.running
+        return self.isRunning()
     }
 }

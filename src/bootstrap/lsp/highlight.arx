@@ -44,7 +44,7 @@ fn is_keyword_token_kind(k: i64) -> bool {
 
 fn hl_keyword_mod(k: i64) -> i64 {
     if k == TK_BOOL() || k == TK_NULL() { return SM_READONLY() }
-    if (k >= 31 && k <= 45) || k == TK_GUARD() || k == TK_DEFER() || k == TK_USE() || k == TK_IMPORT() || k == TK_FROM() {
+    if (k >= 31 && k <= 45) || k == TK_GUARD() || k == TK_DEFER() || k == TK_USE() || k == TK_IMPORT() || k == TK_FROM() || k == TK_AS() {
         return SM_CONTROL_FLOW()
     }
     if (k >= 48 && k <= 54) || k == TK_UNSAFE() {
@@ -280,8 +280,28 @@ fn hl_extract_header_from_ts(ts: TokenStream, sig_str: str) -> HlFileHeader {
         }
 
         // Collect imports / use directives at top level
-        if brace_depth == 0 && (k == TK_IMPORT() || k == TK_USE()) {
+        if brace_depth == 0 && (k == TK_IMPORT() || k == TK_USE() || k == TK_FROM()) {
             mut j = i + 1
+            if k == TK_FROM() {
+                if j < n && ts.kinds.get(j) == TK_STR() {
+                    hdr.import_files.push(ts.vals.get(j))
+                } else {
+                    mut from_path = ""
+                    while j < n && (ts.kinds.get(j) == TK_IDENT() || ts.kinds.get(j) == TK_DOT()) {
+                        from_path = from_path + ts.vals.get(j)
+                        j = j + 1
+                    }
+                    if from_path != "" {
+                        hdr.import_mods.push(from_path)
+                    }
+                }
+                while j < n && ts.kinds.get(j) != TK_NEWLINE() && ts.kinds.get(j) != TK_SEMICOLON() && ts.kinds.get(j) != TK_EOF() {
+                    j = j + 1
+                }
+                i = j
+                prev_k = k
+                continue
+            }
             if j < n && ts.kinds.get(j) == TK_LBRACE() {
                 while j < n && ts.kinds.get(j) != TK_RBRACE() && ts.kinds.get(j) != TK_EOF() {
                     j = j + 1
@@ -296,8 +316,16 @@ fn hl_extract_header_from_ts(ts: TokenStream, sig_str: str) -> HlFileHeader {
                 continue
             }
             while j < n && ts.kinds.get(j) == TK_IDENT() {
-                hdr.import_mods.push(ts.vals.get(j))
+                mut full_m = ts.vals.get(j)
                 j = j + 1
+                while j + 1 < n && ts.kinds.get(j) == TK_DOT() && ts.kinds.get(j + 1) == TK_IDENT() {
+                    full_m = full_m + "." + ts.vals.get(j + 1)
+                    j = j + 2
+                }
+                hdr.import_mods.push(full_m)
+                if j + 1 < n && ts.kinds.get(j) == TK_AS() && ts.kinds.get(j + 1) == TK_IDENT() {
+                    j = j + 2
+                }
                 if j < n && ts.kinds.get(j) == TK_COMMA() {
                     j = j + 1
                 } else {

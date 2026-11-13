@@ -16,11 +16,11 @@ pub class TcpClient {
     }
 
     pub fn connect(ip: str, port: i64) -> bool {
-        self.sock = create_tcp_socket()
+        self.sock = createTcpSocket()
         if self.sock == INVALID_SOCKET() {
             return false
         }
-        let addr_buf = make_sockaddr_in(ip, port)
+        let addr_buf = makeSockAddrIn(ip, port)
         let res = connect(self.sock, addr_buf, 16)
         if res == SOCKET_ERROR() {
             self.close()
@@ -30,14 +30,18 @@ pub class TcpClient {
         return true
     }
 
-    pub fn send_str(data: str) -> i64 {
+    pub fn sendStr(data: str) -> i64 {
         if !self.connected {
             return -1
         }
         return send(self.sock, data, data.len(), 0)
     }
 
-    pub fn recv_str(max_bytes: i64) -> str {
+    pub fn send_str(data: str) -> i64 {
+        return self.sendStr(data)
+    }
+
+    pub fn recvStr(max_bytes: i64) -> str {
         if !self.connected {
             return ""
         }
@@ -49,6 +53,10 @@ pub class TcpClient {
         return buf.slice(0, bytes_read)
     }
 
+    pub fn recv_str(max_bytes: i64) -> str {
+        return self.recvStr(max_bytes)
+    }
+
     pub fn close() -> void {
         if self.sock != INVALID_SOCKET() {
             closesocket(self.sock)
@@ -57,18 +65,26 @@ pub class TcpClient {
         self.connected = false
     }
 
-    pub fn is_connected() -> bool {
+    pub fn isConnected() -> bool {
         return self.connected
+    }
+
+    pub fn is_connected() -> bool {
+        return self.isConnected()
     }
 }
 
-pub fn tcp_request(host: str, port: i64, request: str) -> str {
+pub fn tcpRequest(host: str, port: i64, request: str) -> str {
     let client = TcpClient()
     if !client.connect(host, port) {
         return ""
     }
-    client.send_str(request)
-    let resp = client.recv_str(4096)
+    client.sendStr(request)
+    let resp = client.recvStr(4096)
     client.close()
     return resp
+}
+
+pub fn tcp_request(host: str, port: i64, request: str) -> str {
+    return tcpRequest(host, port, request);
 }

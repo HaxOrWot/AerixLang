@@ -54,34 +54,54 @@ pub fn mem_calloc(count: i64, size: i64) -> i64;
 pub fn mem_free(ptr: i64) -> void;
 
 // Initialize Winsock 2.2 subsystem
-pub fn socket_init() -> bool {
+pub fn socketInit() -> bool {
     let wsadata_buf = mem_calloc(1, 512);
     let res = wsa_startup(514, wsadata_buf);
     mem_free(wsadata_buf);
     return res == 0;
 }
 
+pub fn socket_init() -> bool {
+    return socketInit();
+}
+
 // Clean up Winsock subsystem
-pub fn socket_cleanup() -> void {
+pub fn socketCleanup() -> void {
     wsa_cleanup();
 }
 
-pub fn last_error() -> i64 {
+pub fn socket_cleanup() -> void {
+    socketCleanup();
+}
+
+pub fn lastError() -> i64 {
     return wsa_get_last_error();
 }
 
-pub fn create_tcp_socket() -> i64 {
-    socket_init();
+pub fn last_error() -> i64 {
+    return lastError();
+}
+
+pub fn createTcpSocket() -> i64 {
+    socketInit();
     return socket(AF_INET(), SOCK_STREAM(), IPPROTO_TCP());
 }
 
-pub fn create_udp_socket() -> i64 {
-    socket_init();
+pub fn create_tcp_socket() -> i64 {
+    return createTcpSocket();
+}
+
+pub fn createUdpSocket() -> i64 {
+    socketInit();
     return socket(AF_INET(), SOCK_DGRAM(), IPPROTO_UDP());
 }
 
+pub fn create_udp_socket() -> i64 {
+    return createUdpSocket();
+}
+
 // Constructs a 16-byte sockaddr_in binary structure for IPv4
-pub fn make_sockaddr_in(ip: str, port: i64) -> str {
+pub fn makeSockAddrIn(ip: str, port: i64) -> str {
     let bb = ByteBuffer();
     // sin_family: AF_INET = 2 (little-endian: 0x02, 0x00)
     bb.write_u8(2);
@@ -99,14 +119,15 @@ pub fn make_sockaddr_in(ip: str, port: i64) -> str {
     bb.write_u8((addr >> 16) & 255);
     bb.write_u8((addr >> 24) & 255);
 
-    // sin_zero[8] pad
-    mut i = 0;
-    while i < 8 {
-        bb.write_u8(0);
-        i = i + 1;
-    }
+    // sin_zero: 8 bytes of padding
+    bb.write_u8(0); bb.write_u8(0); bb.write_u8(0); bb.write_u8(0);
+    bb.write_u8(0); bb.write_u8(0); bb.write_u8(0); bb.write_u8(0);
 
-    let out_str = bb.to_str();
+    let res = bb.to_str();
     bb.free();
-    return out_str;
+    return res;
+}
+
+pub fn make_sockaddr_in(ip: str, port: i64) -> str {
+    return makeSockAddrIn(ip, port);
 }

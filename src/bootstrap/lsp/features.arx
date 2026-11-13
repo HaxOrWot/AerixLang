@@ -1540,9 +1540,24 @@ fn lsp_emit_import_completions(doc_path: str, line0: i64, prefix: str, cpos: i64
     if !tr.starts_with("import ") && !tr.starts_with("use ") && !tr.starts_with("from ") && tr != "import" && tr != "use" && tr != "from" { return false }
     let qpos = lsp_str_find(prefix, "\"", 0)
     if qpos < 0 {
-        // Unquoted import completion: suggest standard modules, selective import snippet, and local files
+        // Unquoted import completion: suggest standard modules, submodules, snippets, and local files
         let mods = List<str>()
-        mods.push("Math"); mods.push("Random"); mods.push("Socket"); mods.push("Time"); mods.push("Window")
+        if tr.ends_with("Window.") || tr.contains("Window.") {
+            mods.push("Window.Gui")
+            mods.push("Window.Clipboard")
+            mods.push("Gui")
+            mods.push("Clipboard")
+        } else if tr.ends_with("Socket.") || tr.contains("Socket.") {
+            mods.push("Socket.Http")
+            mods.push("Http")
+        } else if tr.ends_with("Random.") || tr.contains("Random.") {
+            mods.push("Random.Crypto")
+            mods.push("Crypto")
+        } else {
+            mods.push("Math"); mods.push("Random"); mods.push("Random.Crypto")
+            mods.push("Socket"); mods.push("Socket.Http"); mods.push("Time")
+            mods.push("Window"); mods.push("Window.Gui"); mods.push("Window.Clipboard")
+        }
         mut mi = 0
         while mi < mods.len() {
             let mnm = mods.get(mi)
@@ -1566,6 +1581,18 @@ fn lsp_emit_import_completions(doc_path: str, line0: i64, prefix: str, cpos: i64
         emit_comp_item_ex(jb, "from ... import ...", "", "from_import", CKIND_SNIPPET(), "From import statement",
                           "Import symbols from a module or file.", "from $1 import $2", "0b_from", "",
                           -1, 0, 0, "", false, fst_from)
+
+        let fst_from_as = is_first.get(0) == 1
+        is_first.set(0, 0)
+        emit_comp_item_ex(jb, "from ... import ... as ...", "", "from_import_as", CKIND_SNIPPET(), "From import with alias",
+                          "Import symbols from a module or file with an alias.", "from $1 import $2 as $3", "0c_from_as", "",
+                          -1, 0, 0, "", false, fst_from_as)
+
+        let fst_imp_as = is_first.get(0) == 1
+        is_first.set(0, 0)
+        emit_comp_item_ex(jb, "import ... as ...", "", "import_as", CKIND_SNIPPET(), "Import with alias",
+                          "Import a module with an alias.", "import $1 as $2", "0d_import_as", "",
+                          -1, 0, 0, "", false, fst_imp_as)
 
         let base_dir = bpath_dirname(doc_path)
         if base_dir != "" && Directory.exists(base_dir) {
@@ -2391,11 +2418,11 @@ pub fn lsp_build_completion_json(source: str, az: Analyzer, doc_path: str, line0
         let knm = ks.get(ki)
         mut ksort = "5b_" + knm
         if in_fn {
-            if knm == "let" || knm == "mut" || knm == "if" || knm == "else" || knm == "elif" || knm == "for" || knm == "while" || knm == "match" || knm == "return" || knm == "guard" || knm == "defer" || knm == "true" || knm == "false" || knm == "null" {
+            if knm == "let" || knm == "mut" || knm == "if" || knm == "else" || knm == "elif" || knm == "for" || knm == "while" || knm == "match" || knm == "return" || knm == "guard" || knm == "defer" || knm == "as" || knm == "true" || knm == "false" || knm == "null" {
                 ksort = "5a_" + knm
             }
         } else {
-            if knm == "fn" || knm == "pub" || knm == "class" || knm == "struct" || knm == "enum" || knm == "trait" || knm == "extend" || knm == "const" || knm == "import" || knm == "use" {
+            if knm == "fn" || knm == "pub" || knm == "class" || knm == "struct" || knm == "enum" || knm == "trait" || knm == "extend" || knm == "const" || knm == "import" || knm == "from" || knm == "as" || knm == "use" {
                 ksort = "5a_" + knm
             }
         }

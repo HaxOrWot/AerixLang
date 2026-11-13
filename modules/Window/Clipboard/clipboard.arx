@@ -1,0 +1,97 @@
+// ==============================================================================
+// Aerix Standard Library: Window::Clipboard
+// Operating System Global Clipboard Read/Write & Text Management
+// ==============================================================================
+
+#[extern("user32.dll", "OpenClipboard")]
+pub fn win32_open_clipboard(hwnd: i64) -> i32;
+
+#[extern("user32.dll", "CloseClipboard")]
+pub fn win32_close_clipboard() -> i32;
+
+#[extern("user32.dll", "EmptyClipboard")]
+pub fn win32_empty_clipboard() -> i32;
+
+#[extern("user32.dll", "GetClipboardData")]
+pub fn win32_get_clipboard_data(uFormat: i64) -> i64;
+
+#[extern("user32.dll", "SetClipboardData")]
+pub fn win32_set_clipboard_data(uFormat: i64, hMem: i64) -> i64;
+
+#[extern("user32.dll", "IsClipboardFormatAvailable")]
+pub fn win32_is_clipboard_format_available(uFormat: i64) -> i32;
+
+#[extern("kernel32.dll", "GlobalAlloc")]
+pub fn win32_global_alloc(uFlags: i64, dwBytes: i64) -> i64;
+
+#[extern("kernel32.dll", "GlobalLock")]
+pub fn win32_global_lock(hMem: i64) -> str;
+
+#[extern("kernel32.dll", "GlobalUnlock")]
+pub fn win32_global_unlock(hMem: i64) -> i32;
+
+#[extern("msvcrt.dll", "strcpy")]
+pub fn win32_strcpy(dest: str, src: str) -> i64;
+
+// CF_TEXT = 1, GMEM_MOVEABLE = 2
+pub let CF_TEXT: i64 = 1;
+pub let GMEM_MOVEABLE: i64 = 2;
+
+pub fn hasText() -> bool {
+    return win32_is_clipboard_format_available(CF_TEXT) != 0;
+}
+
+pub fn has_text() -> bool {
+    return hasText();
+}
+
+pub fn getText() -> str {
+    if win32_open_clipboard(0) == 0 {
+        return "";
+    }
+    let hData = win32_get_clipboard_data(CF_TEXT);
+    if hData == 0 {
+        win32_close_clipboard();
+        return "";
+    }
+    let ptr = win32_global_lock(hData);
+    win32_global_unlock(hData);
+    win32_close_clipboard();
+    return ptr;
+}
+
+pub fn get_text() -> str {
+    return getText();
+}
+
+pub fn setText(text: str) -> bool {
+    if win32_open_clipboard(0) == 0 {
+        return false;
+    }
+    win32_empty_clipboard();
+    let len = text.len() + 1;
+    let hMem = win32_global_alloc(GMEM_MOVEABLE, len);
+    if hMem == 0 {
+        win32_close_clipboard();
+        return false;
+    }
+    let pLock = win32_global_lock(hMem);
+    win32_strcpy(pLock, text);
+    win32_global_unlock(hMem);
+    let ok = win32_set_clipboard_data(CF_TEXT, hMem);
+    win32_close_clipboard();
+    return ok != 0;
+}
+
+pub fn set_text(text: str) -> bool {
+    return setText(text);
+}
+
+pub fn clear() -> bool {
+    if win32_open_clipboard(0) == 0 {
+        return false;
+    }
+    let ok = win32_empty_clipboard();
+    win32_close_clipboard();
+    return ok != 0;
+}

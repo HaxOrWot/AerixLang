@@ -1,0 +1,6 @@
+// ==============================================================================
+// Aerix Standard Library: Window::Clipboard
+// Native Windows Operating System Clipboard Interop
+// ==============================================================================
+
+import "./clipboard.arx"

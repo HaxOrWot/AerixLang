@@ -1,9 +1,9 @@
 // ==============================================================================
 // Aerix Standard Modules: Random::Integers
-// Discrete integer random variates: randint, randrange, and stepped ranges.
+// Discrete integer random variates: randInt, randRange, and stepped ranges.
 // ==============================================================================
 
-pub fn randint(a: i64, b: i64) -> i64 {
+pub fn randInt(a: i64, b: i64) -> i64 {
     if a == b {
         return a;
     }
@@ -21,7 +21,19 @@ pub fn randint(a: i64, b: i64) -> i64 {
     return low + (r % span);
 }
 
-pub fn randrange(start: i64, stop: i64) -> i64 {
+pub fn randint(a: i64, b: i64) -> i64 {
+    return randInt(a, b);
+}
+
+pub fn randomInt(a: i64, b: i64) -> i64 {
+    return randInt(a, b);
+}
+
+pub fn randomBool() -> bool {
+    return randInt(0, 1) == 1;
+}
+
+pub fn randRange(start: i64, stop: i64) -> i64 {
     if start >= stop {
         return start;
     }
@@ -33,7 +45,15 @@ pub fn randrange(start: i64, stop: i64) -> i64 {
     return start + (r % span);
 }
 
-pub fn randrange_step(start: i64, stop: i64, step: i64) -> i64 {
+pub fn randrange(start: i64, stop: i64) -> i64 {
+    return randRange(start, stop);
+}
+
+pub fn randomRange(start: i64, stop: i64) -> i64 {
+    return randRange(start, stop);
+}
+
+pub fn randRangeStep(start: i64, stop: i64, step: i64) -> i64 {
     if step <= 0 {
         return start;
     }
@@ -48,5 +68,10 @@ pub fn randrange_step(start: i64, stop: i64, step: i64) -> i64 {
     if r < 0 {
         r = 0 - r;
     }
-    return start + (r % n) * step;
+    let idx: i64 = r % n;
+    return start + idx * step;
+}
+
+pub fn randrange_step(start: i64, stop: i64, step: i64) -> i64 {
+    return randRangeStep(start, stop, step);
 }

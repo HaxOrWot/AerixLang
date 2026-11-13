@@ -6,6 +6,9 @@
 #[extern("kernel32.dll", "GetLocalTime")]
 pub fn get_local_time(lp_system_time: str) -> void;
 
+#[extern("msvcrt.dll", "time")]
+pub fn c_time(timer: i64) -> i64;
+
 pub class DateTime {
     pub year: i64
     pub month: i64
@@ -25,7 +28,7 @@ pub class DateTime {
         self.millisecond = 0
     }
 
-    pub fn format_iso() -> str {
+    pub fn formatIso() -> str {
         mut m_str = self.month as str
         if self.month < 10 { m_str = "0" + m_str }
 
@@ -43,39 +46,77 @@ pub class DateTime {
 
         return (self.year as str) + "-" + m_str + "-" + d_str + " " + h_str + ":" + min_str + ":" + s_str
     }
+
+    pub fn format_iso() -> str {
+        return self.formatIso()
+    }
+
+    pub fn formatDate() -> str {
+        mut m_str = self.month as str
+        if self.month < 10 { m_str = "0" + m_str }
+
+        mut d_str = self.day as str
+        if self.day < 10 { d_str = "0" + d_str }
+
+        return (self.year as str) + "-" + m_str + "-" + d_str
+    }
+
+    pub fn format_date() -> str {
+        return self.formatDate()
+    }
+
+    pub fn formatTime() -> str {
+        mut h_str = self.hour as str
+        if self.hour < 10 { h_str = "0" + h_str }
+
+        mut min_str = self.minute as str
+        if self.minute < 10 { min_str = "0" + min_str }
+
+        mut s_str = self.second as str
+        if self.second < 10 { s_str = "0" + s_str }
+
+        return h_str + ":" + min_str + ":" + s_str
+    }
+
+    pub fn format_time() -> str {
+        return self.formatTime()
+    }
 }
 
-pub fn now_local() -> DateTime {
+pub fn nowLocal() -> DateTime {
     let dt = DateTime()
     let buf = " ".repeat(16)
     get_local_time(buf)
-    dt.year = buf.byte_at(0) + (buf.byte_at(1) << 8)
-    dt.month = buf.byte_at(2) + (buf.byte_at(3) << 8)
-    dt.day = buf.byte_at(6) + (buf.byte_at(7) << 8)
-    dt.hour = buf.byte_at(8) + (buf.byte_at(9) << 8)
-    dt.minute = buf.byte_at(10) + (buf.byte_at(11) << 8)
-    dt.second = buf.byte_at(12) + (buf.byte_at(13) << 8)
-    dt.millisecond = buf.byte_at(14) + (buf.byte_at(15) << 8)
+
+    // SYSTEMTIME: wYear(0..1), wMonth(2..3), wDayOfWeek(4..5), wDay(6..7),
+    //             wHour(8..9), wMinute(10..11), wSecond(12..13), wMilliseconds(14..15)
+    dt.year = (buf.byte_at(0) & 255) | ((buf.byte_at(1) & 255) << 8)
+    dt.month = (buf.byte_at(2) & 255) | ((buf.byte_at(3) & 255) << 8)
+    dt.day = (buf.byte_at(6) & 255) | ((buf.byte_at(7) & 255) << 8)
+    dt.hour = (buf.byte_at(8) & 255) | ((buf.byte_at(9) & 255) << 8)
+    dt.minute = (buf.byte_at(10) & 255) | ((buf.byte_at(11) & 255) << 8)
+    dt.second = (buf.byte_at(12) & 255) | ((buf.byte_at(13) & 255) << 8)
+    dt.millisecond = (buf.byte_at(14) & 255) | ((buf.byte_at(15) & 255) << 8)
     return dt
 }
 
-pub fn now_string() -> str {
-    let dt = now_local()
-    return dt.format_iso()
+pub fn now_local() -> DateTime {
+    return nowLocal();
+}
+
+pub fn isLeapYear(year: i64) -> bool {
+    if year % 400 == 0 { return true }
+    if year % 100 == 0 { return false }
+    return year % 4 == 0
 }
 
 pub fn is_leap_year(year: i64) -> bool {
-    if (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0) {
-        return true
-    }
-    return false
+    return isLeapYear(year);
 }
 
-pub fn days_in_month(year: i64, month: i64) -> i64 {
+pub fn daysInMonth(year: i64, month: i64) -> i64 {
     if month == 2 {
-        if is_leap_year(year) {
-            return 29
-        }
+        if isLeapYear(year) { return 29 }
         return 28
     }
     if month == 4 || month == 6 || month == 9 || month == 11 {
@@ -84,27 +125,49 @@ pub fn days_in_month(year: i64, month: i64) -> i64 {
     return 31
 }
 
-pub fn format_duration_ms(ms: i64) -> str {
-    if ms < 0 {
-        return "00:00.000"
+pub fn days_in_month(year: i64, month: i64) -> i64 {
+    return daysInMonth(year, month);
+}
+
+pub fn nowUtc() -> DateTime {
+    let dt = DateTime()
+    let t = c_time(0)
+    let total_secs = t
+    dt.second = total_secs % 60
+    let total_mins = total_secs / 60
+    dt.minute = total_mins % 60
+    let total_hours = total_mins / 60
+    dt.hour = total_hours % 24
+    let mut total_days = total_hours / 24
+
+    mut y = 1970
+    loop {
+        mut diy = 365
+        if isLeapYear(y) { diy = 366 }
+        if total_days >= diy {
+            total_days = total_days - diy
+            y = y + 1
+        } else {
+            break
+        }
     }
-    let total_secs = ms / 1000
-    let m = total_secs / 60
-    let s = total_secs % 60
-    let rem_ms = ms % 1000
+    dt.year = y
 
-    mut m_str = m as str
-    if m < 10 { m_str = "0" + m_str }
-
-    mut s_str = s as str
-    if s < 10 { s_str = "0" + s_str }
-
-    mut ms_str = rem_ms as str
-    if rem_ms < 10 {
-        ms_str = "00" + ms_str
-    } else if rem_ms < 100 {
-        ms_str = "0" + ms_str
+    mut m = 1
+    while m <= 12 {
+        let dim = daysInMonth(y, m)
+        if total_days >= dim {
+            total_days = total_days - dim
+            m = m + 1
+        } else {
+            break
+        }
     }
+    dt.month = m
+    dt.day = total_days + 1
+    return dt
+}
 
-    return m_str + ":" + s_str + "." + ms_str
+pub fn now_utc() -> DateTime {
+    return nowUtc();
 }

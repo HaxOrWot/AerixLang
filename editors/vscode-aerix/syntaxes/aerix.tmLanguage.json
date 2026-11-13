@@ -5,6 +5,7 @@
   "patterns": [
     { "include": "#comments" },
     { "include": "#attributes" },
+    { "include": "#imports" },
     { "include": "#strings" },
     { "include": "#characters" },
     { "include": "#numbers" },
@@ -137,8 +138,52 @@
         }
       ]
     },
+    "imports": {
+      "patterns": [
+        {
+          "match": "\\b(from)\\s+([A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*)*|\"[^\"]*\")\\s+(import)\\b",
+          "captures": {
+            "1": { "name": "keyword.control.import.from.aerix" },
+            "2": { "name": "entity.name.namespace.aerix" },
+            "3": { "name": "keyword.control.import.aerix" }
+          }
+        },
+        {
+          "match": "\\b(import)\\s+([A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*)*)\\s+(as)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": { "name": "keyword.control.import.aerix" },
+            "2": { "name": "entity.name.namespace.aerix" },
+            "3": { "name": "keyword.control.as.aerix" },
+            "4": { "name": "entity.name.namespace.alias.aerix" }
+          }
+        },
+        {
+          "match": "\\b(as)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": { "name": "keyword.control.as.aerix" },
+            "2": { "name": "entity.name.namespace.alias.aerix" }
+          }
+        },
+        {
+          "name": "keyword.control.import.aerix",
+          "match": "\\b(import|from)\\b"
+        },
+        {
+          "name": "keyword.control.as.aerix",
+          "match": "\\b(as)\\b"
+        }
+      ]
+    },
     "keywords": {
       "patterns": [
+        {
+          "name": "keyword.control.import.aerix",
+          "match": "\\b(import|from)\\b"
+        },
+        {
+          "name": "keyword.control.as.aerix",
+          "match": "\\b(as)\\b"
+        },
         {
           "name": "keyword.control.aerix",
           "match": "\\b(if|else|elif|match|for|in|while|loop|break|continue|return|guard|defer|try|catch|finally|throw|spawn)\\b"
@@ -153,7 +198,7 @@
         },
         {
           "name": "keyword.other.aerix",
-          "match": "\\b(import|from|use|cinclude|cextern|new|delete|as|sizeof)\\b"
+          "match": "\\b(use|cinclude|cextern|new|delete|sizeof)\\b"
         },
         {
           "name": "variable.language.aerix",

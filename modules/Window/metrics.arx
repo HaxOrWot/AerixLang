@@ -1,35 +1,65 @@
 // ==============================================================================
 // Aerix Standard Library: Window::Metrics
-// Display resolution, virtual monitors, and DPI metrics.
+// Operating System Display Resolution, Monitor Setup, and UI Geometry
 // ==============================================================================
 
 #[extern("user32.dll", "GetSystemMetrics")]
-pub fn get_system_metrics(nIndex: i64) -> i64;
+pub fn getSystemMetrics(nIndex: i64) -> i64;
 
-// Primary screen dimensions
+pub fn get_system_metrics(nIndex: i64) -> i64 {
+    return getSystemMetrics(nIndex);
+}
+
+pub fn screenWidth() -> i64 {
+    // SM_CXSCREEN = 0
+    return getSystemMetrics(0);
+}
+
 pub fn screen_width() -> i64 {
-    return get_system_metrics(0);
+    return screenWidth();
+}
+
+pub fn screenHeight() -> i64 {
+    // SM_CYSCREEN = 1
+    return getSystemMetrics(1);
 }
 
 pub fn screen_height() -> i64 {
-    return get_system_metrics(1);
+    return screenHeight();
 }
 
-// Full virtual desktop (spanning all multi-monitors)
+pub fn virtualScreenWidth() -> i64 {
+    // SM_CXVIRTUALSCREEN = 78
+    return getSystemMetrics(78);
+}
+
 pub fn virtual_screen_width() -> i64 {
-    return get_system_metrics(78);
+    return virtualScreenWidth();
+}
+
+pub fn virtualScreenHeight() -> i64 {
+    // SM_CYVIRTUALSCREEN = 79
+    return getSystemMetrics(79);
 }
 
 pub fn virtual_screen_height() -> i64 {
-    return get_system_metrics(79);
+    return virtualScreenHeight();
 }
 
-// Display monitor count
+pub fn monitorCount() -> i64 {
+    // SM_CMONITORS = 80
+    return getSystemMetrics(80);
+}
+
 pub fn monitor_count() -> i64 {
-    return get_system_metrics(80);
+    return monitorCount();
 }
 
-// Mouse present flag
+pub fn mousePresent() -> bool {
+    // SM_MOUSEPRESENT = 19
+    return getSystemMetrics(19) != 0;
+}
+
 pub fn mouse_present() -> bool {
-    return get_system_metrics(19) != 0;
+    return mousePresent();
 }

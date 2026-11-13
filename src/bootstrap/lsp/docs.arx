@@ -297,15 +297,15 @@ pub fn lsp_lookup_doc(w: str) -> str {
     if w == "new" { return "**Keyword `new`** — Heap-allocates an instance when explicit allocation is desired." }
     if w == "delete" { return "**Keyword `delete`** — Frees an explicitly heap-allocated object." }
     if w == "unsafe" { return "**Keyword `unsafe`** — Marks a block or function permitted to perform unchecked low-level operations." }
-    if w == "import" { return "**Directive `import`** — Loads another `.arx` file (`import \"./mod.arx\"`) or installed module (`import Math`)." }
-    if w == "from" { return "**Directive `from`** — Specifies source path in selective imports (`import \{ sym } from \"./mod.arx\"`)." }
+    if w == "import" { return "**Directive `import`** — Loads another `.arx` file (`import \"./mod.arx\"`), installed module (`import Math`), or submodule (`import Window.Gui`)." }
+    if w == "from" { return "**Directive `from`** — Specifies source module or file in selective imports (`from Window.Gui import Button as Btn`)." }
     if w == "use" { return "**Directive `use`** — Imports symbols or namespaces into the current module scope." }
     if w == "cinclude" { return "**C Interop `cinclude`** — Includes a native C header directly when compiling via the C99 backend." }
     if w == "cextern" { return "**C Interop `cextern`** — Declares an external C symbol linkage signature." }
     if w == "true" { return "**Literal `true: bool`** — Boolean truth value (`1`)." }
     if w == "false" { return "**Literal `false: bool`** — Boolean false value (`0`)." }
     if w == "null" { return "**Literal `null`** — Null sentinel value." }
-    if w == "as" { return "**Operator `as`** — Explicit value cast (`expr as T`)." }
+    if w == "as" { return "**Keyword `as`** — Explicit type cast (`expr as T`) or import aliasing (`import Window.Gui as Gui`)." }
     if w == "sizeof" { return "**Builtin `sizeof(T)`** — Evaluates byte size of type `T` at compile time." }
 
     // Primitives & Builtins

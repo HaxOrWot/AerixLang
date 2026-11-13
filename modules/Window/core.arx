@@ -4,62 +4,94 @@
 // ==============================================================================
 
 #[extern("user32.dll", "MessageBoxA")]
-pub fn message_box(hwnd: i64, text: str, caption: str, utype: i64) -> i64;
+pub fn messageBox(hwnd: i64, text: str, caption: str, utype: i64) -> i64;
+
+pub fn message_box(hwnd: i64, text: str, caption: str, utype: i64) -> i64 {
+    return messageBox(hwnd, text, caption, utype);
+}
 
 #[extern("kernel32.dll", "Beep")]
 pub fn beep(freq: i64, duration_ms: i64) -> i64;
 
 #[extern("user32.dll", "MessageBeep")]
-pub fn message_beep(uType: i64) -> i32;
+pub fn messageBeep(uType: i64) -> i32;
+
+pub fn message_beep(uType: i64) -> i32 {
+    return messageBeep(uType);
+}
 
 #[extern("kernel32.dll", "SetConsoleTitleA")]
-pub fn set_console_title(title: str) -> i32;
+pub fn setConsoleTitle(title: str) -> i32;
+
+pub fn set_console_title(title: str) -> i32 {
+    return setConsoleTitle(title);
+}
 
 #[extern("user32.dll", "GetForegroundWindow")]
-pub fn get_foreground_window() -> i64;
+pub fn getForegroundWindow() -> i64;
+
+pub fn get_foreground_window() -> i64 {
+    return getForegroundWindow();
+}
 
 #[extern("user32.dll", "GetWindowTextA")]
-pub fn get_window_text(hwnd: i64, lpString: str, nMaxCount: i64) -> i64;
+pub fn getWindowText(hwnd: i64, lpString: str, nMaxCount: i64) -> i64;
+
+pub fn get_window_text(hwnd: i64, lpString: str, nMaxCount: i64) -> i64 {
+    return getWindowText(hwnd, lpString, nMaxCount);
+}
 
 #[extern("user32.dll", "FlashWindow")]
-pub fn flash_window(hwnd: i64, bInvert: i32) -> i32;
+pub fn flashWindow(hwnd: i64, bInvert: i32) -> i32;
 
-pub fn get_active_window_title() -> str {
-    let hwnd = get_foreground_window();
+pub fn flash_window(hwnd: i64, bInvert: i32) -> i32 {
+    return flashWindow(hwnd, bInvert);
+}
+
+pub fn getActiveWindowTitle() -> str {
+    let hwnd = getForegroundWindow();
     if hwnd == 0 {
         return "";
     }
     let buf = " ".repeat(256);
-    let len = get_window_text(hwnd, buf, 256);
+    let len = getWindowText(hwnd, buf, 256);
     if len <= 0 {
         return "";
     }
     return buf.slice(0, len);
 }
 
+pub fn get_active_window_title() -> str {
+    return getActiveWindowTitle();
+}
+
 pub fn alert(title: str, message: str) -> void {
     // MB_OK (0x0) | MB_ICONINFORMATION (0x40)
-    message_box(0, message, title, 64);
+    messageBox(0, message, title, 64);
 }
 
 pub fn warn(title: str, message: str) -> void {
     // MB_OK (0x0) | MB_ICONWARNING (0x30)
-    message_box(0, message, title, 48);
+    messageBox(0, message, title, 48);
 }
 
 pub fn error(title: str, message: str) -> void {
     // MB_OK (0x0) | MB_ICONERROR (0x10)
-    message_box(0, message, title, 16);
+    messageBox(0, message, title, 16);
 }
 
 pub fn confirm(title: str, message: str) -> bool {
     // MB_OKCANCEL (0x1) | MB_ICONQUESTION (0x20)
-    let res = message_box(0, message, title, 33);
+    let res = messageBox(0, message, title, 33);
     return res == 1;
 }
 
-pub fn prompt_yes_no(title: str, message: str) -> bool {
+pub fn promptYesNo(title: str, message: str) -> bool {
     // MB_YESNO (0x4) | MB_ICONQUESTION (0x20)
-    let res = message_box(0, message, title, 36);
+    let res = messageBox(0, message, title, 36);
     return res == 6; // IDYES = 6
+}
+
+pub fn prompt_yes_no(title: str, message: str) -> bool {
+    return promptYesNo(title, message);
 }
