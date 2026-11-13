@@ -130,7 +130,9 @@ fn lsp_build_initialize_result() -> str {
     jb.key("triggerCharacters")
     jb.lbrack()
     jb.str_val("."); jb.comma(); jb.str_val(">"); jb.comma(); jb.str_val(":"); jb.comma()
-    jb.str_val("<"); jb.comma(); jb.str_val("\""); jb.comma(); jb.str_val("/")
+    jb.str_val("<"); jb.comma(); jb.str_val("\""); jb.comma(); jb.str_val("/"); jb.comma()
+    jb.str_val("$"); jb.comma(); jb.str_val("~"); jb.comma(); jb.str_val("@"); jb.comma()
+    jb.str_val("#"); jb.comma(); jb.str_val(lsp_lbrace()); jb.comma(); jb.str_val(" ")
     jb.rbrack()
     jb.rbrace()
 
@@ -173,7 +175,7 @@ fn lsp_build_initialize_result() -> str {
     jb.key("serverInfo")
     jb.lbrace()
     jb.kv_str("name", "aerix-lsp", true)
-    jb.kv_str("version", "1.2b", false)
+    jb.kv_str("version", "1.2.17b", false)
     jb.rbrace()
 
     jb.rbrace()

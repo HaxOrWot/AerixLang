@@ -416,5 +416,67 @@
       "}"
     ],
     "description": "Declare a unit test function"
+  },
+  "Aerix Defer": {
+    "prefix": "defer",
+    "body": [
+      "defer ${0:cleanup()}"
+    ],
+    "description": "LIFO scoped cleanup statement executed on block exit"
+  },
+  "Aerix String Interpolation": {
+    "prefix": "interp",
+    "body": [
+      "$\"${1:Text}: {${2:expr}}\"${0}"
+    ],
+    "description": "Interpolated string literal with embedded expressions"
+  },
+  "Aerix Guard": {
+    "prefix": "guard",
+    "body": [
+      "guard ${1:condition} else {",
+      "\t${0:return}",
+      "}"
+    ],
+    "description": "Fail-fast anti-pyramid guard clause"
+  },
+  "Aerix Concurrency Spawn": {
+    "prefix": "spawn",
+    "body": [
+      "let handle = spawn {",
+      "\t${0}",
+      "}",
+      "handle.join()"
+    ],
+    "description": "Spawn a native background thread"
+  },
+  "Aerix Channel": {
+    "prefix": "channel",
+    "body": [
+      "let ch = Channel<${1:str}>(${2:32})",
+      "ch.send(${3:msg})",
+      "let val = ch.recv()${0}"
+    ],
+    "description": "Create a typed thread-safe channel"
+  },
+  "Aerix Native GUI Window": {
+    "prefix": "gui_app",
+    "body": [
+      "import Window.Gui",
+      "import Window.Gui.Canvas",
+      "",
+      "fn main() {",
+      "\tlet app = Application(\"${1:Aerix App}\", ${2:800}, ${3:600})",
+      "\tlet canvas = Canvas(app.getHwnd())",
+      "\tapp.show()",
+      "\twhile app.pollEvents() {",
+      "\t\tcanvas.beginPaint()",
+      "\t\tcanvas.clear(colorBlack(), ${2:800}, ${3:600})",
+      "\t\t${0}",
+      "\t\tcanvas.endPaint()",
+      "\t}",
+      "}"
+    ],
+    "description": "Native GUI Window with Double-Buffered Canvas"
   }
 }
