@@ -6,3 +6,4 @@
 import "./window.arx"
 import "./controls.arx"
 import "./dialogs.arx"
+import "./Canvas/mod.arx"

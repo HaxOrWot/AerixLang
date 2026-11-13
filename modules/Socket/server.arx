@@ -43,10 +43,6 @@ pub class TcpServer {
         return accept(self.sock, 0, 0)
     }
 
-    pub fn accept_client() -> i64 {
-        return self.acceptClient()
-    }
-
     pub fn isListening() -> bool {
         return self.is_listening
     }

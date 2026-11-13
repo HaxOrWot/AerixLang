@@ -21,10 +21,6 @@ pub fn randInt(a: i64, b: i64) -> i64 {
     return low + (r % span);
 }
 
-pub fn randint(a: i64, b: i64) -> i64 {
-    return randInt(a, b);
-}
-
 pub fn randomInt(a: i64, b: i64) -> i64 {
     return randInt(a, b);
 }
@@ -43,10 +39,6 @@ pub fn randRange(start: i64, stop: i64) -> i64 {
         r = 0 - r;
     }
     return start + (r % span);
-}
-
-pub fn randrange(start: i64, stop: i64) -> i64 {
-    return randRange(start, stop);
 }
 
 pub fn randomRange(start: i64, stop: i64) -> i64 {
@@ -70,8 +62,4 @@ pub fn randRangeStep(start: i64, stop: i64, step: i64) -> i64 {
     }
     let idx: i64 = r % n;
     return start + idx * step;
-}
-
-pub fn randrange_step(start: i64, stop: i64, step: i64) -> i64 {
-    return randRangeStep(start, stop, step);
 }

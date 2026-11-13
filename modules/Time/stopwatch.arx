@@ -46,24 +46,16 @@ pub class Stopwatch {
         return self.stop_time - self.start_time
     }
 
-    pub fn elapsed_ms() -> i64 {
-        return self.elapsedMs()
-    }
-
     pub fn elapsedSec() -> f64 {
         let ms = self.elapsedMs()
         return (ms as f64) / 1000.0
     }
 
-    pub fn elapsed_sec() -> f64 {
+    pub fn elapsedSecs() -> f64 {
         return self.elapsedSec()
     }
 
     pub fn isRunning() -> bool {
         return self.running
-    }
-
-    pub fn is_running() -> bool {
-        return self.isRunning()
     }
 }

@@ -11,26 +11,14 @@ pub fn showInfoDialog(title: str, message: str) -> void {
     win32_msgbox(0, message, title, 64);
 }
 
-pub fn show_info_dialog(title: str, message: str) -> void {
-    showInfoDialog(title, message);
-}
-
 pub fn showWarningDialog(title: str, message: str) -> void {
     // MB_OK (0x0) | MB_ICONWARNING (0x30)
     win32_msgbox(0, message, title, 48);
 }
 
-pub fn show_warning_dialog(title: str, message: str) -> void {
-    showWarningDialog(title, message);
-}
-
 pub fn showErrorDialog(title: str, message: str) -> void {
     // MB_OK (0x0) | MB_ICONERROR (0x10)
     win32_msgbox(0, message, title, 16);
-}
-
-pub fn show_error_dialog(title: str, message: str) -> void {
-    showErrorDialog(title, message);
 }
 
 pub fn showConfirmDialog(title: str, message: str) -> bool {
@@ -39,17 +27,9 @@ pub fn showConfirmDialog(title: str, message: str) -> bool {
     return res == 1; // IDOK = 1
 }
 
-pub fn show_confirm_dialog(title: str, message: str) -> bool {
-    return showConfirmDialog(title, message);
-}
-
 pub fn showYesNoCancelDialog(title: str, message: str) -> i64 {
     // MB_YESNOCANCEL (0x3) | MB_ICONQUESTION (0x20)
     let res = win32_msgbox(0, message, title, 35);
     // IDYES = 6, IDNO = 7, IDCANCEL = 2
     return res;
-}
-
-pub fn show_yes_no_cancel_dialog(title: str, message: str) -> i64 {
-    return showYesNoCancelDialog(title, message);
 }

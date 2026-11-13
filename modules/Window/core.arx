@@ -6,47 +6,38 @@
 #[extern("user32.dll", "MessageBoxA")]
 pub fn messageBox(hwnd: i64, text: str, caption: str, utype: i64) -> i64;
 
-pub fn message_box(hwnd: i64, text: str, caption: str, utype: i64) -> i64 {
-    return messageBox(hwnd, text, caption, utype);
-}
-
 #[extern("kernel32.dll", "Beep")]
 pub fn beep(freq: i64, duration_ms: i64) -> i64;
 
 #[extern("user32.dll", "MessageBeep")]
 pub fn messageBeep(uType: i64) -> i32;
 
-pub fn message_beep(uType: i64) -> i32 {
-    return messageBeep(uType);
-}
-
 #[extern("kernel32.dll", "SetConsoleTitleA")]
 pub fn setConsoleTitle(title: str) -> i32;
-
-pub fn set_console_title(title: str) -> i32 {
-    return setConsoleTitle(title);
-}
 
 #[extern("user32.dll", "GetForegroundWindow")]
 pub fn getForegroundWindow() -> i64;
 
-pub fn get_foreground_window() -> i64 {
-    return getForegroundWindow();
-}
-
 #[extern("user32.dll", "GetWindowTextA")]
 pub fn getWindowText(hwnd: i64, lpString: str, nMaxCount: i64) -> i64;
-
-pub fn get_window_text(hwnd: i64, lpString: str, nMaxCount: i64) -> i64 {
-    return getWindowText(hwnd, lpString, nMaxCount);
-}
 
 #[extern("user32.dll", "FlashWindow")]
 pub fn flashWindow(hwnd: i64, bInvert: i32) -> i32;
 
-pub fn flash_window(hwnd: i64, bInvert: i32) -> i32 {
-    return flashWindow(hwnd, bInvert);
-}
+#[extern("user32.dll", "BringWindowToTop")]
+pub fn bringWindowToTop(hwnd: i64) -> i32;
+
+#[extern("user32.dll", "FindWindowA")]
+pub fn win32FindWindow(lpClassName: str, lpWindowName: str) -> i64;
+
+#[extern("user32.dll", "GetDesktopWindow")]
+pub fn getDesktopWindow() -> i64;
+
+#[extern("user32.dll", "SetWindowPos")]
+pub fn win32SetWindowPos(hwnd: i64, hwndInsertAfter: i64, x: i32, y: i32, cx: i32, cy: i32, uFlags: i32) -> i32;
+
+#[extern("user32.dll", "ShowWindow")]
+pub fn win32ShowWindow(hwnd: i64, nCmdShow: i32) -> i32;
 
 pub fn getActiveWindowTitle() -> str {
     let hwnd = getForegroundWindow();
@@ -61,8 +52,35 @@ pub fn getActiveWindowTitle() -> str {
     return buf.slice(0, len);
 }
 
-pub fn get_active_window_title() -> str {
-    return getActiveWindowTitle();
+pub fn setWindowPosition(hwnd: i64, x: i64, y: i64, width: i64, height: i64) -> bool {
+    // SWP_NOZORDER = 0x0004
+    return win32SetWindowPos(hwnd, 0, x as i32, y as i32, width as i32, height as i32, 4) != 0;
+}
+
+pub fn setWindowAlwaysOnTop(hwnd: i64, onTop: bool) -> bool {
+    // HWND_TOPMOST = -1, HWND_NOTOPMOST = -2, SWP_NOMOVE = 0x0002, SWP_NOSIZE = 0x0001
+    mut insertAfter: i64 = -2;
+    if onTop { insertAfter = -1; }
+    return win32SetWindowPos(hwnd, insertAfter, 0, 0, 0, 0, 3) != 0;
+}
+
+pub fn minimizeWindow(hwnd: i64) -> bool {
+    // SW_MINIMIZE = 6
+    return win32ShowWindow(hwnd, 6) != 0;
+}
+
+pub fn maximizeWindow(hwnd: i64) -> bool {
+    // SW_MAXIMIZE = 3
+    return win32ShowWindow(hwnd, 3) != 0;
+}
+
+pub fn restoreWindow(hwnd: i64) -> bool {
+    // SW_RESTORE = 9
+    return win32ShowWindow(hwnd, 9) != 0;
+}
+
+pub fn findWindow(className: str, windowName: str) -> i64 {
+    return win32FindWindow(className, windowName);
 }
 
 pub fn alert(title: str, message: str) -> void {
@@ -90,8 +108,4 @@ pub fn promptYesNo(title: str, message: str) -> bool {
     // MB_YESNO (0x4) | MB_ICONQUESTION (0x20)
     let res = messageBox(0, message, title, 36);
     return res == 6; // IDYES = 6
-}
-
-pub fn prompt_yes_no(title: str, message: str) -> bool {
-    return promptYesNo(title, message);
 }

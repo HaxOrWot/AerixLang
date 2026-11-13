@@ -1542,8 +1542,12 @@ fn lsp_emit_import_completions(doc_path: str, line0: i64, prefix: str, cpos: i64
     if qpos < 0 {
         // Unquoted import completion: suggest standard modules, submodules, snippets, and local files
         let mods = List<str>()
-        if tr.ends_with("Window.") || tr.contains("Window.") {
+        if tr.ends_with("Window.Gui.") || tr.contains("Window.Gui.") || tr.ends_with("Gui.") || tr.contains("Gui.") {
+            mods.push("Window.Gui.Canvas")
+            mods.push("Canvas")
+        } else if tr.ends_with("Window.") || tr.contains("Window.") {
             mods.push("Window.Gui")
+            mods.push("Window.Gui.Canvas")
             mods.push("Window.Clipboard")
             mods.push("Gui")
             mods.push("Clipboard")
@@ -1556,7 +1560,7 @@ fn lsp_emit_import_completions(doc_path: str, line0: i64, prefix: str, cpos: i64
         } else {
             mods.push("Math"); mods.push("Random"); mods.push("Random.Crypto")
             mods.push("Socket"); mods.push("Socket.Http"); mods.push("Time")
-            mods.push("Window"); mods.push("Window.Gui"); mods.push("Window.Clipboard")
+            mods.push("Window"); mods.push("Window.Gui"); mods.push("Window.Gui.Canvas"); mods.push("Window.Clipboard")
         }
         mut mi = 0
         while mi < mods.len() {

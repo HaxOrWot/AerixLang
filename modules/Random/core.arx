@@ -12,16 +12,8 @@ pub fn getState() -> i64 {
     return arx_prng_get_state();
 }
 
-pub fn getstate() -> i64 {
-    return getState();
-}
-
 pub fn setState(state: i64) {
     arx_prng_set_state(state);
-}
-
-pub fn setstate(state: i64) {
-    setState(state);
 }
 
 pub fn random() -> f64 {
@@ -52,10 +44,6 @@ pub fn getRandBits(k: i64) -> i64 {
         r = 0 - r;
     }
     return r % (mask + 1);
-}
-
-pub fn getrandbits(k: i64) -> i64 {
-    return getRandBits(k);
 }
 
 pub fn uniform(a: f64, b: f64) -> f64 {

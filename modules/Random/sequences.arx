@@ -31,20 +31,12 @@ pub fn choiceF64(s: &[f64]) -> f64 {
     return s[idx];
 }
 
-pub fn choice_f64(s: &[f64]) -> f64 {
-    return choiceF64(s);
-}
-
 pub fn choiceStr(s: &[str]) -> str {
     if s.len == 0 {
         return "";
     }
     let idx: i64 = _seq_randint(0, s.len - 1);
     return s[idx];
-}
-
-pub fn choice_str(s: &[str]) -> str {
-    return choiceStr(s);
 }
 
 pub fn shuffle(s: &mut [i64]) {
@@ -73,10 +65,6 @@ pub fn shuffleF64(s: &mut [f64]) {
     }
 }
 
-pub fn shuffle_f64(s: &mut [f64]) {
-    shuffleF64(s);
-}
-
 pub fn shuffleStr(s: &mut [str]) {
     let n: i64 = s.len;
     if n <= 1 {
@@ -88,8 +76,4 @@ pub fn shuffleStr(s: &mut [str]) {
         s[i] = s[j];
         s[j] = tmp;
     }
-}
-
-pub fn shuffle_str(s: &mut [str]) {
-    shuffleStr(s);
 }

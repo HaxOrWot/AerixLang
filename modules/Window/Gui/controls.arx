@@ -24,18 +24,10 @@ pub fn createButton(parent_hwnd: i64, text: str, x: i64, y: i64, width: i64, hei
     return hwnd;
 }
 
-pub fn create_button(parent_hwnd: i64, text: str, x: i64, y: i64, width: i64, height: i64, id: i64) -> i64 {
-    return createButton(parent_hwnd, text, x, y, width, height, id);
-}
-
 pub fn createLabel(parent_hwnd: i64, text: str, x: i64, y: i64, width: i64, height: i64) -> i64 {
     let style = WS_CHILD_FLAG + WS_VISIBLE_STYLE;
     let hwnd = win32_create_window_ex(0, "STATIC", text, style, x, y, width, height, parent_hwnd, 0, 0, 0);
     return hwnd;
-}
-
-pub fn create_label(parent_hwnd: i64, text: str, x: i64, y: i64, width: i64, height: i64) -> i64 {
-    return createLabel(parent_hwnd, text, x, y, width, height);
 }
 
 pub fn createTextBox(parent_hwnd: i64, default_text: str, x: i64, y: i64, width: i64, height: i64, id: i64) -> i64 {
@@ -44,18 +36,10 @@ pub fn createTextBox(parent_hwnd: i64, default_text: str, x: i64, y: i64, width:
     return hwnd;
 }
 
-pub fn create_text_box(parent_hwnd: i64, default_text: str, x: i64, y: i64, width: i64, height: i64, id: i64) -> i64 {
-    return createTextBox(parent_hwnd, default_text, x, y, width, height, id);
-}
-
 pub fn createCheckBox(parent_hwnd: i64, text: str, x: i64, y: i64, width: i64, height: i64, id: i64) -> i64 {
     let style = WS_CHILD_FLAG + WS_VISIBLE_STYLE + BS_CHECKBOX_STYLE;
     let hwnd = win32_create_window_ex(0, "BUTTON", text, style, x, y, width, height, parent_hwnd, id, 0, 0);
     return hwnd;
-}
-
-pub fn create_check_box(parent_hwnd: i64, text: str, x: i64, y: i64, width: i64, height: i64, id: i64) -> i64 {
-    return createCheckBox(parent_hwnd, text, x, y, width, height, id);
 }
 
 pub class Button {
@@ -82,10 +66,6 @@ pub class Button {
         if self.hwnd != 0 {
             setWindowTitle(self.hwnd, new_text)
         }
-    }
-
-    pub fn set_text(new_text: str) -> void {
-        self.setText(new_text)
     }
 
     pub fn enable(is_enabled: bool) -> void {
@@ -120,10 +100,6 @@ pub class Label {
             setWindowTitle(self.hwnd, new_text)
         }
     }
-
-    pub fn set_text(new_text: str) -> void {
-        self.setText(new_text)
-    }
 }
 
 pub class TextBox {
@@ -150,10 +126,6 @@ pub class TextBox {
         if self.hwnd != 0 {
             setWindowTitle(self.hwnd, new_text)
         }
-    }
-
-    pub fn set_text(new_text: str) -> void {
-        self.setText(new_text)
     }
 }
 
@@ -182,10 +154,6 @@ pub class CheckBox {
         return state != 0
     }
 
-    pub fn is_checked() -> bool {
-        return self.isChecked()
-    }
-
     pub fn setChecked(checked: bool) -> void {
         if self.hwnd != 0 {
             mut val = 0
@@ -194,18 +162,130 @@ pub class CheckBox {
         }
     }
 
-    pub fn set_checked(checked: bool) -> void {
-        self.setChecked(checked)
-    }
-
     pub fn setText(new_text: str) -> void {
         self.text = new_text
         if self.hwnd != 0 {
             setWindowTitle(self.hwnd, new_text)
         }
     }
+}
 
-    pub fn set_text(new_text: str) -> void {
-        self.setText(new_text)
+pub fn createProgressBar(parent_hwnd: i64, x: i64, y: i64, width: i64, height: i64, id: i64) -> i64 {
+    let style = WS_CHILD_FLAG + WS_VISIBLE_STYLE + WS_BORDER_STYLE;
+    let hwnd = win32_create_window_ex(0, "msctls_progress32", "", style, x, y, width, height, parent_hwnd, id, 0, 0);
+    return hwnd;
+}
+
+pub class ProgressBar {
+    pub hwnd: i64
+    pub x: i64
+    pub y: i64
+    pub width: i64
+    pub height: i64
+    pub id: i64
+
+    init(parent_hwnd: i64, x: i64, y: i64, width: i64, height: i64, id: i64) {
+        self.x = x
+        self.y = y
+        self.width = width
+        self.height = height
+        self.id = id
+        self.hwnd = createProgressBar(parent_hwnd, x, y, width, height, id)
+    }
+
+    pub fn setProgress(pos: i64) -> void {
+        if self.hwnd != 0 {
+            // PBM_SETPOS = 1026
+            win32SendMessage(self.hwnd, 1026, pos, 0);
+        }
+    }
+
+    pub fn setRange(min: i64, max: i64) -> void {
+        if self.hwnd != 0 {
+            // PBM_SETRANGE32 = 1030
+            win32SendMessage(self.hwnd, 1030, min, max);
+        }
+    }
+}
+
+pub fn createListBox(parent_hwnd: i64, x: i64, y: i64, width: i64, height: i64, id: i64) -> i64 {
+    // LBS_NOTIFY = 1
+    let style = WS_CHILD_FLAG + WS_VISIBLE_STYLE + WS_BORDER_STYLE + 1;
+    let hwnd = win32_create_window_ex(0, "LISTBOX", "", style, x, y, width, height, parent_hwnd, id, 0, 0);
+    return hwnd;
+}
+
+pub class ListBox {
+    pub hwnd: i64
+    pub x: i64
+    pub y: i64
+    pub width: i64
+    pub height: i64
+    pub id: i64
+
+    init(parent_hwnd: i64, x: i64, y: i64, width: i64, height: i64, id: i64) {
+        self.x = x
+        self.y = y
+        self.width = width
+        self.height = height
+        self.id = id
+        self.hwnd = createListBox(parent_hwnd, x, y, width, height, id)
+    }
+
+    pub fn getSelectedIndex() -> i64 {
+        if self.hwnd == 0 { return -1 }
+        // LB_GETCURSEL = 392
+        return win32SendMessage(self.hwnd, 392, 0, 0)
+    }
+
+    pub fn getItemCount() -> i64 {
+        if self.hwnd == 0 { return 0 }
+        // LB_GETCOUNT = 395
+        return win32SendMessage(self.hwnd, 395, 0, 0)
+    }
+
+    pub fn clear() -> void {
+        if self.hwnd != 0 {
+            // LB_RESETCONTENT = 388
+            win32SendMessage(self.hwnd, 388, 0, 0)
+        }
+    }
+}
+
+pub fn createComboBox(parent_hwnd: i64, x: i64, y: i64, width: i64, height: i64, id: i64) -> i64 {
+    // CBS_DROPDOWNLIST = 3
+    let style = WS_CHILD_FLAG + WS_VISIBLE_STYLE + WS_BORDER_STYLE + 3;
+    let hwnd = win32_create_window_ex(0, "COMBOBOX", "", style, x, y, width, height, parent_hwnd, id, 0, 0);
+    return hwnd;
+}
+
+pub class ComboBox {
+    pub hwnd: i64
+    pub x: i64
+    pub y: i64
+    pub width: i64
+    pub height: i64
+    pub id: i64
+
+    init(parent_hwnd: i64, x: i64, y: i64, width: i64, height: i64, id: i64) {
+        self.x = x
+        self.y = y
+        self.width = width
+        self.height = height
+        self.id = id
+        self.hwnd = createComboBox(parent_hwnd, x, y, width, height, id)
+    }
+
+    pub fn getSelectedIndex() -> i64 {
+        if self.hwnd == 0 { return -1 }
+        // CB_GETCURSEL = 327
+        return win32SendMessage(self.hwnd, 327, 0, 0)
+    }
+
+    pub fn setSelectedIndex(idx: i64) -> void {
+        if self.hwnd != 0 {
+            // CB_SETCURSEL = 334
+            win32SendMessage(self.hwnd, 334, idx, 0)
+        }
     }
 }

@@ -112,16 +112,8 @@ pub fn degToRad(deg: f64) -> f64 {
     return deg * (3.141592653589793 / 180.0);
 }
 
-pub fn deg_to_rad(deg: f64) -> f64 {
-    return degToRad(deg);
-}
-
 pub fn radToDeg(rad: f64) -> f64 {
     return rad * (180.0 / 3.141592653589793);
-}
-
-pub fn rad_to_deg(rad: f64) -> f64 {
-    return radToDeg(rad);
 }
 
 pub fn gcd(a: i64, b: i64) -> i64 {
@@ -173,18 +165,10 @@ pub fn isPrime(n: i64) -> bool {
     return true;
 }
 
-pub fn is_prime(n: i64) -> bool {
-    return isPrime(n);
-}
-
 pub fn nextPrime(n: i64) -> i64 {
     mut cand: i64 = n + 1;
     while !isPrime(cand) {
         cand = cand + 1;
     }
     return cand;
-}
-
-pub fn next_prime(n: i64) -> i64 {
-    return nextPrime(n);
 }

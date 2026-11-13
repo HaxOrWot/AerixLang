@@ -22,16 +22,8 @@ pub fn normalVariate(mu: f64, sigma: f64) -> f64 {
     return gauss(mu, sigma);
 }
 
-pub fn normalvariate(mu: f64, sigma: f64) -> f64 {
-    return normalVariate(mu, sigma);
-}
-
 pub fn logNormVariate(mu: f64, sigma: f64) -> f64 {
     return exp(gauss(mu, sigma));
-}
-
-pub fn lognormvariate(mu: f64, sigma: f64) -> f64 {
-    return logNormVariate(mu, sigma);
 }
 
 pub fn expoVariate(lambd: f64) -> f64 {
@@ -45,6 +37,27 @@ pub fn expoVariate(lambd: f64) -> f64 {
     return (0.0 - ln(u)) / lambd;
 }
 
-pub fn expovariate(lambd: f64) -> f64 {
-    return expoVariate(lambd);
+pub fn triangular(low: f64, high: f64, mode: f64) -> f64 {
+    let u = random();
+    let c = (mode - low) / (high - low);
+    if u <= c {
+        return low + sqrt(u * (high - low) * (mode - low));
+    }
+    return high - sqrt((1.0 - u) * (high - low) * (high - mode));
+}
+
+pub fn pareto(alpha: f64) -> f64 {
+    let u = random();
+    if alpha <= 0.0 || u == 0.0 {
+        return 1.0;
+    }
+    return 1.0 / pow(1.0 - u, 1.0 / alpha);
+}
+
+pub fn weibull(alpha: f64, beta: f64) -> f64 {
+    let u = random();
+    if u <= 0.000000000000001 || beta <= 0.0 {
+        return 0.0;
+    }
+    return alpha * pow(0.0 - ln(1.0 - u), 1.0 / beta);
 }

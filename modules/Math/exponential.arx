@@ -75,7 +75,7 @@ pub fn log2(x: f64) -> f64 {
     return ln(x) / ln2_const;
 }
 
-pub fn pow_f64(base: f64, exponent: f64) -> f64 {
+pub fn powF64(base: f64, exponent: f64) -> f64 {
     if base <= 0.0 {
         return 0.0;
     }

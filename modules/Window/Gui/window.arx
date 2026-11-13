@@ -50,18 +50,10 @@ pub fn createWindow(title: str, width: i64, height: i64) -> i64 {
     return hwnd;
 }
 
-pub fn create_window(title: str, width: i64, height: i64) -> i64 {
-    return createWindow(title, width, height);
-}
-
 pub fn showWindow(hwnd: i64, cmd: i64) -> bool {
     let res = win32_show_window(hwnd, cmd);
     win32_update_window(hwnd);
     return res != 0;
-}
-
-pub fn show_window(hwnd: i64, cmd: i64) -> bool {
-    return showWindow(hwnd, cmd);
 }
 
 pub fn hideWindow(hwnd: i64) -> bool {
@@ -69,17 +61,9 @@ pub fn hideWindow(hwnd: i64) -> bool {
     return res != 0;
 }
 
-pub fn hide_window(hwnd: i64) -> bool {
-    return hideWindow(hwnd);
-}
-
 pub fn setWindowTitle(hwnd: i64, title: str) -> bool {
     let res = win32_set_window_text(hwnd, title);
     return res != 0;
-}
-
-pub fn set_window_title(hwnd: i64, title: str) -> bool {
-    return setWindowTitle(hwnd, title);
 }
 
 pub fn destroyWindow(hwnd: i64) -> bool {
@@ -87,25 +71,13 @@ pub fn destroyWindow(hwnd: i64) -> bool {
     return res != 0;
 }
 
-pub fn destroy_window(hwnd: i64) -> bool {
-    return destroyWindow(hwnd);
-}
-
 pub fn moveWindow(hwnd: i64, x: i64, y: i64, width: i64, height: i64) -> bool {
     let res = win32_move_window(hwnd, x, y, width, height, 1);
     return res != 0;
 }
 
-pub fn move_window(hwnd: i64, x: i64, y: i64, width: i64, height: i64) -> bool {
-    return moveWindow(hwnd, x, y, width, height);
-}
-
 pub fn isWindowVisible(hwnd: i64) -> bool {
     return win32_is_window_visible(hwnd) != 0;
-}
-
-pub fn is_window_visible(hwnd: i64) -> bool {
-    return isWindowVisible(hwnd);
 }
 
 // Pumps all pending Windows OS messages without blocking
@@ -118,10 +90,6 @@ pub fn pollEvents() -> bool {
         dispatched = true;
     }
     return dispatched;
-}
-
-pub fn poll_events() -> bool {
-    return pollEvents();
 }
 
 pub class AppWindow {
@@ -158,10 +126,6 @@ pub class AppWindow {
         }
     }
 
-    pub fn set_title(new_title: str) -> void {
-        self.setTitle(new_title)
-    }
-
     pub fn resize(w: i64, h: i64) -> void {
         self.width = w
         self.height = h
@@ -176,10 +140,6 @@ pub class AppWindow {
 
     pub fn isOpen() -> bool {
         return self.is_open && self.hwnd != 0
-    }
-
-    pub fn is_open_state() -> bool {
-        return self.isOpen()
     }
 
     pub fn close() -> void {

@@ -53,6 +53,12 @@ pub fn mem_calloc(count: i64, size: i64) -> i64;
 #[extern("msvcrt.dll", "free")]
 pub fn mem_free(ptr: i64) -> void;
 
+#[extern("ws2_32.dll", "setsockopt")]
+pub fn win32Setsockopt(s: i64, level: i64, optname: i64, optval: str, optlen: i64) -> i32;
+
+#[extern("ws2_32.dll", "ioctlsocket")]
+pub fn win32Ioctlsocket(s: i64, cmd: i64, argp: str) -> i32;
+
 // Initialize Winsock 2.2 subsystem
 pub fn socketInit() -> bool {
     let wsadata_buf = mem_calloc(1, 512);
@@ -61,25 +67,13 @@ pub fn socketInit() -> bool {
     return res == 0;
 }
 
-pub fn socket_init() -> bool {
-    return socketInit();
-}
-
 // Clean up Winsock subsystem
 pub fn socketCleanup() -> void {
     wsa_cleanup();
 }
 
-pub fn socket_cleanup() -> void {
-    socketCleanup();
-}
-
 pub fn lastError() -> i64 {
     return wsa_get_last_error();
-}
-
-pub fn last_error() -> i64 {
-    return lastError();
 }
 
 pub fn createTcpSocket() -> i64 {
@@ -87,17 +81,36 @@ pub fn createTcpSocket() -> i64 {
     return socket(AF_INET(), SOCK_STREAM(), IPPROTO_TCP());
 }
 
-pub fn create_tcp_socket() -> i64 {
-    return createTcpSocket();
-}
-
 pub fn createUdpSocket() -> i64 {
     socketInit();
     return socket(AF_INET(), SOCK_DGRAM(), IPPROTO_UDP());
 }
 
-pub fn create_udp_socket() -> i64 {
-    return createUdpSocket();
+pub fn setSocketTimeout(s: i64, timeoutMs: i64) -> bool {
+    let bb = ByteBuffer();
+    bb.write_u8(timeoutMs & 255);
+    bb.write_u8((timeoutMs >> 8) & 255);
+    bb.write_u8((timeoutMs >> 16) & 255);
+    bb.write_u8((timeoutMs >> 24) & 255);
+    let buf = bb.to_str();
+    bb.free();
+    // SOL_SOCKET = 65535, SO_RCVTIMEO = 4102, SO_SNDTIMEO = 4101
+    let r1 = win32Setsockopt(s, 65535, 4102, buf, 4);
+    let r2 = win32Setsockopt(s, 65535, 4101, buf, 4);
+    return r1 == 0 && r2 == 0;
+}
+
+pub fn setSocketNonBlocking(s: i64, nonBlocking: bool) -> bool {
+    let bb = ByteBuffer();
+    mut mode: i64 = 0;
+    if nonBlocking { mode = 1; }
+    bb.write_u8(mode & 255);
+    bb.write_u8((mode >> 8) & 255);
+    bb.write_u8((mode >> 16) & 255);
+    bb.write_u8((mode >> 24) & 255);
+    let buf = bb.to_str();
+    bb.free();
+    return win32Ioctlsocket(s, 2147772030, buf) == 0;
 }
 
 // Constructs a 16-byte sockaddr_in binary structure for IPv4
@@ -126,8 +139,4 @@ pub fn makeSockAddrIn(ip: str, port: i64) -> str {
     let res = bb.to_str();
     bb.free();
     return res;
-}
-
-pub fn make_sockaddr_in(ip: str, port: i64) -> str {
-    return makeSockAddrIn(ip, port);
 }

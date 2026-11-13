@@ -1,10 +1,10 @@
-# Aerix Language & IntelliSense Support (`v1.1.12-stable`)
+# Aerix Language & IntelliSense Support (`v1.1.12a-stable`)
 
 <div align="center">
 
 <img src="./icons/aerix-icon.png" width="120" height="120" alt="Aerix Logo" />
 
-[![Version](https://img.shields.io/badge/version-1.1.12--stable-00DCFF.svg?style=for-the-badge&logo=visualstudiocode)](#)
+[![Version](https://img.shields.io/badge/version-1.1.12a--stable-00DCFF.svg?style=for-the-badge&logo=visualstudiocode)](#)
 [![Language](https://img.shields.io/badge/language-Aerix%20(.arx)-1E90FF.svg?style=for-the-badge)](#)
 [![LSP](https://img.shields.io/badge/LSP-Native%20Compiler%20Driven-7C4DFF.svg?style=for-the-badge)](#)
 
@@ -99,8 +99,8 @@ Set **`aerix.executablePath`** in VS Code / Antigravity Settings if you want to 
 ### Manual VSIX Installation
 
 ```powershell
-code --install-extension aerix-1.1.12-stable.vsix --force
-antigravity --install-extension aerix-1.1.12-stable.vsix --force
+code --install-extension aerix-1.1.12a-stable.vsix --force
+antigravity --install-extension aerix-1.1.12a-stable.vsix --force
 ```
 
 After updating the extension or `arx.exe`, run **`Developer: Reload Window`** (`Ctrl+Shift+P`) to restart the language server cleanly.

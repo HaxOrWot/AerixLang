@@ -329,9 +329,25 @@
   "Aerix From Submodule Import": {
     "prefix": "from_sub",
     "body": [
-      "from ${1:Window.Gui} import ${2:create_window}"
+      "from ${1:Window.Gui} import ${2:createWindow}"
     ],
     "description": "Selectively import from a dotted submodule"
+  },
+  "Aerix Import Canvas": {
+    "prefix": "import_canvas",
+    "body": [
+      "import Window.Gui.Canvas",
+      "from Window.Gui.Canvas import Canvas, rgb"
+    ],
+    "description": "Import 2D hardware-accelerated GDI Canvas graphics"
+  },
+  "Aerix Import Clipboard": {
+    "prefix": "import_clipboard",
+    "body": [
+      "import Window.Clipboard",
+      "from Window.Clipboard import getText, setText"
+    ],
+    "description": "Import system clipboard read/write capabilities"
   },
   "Aerix Struct": {
     "prefix": "struct",

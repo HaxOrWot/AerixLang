@@ -108,3 +108,74 @@ pub fn csc(x: f64) -> f64 {
     }
     return 1.0 / s;
 }
+
+pub fn atan(x: f64) -> f64 {
+    let pi: f64 = 3.141592653589793;
+    if x == 0.0 {
+        return 0.0;
+    }
+    if x < 0.0 {
+        return 0.0 - atan(0.0 - x);
+    }
+    if x > 1.0 {
+        return (pi / 2.0) - atan(1.0 / x);
+    }
+    // High-precision polynomial approximation for |x| <= 1
+    let x2 = x * x;
+    mut term = x;
+    mut sum = x;
+    mut denom = 3.0;
+    mut sign = 0.0 - 1.0;
+    for i in 0..15 {
+        term = term * x2;
+        sum = sum + sign * (term / denom);
+        denom = denom + 2.0;
+        sign = 0.0 - sign;
+    }
+    return sum;
+}
+
+pub fn atan2(y: f64, x: f64) -> f64 {
+    let pi: f64 = 3.141592653589793;
+    if x > 0.0 {
+        return atan(y / x);
+    }
+    if x < 0.0 && y >= 0.0 {
+        return atan(y / x) + pi;
+    }
+    if x < 0.0 && y < 0.0 {
+        return atan(y / x) - pi;
+    }
+    if x == 0.0 && y > 0.0 {
+        return pi / 2.0;
+    }
+    if x == 0.0 && y < 0.0 {
+        return 0.0 - (pi / 2.0);
+    }
+    return 0.0;
+}
+
+pub fn asin(x: f64) -> f64 {
+    let pi: f64 = 3.141592653589793;
+    if x > 1.0 || x < 0.0 - 1.0 {
+        return 0.0;
+    }
+    if x == 1.0 {
+        return pi / 2.0;
+    }
+    if x == 0.0 - 1.0 {
+        return 0.0 - (pi / 2.0);
+    }
+    let denom_sq = 1.0 - x * x;
+    mut guess = denom_sq / 2.0;
+    if guess == 0.0 { guess = 1.0; }
+    for i in 0..20 {
+        guess = (guess + denom_sq / guess) / 2.0;
+    }
+    return atan(x / guess);
+}
+
+pub fn acos(x: f64) -> f64 {
+    let pi: f64 = 3.141592653589793;
+    return (pi / 2.0) - asin(x);
+}

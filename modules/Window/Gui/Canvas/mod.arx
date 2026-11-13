@@ -1,0 +1,6 @@
+// ==============================================================================
+// Aerix Standard Library: Window::Gui::Canvas
+// Hardware-accelerated 2D GDI Graphics Engine and Canvas Drawing
+// ==============================================================================
+
+import "./canvas.arx"

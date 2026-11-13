@@ -62,7 +62,7 @@ fn main() {
 > **Repository Branches:**
 > * **`master`** *(default)* — Minimal self-hosting Aerix compiler tree (`src/bootstrap/` + C bootstrap seed `src/bootstrap/seed/arxc.c`, `stdlib/`, `modules/`, and docs). Builds natively with GCC/Clang alone — **no Python required**.
 > * **`pre`** — Pre-release development repository (`*-pre` releases) including the Stage 0 Python compiler (`src/`), bootstrap source (`src/bootstrap/`), automated test suite (`198` tests in `src/tests/`), `41` example files (`examples/`), VS Code / Antigravity extension (`editors/`), C++ installer (`AerixInstaller/`), installer scripts (`install.ps1` / `install.sh`), LSP, formatter, linter, REPL, and WASM backend.
-> * **`stable`** — Verified stable release branch (`1.1.12-stable`) carrying production `*-stable` releases, the C# Windows installer (`AerixSetup-1.1.12-stable.exe`), and editor extension (`aerix-1.1.12-stable.vsix`).
+> * **`stable`** — Verified stable release branch (`1.1.12a-stable`) carrying production `*-stable` releases, the C# Windows installer (`AerixSetup-1.1.12a-stable.exe`), and editor extension (`aerix-1.1.12a-stable.vsix`).
 
 <details open>
 <summary><b>🧬 Option A: Self-Hosting Native Compiler (<code>arxc</code> — Zero Python Required, <code>master</code> / <code>pre</code> / <code>stable</code>)</b></summary>
@@ -85,7 +85,7 @@ cc -std=c99 -O2 -Wno-unused-function -I stdlib src/bootstrap/seed/arxc.c -o arxc
 ```powershell
 .\arxc.exe build src/bootstrap/main.arx -o arxc_self.exe
 .\arxc_self.exe version
-# Output: Aerix Self-Hosting Bootstrap Compiler (arxc) v1.1.12-stable
+# Output: Aerix Self-Hosting Bootstrap Compiler (arxc) v1.1.12a-stable
 ```
 
 **3. Use `arxc` to check, transpile, build, or run Aerix programs:**
@@ -433,7 +433,7 @@ Phase 05: AIR Lowering & Custom Optimizer         ✅ COMPLETE (22/22 tests pass
 Phase 06: C99 Machine Codegen & Linker Orchestr. ✅ COMPLETE (25/25 tests passed)
 Phase 07: Unified Developer CLI (`arx`, `arxc`)  ✅ COMPLETE (Turnkey CLI toolchain)
 Phase 08: Benchmarks & Standard Performance       ✅ COMPLETE (Fibonacci 100.2% C-speed)
-Phase 09: Packaging & VS Code Extension           ✅ COMPLETE (v1.1.12-stable VSIX & C# Setup)
+Phase 09: Packaging & VS Code Extension           ✅ COMPLETE (v1.1.12a-stable VSIX & C# Setup)
 Phase 10: Method & Constructor Overloading        ✅ COMPLETE (Type & arity mangling)
 Phase 11: Reactive Properties & Operator Overload ✅ COMPLETE (prop & op keywords)
 Phase 12: Modern Flow Control & Type Extensions   ✅ COMPLETE (guard, extend, ~>)
@@ -477,12 +477,12 @@ Aerix provides first-class tooling across both **Visual Studio Code** and the **
 
 **Install into Visual Studio Code:**
 ```powershell
-code --install-extension editors/vscode-aerix/aerix-1.1.12-stable.vsix --force
+code --install-extension editors/vscode-aerix/aerix-1.1.12a-stable.vsix --force
 ```
 
 **Install into Antigravity IDE:**
 ```powershell
-antigravity --install-extension editors/vscode-aerix/aerix-1.1.12-stable.vsix --force
+antigravity --install-extension editors/vscode-aerix/aerix-1.1.12a-stable.vsix --force
 ```
 
 </details>

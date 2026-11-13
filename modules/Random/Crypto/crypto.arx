@@ -47,10 +47,6 @@ pub fn cryptoRandomBytes(count: i64) -> str {
     return buf;
 }
 
-pub fn crypto_random_bytes(count: i64) -> str {
-    return cryptoRandomBytes(count);
-}
-
 pub fn cryptoRandomHex(byte_count: i64) -> str {
     let bytes = cryptoRandomBytes(byte_count);
     let hex_chars = "0123456789abcdef";
@@ -67,10 +63,6 @@ pub fn cryptoRandomHex(byte_count: i64) -> str {
     let res = bb.to_str();
     bb.free();
     return res;
-}
-
-pub fn crypto_random_hex(byte_count: i64) -> str {
-    return cryptoRandomHex(byte_count);
 }
 
 pub fn cryptoRandomInt(min: i64, max: i64) -> i64 {
@@ -92,8 +84,21 @@ pub fn cryptoRandomInt(min: i64, max: i64) -> i64 {
     return min + (val % span);
 }
 
-pub fn crypto_random_int(min: i64, max: i64) -> i64 {
-    return cryptoRandomInt(min, max);
+pub fn cryptoRandomFloat() -> f64 {
+    let bytes = cryptoRandomBytes(8);
+    mut val: i64 = 0;
+    mut i = 0;
+    while i < 8 {
+        let b = bytes.byte_at(i) & 255;
+        val = (val << 8) | b;
+        i = i + 1;
+    }
+    if val < 0 {
+        val = 0 - val;
+    }
+    // 53-bit resolution double precision float in [0.0, 1.0)
+    let mantissa = val & 9007199254740991; // (1 << 53) - 1
+    return (mantissa as f64) / 9007199254740992.0;
 }
 
 // Generates an RFC 4122 compliant UUID Version 4
@@ -125,10 +130,6 @@ pub fn generateUuid() -> str {
     return res;
 }
 
-pub fn generate_uuid() -> str {
-    return generateUuid();
-}
-
 pub fn generateToken(length: i64) -> str {
     if length <= 0 {
         return "";
@@ -148,6 +149,10 @@ pub fn generateToken(length: i64) -> str {
     return res;
 }
 
-pub fn generate_token(length: i64) -> str {
-    return generateToken(length);
+pub fn generateApiKey(prefix: str, byteLength: i64) -> str {
+    let keyHex = cryptoRandomHex(byteLength);
+    if prefix == "" {
+        return keyHex;
+    }
+    return prefix + "_" + keyHex;
 }

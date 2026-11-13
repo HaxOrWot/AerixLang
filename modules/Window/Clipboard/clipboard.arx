@@ -41,10 +41,6 @@ pub fn hasText() -> bool {
     return win32_is_clipboard_format_available(CF_TEXT) != 0;
 }
 
-pub fn has_text() -> bool {
-    return hasText();
-}
-
 pub fn getText() -> str {
     if win32_open_clipboard(0) == 0 {
         return "";
@@ -58,10 +54,6 @@ pub fn getText() -> str {
     win32_global_unlock(hData);
     win32_close_clipboard();
     return ptr;
-}
-
-pub fn get_text() -> str {
-    return getText();
 }
 
 pub fn setText(text: str) -> bool {
@@ -81,10 +73,6 @@ pub fn setText(text: str) -> bool {
     let ok = win32_set_clipboard_data(CF_TEXT, hMem);
     win32_close_clipboard();
     return ok != 0;
-}
-
-pub fn set_text(text: str) -> bool {
-    return setText(text);
 }
 
 pub fn clear() -> bool {

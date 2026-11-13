@@ -47,10 +47,6 @@ pub class DateTime {
         return (self.year as str) + "-" + m_str + "-" + d_str + " " + h_str + ":" + min_str + ":" + s_str
     }
 
-    pub fn format_iso() -> str {
-        return self.formatIso()
-    }
-
     pub fn formatDate() -> str {
         mut m_str = self.month as str
         if self.month < 10 { m_str = "0" + m_str }
@@ -59,10 +55,6 @@ pub class DateTime {
         if self.day < 10 { d_str = "0" + d_str }
 
         return (self.year as str) + "-" + m_str + "-" + d_str
-    }
-
-    pub fn format_date() -> str {
-        return self.formatDate()
     }
 
     pub fn formatTime() -> str {
@@ -76,10 +68,6 @@ pub class DateTime {
         if self.second < 10 { s_str = "0" + s_str }
 
         return h_str + ":" + min_str + ":" + s_str
-    }
-
-    pub fn format_time() -> str {
-        return self.formatTime()
     }
 }
 
@@ -100,18 +88,10 @@ pub fn nowLocal() -> DateTime {
     return dt
 }
 
-pub fn now_local() -> DateTime {
-    return nowLocal();
-}
-
 pub fn isLeapYear(year: i64) -> bool {
     if year % 400 == 0 { return true }
     if year % 100 == 0 { return false }
     return year % 4 == 0
-}
-
-pub fn is_leap_year(year: i64) -> bool {
-    return isLeapYear(year);
 }
 
 pub fn daysInMonth(year: i64, month: i64) -> i64 {
@@ -123,10 +103,6 @@ pub fn daysInMonth(year: i64, month: i64) -> i64 {
         return 30
     }
     return 31
-}
-
-pub fn days_in_month(year: i64, month: i64) -> i64 {
-    return daysInMonth(year, month);
 }
 
 pub fn nowUtc() -> DateTime {
@@ -168,6 +144,44 @@ pub fn nowUtc() -> DateTime {
     return dt
 }
 
-pub fn now_utc() -> DateTime {
-    return nowUtc();
+pub fn addDays(dt: DateTime, days: i64) -> DateTime {
+    let res = DateTime()
+    res.year = dt.year
+    res.month = dt.month
+    res.day = dt.day + days
+    res.hour = dt.hour
+    res.minute = dt.minute
+    res.second = dt.second
+    res.millisecond = dt.millisecond
+    while res.day > daysInMonth(res.year, res.month) {
+        res.day = res.day - daysInMonth(res.year, res.month)
+        res.month = res.month + 1
+        if res.month > 12 {
+            res.month = 1
+            res.year = res.year + 1
+        }
+    }
+    return res
+}
+
+pub fn addHours(dt: DateTime, hours: i64) -> DateTime {
+    let extraDays = (dt.hour + hours) / 24
+    let newHour = (dt.hour + hours) % 24
+    let res = addDays(dt, extraDays)
+    res.hour = newHour
+    return res
+}
+
+pub fn isWeekend(dt: DateTime) -> bool {
+    // Zeller's congruence to determine day of week (0=Saturday, 1=Sunday, 6=Friday)
+    mut m = dt.month
+    mut y = dt.year
+    if m <= 2 {
+        m = m + 12
+        y = y - 1
+    }
+    let k = y % 100
+    let j = y / 100
+    let h = (dt.day + (13 * (m + 1)) / 5 + k + k / 4 + j / 4 + 5 * j) % 7
+    return h == 0 || h == 1 // Saturday or Sunday
 }

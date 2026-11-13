@@ -6,39 +6,19 @@
 #[extern("user32.dll", "GetAsyncKeyState")]
 pub fn getAsyncKeyState(vKey: i64) -> i64;
 
-pub fn get_async_key_state(vKey: i64) -> i64 {
-    return getAsyncKeyState(vKey);
-}
-
 #[extern("user32.dll", "SetCursorPos")]
 pub fn setCursorPos(x: i64, y: i64) -> i32;
 
-pub fn set_cursor_pos(x: i64, y: i64) -> i32 {
-    return setCursorPos(x, y);
-}
-
 #[extern("user32.dll", "GetCursorPos")]
 pub fn getCursorPos(lp_point: str) -> i32;
-
-pub fn get_cursor_pos(lp_point: str) -> i32 {
-    return getCursorPos(lp_point);
-}
 
 pub fn isKeyDown(vk_code: i64) -> bool {
     let state = getAsyncKeyState(vk_code);
     return (state & 32768) != 0;
 }
 
-pub fn is_key_down(vk_code: i64) -> bool {
-    return isKeyDown(vk_code);
-}
-
 pub fn setMousePosition(x: i64, y: i64) -> bool {
     return setCursorPos(x, y) != 0;
-}
-
-pub fn set_mouse_position(x: i64, y: i64) -> bool {
-    return setMousePosition(x, y);
 }
 
 pub fn getMousePosition() -> (i64, i64) {
@@ -50,10 +30,6 @@ pub fn getMousePosition() -> (i64, i64) {
     let x = (buf.byte_at(0) & 255) | ((buf.byte_at(1) & 255) << 8) | ((buf.byte_at(2) & 255) << 16) | ((buf.byte_at(3) & 255) << 24);
     let y = (buf.byte_at(4) & 255) | ((buf.byte_at(5) & 255) << 8) | ((buf.byte_at(6) & 255) << 16) | ((buf.byte_at(7) & 255) << 24);
     return (x, y);
-}
-
-pub fn get_mouse_position() -> (i64, i64) {
-    return getMousePosition();
 }
 
 // Common Virtual Key Codes

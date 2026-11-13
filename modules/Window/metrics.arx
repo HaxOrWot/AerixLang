@@ -6,17 +6,9 @@
 #[extern("user32.dll", "GetSystemMetrics")]
 pub fn getSystemMetrics(nIndex: i64) -> i64;
 
-pub fn get_system_metrics(nIndex: i64) -> i64 {
-    return getSystemMetrics(nIndex);
-}
-
 pub fn screenWidth() -> i64 {
     // SM_CXSCREEN = 0
     return getSystemMetrics(0);
-}
-
-pub fn screen_width() -> i64 {
-    return screenWidth();
 }
 
 pub fn screenHeight() -> i64 {
@@ -24,17 +16,9 @@ pub fn screenHeight() -> i64 {
     return getSystemMetrics(1);
 }
 
-pub fn screen_height() -> i64 {
-    return screenHeight();
-}
-
 pub fn virtualScreenWidth() -> i64 {
     // SM_CXVIRTUALSCREEN = 78
     return getSystemMetrics(78);
-}
-
-pub fn virtual_screen_width() -> i64 {
-    return virtualScreenWidth();
 }
 
 pub fn virtualScreenHeight() -> i64 {
@@ -42,24 +26,12 @@ pub fn virtualScreenHeight() -> i64 {
     return getSystemMetrics(79);
 }
 
-pub fn virtual_screen_height() -> i64 {
-    return virtualScreenHeight();
-}
-
 pub fn monitorCount() -> i64 {
     // SM_CMONITORS = 80
     return getSystemMetrics(80);
 }
 
-pub fn monitor_count() -> i64 {
-    return monitorCount();
-}
-
 pub fn mousePresent() -> bool {
     // SM_MOUSEPRESENT = 19
     return getSystemMetrics(19) != 0;
-}
-
-pub fn mouse_present() -> bool {
-    return mousePresent();
 }

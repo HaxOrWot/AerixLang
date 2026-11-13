@@ -37,10 +37,6 @@ pub class TcpClient {
         return send(self.sock, data, data.len(), 0)
     }
 
-    pub fn send_str(data: str) -> i64 {
-        return self.sendStr(data)
-    }
-
     pub fn recvStr(max_bytes: i64) -> str {
         if !self.connected {
             return ""
@@ -51,10 +47,6 @@ pub class TcpClient {
             return ""
         }
         return buf.slice(0, bytes_read)
-    }
-
-    pub fn recv_str(max_bytes: i64) -> str {
-        return self.recvStr(max_bytes)
     }
 
     pub fn close() -> void {
@@ -68,10 +60,6 @@ pub class TcpClient {
     pub fn isConnected() -> bool {
         return self.connected
     }
-
-    pub fn is_connected() -> bool {
-        return self.isConnected()
-    }
 }
 
 pub fn tcpRequest(host: str, port: i64, request: str) -> str {
@@ -83,8 +71,4 @@ pub fn tcpRequest(host: str, port: i64, request: str) -> str {
     let resp = client.recvStr(4096)
     client.close()
     return resp
-}
-
-pub fn tcp_request(host: str, port: i64, request: str) -> str {
-    return tcpRequest(host, port, request);
 }
