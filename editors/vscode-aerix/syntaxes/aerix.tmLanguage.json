@@ -141,15 +141,123 @@
     "imports": {
       "patterns": [
         {
-          "match": "\\b(from)\\s+([A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*)*|\"[^\"]*\")\\s+(import)\\b",
-          "captures": {
+          "name": "meta.import.from.aerix",
+          "begin": "\\b(from)\\s+([A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*)*|\"[^\"]*\")\\s+(import)\\b",
+          "beginCaptures": {
             "1": { "name": "keyword.control.import.from.aerix" },
             "2": { "name": "entity.name.namespace.aerix" },
             "3": { "name": "keyword.control.import.aerix" }
-          }
+          },
+          "end": "(?=[;\\n]|$)",
+          "patterns": [
+            {
+              "match": "\\b(as)\\s+([A-Z_][A-Z0-9_]*)\\b",
+              "captures": {
+                "1": { "name": "keyword.control.as.aerix" },
+                "2": { "name": "variable.other.constant.aerix" }
+              }
+            },
+            {
+              "match": "\\b(as)\\s+([A-Z][A-Za-z0-9_]*)\\b",
+              "captures": {
+                "1": { "name": "keyword.control.as.aerix" },
+                "2": { "name": "entity.name.type.class.aerix" }
+              }
+            },
+            {
+              "match": "\\b(as)\\s+([a-z_][A-Za-z0-9_]*)\\b",
+              "captures": {
+                "1": { "name": "keyword.control.as.aerix" },
+                "2": { "name": "entity.name.function.aerix" }
+              }
+            },
+            {
+              "name": "keyword.control.as.aerix",
+              "match": "\\bas\\b"
+            },
+            {
+              "name": "variable.other.constant.aerix",
+              "match": "\\b[A-Z_][A-Z0-9_]*\\b"
+            },
+            {
+              "name": "entity.name.type.class.aerix",
+              "match": "\\b[A-Z][A-Za-z0-9_]*\\b"
+            },
+            {
+              "name": "entity.name.function.aerix",
+              "match": "\\b[a-z_][A-Za-z0-9_]*\\b"
+            },
+            {
+              "name": "punctuation.separator.comma.aerix",
+              "match": ","
+            },
+            {
+              "include": "#comments"
+            }
+          ]
         },
         {
-          "match": "\\b(import)\\s+([A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*)*)\\s+(as)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+          "name": "meta.import.selective.aerix",
+          "begin": "\\b(import)\\s*(\\{)",
+          "beginCaptures": {
+            "1": { "name": "keyword.control.import.aerix" },
+            "2": { "name": "punctuation.definition.block.aerix" }
+          },
+          "end": "(\\})\\s*(?:(from)\\s+([A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*)*|\"[^\"]*\"))?",
+          "endCaptures": {
+            "1": { "name": "punctuation.definition.block.aerix" },
+            "2": { "name": "keyword.control.import.from.aerix" },
+            "3": { "name": "entity.name.namespace.aerix" }
+          },
+          "patterns": [
+            {
+              "match": "\\b(as)\\s+([A-Z_][A-Z0-9_]*)\\b",
+              "captures": {
+                "1": { "name": "keyword.control.as.aerix" },
+                "2": { "name": "variable.other.constant.aerix" }
+              }
+            },
+            {
+              "match": "\\b(as)\\s+([A-Z][A-Za-z0-9_]*)\\b",
+              "captures": {
+                "1": { "name": "keyword.control.as.aerix" },
+                "2": { "name": "entity.name.type.class.aerix" }
+              }
+            },
+            {
+              "match": "\\b(as)\\s+([a-z_][A-Za-z0-9_]*)\\b",
+              "captures": {
+                "1": { "name": "keyword.control.as.aerix" },
+                "2": { "name": "entity.name.function.aerix" }
+              }
+            },
+            {
+              "name": "keyword.control.as.aerix",
+              "match": "\\bas\\b"
+            },
+            {
+              "name": "variable.other.constant.aerix",
+              "match": "\\b[A-Z_][A-Z0-9_]*\\b"
+            },
+            {
+              "name": "entity.name.type.class.aerix",
+              "match": "\\b[A-Z][A-Za-z0-9_]*\\b"
+            },
+            {
+              "name": "entity.name.function.aerix",
+              "match": "\\b[a-z_][A-Za-z0-9_]*\\b"
+            },
+            {
+              "name": "punctuation.separator.comma.aerix",
+              "match": ","
+            },
+            {
+              "include": "#comments"
+            }
+          ]
+        },
+        {
+          "match": "\\b(import)\\s+([A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*)*)(?:\\s+(as)\\s+([A-Za-z_][A-Za-z0-9_]*))?",
           "captures": {
             "1": { "name": "keyword.control.import.aerix" },
             "2": { "name": "entity.name.namespace.aerix" },
@@ -158,15 +266,15 @@
           }
         },
         {
-          "match": "\\b(as)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+          "match": "\\b(use)\\s+([A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*)*)",
           "captures": {
-            "1": { "name": "keyword.control.as.aerix" },
-            "2": { "name": "entity.name.namespace.alias.aerix" }
+            "1": { "name": "keyword.control.import.aerix" },
+            "2": { "name": "entity.name.namespace.aerix" }
           }
         },
         {
           "name": "keyword.control.import.aerix",
-          "match": "\\b(import|from)\\b"
+          "match": "\\b(import|from|use)\\b"
         },
         {
           "name": "keyword.control.as.aerix",
