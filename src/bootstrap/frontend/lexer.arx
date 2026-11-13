@@ -435,6 +435,11 @@ pub class Lexer {
                 self.scan_string(sl, sc)
                 continue
             }
+            if ch == 36 && self.peek_at(0) == 34 {
+                self.advance_byte()
+                self.scan_string(sl, sc)
+                continue
+            }
             if ch == 39 {
                 self.scan_char(sl, sc)
                 continue
