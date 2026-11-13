@@ -22,6 +22,12 @@ pub fn win32_set_window_text(hwnd: i64, title: str) -> i32;
 #[extern("user32.dll", "MoveWindow")]
 pub fn win32_move_window(hwnd: i64, x: i64, y: i64, width: i64, height: i64, repaint: i32) -> i32;
 
+#[extern("user32.dll", "ShowWindow")]
+pub fn win32_show_window_cmd(hwnd: i64, cmd: i32) -> i32;
+
+#[extern("user32.dll", "SetForegroundWindow")]
+pub fn win32_set_foreground_window(hwnd: i64) -> i32;
+
 // Window Styles & Constants
 pub let WS_OVERLAPPED_WINDOW: i64 = 13565952;
 pub let WS_POPUP_WINDOW: i64 = 2156396544;
@@ -29,6 +35,9 @@ pub let WS_VISIBLE_FLAG: i64 = 268435456;
 pub let SW_SHOW_NORMAL: i64 = 1;
 pub let SW_SHOW_CMD: i64 = 5;
 pub let SW_HIDE_CMD: i64 = 0;
+pub let SW_MINIMIZE_CMD: i64 = 6;
+pub let SW_MAXIMIZE_CMD: i64 = 3;
+pub let SW_RESTORE_CMD: i64 = 9;
 pub let PM_REMOVE: i64 = 1;
 
 pub fn createWindow(title: str, width: i64, height: i64) -> i64 {
@@ -110,6 +119,30 @@ pub class AppWindow {
 
     pub fn poll() -> bool {
         return pollEvents()
+    }
+
+    pub fn setFocus() -> void {
+        if self.hwnd != 0 {
+            win32_set_foreground_window(self.hwnd)
+        }
+    }
+
+    pub fn minimize() -> void {
+        if self.hwnd != 0 {
+            win32_show_window_cmd(self.hwnd, SW_MINIMIZE_CMD as i32)
+        }
+    }
+
+    pub fn maximize() -> void {
+        if self.hwnd != 0 {
+            win32_show_window_cmd(self.hwnd, SW_MAXIMIZE_CMD as i32)
+        }
+    }
+
+    pub fn restore() -> void {
+        if self.hwnd != 0 {
+            win32_show_window_cmd(self.hwnd, SW_RESTORE_CMD as i32)
+        }
     }
 
     pub fn isOpen() -> bool {

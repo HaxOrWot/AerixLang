@@ -14,6 +14,7 @@
 #include <string.h>
 #include <stdarg.h>
 #include <math.h>
+#include <time.h>
 #include <ctype.h>
 #include <setjmp.h>
 
@@ -2798,6 +2799,9 @@ typedef struct Arx_BackBuffer {
 
 static LRESULT CALLBACK __arx_wndproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     switch (msg) {
+        case WM_CLOSE:
+            DestroyWindow(hwnd);
+            return 0;
         case WM_DESTROY:
             PostQuitMessage(0);
             return 0;
@@ -2923,6 +2927,7 @@ static inline void arx_gui_canvas_end(int64_t bb_val) {
     DeleteObject(bb->mem_bmp);
     DeleteDC(bb->mem_hdc);
     ReleaseDC(bb->hwnd, bb->screen_hdc);
+    arx_free(bb);
 }
 
 static inline void arx_gui_fill_rect(int64_t bb_val, int64_t x, int64_t y, int64_t w, int64_t h, int64_t color) {
@@ -2999,8 +3004,28 @@ static inline bool arx_gui_is_key_down(int64_t vkey) {
     return (state & 0x8000) != 0;
 }
 
+typedef struct {
+    DWORD freq;
+    DWORD duration;
+} Arx_BeepParams;
+
+static DWORD WINAPI __arx_beep_thread(LPVOID param) {
+    Arx_BeepParams* bp = (Arx_BeepParams*)param;
+    if (bp) {
+        Beep(bp->freq, bp->duration);
+        free(bp);
+    }
+    return 0;
+}
+
 static inline void arx_gui_play_beep(int64_t freq, int64_t duration_ms) {
-    Beep((DWORD)freq, (DWORD)duration_ms);
+    if (freq <= 0 || duration_ms <= 0) return;
+    Arx_BeepParams* bp = (Arx_BeepParams*)malloc(sizeof(Arx_BeepParams));
+    if (!bp) return;
+    bp->freq = (DWORD)freq;
+    bp->duration = (DWORD)duration_ms;
+    HANDLE h = CreateThread(NULL, 0, __arx_beep_thread, bp, 0, NULL);
+    if (h) CloseHandle(h);
 }
 
 #else
