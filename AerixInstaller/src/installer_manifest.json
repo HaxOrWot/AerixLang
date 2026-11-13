@@ -1,6 +1,6 @@
 {
   "name": "Aerix",
-  "version": "1.2.18b",
+  "version": "1.2.19b",
   "publisher": "HaxOrWot",
   "default_install_dir": "%LOCALAPPDATA%\\Programs\\Aerix",
   "binaries": [
@@ -19,7 +19,7 @@
     { "source": "src\\bootstrap\\seed\\arxc.c (compiled)", "dest": "bin\\arxc.exe" },
     { "source": "stdlib\\aerix_rt.h", "dest": "stdlib\\aerix_rt.h" },
     { "source": "modules\\*", "dest": "modules\\*" },
-    { "source": "editors\\vscode-aerix\\aerix-1.2.18b.vsix", "dest": "editors\\aerix-1.2.18b.vsix" },
+    { "source": "editors\\vscode-aerix\\aerix-1.2.19b.vsix", "dest": "editors\\aerix-1.2.19b.vsix" },
     { "source": "editors\\vscode-aerix\\*", "dest": "editors\\extension\\*" },
     { "source": "AerixInstaller\\assets\\aerix.ico", "dest": "assets\\aerix.ico" },
     { "source": "AerixInstaller\\assets\\aerix_file.ico", "dest": "assets\\aerix_file.ico" },

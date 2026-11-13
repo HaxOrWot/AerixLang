@@ -1197,6 +1197,10 @@ pub class Parser {
 
     priv fn parse_class_def(flags: i64) -> i64 {
         let c_ln = self.cur_line()
+        mut cflags = flags
+        if self.cur_kind() == TK_STRUCT() {
+            cflags = cflags + FLAG_STRUCT()
+        }
         self.adv()
         let n_tok = self.expect_k(TK_IDENT(), "Expected class name")
         let cname = self.tok_vals.get(n_tok)
@@ -1290,7 +1294,7 @@ pub class Parser {
         let fields_grp = self.make_group(NK_GROUP(), "", "", 0, -1, -1, -1, c_ln, fields, f_count)
         let ctors_grp = self.make_group(NK_GROUP(), "", "", 0, dtor_id, -1, -1, c_ln, ctors, ctor_count)
         let methods_grp = self.make_group(NK_GROUP(), "", "", 0, -1, -1, -1, c_ln, methods, m_count)
-        return self.add_node(NK_CLASS_DEF(), cname, base_cls, flags, fields_grp, ctors_grp, methods_grp, c_ln)
+        return self.add_node(NK_CLASS_DEF(), cname, base_cls, cflags, fields_grp, ctors_grp, methods_grp, c_ln)
     }
 
     priv fn parse_enum_def() -> i64 {
