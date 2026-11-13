@@ -653,6 +653,8 @@ fn main() -> i64 {
             backend = "native"
         } else if a == "-O0" || a == "-O1" || a == "-O2" || a == "-O3" {
             opt_flag = a
+        } else if a == "--gui" || a == "--windows" || a == "--no-console" || a == "-mwindows" {
+            // Flag accepted for windowed GUI subsystem mode
         } else if input_file == "" {
             input_file = a
         } else {
