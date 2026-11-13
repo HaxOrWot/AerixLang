@@ -1876,7 +1876,8 @@ pub class Analyzer {
             let lhs = self.la.get(nid)
             let mname = self.sa.get(nid)
             let full_p = self.get_member_path(nid)
-            if full_p != "" && self.is_module_path(full_p) {
+            let root_id = self.get_root_ident(nid)
+            if (root_id == "" || self.scope_lookup(root_id) == "") && full_p != "" && self.is_module_path(full_p) {
                 self.node_types.set(nid, "module")
                 return "module"
             }
@@ -1899,7 +1900,10 @@ pub class Analyzer {
 
             mut is_mod_access = false
             if lpath != "" {
-                if self.is_module_path(lpath) {
+                let root_lhs = self.get_root_ident(lhs)
+                if root_lhs != "" && self.scope_lookup(root_lhs) != "" {
+                    // Local variable in scope, not a module access
+                } else if self.is_module_path(lpath) {
                     is_mod_access = true
                 } else if self.nk.get(lhs) == NK_IDENT() {
                     let lname = self.sa.get(lhs)
@@ -2252,7 +2256,10 @@ pub class Analyzer {
             // Module-qualified function or constructor call: Mod.func(args) or Mod.Sub.func(args) or Alias.func(args)
             mut is_mod_call = false
             if lpath != "" {
-                if self.is_module_path(lpath) {
+                let root_lhs = self.get_root_ident(lhs)
+                if root_lhs != "" && self.scope_lookup(root_lhs) != "" {
+                    // Local variable in scope, not a module call!
+                } else if self.is_module_path(lpath) {
                     is_mod_call = true
                 } else if self.nk.get(lhs) == NK_IDENT() {
                     let lname = self.sa.get(lhs)

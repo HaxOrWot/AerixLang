@@ -1451,10 +1451,12 @@ pub class Parser {
 
         // Assignment or expression statement
         let lhs = self.parse_expr(0)
+        if lhs < 0 { return -1 }
         let ak = self.cur_kind()
         if ak == TK_EQUALS() || ak == TK_PLUS_EQ() || ak == TK_MINUS_EQ() || ak == TK_STAR_EQ() || ak == TK_SLASH_EQ() || ak == TK_PERCENT_EQ() {
             let op_str = self.tok_vals.get(self.adv())
             let rhs = self.parse_expr(0)
+            if rhs < 0 { return -1 }
             let aid = self.add_node(NK_ASSIGN(), op_str, "", 0, lhs, rhs, -1, self.ln.get(lhs))
             self.nc.set(aid, self.nc.get(lhs))
             return aid

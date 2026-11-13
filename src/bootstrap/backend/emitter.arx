@@ -78,6 +78,7 @@ pub class Emitter {
     pub lbl_id: i64
     pub cur_class: str
     pub cur_ret_type: str
+    pub is_in_ctor: bool
     pub has_main_fn: bool
     pub main_returns_i64: bool
 
@@ -158,6 +159,7 @@ pub class Emitter {
         self.lbl_id = 0
         self.cur_class = ""
         self.cur_ret_type = "void"
+        self.is_in_ctor = false
         self.has_main_fn = false
         self.main_returns_i64 = false
 
@@ -1478,6 +1480,7 @@ pub class Emitter {
         let fnm = self.call_targets.get(ctor_id)
         self.cur_class = cname
         self.cur_ret_type = cname
+        self.is_in_ctor = true
         self.w(ct + " " + fnm)
         self.emit_param_sig_c(self.la.get(ctor_id), "", true)
         self.w(" ")
@@ -1515,6 +1518,7 @@ pub class Emitter {
         self.close_blk()
         self.w_nl()
         self.cur_class = ""
+        self.is_in_ctor = false
     }
 
     priv fn emit_method_body(cname: str, mid: i64, is_dtor: bool) {
@@ -1815,7 +1819,7 @@ pub class Emitter {
 
         if k == NK_RETURN() {
             let val_id = self.la.get(nid)
-            if self.cur_class != "" && self.cur_ret_type == self.cur_class {
+            if self.is_in_ctor {
                 // Inside constructor (`init`) returning `_obj` early!
                 self.defer_emit_unwind_all()
                 self.wl("return _obj;")
