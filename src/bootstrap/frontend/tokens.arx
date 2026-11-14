@@ -1,19 +1,20 @@
 // Aerix Bootstrap Compiler — Token Definitions & Stream
 // Uses integer constants and flat TokenStream arrays for O(1) zero-copy indexing.
 
-pub fn TK_EOF() -> i64 { return 0 }
-pub fn TK_NEWLINE() -> i64 { return 1 }
-pub fn TK_INT() -> i64 { return 2 }
-pub fn TK_FLOAT() -> i64 { return 3 }
-pub fn TK_STR() -> i64 { return 4 }
-pub fn TK_STR_INTERP() -> i64 { return 5 }
-pub fn TK_CHAR() -> i64 { return 6 }
-pub fn TK_BOOL() -> i64 { return 7 }
-pub fn TK_NULL() -> i64 { return 8 }
-pub fn TK_IDENT() -> i64 { return 9 }
-pub fn TK_LABEL() -> i64 { return 10 }
+// Special & Literal Tokens (0..19)
+pub fn TK_EOF() -> i64 { return 0 }            // End of input stream
+pub fn TK_NEWLINE() -> i64 { return 1 }        // Synthesized newline for Automatic Semicolon Insertion (ASI)
+pub fn TK_INT() -> i64 { return 2 }            // Integer numeric literal
+pub fn TK_FLOAT() -> i64 { return 3 }          // Floating-point numeric literal
+pub fn TK_STR() -> i64 { return 4 }            // Regular string literal
+pub fn TK_STR_INTERP() -> i64 { return 5 }     // Interpolated string literal containing expressions
+pub fn TK_CHAR() -> i64 { return 6 }           // Character literal
+pub fn TK_BOOL() -> i64 { return 7 }           // Boolean literal (`true` or `false`)
+pub fn TK_NULL() -> i64 { return 8 }           // Null literal (`null`)
+pub fn TK_IDENT() -> i64 { return 9 }          // User identifier
+pub fn TK_LABEL() -> i64 { return 10 }         // Loop or block lifetime label (`'name`)
 
-// Keywords (20..69)
+// Keywords (20..79)
 pub fn TK_FN() -> i64 { return 20 }
 pub fn TK_LET() -> i64 { return 21 }
 pub fn TK_MUT() -> i64 { return 22 }
@@ -116,6 +117,9 @@ pub fn TK_COLON() -> i64 { return 124 }
 pub fn TK_SEMICOLON() -> i64 { return 125 }
 pub fn TK_HASH() -> i64 { return 126 }
 
+// Character classification helpers (ASCII byte values)
+
+// Returns true if byte is an ASCII alphabetic character ('A'-'Z', 'a'-'z') or underscore ('_').
 pub fn is_alpha_byte(b: i64) -> bool {
     if b >= 65 && b <= 90 { return true }
     if b >= 97 && b <= 122 { return true }
@@ -123,10 +127,12 @@ pub fn is_alpha_byte(b: i64) -> bool {
     return false
 }
 
+// Returns true if byte is an ASCII decimal digit ('0'-'9').
 pub fn is_digit_byte(b: i64) -> bool {
     return b >= 48 && b <= 57
 }
 
+// Returns true if byte is a hexadecimal digit ('0'-'9', 'A'-'F', 'a'-'f').
 pub fn is_hex_byte(b: i64) -> bool {
     if b >= 48 && b <= 57 { return true }
     if b >= 65 && b <= 70 { return true }
@@ -134,10 +140,12 @@ pub fn is_hex_byte(b: i64) -> bool {
     return false
 }
 
+// Returns true if byte is alphanumeric or underscore.
 pub fn is_alnum_byte(b: i64) -> bool {
     return is_alpha_byte(b) || is_digit_byte(b)
 }
 
+// Looks up a language keyword; returns the corresponding TK_* constant, or TK_IDENT if not a keyword.
 pub fn lookup_keyword(word: str) -> i64 {
     match word {
         "fn" => { return TK_FN() }
@@ -200,6 +208,7 @@ pub fn lookup_keyword(word: str) -> i64 {
     return TK_IDENT()
 }
 
+// Checks whether a token kind can terminate a statement for Automatic Semicolon Insertion (ASI).
 pub fn can_terminate_stmt(kind: i64) -> bool {
     if kind == TK_IDENT() || kind == TK_INT() || kind == TK_FLOAT() { return true }
     if kind == TK_STR() || kind == TK_STR_INTERP() || kind == TK_CHAR() { return true }

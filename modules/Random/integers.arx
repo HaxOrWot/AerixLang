@@ -34,10 +34,11 @@ pub fn randInt(a: i64, b: i64) -> i64 {
         high = a;
     }
     let span: i64 = high - low + 1;
-    mut r: i64 = arx_prng_next_i64();
-    if r < 0 {
-        r = 0 - r;
+    if span <= 0 {
+        return low;
     }
+    mut r: i64 = arx_prng_next_i64();
+    r = r & 9223372036854775807;
     return low + (r % span);
 }
 
@@ -61,10 +62,11 @@ pub fn randRange(start: i64, stop: i64) -> i64 {
         return start;
     }
     let span: i64 = stop - start;
-    mut r: i64 = arx_prng_next_i64();
-    if r < 0 {
-        r = 0 - r;
+    if span <= 0 {
+        return start;
     }
+    mut r: i64 = arx_prng_next_i64();
+    r = r & 9223372036854775807;
     return start + (r % span);
 }
 
@@ -91,9 +93,7 @@ pub fn randRangeStep(start: i64, stop: i64, step: i64) -> i64 {
         return start;
     }
     mut r: i64 = arx_prng_next_i64();
-    if r < 0 {
-        r = 0 - r;
-    }
+    r = r & 9223372036854775807;
     let idx: i64 = r % n;
     return start + idx * step;
 }

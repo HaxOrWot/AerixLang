@@ -44,6 +44,9 @@ pub fn parseHostAndPath(raw_url: str) -> (str, i64, str) {
         host = host_port.slice(0, colon_pos)
         let p_str = host_port.slice(colon_pos + 1, host_port.len())
         port = p_str.to_i64()
+        if port <= 0 || port > 65535 {
+            port = 80
+        }
     }
     return (host, port, path)
 }
@@ -61,7 +64,7 @@ pub fn httpGet(url: str) -> HttpResponse {
     let port = parsed.f1
     let path = parsed.f2
 
-    let req = "GET " + path + " HTTP/1.1\r\nHost: " + host + "\r\nUser-Agent: AerixLang/1.1\r\nConnection: close\r\n\r\n"
+    let req = "GET " + path + " HTTP/1.1\r\nHost: " + host + "\r\nUser-Agent: AerixLang/1.2.23b\r\nConnection: close\r\n\r\n"
     let raw_resp = tcpRequest(host, port, req)
     resp.parse(raw_resp)
     return resp
@@ -83,7 +86,7 @@ pub fn httpPost(url: str, body: str, contentType: str) -> HttpResponse {
     let path = parsed.f2
 
     let len_str = body.len() as str
-    let req = "POST " + path + " HTTP/1.1\r\nHost: " + host + "\r\nUser-Agent: AerixLang/1.1\r\nContent-Type: " + contentType + "\r\nContent-Length: " + len_str + "\r\nConnection: close\r\n\r\n" + body
+    let req = "POST " + path + " HTTP/1.1\r\nHost: " + host + "\r\nUser-Agent: AerixLang/1.2.23b\r\nContent-Type: " + contentType + "\r\nContent-Length: " + len_str + "\r\nConnection: close\r\n\r\n" + body
     let raw_resp = tcpRequest(host, port, req)
     resp.parse(raw_resp)
     return resp
@@ -103,7 +106,7 @@ pub fn httpPut(url: str, body: str, contentType: str) -> HttpResponse {
     let path = parsed.f2
 
     let len_str = body.len() as str
-    let req = "PUT " + path + " HTTP/1.1\r\nHost: " + host + "\r\nUser-Agent: AerixLang/1.1\r\nContent-Type: " + contentType + "\r\nContent-Length: " + len_str + "\r\nConnection: close\r\n\r\n" + body
+    let req = "PUT " + path + " HTTP/1.1\r\nHost: " + host + "\r\nUser-Agent: AerixLang/1.2.23b\r\nContent-Type: " + contentType + "\r\nContent-Length: " + len_str + "\r\nConnection: close\r\n\r\n" + body
     let raw_resp = tcpRequest(host, port, req)
     resp.parse(raw_resp)
     return resp
@@ -120,7 +123,7 @@ pub fn httpDelete(url: str) -> HttpResponse {
     let port = parsed.f1
     let path = parsed.f2
 
-    let req = "DELETE " + path + " HTTP/1.1\r\nHost: " + host + "\r\nUser-Agent: AerixLang/1.1\r\nConnection: close\r\n\r\n"
+    let req = "DELETE " + path + " HTTP/1.1\r\nHost: " + host + "\r\nUser-Agent: AerixLang/1.2.23b\r\nConnection: close\r\n\r\n"
     let raw_resp = tcpRequest(host, port, req)
     resp.parse(raw_resp)
     return resp
@@ -137,7 +140,7 @@ pub fn httpHead(url: str) -> HttpResponse {
     let port = parsed.f1
     let path = parsed.f2
 
-    let req = "HEAD " + path + " HTTP/1.1\r\nHost: " + host + "\r\nUser-Agent: AerixLang/1.1\r\nConnection: close\r\n\r\n"
+    let req = "HEAD " + path + " HTTP/1.1\r\nHost: " + host + "\r\nUser-Agent: AerixLang/1.2.23b\r\nConnection: close\r\n\r\n"
     let raw_resp = tcpRequest(host, port, req)
     resp.parse(raw_resp)
     return resp

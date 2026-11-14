@@ -92,15 +92,25 @@ pub fn cryptoRandomHex(byte_count: i64) -> str {
 }
 
 /// Generates a cryptographically strong random integer within the closed range `[min, max]`.
+/// Automatically handles reversed arguments (`min > max`).
 ///
 /// Parameters:
-///   `min`: Minimum allowable value.
-///   `max`: Maximum allowable value.
+///   `min`: First boundary of the interval.
+///   `max`: Second boundary of the interval.
 pub fn cryptoRandomInt(min: i64, max: i64) -> i64 {
-    if min >= max {
+    if min == max {
         return min;
     }
-    let span = max - min + 1;
+    mut low: i64 = min;
+    mut high: i64 = max;
+    if low > high {
+        low = max;
+        high = min;
+    }
+    let span = high - low + 1;
+    if span <= 0 {
+        return low;
+    }
     let bytes = cryptoRandomBytes(8);
     mut val: i64 = 0;
     mut i = 0;
@@ -109,10 +119,8 @@ pub fn cryptoRandomInt(min: i64, max: i64) -> i64 {
         val = (val << 8) | b;
         i = i + 1;
     }
-    if val < 0 {
-        val = 0 - val;
-    }
-    return min + (val % span);
+    val = val & 9223372036854775807;
+    return low + (val % span);
 }
 
 /// Generates a cryptographically secure 64-bit float with 53 bits of random mantissa precision in `[0.0, 1.0)`.
@@ -125,9 +133,7 @@ pub fn cryptoRandomFloat() -> f64 {
         val = (val << 8) | b;
         i = i + 1;
     }
-    if val < 0 {
-        val = 0 - val;
-    }
+    val = val & 9223372036854775807;
     // 53-bit resolution double precision float in [0.0, 1.0)
     let mantissa = val & 9007199254740991; // (1 << 53) - 1
     return (mantissa as f64) / 9007199254740992.0;

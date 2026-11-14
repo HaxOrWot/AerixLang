@@ -113,7 +113,12 @@ pub fn log2(x: f64) -> f64 {
 /// Parameters:
 ///   `base`    : Non-negative base.
 ///   `exponent`: Real exponent.
+/// Returns:
+///   `base^exponent`, or `1.0` if `exponent == 0.0`, or `0.0` if `base <= 0.0`.
 pub fn powF64(base: f64, exponent: f64) -> f64 {
+    if exponent == 0.0 {
+        return 1.0;
+    }
     if base <= 0.0 {
         return 0.0;
     }

@@ -112,6 +112,9 @@ pub fn createUdpSocket() -> i64 {
 ///   `s`        : Socket handle.
 ///   `timeoutMs`: Timeout in milliseconds.
 pub fn setSocketTimeout(s: i64, timeoutMs: i64) -> bool {
+    if s == INVALID_SOCKET() {
+        return false;
+    }
     let bb = ByteBuffer();
     bb.write_u8(timeoutMs & 255);
     bb.write_u8((timeoutMs >> 8) & 255);
@@ -131,6 +134,9 @@ pub fn setSocketTimeout(s: i64, timeoutMs: i64) -> bool {
 ///   `s`          : Socket handle.
 ///   `nonBlocking`: `true` for non-blocking, `false` for blocking mode.
 pub fn setSocketNonBlocking(s: i64, nonBlocking: bool) -> bool {
+    if s == INVALID_SOCKET() {
+        return false;
+    }
     let bb = ByteBuffer();
     mut mode: i64 = 0;
     if nonBlocking { mode = 1; }

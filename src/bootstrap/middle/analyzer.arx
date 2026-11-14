@@ -17,6 +17,8 @@ pub fn CK_STR_METHOD() -> i64 { return 7 }
 pub fn CK_ARR_METHOD() -> i64 { return 8 }
 pub fn CK_NEW() -> i64 { return 9 }
 
+// Semantic analysis pass that performs symbol resolution, type checking,
+// generic instantiation tracking, and validation diagnostics on the AST.
 pub class Analyzer {
     // Frozen AST arena copied from Parser
     pub nk: List<i64>
@@ -835,7 +837,7 @@ pub class Analyzer {
             if ref_min == 1 && ref_max == 1 { pl_s = "" }
             self.add_diag(nid, span, "E0203", kind_lbl + " '" + label + "' expects " + exp_s + " argument" + pl_s + ", but " + argc + " were supplied", "pass " + exp_s + " argument" + pl_s + " to '" + label + "'", 1)
         } else {
-            self.add_diag(nid, span, "E0203", "no overload of " + kind_lbl + " '" + label + "' accepts " + argc + " argument(s)", "check the parameter count of the available '" + label + "' overloads", 1)
+            self.add_diag(nid, span, "E0203", "no overload of " + kind_lbl + " '" + label + "' accepts " + argc + " arguments", "check the argument types and parameter counts of available '" + label + "' overloads", 1)
         }
     }
 
@@ -1457,7 +1459,11 @@ pub class Analyzer {
             }
             if !self.unresolved_nodes.has_key(lhs_id) && !self.unresolved_nodes.has_key(rhs_id) {
                 if !self.types_compatible(lt, rt) {
-                    self.add_diag(rhs_id, 1, "E0205", "mismatched types in assignment: expected '" + lt + "', found '" + rt + "'", "ensure the assigned expression matches type '" + lt + "'", 1)
+                    mut assign_msg = "mismatched types in assignment: expected '" + lt + "', found '" + rt + "'"
+                    if root_name != "" {
+                        assign_msg = "mismatched types in assignment to '" + root_name + "': expected '" + lt + "', found '" + rt + "'"
+                    }
+                    self.add_diag(rhs_id, 1, "E0205", assign_msg, "ensure the assigned expression matches type '" + lt + "'", 1)
                 }
             }
             self.node_types.set(nid, lt)
@@ -2174,7 +2180,7 @@ pub class Analyzer {
                 if self.sig_by_key.has_key("ctor::" + name) {
                     self.check_call_arity(callee, "ctor::" + name, name, ac, "constructor")
                 } else if ac > 0 {
-                    self.add_diag(callee, name.len(), "E0203", "class '" + name + "' has default 0-argument init, but " + ac + " argument(s) were supplied", "remove the extra constructor arguments or add an init(...) constructor to '" + name + "'", 1)
+                    self.add_diag(callee, name.len(), "E0203", "class '" + name + "' has default 0-argument constructor, but " + ac + " arguments were supplied", "remove the extra constructor arguments or add an init(...) constructor to '" + name + "'", 1)
                 }
                 let sig_i = self.find_best_overload("ctor::" + name, arg_types, ac)
                 self.call_kinds.set(nid, CK_CTOR())

@@ -20,10 +20,11 @@ fn _seq_randint(a: i64, b: i64) -> i64 {
         return a;
     }
     let span: i64 = b - a + 1;
-    mut r: i64 = arx_prng_next_i64();
-    if r < 0 {
-        r = 0 - r;
+    if span <= 0 {
+        return a;
     }
+    mut r: i64 = arx_prng_next_i64();
+    r = r & 9223372036854775807;
     return a + (r % span);
 }
 

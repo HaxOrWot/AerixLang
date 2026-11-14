@@ -61,6 +61,7 @@ pub fn json_quote_into(bb: ByteBuffer, s: str) {
     bb.write_u8(34)
 }
 
+// Quotes and escapes a string into valid JSON representation.
 pub fn json_quote(s: str) -> str {
     let bb = ByteBuffer()
     json_quote_into(bb, s)
@@ -69,6 +70,7 @@ pub fn json_quote(s: str) -> str {
     return out
 }
 
+// Low-overhead streaming JSON serializer used for LSP protocol responses.
 pub class JsonBuf {
     pub bb: ByteBuffer
 

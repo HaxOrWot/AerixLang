@@ -98,6 +98,7 @@ fn hl_is_builtin_receiver_type(rt: str) -> bool {
     return rt == "str" || lsp_is_container_type(base)
 }
 
+// File-level symbol table cache extracted for low-latency incremental semantic highlighting.
 pub class HlFileHeader {
     pub sig: str
     pub classes: List<str>

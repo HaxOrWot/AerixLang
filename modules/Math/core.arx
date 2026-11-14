@@ -279,14 +279,18 @@ pub fn remap(inMin: f64, inMax: f64, outMin: f64, outMax: f64, val: f64) -> f64 
 ///
 /// Parameters:
 ///   `val`     : Input float value.
-///   `decimals`: Number of decimal digits to preserve.
+///   `decimals`: Number of decimal digits to preserve (capped at 15 for f64 precision).
 pub fn roundTo(val: f64, decimals: i64) -> f64 {
     if decimals <= 0 {
         return round(val);
     }
+    mut dec = decimals;
+    if dec > 15 {
+        dec = 15;
+    }
     mut factor: f64 = 1.0;
     mut i = 0;
-    while i < decimals {
+    while i < dec {
         factor = factor * 10.0;
         i = i + 1;
     }
@@ -330,6 +334,9 @@ pub fn dist3D(x1: f64, y1: f64, z1: f64, x2: f64, y2: f64, z2: f64) -> f64 {
 /// Performs smooth Hermite interpolation between 0.0 and 1.0 when `edge0 < x < edge1`.
 /// Useful for smooth animations, audio fade envelopes, and shader-style transitions.
 pub fn smoothstep(edge0: f64, edge1: f64, x: f64) -> f64 {
+    if edge0 == edge1 {
+        return 0.0;
+    }
     let t: f64 = clamp((x - edge0) / (edge1 - edge0), 0.0, 1.0);
     return t * t * (3.0 - 2.0 * t);
 }

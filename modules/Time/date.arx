@@ -141,6 +141,9 @@ pub fn isLeapYear(year: i64) -> bool {
 ///   `year` : Calendar year.
 ///   `month`: Month number (1 = January, ..., 12 = December).
 pub fn daysInMonth(year: i64, month: i64) -> i64 {
+    if month < 1 || month > 12 {
+        return 0
+    }
     if month == 2 {
         if isLeapYear(year) { return 29 }
         return 28
@@ -161,7 +164,7 @@ pub fn nowUtc() -> DateTime {
     dt.minute = total_mins % 60
     let total_hours = total_mins / 60
     dt.hour = total_hours % 24
-    let mut total_days = total_hours / 24
+    mut total_days = total_hours / 24
 
     mut y = 1970
     loop {
@@ -209,15 +212,30 @@ pub fn addDays(dt: DateTime, days: i64) -> DateTime {
             res.year = res.year + 1
         }
     }
+    while res.day <= 0 {
+        res.month = res.month - 1
+        if res.month < 1 {
+            res.month = 12
+            res.year = res.year - 1
+        }
+        res.day = res.day + daysInMonth(res.year, res.month)
+    }
     return res
 }
 
 /// Computes a new DateTime by adding `hours` to an existing DateTime instance.
 pub fn addHours(dt: DateTime, hours: i64) -> DateTime {
-    let extraDays = (dt.hour + hours) / 24
-    let newHour = (dt.hour + hours) % 24
+    mut total_h = dt.hour + hours
+    mut extraDays: i64 = 0
+    if total_h < 0 {
+        extraDays = (total_h - 23) / 24
+        total_h = total_h - extraDays * 24
+    } else {
+        extraDays = total_h / 24
+        total_h = total_h % 24
+    }
     let res = addDays(dt, extraDays)
-    res.hour = newHour
+    res.hour = total_h
     return res
 }
 

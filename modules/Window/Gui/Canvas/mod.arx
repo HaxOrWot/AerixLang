@@ -11,9 +11,10 @@
 //   import "Window/Gui/Canvas/mod.arx"
 //   // or: import "Window"
 //
-//   let cvs = Canvas(win.hwnd, 800, 600);
+//   let cvs = Canvas(win.hwnd);
+//   cvs.setSize(800, 600);
 //   cvs.begin();
-//   cvs.clear(colorBlack());
+//   cvs.clear(colorBlack(), 800, 600);
 //   cvs.fillRect(50, 50, 100, 100, colorGreen());
 //   cvs.end();
 // ==============================================================================

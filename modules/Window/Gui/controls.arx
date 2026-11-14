@@ -254,8 +254,14 @@ pub class ProgressBar {
     /// Configures the minimum and maximum progress range bounds.
     pub fn setRange(min: i64, max: i64) -> void {
         if self.hwnd != 0 {
+            mut low = min
+            mut high = max
+            if low > high {
+                low = max
+                high = min
+            }
             // PBM_SETRANGE32 = 1030
-            win32SendMessage(self.hwnd, 1030, min, max);
+            win32SendMessage(self.hwnd, 1030, low, high)
         }
     }
 }
@@ -289,8 +295,12 @@ pub class ListBox {
     /// Retrieves the zero-based index of the currently selected item (-1 if none selected).
     pub fn getSelectedIndex() -> i64 {
         if self.hwnd == 0 { return -1 }
-        // LB_GETCURSEL = 392
-        return win32SendMessage(self.hwnd, 392, 0, 0)
+        // LB_GETCURSEL = 392, LB_ERR = -1 (or 0xFFFFFFFF)
+        let sel = win32SendMessage(self.hwnd, 392, 0, 0)
+        if sel == -1 || sel == 4294967295 {
+            return -1
+        }
+        return sel
     }
 
     /// Retrieves the total count of items present in the listbox.
@@ -338,8 +348,12 @@ pub class ComboBox {
     /// Retrieves the zero-based index of the currently selected dropdown item (-1 if none selected).
     pub fn getSelectedIndex() -> i64 {
         if self.hwnd == 0 { return -1 }
-        // CB_GETCURSEL = 327
-        return win32SendMessage(self.hwnd, 327, 0, 0)
+        // CB_GETCURSEL = 327, CB_ERR = -1 (or 0xFFFFFFFF)
+        let sel = win32SendMessage(self.hwnd, 327, 0, 0)
+        if sel == -1 || sel == 4294967295 {
+            return -1
+        }
+        return sel
     }
 
     /// Selects the dropdown item at the specified zero-based index.

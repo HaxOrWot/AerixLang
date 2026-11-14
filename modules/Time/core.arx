@@ -53,6 +53,9 @@ pub fn epochMs() -> i64 {
 /// Parameters:
 ///   `ms`: Sleep duration in milliseconds.
 pub fn sleep(ms: i64) -> void {
+    if ms <= 0 {
+        return;
+    }
     arx_sleep_ms(ms);
 }
 
@@ -61,6 +64,9 @@ pub fn sleep(ms: i64) -> void {
 /// Parameters:
 ///   `ms`: Sleep duration in milliseconds.
 pub fn sleepMs(ms: i64) -> void {
+    if ms <= 0 {
+        return;
+    }
     arx_sleep_ms(ms);
 }
 
