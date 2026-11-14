@@ -288,15 +288,29 @@ fn print_update_usage() {
 fn resolve_updater_exe() -> str {
     let env_home = Env.get("AERIX_HOME")
     if env_home != "" {
+        let pu = bpath_join(bpath_normalize(env_home), "Updater.exe")
+        if File.exists(pu) { return pu }
+        let pu_bin = bpath_join(bpath_normalize(env_home), "bin/Updater.exe")
+        if File.exists(pu_bin) { return pu_bin }
         let p = bpath_join(bpath_normalize(env_home), "Uninstall.exe")
         if File.exists(p) { return p }
     }
     let self_exe = bpath_normalize(Env.arg(0))
     if self_exe != "" && self_exe != "." {
         let bin_dir = bpath_dirname(self_exe)
+        let pu_bin2 = bpath_join(bin_dir, "Updater.exe")
+        if File.exists(pu_bin2) { return pu_bin2 }
         let root_dir = bpath_dirname(bin_dir)
+        let pu2 = bpath_join(root_dir, "Updater.exe")
+        if File.exists(pu2) { return pu2 }
         let p2 = bpath_join(root_dir, "Uninstall.exe")
         if File.exists(p2) { return p2 }
+    }
+    if File.exists("C:/Aerix/Updater.exe") {
+        return "C:/Aerix/Updater.exe"
+    }
+    if File.exists("C:/Aerix/bin/Updater.exe") {
+        return "C:/Aerix/bin/Updater.exe"
     }
     if File.exists("C:/Aerix/Uninstall.exe") {
         return "C:/Aerix/Uninstall.exe"
@@ -320,7 +334,7 @@ fn cmd_update(check_only: bool, force: bool, verbose: bool, no_ide: bool) -> i64
     }
     let u = resolve_updater_exe()
     if u == "" {
-        eprintln("error: Aerix updater (Uninstall.exe) was not found in this installation.")
+        eprintln("error: Aerix updater (Updater.exe) was not found in this installation.")
         eprintln("  = help: install via AerixSetup-*.exe from https://github.com/HaxOrWot/AerixLang/releases")
         return 1
     }
@@ -412,7 +426,7 @@ fn cmd_vm(cli_args: List<str>, cli_argc: i64, start_idx: i64, default_sub: str) 
 
     let u = resolve_updater_exe()
     if u == "" {
-        eprintln("error: Aerix Version Manager host (Uninstall.exe) was not found in this installation.")
+        eprintln("error: Aerix Version Manager host (Updater.exe) was not found in this installation.")
         eprintln("  = help: install via AerixSetup-*.exe from https://github.com/HaxOrWot/AerixLang/releases")
         return 1
     }

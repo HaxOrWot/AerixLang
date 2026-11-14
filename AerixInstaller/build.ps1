@@ -95,6 +95,7 @@ $manifestRes = Join-Path $srcDir "installer_manifest.json"
     /resource:"$manifestRes,installer_manifest.json" `
     (Join-Path $srcDir "AssemblyInfo.cs") `
     (Join-Path $srcDir "InstallerEngine.cs") `
+    (Join-Path $srcDir "UpdateProgressForm.cs") `
     (Join-Path $srcDir "SetupForm.cs") `
     (Join-Path $srcDir "Program.cs")
 

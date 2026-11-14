@@ -373,14 +373,29 @@ namespace AerixSetup
                     SyncLegacyBinaries(Path.Combine(root, "bin"), legacyBin, progress);
                 }
 
-                // 2. Copy self as Uninstall.exe
-                Report(progress, 65, "Creating Windows uninstaller...", "Creating Uninstall.exe");
+                // 2. Grant modify permissions to Users on the install folder so auto-updates succeed without extra prompts
+                GrantDirectoryPermissions(root);
+
+                // 3. Copy self as Uninstall.exe and Updater.exe
+                Report(progress, 65, "Creating Windows uninstaller & updater...", "Creating Uninstall.exe & Updater.exe");
                 string selfExe = Assembly.GetExecutingAssembly().Location;
                 string uninstExe = Path.Combine(root, "Uninstall.exe");
-                if (!string.IsNullOrEmpty(selfExe) && File.Exists(selfExe) &&
-                    !string.Equals(Path.GetFullPath(selfExe), Path.GetFullPath(uninstExe), StringComparison.OrdinalIgnoreCase))
+                string updaterExe = Path.Combine(root, "Updater.exe");
+                string binUpdaterExe = Path.Combine(root, "bin", "Updater.exe");
+                if (!string.IsNullOrEmpty(selfExe) && File.Exists(selfExe))
                 {
-                    CopyFileLockedSafe(selfExe, uninstExe);
+                    if (!string.Equals(Path.GetFullPath(selfExe), Path.GetFullPath(uninstExe), StringComparison.OrdinalIgnoreCase))
+                    {
+                        CopyFileLockedSafe(selfExe, uninstExe);
+                    }
+                    if (!string.Equals(Path.GetFullPath(selfExe), Path.GetFullPath(updaterExe), StringComparison.OrdinalIgnoreCase))
+                    {
+                        CopyFileLockedSafe(selfExe, updaterExe);
+                    }
+                    if (!string.Equals(Path.GetFullPath(selfExe), Path.GetFullPath(binUpdaterExe), StringComparison.OrdinalIgnoreCase))
+                    {
+                        CopyFileLockedSafe(selfExe, binUpdaterExe);
+                    }
                 }
 
                 // 3. Configure Environment Variables & PATH
@@ -557,6 +572,16 @@ namespace AerixSetup
                     {
                         try { File.Delete(uninst); } catch { }
                     }
+                    string upd = Path.Combine(root, "Updater.exe");
+                    if (File.Exists(upd))
+                    {
+                        try { File.Delete(upd); } catch { }
+                    }
+                    string binUpd = Path.Combine(root, "bin", "Updater.exe");
+                    if (File.Exists(binUpd))
+                    {
+                        try { File.Delete(binUpd); } catch { }
+                    }
                     try
                     {
                         if (Directory.Exists(root) && Directory.GetFileSystemEntries(root).Length == 0)
@@ -575,6 +600,23 @@ namespace AerixSetup
                 errorOut = ex.Message;
                 return false;
             }
+        }
+
+        public static void GrantDirectoryPermissions(string root)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(root) || !Directory.Exists(root)) return;
+                var psi = new ProcessStartInfo("icacls.exe", string.Format("\"{0}\" /grant Users:(OI)(CI)M /T /Q", root));
+                psi.CreateNoWindow = true;
+                psi.UseShellExecute = false;
+                psi.WindowStyle = ProcessWindowStyle.Hidden;
+                using (Process p = Process.Start(psi))
+                {
+                    if (p != null) p.WaitForExit(10000);
+                }
+            }
+            catch { }
         }
 
         public static void ScheduleSelfDeleteIfRunningFrom(string installDir)
@@ -1081,7 +1123,7 @@ namespace AerixSetup
             }
         }
 
-        private static void TouchUpdateCheckStamp(string latestVersion)
+        public static void TouchUpdateCheckStamp(string latestVersion)
         {
             try
             {
@@ -1428,11 +1470,19 @@ namespace AerixSetup
             if (string.IsNullOrEmpty(targetDir))
             {
                 string selfExe = Assembly.GetExecutingAssembly().Location;
-                if (!string.IsNullOrEmpty(selfExe) && File.Exists(Path.Combine(Path.GetDirectoryName(selfExe), "bin", "arx.exe")))
+                if (!string.IsNullOrEmpty(selfExe))
                 {
-                    targetDir = Path.GetDirectoryName(selfExe);
+                    string dir = Path.GetDirectoryName(selfExe);
+                    if (File.Exists(Path.Combine(dir, "bin", "arx.exe")))
+                    {
+                        targetDir = dir;
+                    }
+                    else if (File.Exists(Path.Combine(dir, "arx.exe")) && string.Equals(Path.GetFileName(dir), "bin", StringComparison.OrdinalIgnoreCase))
+                    {
+                        targetDir = Path.GetDirectoryName(dir);
+                    }
                 }
-                else
+                if (string.IsNullOrEmpty(targetDir))
                 {
                     targetDir = GetDefaultInstallDir();
                 }
@@ -1697,12 +1747,19 @@ namespace AerixSetup
                     }
                 }
 
-                // Preserve newer version manager host (Uninstall.exe) when installing an older release
+                // Preserve newer version manager host (Uninstall.exe & Updater.exe) when installing an older release
                 string activeUninst = Path.Combine(targetDir, "Uninstall.exe");
                 if (File.Exists(activeUninst) && CompareVersions(GetVersion(), rel.Version) > 0)
                 {
                     vmHostBackup = Path.Combine(tempDir, "Uninstall.vmhost.exe");
                     File.Copy(activeUninst, vmHostBackup, true);
+                }
+                string activeUpdater = Path.Combine(targetDir, "Updater.exe");
+                string updaterBackup = null;
+                if (File.Exists(activeUpdater) && CompareVersions(GetVersion(), rel.Version) > 0)
+                {
+                    updaterBackup = Path.Combine(tempDir, "Updater.vmhost.exe");
+                    File.Copy(activeUpdater, updaterBackup, true);
                 }
 
                 Report(progress, 75, "Installing Aerix v" + rel.Version + " into " + targetDir + "...", "silent-install");
@@ -1728,6 +1785,11 @@ namespace AerixSetup
                 if (!string.IsNullOrEmpty(vmHostBackup) && File.Exists(vmHostBackup))
                 {
                     try { CopyFileLockedSafe(vmHostBackup, activeUninst); } catch { }
+                }
+                if (!string.IsNullOrEmpty(updaterBackup) && File.Exists(updaterBackup))
+                {
+                    try { CopyFileLockedSafe(updaterBackup, activeUpdater); } catch { }
+                    try { CopyFileLockedSafe(updaterBackup, Path.Combine(targetDir, "bin", "Updater.exe")); } catch { }
                 }
 
                 SnapshotToolchainVersion(targetDir, rel.Version);
