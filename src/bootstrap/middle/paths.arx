@@ -1,10 +1,12 @@
 // Aerix Bootstrap Compiler — Pure-Aerix Path & Toolchain Locator Helpers
 // Cross-platform Windows / POSIX path normalization and stdlib/module lookup.
 
+// Returns true if byte is a directory separator ('/' or '\').
 pub fn bpath_is_sep(b: i64) -> bool {
     return b == 47 || b == 92
 }
 
+// Returns true if the path is absolute (starts with '/' or Windows drive 'C:/').
 pub fn bpath_is_abs(p: str) -> bool {
     let n = p.len()
     if n >= 1 && bpath_is_sep(p.byte_at(0)) {
@@ -16,6 +18,7 @@ pub fn bpath_is_abs(p: str) -> bool {
     return false
 }
 
+// Normalizes path separators to '/' and resolves '.' and '..' segments.
 pub fn bpath_normalize(raw: str) -> str {
     let slash_s = raw.replace("\\", "/")
     let n = slash_s.len()
@@ -79,6 +82,7 @@ pub fn bpath_normalize(raw: str) -> str {
     return res
 }
 
+// Returns the directory component of a path.
 pub fn bpath_dirname(p: str) -> str {
     let norm = p.replace("\\", "/")
     mut n = norm.len()
@@ -97,6 +101,7 @@ pub fn bpath_dirname(p: str) -> str {
     return "."
 }
 
+// Returns the final filename or directory component of a path.
 pub fn bpath_basename(p: str) -> str {
     let norm = p.replace("\\", "/")
     mut n = norm.len()
@@ -113,6 +118,7 @@ pub fn bpath_basename(p: str) -> str {
     return norm.slice(0, n)
 }
 
+// Joins two path segments using normalized '/' separators.
 pub fn bpath_join(a: str, b: str) -> str {
     if b == "" { return bpath_normalize(a) }
     if bpath_is_abs(b) { return bpath_normalize(b) }
@@ -144,6 +150,8 @@ pub fn sort_str_list(items: List<str>, count: i64) {
     }
 }
 
+// Locates the Aerix standard library directory by checking environment variables,
+// current working directory, installation directories, and compiler executable paths.
 pub fn find_stdlib_dir() -> str {
     let env_std = Env.get("AERIX_STDLIB_PATH")
     if env_std != "" && File.exists(bpath_join(env_std, "aerix_rt.h")) {
@@ -186,6 +194,7 @@ pub fn find_stdlib_dir() -> str {
     return bpath_join(cwd, "stdlib")
 }
 
+// Locates a requested module directory or source file across standard search locations.
 pub fn find_module_dir(mod_name: str, entry_dir: str) -> str {
     let norm_name = mod_name.replace(".", "/")
     let env_mp = Env.get("AERIX_MODULE_PATH")

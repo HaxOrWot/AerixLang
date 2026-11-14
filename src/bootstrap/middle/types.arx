@@ -1,6 +1,7 @@
 // Aerix Bootstrap Compiler — Shared Type System Utilities
 // Canonicalizes Aerix type annotations, splits generic/array types, and maps to C99 types.
 
+// Removes whitespace characters from a type annotation string.
 pub fn btype_strip_spaces(s: str) -> str {
     let bb = ByteBuffer()
     let n = s.len()
@@ -17,6 +18,7 @@ pub fn btype_strip_spaces(s: str) -> str {
     return out
 }
 
+// Normalizes alias type names to canonical representations (e.g. 'int' -> 'i64', 'string' -> 'str').
 pub fn btype_norm(raw: str) -> str {
     let t = btype_strip_spaces(raw)
     if t == "" || t == "()" || t == "unit" || t == "void" { return "void" }
@@ -238,6 +240,7 @@ pub fn btype_map_val(t: str) -> str {
     return "i64"
 }
 
+// Generates a C-safe identifier name for complex and generic Aerix types.
 pub fn btype_mangle(raw_t: str) -> str {
     let nt = btype_norm(raw_t)
     if btype_is_stack(nt) { return "Stack_" + btype_mangle(btype_sqd_elem(nt)) }
@@ -290,6 +293,7 @@ pub fn btype_mangle(raw_t: str) -> str {
     return res
 }
 
+// Maps an Aerix type to its corresponding C99 target type representation.
 pub fn btype_to_c(raw_t: str) -> str {
     let t = btype_norm(raw_t)
     if t == "void" { return "void" }
@@ -325,6 +329,7 @@ pub fn btype_to_c(raw_t: str) -> str {
     return "Arx_" + btype_mangle(t)
 }
 
+// Returns the C default zero-initializer value for a given type.
 pub fn btype_default_c_val(raw_t: str) -> str {
     let t = btype_norm(raw_t)
     if t == "i8" || t == "i16" || t == "i32" || t == "i64" || t == "u8" || t == "u16" || t == "u32" || t == "u64" || t == "usize" || t == "isize" {

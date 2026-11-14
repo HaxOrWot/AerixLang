@@ -100,8 +100,8 @@ pub class Canvas {
 
     /// Updates internal canvas width and height dimensions.
     pub fn setSize(w: i64, h: i64) -> void {
-        self.width = w
-        self.height = h
+        if w > 0 { self.width = w }
+        if h > 0 { self.height = h }
     }
 
     /// Prepares the off-screen backbuffer for a new frame of 2D rendering.
@@ -137,37 +137,43 @@ pub class Canvas {
     ///   `width`  : Target surface width in pixels.
     ///   `height` : Target surface height in pixels.
     pub fn clear(bgColor: i64, width: i64, height: i64) -> void {
-        if self.handle == 0 { return }
+        if self.handle == 0 || width <= 0 || height <= 0 { return }
         arx_gui_clear(self.handle, width, height, bgColor)
     }
 
     /// Draws a straight line between `(x1, y1)` and `(x2, y2)`.
     pub fn drawLine(x1: i64, y1: i64, x2: i64, y2: i64, color: i64, width: i64) -> void {
         if self.handle == 0 { return }
-        arx_gui_draw_line(self.handle, x1, y1, x2, y2, color, width)
+        mut w = width
+        if w <= 0 { w = 1 }
+        arx_gui_draw_line(self.handle, x1, y1, x2, y2, color, w)
     }
 
     /// Draws an outlined rectangle stroke with specified line width.
     pub fn drawRect(x: i64, y: i64, width: i64, height: i64, color: i64, lineWidth: i64) -> void {
-        if self.handle == 0 { return }
-        arx_gui_draw_rect(self.handle, x, y, width, height, color, lineWidth)
+        if self.handle == 0 || width <= 0 || height <= 0 { return }
+        mut lw = lineWidth
+        if lw <= 0 { lw = 1 }
+        arx_gui_draw_rect(self.handle, x, y, width, height, color, lw)
     }
 
     /// Fills a solid rectangle with specified color.
     pub fn fillRect(x: i64, y: i64, width: i64, height: i64, color: i64) -> void {
-        if self.handle == 0 { return }
+        if self.handle == 0 || width <= 0 || height <= 0 { return }
         arx_gui_fill_rect(self.handle, x, y, width, height, color)
     }
 
     /// Draws an outlined circular stroke with specified center, radius, and line width.
     pub fn drawCircle(centerX: i64, centerY: i64, radius: i64, color: i64, lineWidth: i64) -> void {
-        if self.handle == 0 { return }
-        arx_gui_draw_circle(self.handle, centerX, centerY, radius, color, lineWidth)
+        if self.handle == 0 || radius <= 0 { return }
+        mut lw = lineWidth
+        if lw <= 0 { lw = 1 }
+        arx_gui_draw_circle(self.handle, centerX, centerY, radius, color, lw)
     }
 
     /// Fills a solid circle with specified center and radius.
     pub fn fillCircle(centerX: i64, centerY: i64, radius: i64, color: i64) -> void {
-        if self.handle == 0 { return }
+        if self.handle == 0 || radius <= 0 { return }
         arx_gui_fill_circle(self.handle, centerX, centerY, radius, color)
     }
 

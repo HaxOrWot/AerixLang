@@ -478,6 +478,16 @@ pub class Parser {
         if !bpath_is_abs(resolved) {
             resolved = bpath_join(self.cur_dir, file_path)
         }
+        if !File.exists(resolved) && !resolved.ends_with(".arx") && File.exists(resolved + ".arx") {
+            resolved = resolved + ".arx"
+        }
+        if !File.exists(resolved) {
+            let mdir = find_module_dir(file_path, self.entry_dir)
+            if mdir != "" {
+                self.load_module(file_path)
+                return
+            }
+        }
         self.load_resolved_file(resolved)
     }
 
@@ -972,11 +982,13 @@ pub class Parser {
             mut stem = base
             if stem.ends_with(".arx") && stem.len() > 4 { stem = stem.slice(0, stem.len() - 4) }
             self.mod_aliases.insert(stem, stem)
+            self.loaded_mods.insert(stem, 1)
             if self.match_k(TK_AS()) {
                 let atok = self.expect_k(TK_IDENT(), "Expected alias identifier after 'as'")
                 let alias_nm = self.tok_vals.get(atok)
                 self.mod_aliases.insert(alias_nm, stem)
                 self.mod_aliases.insert(alias_nm, pth)
+                self.loaded_mods.insert(alias_nm, 1)
             }
             return
         }
@@ -1208,7 +1220,7 @@ pub class Parser {
             while self.cur_kind() != TK_GT() && self.cur_kind() != TK_EOF() {
                 self.adv()
             }
-            self.expect_k(TK_GT(), "Expected '>'")
+            self.expect_k(TK_GT(), "Expected '>' after generic class parameters")
         }
         mut base_cls = ""
         if self.match_k(TK_EXTENDS()) {
@@ -1222,7 +1234,7 @@ pub class Parser {
             }
         }
         self.skip_newlines()
-        self.expect_k(TK_LBRACE(), "Expected opening brace to open class body")
+        self.expect_k(TK_LBRACE(), "Expected opening brace to start class body")
         self.skip_stmt_end()
 
         let fields = List<i64>()
@@ -1267,7 +1279,7 @@ pub class Parser {
             } else if mk == TK_DROP() {
                 let dtok = self.adv()
                 self.expect_k(TK_LPAREN(), "Expected '(' after drop")
-                self.expect_k(TK_RPAREN(), "Expected ')'")
+                self.expect_k(TK_RPAREN(), "Expected ')' after drop parameter list")
                 self.skip_newlines()
                 let blk = self.parse_block()
                 dtor_id = self.add_node(NK_DROP_DEF(), cname, "", mflags, -1, blk, -1, self.tok_lines.get(dtok))
@@ -1303,7 +1315,7 @@ pub class Parser {
         let n_tok = self.expect_k(TK_IDENT(), "Expected enum name")
         let ename = self.tok_vals.get(n_tok)
         self.skip_newlines()
-        self.expect_k(TK_LBRACE(), "Expected opening brace in enum")
+        self.expect_k(TK_LBRACE(), "Expected opening brace to start enum body")
         self.skip_stmt_end()
 
         let vars = List<i64>()
@@ -1324,7 +1336,7 @@ pub class Parser {
                     vf_count = vf_count + 1
                     if !self.match_k(TK_COMMA()) { break }
                 }
-                self.expect_k(TK_RPAREN(), "Expected ')' in enum variant")
+                self.expect_k(TK_RPAREN(), "Expected ')' after enum variant parameters")
             }
             vars.push(self.make_group(NK_ENUM_VAR(), vname, "", v_count, -1, -1, -1, vln, vfields, vf_count))
             v_count = v_count + 1
@@ -1332,7 +1344,7 @@ pub class Parser {
             self.skip_stmt_end()
             if self.pos == lp { self.adv() }
         }
-        self.expect_k(TK_RBRACE(), "Expected closing brace in enum")
+        self.expect_k(TK_RBRACE(), "Expected closing brace to close enum body")
         return self.make_group(NK_ENUM_DEF(), ename, "", 0, -1, -1, -1, e_ln, vars, v_count)
     }
 
@@ -1340,7 +1352,7 @@ pub class Parser {
         let e_tok = self.expect_k(TK_EXTEND(), "Expected 'extend'")
         let tname = self.parse_type_str()
         self.skip_newlines()
-        self.expect_k(TK_LBRACE(), "Expected opening brace in extend")
+        self.expect_k(TK_LBRACE(), "Expected opening brace to start extend block")
         self.skip_stmt_end()
         let methods = List<i64>()
         mut mcount = 0
@@ -1363,14 +1375,14 @@ pub class Parser {
             self.skip_stmt_end()
             if self.pos == lp { self.adv() }
         }
-        self.expect_k(TK_RBRACE(), "Expected closing brace in extend")
+        self.expect_k(TK_RBRACE(), "Expected closing brace to close extend block")
         return self.make_group(NK_EXTEND_DEF(), tname, "", 0, -1, -1, -1, self.tok_lines.get(e_tok), methods, mcount)
     }
 
     // --- Statements ---
 
     priv fn parse_block() -> i64 {
-        let b_tok = self.expect_k(TK_LBRACE(), "Expected opening brace")
+        let b_tok = self.expect_k(TK_LBRACE(), "Expected opening brace to start block")
         let bln = self.tok_lines.get(b_tok)
         self.skip_stmt_end()
         let stmts = List<i64>()
@@ -1385,7 +1397,7 @@ pub class Parser {
             self.skip_stmt_end()
             if self.pos == lp { self.adv() }
         }
-        self.expect_k(TK_RBRACE(), "Expected closing brace")
+        self.expect_k(TK_RBRACE(), "Expected closing brace to close block")
         return self.make_group(NK_BLOCK(), "", "", 0, -1, -1, -1, bln, stmts, scount)
     }
 
@@ -1451,10 +1463,12 @@ pub class Parser {
 
         // Assignment or expression statement
         let lhs = self.parse_expr(0)
+        if lhs < 0 { return -1 }
         let ak = self.cur_kind()
         if ak == TK_EQUALS() || ak == TK_PLUS_EQ() || ak == TK_MINUS_EQ() || ak == TK_STAR_EQ() || ak == TK_SLASH_EQ() || ak == TK_PERCENT_EQ() {
             let op_str = self.tok_vals.get(self.adv())
             let rhs = self.parse_expr(0)
+            if rhs < 0 { return -1 }
             let aid = self.add_node(NK_ASSIGN(), op_str, "", 0, lhs, rhs, -1, self.ln.get(lhs))
             self.nc.set(aid, self.nc.get(lhs))
             return aid
@@ -1484,7 +1498,7 @@ pub class Parser {
                 ncount = ncount + 1
                 if !self.match_k(TK_COMMA()) { break }
             }
-            self.expect_k(TK_RPAREN(), "Expected ')'")
+            self.expect_k(TK_RPAREN(), "Expected ')' after tuple pattern")
             self.expect_k(TK_EQUALS(), "Expected '=' in tuple destructuring")
             let init_expr = self.parse_expr(0)
             return self.make_group(NK_TUPLE_DESTR(), "", "", is_mut, init_expr, -1, -1, vln, names, ncount)
@@ -1545,7 +1559,7 @@ pub class Parser {
             self.expect_k(TK_COMMA(), "Expected ',' in enumerate loop pattern")
             let t1 = self.expect_k(TK_IDENT(), "Expected element variable name")
             item_var = self.tok_vals.get(t1)
-            self.expect_k(TK_RPAREN(), "Expected ')'")
+            self.expect_k(TK_RPAREN(), "Expected ')' after for-loop tuple pattern")
         } else {
             let t0 = self.expect_k(TK_IDENT(), "Expected loop variable name")
             item_var = self.tok_vals.get(t0)
@@ -1562,7 +1576,7 @@ pub class Parser {
         let mln = self.tok_lines.get(mt)
         let subj = self.parse_expr(0)
         self.skip_newlines()
-        self.expect_k(TK_LBRACE(), "Expected opening brace in match")
+        self.expect_k(TK_LBRACE(), "Expected opening brace to start match body")
         self.skip_stmt_end()
 
         let cases = List<i64>()
@@ -1592,7 +1606,7 @@ pub class Parser {
             self.skip_stmt_end()
             if self.pos == lp { self.adv() }
         }
-        self.expect_k(TK_RBRACE(), "Expected closing brace in match")
+        self.expect_k(TK_RBRACE(), "Expected closing brace to close match body")
         return self.make_group(NK_MATCH(), "", "", 0, subj, -1, -1, mln, cases, ccount)
     }
 
@@ -1609,7 +1623,7 @@ pub class Parser {
             if self.match_k(TK_LPAREN()) {
                 let ct = self.expect_k(TK_IDENT(), "Expected catch variable")
                 catch_var = self.tok_vals.get(ct)
-                self.expect_k(TK_RPAREN(), "Expected ')'")
+                self.expect_k(TK_RPAREN(), "Expected ')' after catch variable")
             } else if self.cur_kind() == TK_IDENT() {
                 catch_var = self.tok_vals.get(self.adv())
             }
@@ -1663,7 +1677,7 @@ pub class Parser {
     }
 
     priv fn parse_arg_list_into(out_ids: List<i64>) -> i64 {
-        self.expect_k(TK_LPAREN(), "Expected '('")
+        self.expect_k(TK_LPAREN(), "Expected '(' before argument list")
         mut count = 0
         self.skip_newlines()
         while self.cur_kind() != TK_RPAREN() && self.cur_kind() != TK_EOF() {
@@ -1686,7 +1700,7 @@ pub class Parser {
             self.skip_newlines()
             if self.pos == lp { self.adv() }
         }
-        self.expect_k(TK_RPAREN(), "Expected ')'")
+        self.expect_k(TK_RPAREN(), "Expected ')' after argument list")
         return count
     }
 
@@ -1806,7 +1820,7 @@ pub class Parser {
                     tacount = tacount + 1
                     if !self.match_k(TK_COMMA()) { break }
                 }
-                self.expect_k(TK_GT(), "Expected '>'")
+                self.expect_k(TK_GT(), "Expected '>' after generic type arguments")
                 let mangled = self.register_generic(v, targs, tacount)
                 let args = List<i64>()
                 let acount = self.parse_arg_list_into(args)
@@ -1826,7 +1840,7 @@ pub class Parser {
                     tacount = tacount + 1
                     if !self.match_k(TK_COMMA()) { break }
                 }
-                self.expect_k(TK_GT(), "Expected '>'")
+                self.expect_k(TK_GT(), "Expected '>' after generic type arguments in 'new'")
                 cname = self.register_generic(cname, targs, tacount)
             }
             let args = List<i64>()
@@ -1854,10 +1868,10 @@ pub class Parser {
                     ecount = ecount + 1
                     if !self.match_k(TK_COMMA()) { break }
                 }
-                self.expect_k(TK_RPAREN(), "Expected ')'")
+                self.expect_k(TK_RPAREN(), "Expected ')' after tuple elements")
                 return self.make_group(NK_TUPLE_LIT(), "", "", 0, -1, -1, -1, ln, elems, ecount)
             }
-            self.expect_k(TK_RPAREN(), "Expected ')'")
+            self.expect_k(TK_RPAREN(), "Expected ')' after grouped expression")
             return first
         }
         if k == TK_LBRACKET() {
@@ -1867,7 +1881,7 @@ pub class Parser {
                 let first = self.parse_expr(0)
                 if self.match_k(TK_SEMICOLON()) {
                     let rep_tok = self.expect_k(TK_INT(), "Expected repeat count in [val; N]")
-                    self.expect_k(TK_RBRACKET(), "Expected ']'")
+                    self.expect_k(TK_RBRACKET(), "Expected ']' to close repeat array literal")
                     return self.add_node(NK_FIXED_REPEAT(), self.tok_vals.get(rep_tok), "", 0, first, -1, -1, ln)
                 }
                 elems.push(first)
@@ -1878,7 +1892,7 @@ pub class Parser {
                     ecount = ecount + 1
                 }
             }
-            self.expect_k(TK_RBRACKET(), "Expected ']'")
+            self.expect_k(TK_RBRACKET(), "Expected ']' to close array literal")
             return self.make_group(NK_FIXED_ARR(), "", "", 0, -1, -1, -1, ln, elems, ecount)
         }
         if k == TK_SPAWN() {
@@ -1890,6 +1904,7 @@ pub class Parser {
     }
 
     priv fn parse_infix(left: i64, prec: i64) -> i64 {
+        if left < 0 { return -1 }
         let op_idx = self.adv()
         let k = self.tok_kinds.get(op_idx)
         let op_str = self.tok_vals.get(op_idx)
@@ -1917,7 +1932,7 @@ pub class Parser {
         }
         if k == TK_LBRACKET() {
             let idx_expr = self.parse_expr(0)
-            self.expect_k(TK_RBRACKET(), "Expected ']'")
+            self.expect_k(TK_RBRACKET(), "Expected ']' after indexing expression")
             return self.add_node(NK_INDEX(), "", "", 0, left, idx_expr, -1, ln)
         }
         if k == TK_AS() {
@@ -1947,6 +1962,7 @@ pub class Parser {
 
     pub fn parse_expr(min_prec: i64) -> i64 {
         mut left = self.parse_prefix()
+        if left < 0 { return -1 }
         while true {
             let k = self.cur_kind()
             let p = self.get_prec(k)
@@ -1954,6 +1970,7 @@ pub class Parser {
                 break
             }
             left = self.parse_infix(left, p)
+            if left < 0 { return -1 }
         }
         return left
     }

@@ -4,7 +4,7 @@ import "./x64.arx"
 import "./pe.arx"
 
 pub class NativeRt {
-    pub asm: X64Asm
+    pub asmb: X64Asm
     pub pe: PeBuilder
     pub labels: Map<str, i64>
 
@@ -16,6 +16,7 @@ pub class NativeRt {
     pub imp_get_cwd: i64
     pub imp_get_attrs: i64
     pub imp_create_dir: i64
+    pub imp_remove_dir: i64
     pub imp_delete_file: i64
     pub imp_copy_file: i64
     pub imp_get_cmd: i64
@@ -25,12 +26,14 @@ pub class NativeRt {
     pub imp_wait_obj: i64
     pub imp_get_exit: i64
     pub imp_close_handle: i64
+    pub imp_get_std_handle: i64
 
     pub imp_malloc: i64
     pub imp_calloc: i64
     pub imp_realloc: i64
     pub imp_free: i64
     pub imp_strlen: i64
+    pub imp_fgets: i64
     pub imp_memcpy: i64
     pub imp_memcmp: i64
     pub imp_memset: i64
@@ -73,15 +76,22 @@ pub class NativeRt {
     pub s_rb: i64
     pub s_wb: i64
     pub s_windows: i64
+    pub s_oom: i64
+    pub s_assert_failed: i64
+    pub s_uncaught_err: i64
 
     // Labels for user startup
     pub lbl_global_init: i64
     pub lbl_user_main: i64
     pub env_buf_off: i64
     pub prng_state_off: i64
+    pub args_list_off: i64
+    pub exc_depth_off: i64
+    pub exc_msg_off: i64
+    pub jmp_stack_off: i64
 
-    init(asm: X64Asm, pe: PeBuilder) {
-        self.asm = asm
+    init(asmb: X64Asm, pe: PeBuilder) {
+        self.asmb = asmb
         self.pe = pe
         self.labels = Map<str, i64>()
 
@@ -92,6 +102,7 @@ pub class NativeRt {
         self.imp_get_cwd = pe.add_import("kernel32.dll", "GetCurrentDirectoryA")
         self.imp_get_attrs = pe.add_import("kernel32.dll", "GetFileAttributesA")
         self.imp_create_dir = pe.add_import("kernel32.dll", "CreateDirectoryA")
+        self.imp_remove_dir = pe.add_import("kernel32.dll", "RemoveDirectoryA")
         self.imp_delete_file = pe.add_import("kernel32.dll", "DeleteFileA")
         self.imp_copy_file = pe.add_import("kernel32.dll", "CopyFileA")
         self.imp_get_cmd = pe.add_import("kernel32.dll", "GetCommandLineA")
@@ -101,12 +112,14 @@ pub class NativeRt {
         self.imp_wait_obj = pe.add_import("kernel32.dll", "WaitForSingleObject")
         self.imp_get_exit = pe.add_import("kernel32.dll", "GetExitCodeProcess")
         self.imp_close_handle = pe.add_import("kernel32.dll", "CloseHandle")
+        self.imp_get_std_handle = pe.add_import("kernel32.dll", "GetStdHandle")
 
         self.imp_malloc = pe.add_import("msvcrt.dll", "malloc")
         self.imp_calloc = pe.add_import("msvcrt.dll", "calloc")
         self.imp_realloc = pe.add_import("msvcrt.dll", "realloc")
         self.imp_free = pe.add_import("msvcrt.dll", "free")
         self.imp_strlen = pe.add_import("msvcrt.dll", "strlen")
+        self.imp_fgets = pe.add_import("msvcrt.dll", "fgets")
         self.imp_memcpy = pe.add_import("msvcrt.dll", "memcpy")
         self.imp_memcmp = pe.add_import("msvcrt.dll", "memcmp")
         self.imp_memset = pe.add_import("msvcrt.dll", "memset")
@@ -148,59 +161,176 @@ pub class NativeRt {
         self.s_rb = pe.add_rdata_cstr("rb")
         self.s_wb = pe.add_rdata_cstr("wb")
         self.s_windows = pe.add_rdata_cstr("windows")
+        self.s_oom = pe.add_rdata_cstr("fatal: out of memory\n")
+        self.s_assert_failed = pe.add_rdata_cstr("AssertionError: assertion failed\n")
+        self.s_uncaught_err = pe.add_rdata_cstr("Uncaught exception: ")
 
         self.env_buf_off = pe.alloc_data_bytes(4096)
         self.prng_state_off = pe.alloc_data_bytes(8)
-        self.lbl_global_init = asm.new_label()
-        self.lbl_user_main = asm.new_label()
+        self.args_list_off = pe.alloc_data_qword(0)
+        self.exc_depth_off = pe.alloc_data_bytes(8)
+        self.exc_msg_off = pe.alloc_data_bytes(8)
+        self.jmp_stack_off = pe.alloc_data_bytes(4096)
+        self.lbl_global_init = asmb.new_label()
+        self.lbl_user_main = asmb.new_label()
     }
 
     pub fn lbl(name: str) -> i64 {
         if self.labels.has_key(name) {
             return self.labels.get(name)
         }
-        let id = self.asm.new_label()
+        let id = self.asmb.new_label()
         self.labels.insert(name, id)
         return id
     }
 
     priv fn begin_fn(name: str, frame_bytes: i64) {
         let id = self.lbl(name)
-        self.asm.bind_label(id)
-        self.asm.push_r(REG_RBP())
-        self.asm.mov_rr(REG_RBP(), REG_RSP())
-        self.asm.sub_ri32(REG_RSP(), frame_bytes)
+        self.asmb.bind_label(id)
+        self.asmb.push_r(REG_RBP())
+        self.asmb.mov_rr(REG_RBP(), REG_RSP())
+        self.asmb.sub_ri32(REG_RSP(), frame_bytes)
     }
 
     priv fn end_fn() {
-        self.asm.mov_rr(REG_RSP(), REG_RBP())
-        self.asm.pop_r(REG_RBP())
-        self.asm.ret()
+        self.asmb.mov_rr(REG_RSP(), REG_RBP())
+        self.asmb.pop_r(REG_RBP())
+        self.asmb.ret()
     }
 
     pub fn emit_all() {
         // 0. Program Entry Point (RVA 0x1000)
-        self.asm.push_r(REG_RBP())
-        self.asm.mov_rr(REG_RBP(), REG_RSP())
-        self.asm.sub_ri32(REG_RSP(), 48)
-        self.asm.mov_ri32_sext(REG_RCX(), 65001)
-        self.asm.call_rip_iat(self.imp_set_cp)
-        self.asm.call_rel32(self.lbl_global_init)
-        self.asm.call_rel32(self.lbl_user_main)
-        self.asm.mov_rr(REG_RCX(), REG_RAX())
-        self.asm.call_rip_iat(self.imp_exit_process)
+        self.asmb.push_r(REG_RBP())
+        self.asmb.mov_rr(REG_RBP(), REG_RSP())
+        self.asmb.sub_ri32(REG_RSP(), 48)
+
+        // Set console output code page to UTF-8 (65001)
+        self.asmb.mov_ri32_sext(REG_RCX(), 65001)
+        self.asmb.call_rip_iat(self.imp_set_cp)
+
+        // Parse command line via GetCommandLineA() into List<str> and cache in args_list_off
+        self.asmb.call_rel32(self.lbl("__rt_env_args"))
+        self.asmb.mov_mr64_rip_data(self.args_list_off, REG_RAX())
+
+        // Run global variable initializers
+        self.asmb.call_rel32(self.lbl_global_init)
+
+        // Pass parsed arguments list in RCX to user main()
+        self.asmb.mov_rm64_rip_data(REG_RCX(), self.args_list_off)
+        self.asmb.call_rel32(self.lbl_user_main)
+
+        // Exit process with user main's return code (in RAX)
+        self.asmb.mov_rr(REG_RCX(), REG_RAX())
+        self.asmb.call_rip_iat(self.imp_exit_process)
         self.end_fn()
 
+        self.emit_memory()
         self.emit_io_and_fmt()
         self.emit_strings()
         self.emit_list()
         self.emit_map()
+        self.emit_queue()
         self.emit_bytebuf()
         self.emit_os_fs_env()
+        self.emit_assert()
+        self.emit_exceptions()
+    }
+
+    priv fn emit_memory() {
+        let a = self.asmb
+
+        // __rt_alloc(rcx = size: i64) -> rax: ptr
+        self.begin_fn("__rt_alloc", 48)
+        let l_sz_ok = a.new_label()
+        a.cmp_ri32(REG_RCX(), 0)
+        a.jcc_rel32(CC_G(), l_sz_ok)
+        a.mov_ri32_sext(REG_RCX(), 8)
+        a.bind_label(l_sz_ok)
+        // 8-byte align: (size + 7) & ~7
+        a.add_ri32(REG_RCX(), 7)
+        a.mov_ri64(REG_RDX(), -8)
+        a.and_rr(REG_RCX(), REG_RDX())
+        a.call_rip_iat(self.imp_malloc)
+        let l_alloc_ok = a.new_label()
+        a.test_rr(REG_RAX(), REG_RAX())
+        a.jcc_rel32(CC_NE(), l_alloc_ok)
+        a.lea_rip_rdata(REG_RCX(), self.s_oom)
+        a.call_rel32(self.lbl("__rt_eprintln_str"))
+        a.mov_ri32_sext(REG_RCX(), 1)
+        a.call_rip_iat(self.imp_exit_process)
+        a.bind_label(l_alloc_ok)
+        self.end_fn()
+
+        // __rt_calloc(rcx = count: i64, rdx = size: i64) -> rax: ptr
+        self.begin_fn("__rt_calloc", 48)
+        let l_c_cnt_ok = a.new_label()
+        a.cmp_ri32(REG_RCX(), 0)
+        a.jcc_rel32(CC_G(), l_c_cnt_ok)
+        a.mov_ri32_sext(REG_RCX(), 1)
+        a.bind_label(l_c_cnt_ok)
+        let l_c_sz_ok = a.new_label()
+        a.cmp_ri32(REG_RDX(), 0)
+        a.jcc_rel32(CC_G(), l_c_sz_ok)
+        a.mov_ri32_sext(REG_RDX(), 8)
+        a.bind_label(l_c_sz_ok)
+        a.imul_rr(REG_RCX(), REG_RDX())
+        // 8-byte align
+        a.add_ri32(REG_RCX(), 7)
+        a.mov_ri64(REG_RDX(), -8)
+        a.and_rr(REG_RCX(), REG_RDX())
+        a.mov_rr(REG_RDX(), REG_RCX())
+        a.mov_ri32_sext(REG_RCX(), 1)
+        a.call_rip_iat(self.imp_calloc)
+        let l_calloc_ok = a.new_label()
+        a.test_rr(REG_RAX(), REG_RAX())
+        a.jcc_rel32(CC_NE(), l_calloc_ok)
+        a.lea_rip_rdata(REG_RCX(), self.s_oom)
+        a.call_rel32(self.lbl("__rt_eprintln_str"))
+        a.mov_ri32_sext(REG_RCX(), 1)
+        a.call_rip_iat(self.imp_exit_process)
+        a.bind_label(l_calloc_ok)
+        self.end_fn()
+
+        // __rt_realloc(rcx = ptr: ptr, rdx = new_size: i64) -> rax: ptr
+        self.begin_fn("__rt_realloc", 48)
+        let l_r_nonnull = a.new_label()
+        a.test_rr(REG_RCX(), REG_RCX())
+        a.jcc_rel32(CC_NE(), l_r_nonnull)
+        a.mov_rr(REG_RCX(), REG_RDX())
+        a.call_rel32(self.lbl("__rt_alloc"))
+        self.end_fn()
+        a.bind_label(l_r_nonnull)
+        let l_r_sz_ok = a.new_label()
+        a.cmp_ri32(REG_RDX(), 0)
+        a.jcc_rel32(CC_G(), l_r_sz_ok)
+        a.mov_ri32_sext(REG_RDX(), 8)
+        a.bind_label(l_r_sz_ok)
+        a.add_ri32(REG_RDX(), 7)
+        a.mov_ri64(REG_RAX(), -8)
+        a.and_rr(REG_RDX(), REG_RAX())
+        a.call_rip_iat(self.imp_realloc)
+        let l_realloc_ok = a.new_label()
+        a.test_rr(REG_RAX(), REG_RAX())
+        a.jcc_rel32(CC_NE(), l_realloc_ok)
+        a.lea_rip_rdata(REG_RCX(), self.s_oom)
+        a.call_rel32(self.lbl("__rt_eprintln_str"))
+        a.mov_ri32_sext(REG_RCX(), 1)
+        a.call_rip_iat(self.imp_exit_process)
+        a.bind_label(l_realloc_ok)
+        self.end_fn()
+
+        // __rt_free(rcx = ptr: ptr) -> void
+        self.begin_fn("__rt_free", 48)
+        let l_f_null = a.new_label()
+        a.test_rr(REG_RCX(), REG_RCX())
+        a.jcc_rel32(CC_E(), l_f_null)
+        a.call_rip_iat(self.imp_free)
+        a.bind_label(l_f_null)
+        self.end_fn()
     }
 
     priv fn emit_io_and_fmt() {
-        let a = self.asm
+        let a = self.asmb
         // __rt_println_str(rcx = str)
         self.begin_fn("__rt_println_str", 48)
         let l_nonnull = a.new_label()
@@ -246,11 +376,97 @@ pub class NativeRt {
         a.call_rip_iat(self.imp_fflush)
         self.end_fn()
 
+        // __rt_eprint_str(rcx = str) -> fprintf(__iob_func() + 96, "%s", rcx)
+        self.begin_fn("__rt_eprint_str", 64)
+        let l_ep = a.new_label()
+        a.test_rr(REG_RCX(), REG_RCX())
+        a.jcc_rel32(CC_NE(), l_ep)
+        a.lea_rip_rdata(REG_RCX(), self.s_empty)
+        a.bind_label(l_ep)
+        a.mov_mr64(REG_RBP(), -8, REG_RCX())
+        a.call_rip_iat(self.imp_iob_func)
+        a.add_ri32(REG_RAX(), 96)
+        a.mov_mr64(REG_RBP(), -16, REG_RAX())
+        a.mov_rr(REG_RCX(), REG_RAX())
+        a.lea_rip_rdata(REG_RDX(), self.s_pct_s)
+        a.mov_rm64(REG_R8(), REG_RBP(), -8)
+        a.call_rip_iat(self.imp_fprintf)
+        a.mov_rm64(REG_RCX(), REG_RBP(), -16)
+        a.call_rip_iat(self.imp_fflush)
+        self.end_fn()
+
+        // __rt_read_line() -> str
+        self.begin_fn("__rt_read_line", 64)
+        a.mov_ri32_sext(REG_RCX(), 4096)
+        a.call_rip_iat(self.imp_malloc)
+        let l_rl_oom = a.new_label()
+        a.test_rr(REG_RAX(), REG_RAX())
+        a.jcc_rel32(CC_E(), l_rl_oom)
+        a.mov_mr64(REG_RBP(), -8, REG_RAX())
+        a.call_rip_iat(self.imp_iob_func)
+        a.mov_mr64(REG_RBP(), -16, REG_RAX())
+        a.mov_rm64(REG_RCX(), REG_RBP(), -8)
+        a.mov_ri32_sext(REG_RDX(), 4096)
+        a.mov_rm64(REG_R8(), REG_RBP(), -16)
+        a.call_rip_iat(self.imp_fgets)
+        let l_rl_eof = a.new_label()
+        a.test_rr(REG_RAX(), REG_RAX())
+        a.jcc_rel32(CC_E(), l_rl_eof)
+        a.mov_rm64(REG_RCX(), REG_RBP(), -8)
+        a.call_rip_iat(self.imp_strlen)
+        a.mov_mr64(REG_RBP(), -24, REG_RAX())
+        let l_rl_trim = a.new_label()
+        let l_rl_trim_done = a.new_label()
+        a.bind_label(l_rl_trim)
+        a.mov_rm64(REG_RAX(), REG_RBP(), -24)
+        a.cmp_ri32(REG_RAX(), 0)
+        a.jcc_rel32(CC_LE(), l_rl_trim_done)
+        a.sub_ri32(REG_RAX(), 1)
+        a.mov_rm64(REG_RCX(), REG_RBP(), -8)
+        a.add_rr(REG_RCX(), REG_RAX())
+        a.movzx_rm8(REG_RDX(), REG_RCX(), 0)
+        let l_rl_cut = a.new_label()
+        a.cmp_ri32(REG_RDX(), 10)
+        a.jcc_rel32(CC_E(), l_rl_cut)
+        a.cmp_ri32(REG_RDX(), 13)
+        a.jcc_rel32(CC_NE(), l_rl_trim_done)
+        a.bind_label(l_rl_cut)
+        a.mov_ri32_sext(REG_RDX(), 0)
+        a.mov_mr8(REG_RCX(), 0, REG_RDX())
+        a.mov_mr64(REG_RBP(), -24, REG_RAX())
+        a.jmp_rel32(l_rl_trim)
+        a.bind_label(l_rl_trim_done)
+        a.mov_rm64(REG_RCX(), REG_RBP(), -24)
+        a.add_ri32(REG_RCX(), 1)
+        a.call_rip_iat(self.imp_malloc)
+        a.mov_mr64(REG_RBP(), -32, REG_RAX())
+        a.mov_rr(REG_RCX(), REG_RAX())
+        a.mov_rm64(REG_RDX(), REG_RBP(), -8)
+        a.mov_rm64(REG_R8(), REG_RBP(), -24)
+        a.add_ri32(REG_R8(), 1)
+        a.call_rip_iat(self.imp_memcpy)
+        a.mov_rm64(REG_RCX(), REG_RBP(), -8)
+        a.call_rip_iat(self.imp_free)
+        a.mov_rm64(REG_RAX(), REG_RBP(), -32)
+        self.end_fn()
+        a.bind_label(l_rl_eof)
+        a.mov_rm64(REG_RCX(), REG_RBP(), -8)
+        a.call_rip_iat(self.imp_free)
+        a.bind_label(l_rl_oom)
+        a.lea_rip_rdata(REG_RAX(), self.s_empty)
+        self.end_fn()
+
         // __rt_i64_to_str(rcx = n) -> str
         self.begin_fn("__rt_i64_to_str", 64)
         a.mov_mr64(REG_RBP(), -8, REG_RCX())
         a.mov_ri32_sext(REG_RCX(), 32)
         a.call_rip_iat(self.imp_malloc)
+        let l_i64_ok = a.new_label()
+        a.test_rr(REG_RAX(), REG_RAX())
+        a.jcc_rel32(CC_NE(), l_i64_ok)
+        a.lea_rip_rdata(REG_RAX(), self.s_empty)
+        self.end_fn()
+        a.bind_label(l_i64_ok)
         a.mov_mr64(REG_RBP(), -16, REG_RAX())
         a.mov_rr(REG_RCX(), REG_RAX())
         a.mov_ri32_sext(REG_RDX(), 32)
@@ -258,6 +474,8 @@ pub class NativeRt {
         a.mov_rm64(REG_R9(), REG_RBP(), -8)
         a.call_rip_iat(self.imp_snprintf)
         a.mov_rm64(REG_RAX(), REG_RBP(), -16)
+        a.mov_ri32_sext(REG_RDX(), 0)
+        a.mov_mr8(REG_RAX(), 31, REG_RDX())
         self.end_fn()
 
         // __rt_f64_to_str(rcx = raw bits of f64) -> str
@@ -265,6 +483,12 @@ pub class NativeRt {
         a.mov_mr64(REG_RBP(), -8, REG_RCX())
         a.mov_ri32_sext(REG_RCX(), 48)
         a.call_rip_iat(self.imp_malloc)
+        let l_f64_ok = a.new_label()
+        a.test_rr(REG_RAX(), REG_RAX())
+        a.jcc_rel32(CC_NE(), l_f64_ok)
+        a.lea_rip_rdata(REG_RAX(), self.s_empty)
+        self.end_fn()
+        a.bind_label(l_f64_ok)
         a.mov_mr64(REG_RBP(), -16, REG_RAX())
         a.mov_rr(REG_RCX(), REG_RAX())
         a.mov_ri32_sext(REG_RDX(), 48)
@@ -273,6 +497,8 @@ pub class NativeRt {
         a.movq_xmm_r(3, REG_R9())
         a.call_rip_iat(self.imp_snprintf)
         a.mov_rm64(REG_RAX(), REG_RBP(), -16)
+        a.mov_ri32_sext(REG_RDX(), 0)
+        a.mov_mr8(REG_RAX(), 47, REG_RDX())
         self.end_fn()
 
         // __rt_bool_to_str(rcx = bool) -> str
@@ -293,6 +519,12 @@ pub class NativeRt {
         a.mov_mr64(REG_RBP(), -8, REG_RCX())
         a.mov_ri32_sext(REG_RCX(), 2)
         a.call_rip_iat(self.imp_malloc)
+        let l_ch_ok = a.new_label()
+        a.test_rr(REG_RAX(), REG_RAX())
+        a.jcc_rel32(CC_NE(), l_ch_ok)
+        a.lea_rip_rdata(REG_RAX(), self.s_empty)
+        self.end_fn()
+        a.bind_label(l_ch_ok)
         a.mov_rm64(REG_RCX(), REG_RBP(), -8)
         a.mov_mr8(REG_RAX(), 0, REG_RCX())
         a.mov_ri32_sext(REG_RCX(), 0)
@@ -301,7 +533,7 @@ pub class NativeRt {
     }
 
     priv fn emit_strings() {
-        let a = self.asm
+        let a = self.asmb
         // __rt_str_len(rcx = s) -> i64
         self.begin_fn("__rt_str_len", 48)
         let l_ln = a.new_label()
@@ -314,7 +546,7 @@ pub class NativeRt {
         self.end_fn()
 
         // __rt_str_concat(rcx = a, rdx = b) -> str
-        self.begin_fn("__rt_str_concat", 80)
+        self.begin_fn("__rt_str_concat", 96)
         let l_ca = a.new_label()
         a.test_rr(REG_RCX(), REG_RCX())
         a.jcc_rel32(CC_NE(), l_ca)
@@ -336,6 +568,12 @@ pub class NativeRt {
         a.add_rr(REG_RCX(), REG_RAX())
         a.add_ri32(REG_RCX(), 1)
         a.call_rip_iat(self.imp_malloc)
+        let l_cat_ok = a.new_label()
+        a.test_rr(REG_RAX(), REG_RAX())
+        a.jcc_rel32(CC_NE(), l_cat_ok)
+        a.lea_rip_rdata(REG_RAX(), self.s_empty)
+        self.end_fn()
+        a.bind_label(l_cat_ok)
         a.mov_mr64(REG_RBP(), -40, REG_RAX())  // buf
         a.mov_rr(REG_RCX(), REG_RAX())
         a.mov_rm64(REG_RDX(), REG_RBP(), -8)
@@ -379,6 +617,39 @@ pub class NativeRt {
         a.setcc_u8(CC_E(), REG_RAX())
         self.end_fn()
 
+        // __rt_str_cmp(rcx = a, rdx = b) -> -1 / 0 / 1
+        self.begin_fn("__rt_str_cmp", 48)
+        let l_same = a.new_label()
+        a.cmp_rr(REG_RCX(), REG_RDX())
+        a.jcc_rel32(CC_E(), l_same)
+        let l_ca2 = a.new_label()
+        a.test_rr(REG_RCX(), REG_RCX())
+        a.jcc_rel32(CC_NE(), l_ca2)
+        a.lea_rip_rdata(REG_RCX(), self.s_empty)
+        a.bind_label(l_ca2)
+        let l_cb2 = a.new_label()
+        a.test_rr(REG_RDX(), REG_RDX())
+        a.jcc_rel32(CC_NE(), l_cb2)
+        a.lea_rip_rdata(REG_RDX(), self.s_empty)
+        a.bind_label(l_cb2)
+        a.call_rip_iat(self.imp_strcmp)
+        let l_lt = a.new_label()
+        let l_gt = a.new_label()
+        a.cmp_ri32(REG_RAX(), 0)
+        a.jcc_rel32(CC_L(), l_lt)
+        a.jcc_rel32(CC_G(), l_gt)
+        a.mov_ri32_sext(REG_RAX(), 0)
+        self.end_fn()
+        a.bind_label(l_same)
+        a.mov_ri32_sext(REG_RAX(), 0)
+        self.end_fn()
+        a.bind_label(l_lt)
+        a.mov_ri32_sext(REG_RAX(), -1)
+        self.end_fn()
+        a.bind_label(l_gt)
+        a.mov_ri32_sext(REG_RAX(), 1)
+        self.end_fn()
+
         // __rt_str_byte_at(rcx = s, rdx = idx) -> i64
         self.begin_fn("__rt_str_byte_at", 48)
         a.mov_mr64(REG_RBP(), -8, REG_RCX())
@@ -399,7 +670,12 @@ pub class NativeRt {
         self.end_fn()
 
         // __rt_str_slice(rcx = s, rdx = st, r8 = ed) -> str
-        self.begin_fn("__rt_str_slice", 80)
+        self.begin_fn("__rt_str_slice", 96)
+        let l_s_nn = a.new_label()
+        a.test_rr(REG_RCX(), REG_RCX())
+        a.jcc_rel32(CC_NE(), l_s_nn)
+        a.lea_rip_rdata(REG_RCX(), self.s_empty)
+        a.bind_label(l_s_nn)
         a.mov_mr64(REG_RBP(), -8, REG_RCX())   // s
         a.mov_mr64(REG_RBP(), -16, REG_RDX())  // st
         a.mov_mr64(REG_RBP(), -24, REG_R8())   // ed
@@ -433,6 +709,12 @@ pub class NativeRt {
         a.mov_rr(REG_RCX(), REG_RDX())
         a.add_ri32(REG_RCX(), 1)
         a.call_rip_iat(self.imp_malloc)
+        let l_slice_ok = a.new_label()
+        a.test_rr(REG_RAX(), REG_RAX())
+        a.jcc_rel32(CC_NE(), l_slice_ok)
+        a.lea_rip_rdata(REG_RAX(), self.s_empty)
+        self.end_fn()
+        a.bind_label(l_slice_ok)
         a.mov_mr64(REG_RBP(), -48, REG_RAX())
         a.mov_rm64(REG_R8(), REG_RBP(), -40)
         let l_cp = a.new_label()
@@ -466,8 +748,26 @@ pub class NativeRt {
         a.mov_ri32_sext(REG_RAX(), 0)
         self.end_fn()
 
+        // __rt_str_index_of(rcx = s, rdx = sub) -> i64 (-1 if not found)
+        self.begin_fn("__rt_str_index_of", 64)
+        let l_io_nf = a.new_label()
+        a.test_rr(REG_RCX(), REG_RCX())
+        a.jcc_rel32(CC_E(), l_io_nf)
+        a.test_rr(REG_RDX(), REG_RDX())
+        a.jcc_rel32(CC_E(), l_io_nf)
+        a.mov_mr64(REG_RBP(), -8, REG_RCX())
+        a.call_rip_iat(self.imp_strstr)
+        a.test_rr(REG_RAX(), REG_RAX())
+        a.jcc_rel32(CC_E(), l_io_nf)
+        a.mov_rm64(REG_RCX(), REG_RBP(), -8)
+        a.sub_rr(REG_RAX(), REG_RCX())
+        self.end_fn()
+        a.bind_label(l_io_nf)
+        a.mov_ri32_sext(REG_RAX(), -1)
+        self.end_fn()
+
         // __rt_str_starts_with(rcx = s, rdx = prefix) -> 0/1
-        self.begin_fn("__rt_str_starts_with", 64)
+        self.begin_fn("__rt_str_starts_with", 80)
         a.mov_mr64(REG_RBP(), -8, REG_RCX())
         a.mov_mr64(REG_RBP(), -16, REG_RDX())
         a.call_rel32(self.lbl("__rt_str_len"))
@@ -497,7 +797,7 @@ pub class NativeRt {
         self.end_fn()
 
         // __rt_str_ends_with(rcx = s, rdx = suffix) -> 0/1
-        self.begin_fn("__rt_str_ends_with", 64)
+        self.begin_fn("__rt_str_ends_with", 80)
         a.mov_mr64(REG_RBP(), -8, REG_RCX())
         a.mov_mr64(REG_RBP(), -16, REG_RDX())
         a.call_rel32(self.lbl("__rt_str_len"))
@@ -529,7 +829,7 @@ pub class NativeRt {
         self.end_fn()
 
         // __rt_str_trim(rcx = s) -> str
-        self.begin_fn("__rt_str_trim", 64)
+        self.begin_fn("__rt_str_trim", 80)
         a.mov_mr64(REG_RBP(), -8, REG_RCX())
         a.call_rel32(self.lbl("__rt_str_len"))
         a.mov_mr64(REG_RBP(), -16, REG_RAX()) // ed = len
@@ -552,6 +852,7 @@ pub class NativeRt {
         let l_t2_done = a.new_label()
         a.bind_label(l_t2)
         a.mov_rm64(REG_RAX(), REG_RBP(), -16) // ed
+        a.mov_rm64(REG_RCX(), REG_RBP(), -24) // reload st
         a.cmp_rr(REG_RAX(), REG_RCX())
         a.jcc_rel32(CC_LE(), l_t2_done)
         a.sub_ri32(REG_RAX(), 1)
@@ -606,7 +907,7 @@ pub class NativeRt {
         self.emit_str_split()
 
         // __rt_str_repeat(rcx = s, rdx = count) -> str
-        self.begin_fn("__rt_str_repeat", 64)
+        self.begin_fn("__rt_str_repeat", 96)
         a.mov_mr64(REG_RBP(), -8, REG_RCX())
         a.mov_mr64(REG_RBP(), -16, REG_RDX())
         let l_rep_z = a.new_label()
@@ -620,6 +921,12 @@ pub class NativeRt {
         a.mov_rr(REG_RCX(), REG_RAX())
         a.add_ri32(REG_RCX(), 1)
         a.call_rip_iat(self.imp_malloc)
+        let l_rep_ok = a.new_label()
+        a.test_rr(REG_RAX(), REG_RAX())
+        a.jcc_rel32(CC_NE(), l_rep_ok)
+        a.lea_rip_rdata(REG_RAX(), self.s_empty)
+        self.end_fn()
+        a.bind_label(l_rep_ok)
         a.mov_mr64(REG_RBP(), -40, REG_RAX()) // buf
         a.mov_ri32_sext(REG_RCX(), 0)
         a.mov_mr64(REG_RBP(), -48, REG_RCX()) // i
@@ -635,6 +942,7 @@ pub class NativeRt {
         a.mov_rm64(REG_RAX(), REG_RBP(), -40)
         a.add_rr(REG_RCX(), REG_RAX())
         a.mov_rm64(REG_RDX(), REG_RBP(), -8)
+        a.mov_rm64(REG_R8(), REG_RBP(), -24)
         a.call_rip_iat(self.imp_memcpy)
         a.mov_rm64(REG_RCX(), REG_RBP(), -48)
         a.add_ri32(REG_RCX(), 1)
@@ -653,14 +961,20 @@ pub class NativeRt {
     }
 
     priv fn emit_str_case(name: str, to_upper: bool) {
-        let a = self.asm
-        self.begin_fn(name, 64)
+        let a = self.asmb
+        self.begin_fn(name, 80)
         a.mov_mr64(REG_RBP(), -8, REG_RCX())
         a.call_rel32(self.lbl("__rt_str_len"))
         a.mov_mr64(REG_RBP(), -16, REG_RAX())
         a.mov_rr(REG_RCX(), REG_RAX())
         a.add_ri32(REG_RCX(), 1)
         a.call_rip_iat(self.imp_malloc)
+        let l_case_ok = a.new_label()
+        a.test_rr(REG_RAX(), REG_RAX())
+        a.jcc_rel32(CC_NE(), l_case_ok)
+        a.lea_rip_rdata(REG_RAX(), self.s_empty)
+        self.end_fn()
+        a.bind_label(l_case_ok)
         a.mov_mr64(REG_RBP(), -24, REG_RAX())
         a.mov_ri32_sext(REG_RCX(), 0)
         let l_lp = a.new_label()
@@ -702,12 +1016,29 @@ pub class NativeRt {
     }
 
     priv fn emit_str_replace() {
-        let a = self.asm
+        let a = self.asmb
         // Uses ByteBuffer internally! __rt_str_replace(rcx = s, rdx = old, r8 = new)
-        self.begin_fn("__rt_str_replace", 96)
+        self.begin_fn("__rt_str_replace", 128)
+        let l_s_ok = a.new_label()
+        a.test_rr(REG_RCX(), REG_RCX())
+        a.jcc_rel32(CC_NE(), l_s_ok)
+        a.lea_rip_rdata(REG_RAX(), self.s_empty)
+        self.end_fn()
+        a.bind_label(l_s_ok)
+        let l_new_ok = a.new_label()
+        a.test_rr(REG_R8(), REG_R8())
+        a.jcc_rel32(CC_NE(), l_new_ok)
+        a.lea_rip_rdata(REG_R8(), self.s_empty)
+        a.bind_label(l_new_ok)
         a.mov_mr64(REG_RBP(), -8, REG_RCX())   // s
         a.mov_mr64(REG_RBP(), -16, REG_RDX())  // old
         a.mov_mr64(REG_RBP(), -24, REG_R8())   // new
+        let l_old_ok = a.new_label()
+        a.test_rr(REG_RDX(), REG_RDX())
+        a.jcc_rel32(CC_NE(), l_old_ok)
+        a.mov_rm64(REG_RAX(), REG_RBP(), -8)
+        self.end_fn()
+        a.bind_label(l_old_ok)
         a.mov_rr(REG_RCX(), REG_RDX())
         a.call_rel32(self.lbl("__rt_str_len"))
         a.mov_mr64(REG_RBP(), -32, REG_RAX())  // old_len
@@ -778,9 +1109,19 @@ pub class NativeRt {
     }
 
     priv fn emit_str_split() {
-        let a = self.asm
+        let a = self.asmb
         // __rt_str_split(rcx = s, rdx = sep) -> List ptr
-        self.begin_fn("__rt_str_split", 80)
+        self.begin_fn("__rt_str_split", 96)
+        let l_s_ok = a.new_label()
+        a.test_rr(REG_RCX(), REG_RCX())
+        a.jcc_rel32(CC_NE(), l_s_ok)
+        a.lea_rip_rdata(REG_RCX(), self.s_empty)
+        a.bind_label(l_s_ok)
+        let l_sep_ok = a.new_label()
+        a.test_rr(REG_RDX(), REG_RDX())
+        a.jcc_rel32(CC_NE(), l_sep_ok)
+        a.lea_rip_rdata(REG_RDX(), self.s_empty)
+        a.bind_label(l_sep_ok)
         a.mov_mr64(REG_RBP(), -8, REG_RCX())
         a.mov_mr64(REG_RBP(), -16, REG_RDX())
         a.call_rel32(self.lbl("__rt_list_new"))
@@ -836,7 +1177,7 @@ pub class NativeRt {
     }
 
     priv fn emit_list() {
-        let a = self.asm
+        let a = self.asmb
         // List struct (24B): [0]=data ptr, [8]=len, [16]=cap
         // __rt_list_new() -> ptr
         self.begin_fn("__rt_list_new", 48)
@@ -847,6 +1188,9 @@ pub class NativeRt {
 
         // __rt_list_push(rcx = list, rdx = val)
         self.begin_fn("__rt_list_push", 64)
+        let l_ret_push = a.new_label()
+        a.test_rr(REG_RCX(), REG_RCX())
+        a.jcc_rel32(CC_E(), l_ret_push)
         a.mov_mr64(REG_RBP(), -8, REG_RCX())
         a.mov_mr64(REG_RBP(), -16, REG_RDX())
         a.mov_rm64(REG_R8(), REG_RCX(), 8)   // len
@@ -887,17 +1231,22 @@ pub class NativeRt {
         a.mov_mr64(REG_RAX(), 0, REG_RDX())
         a.add_ri32(REG_R8(), 1)
         a.mov_mr64(REG_RCX(), 8, REG_R8())
+        a.bind_label(l_ret_push)
         self.end_fn()
 
         // __rt_list_pop(rcx = list) -> val
         self.begin_fn("__rt_list_pop", 32)
-        a.mov_rm64(REG_R8(), REG_RCX(), 8)
         let l_pe = a.new_label()
+        a.test_rr(REG_RCX(), REG_RCX())
+        a.jcc_rel32(CC_E(), l_pe)
+        a.mov_rm64(REG_R8(), REG_RCX(), 8)
         a.cmp_ri32(REG_R8(), 0)
         a.jcc_rel32(CC_LE(), l_pe)
         a.sub_ri32(REG_R8(), 1)
         a.mov_mr64(REG_RCX(), 8, REG_R8())
         a.mov_rm64(REG_RDX(), REG_RCX(), 0)
+        a.test_rr(REG_RDX(), REG_RDX())
+        a.jcc_rel32(CC_E(), l_pe)
         a.add_rr(REG_R8(), REG_R8())
         a.add_rr(REG_R8(), REG_R8())
         a.add_rr(REG_R8(), REG_R8())
@@ -911,12 +1260,16 @@ pub class NativeRt {
         // __rt_list_get(rcx = list, rdx = idx) -> val
         self.begin_fn("__rt_list_get", 32)
         let l_go = a.new_label()
+        a.test_rr(REG_RCX(), REG_RCX())
+        a.jcc_rel32(CC_E(), l_go)
         a.cmp_ri32(REG_RDX(), 0)
         a.jcc_rel32(CC_L(), l_go)
         a.mov_rm64(REG_R8(), REG_RCX(), 8)
         a.cmp_rr(REG_RDX(), REG_R8())
         a.jcc_rel32(CC_GE(), l_go)
         a.mov_rm64(REG_RAX(), REG_RCX(), 0)
+        a.test_rr(REG_RAX(), REG_RAX())
+        a.jcc_rel32(CC_E(), l_go)
         a.add_rr(REG_RDX(), REG_RDX())
         a.add_rr(REG_RDX(), REG_RDX())
         a.add_rr(REG_RDX(), REG_RDX())
@@ -930,12 +1283,16 @@ pub class NativeRt {
         // __rt_list_set(rcx = list, rdx = idx, r8 = val)
         self.begin_fn("__rt_list_set", 32)
         let l_so = a.new_label()
+        a.test_rr(REG_RCX(), REG_RCX())
+        a.jcc_rel32(CC_E(), l_so)
         a.cmp_ri32(REG_RDX(), 0)
         a.jcc_rel32(CC_L(), l_so)
         a.mov_rm64(REG_R9(), REG_RCX(), 8)
         a.cmp_rr(REG_RDX(), REG_R9())
         a.jcc_rel32(CC_GE(), l_so)
         a.mov_rm64(REG_RAX(), REG_RCX(), 0)
+        a.test_rr(REG_RAX(), REG_RAX())
+        a.jcc_rel32(CC_E(), l_so)
         a.add_rr(REG_RDX(), REG_RDX())
         a.add_rr(REG_RDX(), REG_RDX())
         a.add_rr(REG_RDX(), REG_RDX())
@@ -946,24 +1303,69 @@ pub class NativeRt {
 
         // __rt_list_len(rcx = list) -> i64
         self.begin_fn("__rt_list_len", 32)
+        let l_l_null = a.new_label()
+        a.test_rr(REG_RCX(), REG_RCX())
+        a.jcc_rel32(CC_E(), l_l_null)
         a.mov_rm64(REG_RAX(), REG_RCX(), 8)
+        self.end_fn()
+        a.bind_label(l_l_null)
+        a.mov_ri32_sext(REG_RAX(), 0)
         self.end_fn()
 
         // __rt_list_clear(rcx = list)
         self.begin_fn("__rt_list_clear", 32)
+        let l_lc_null = a.new_label()
+        a.test_rr(REG_RCX(), REG_RCX())
+        a.jcc_rel32(CC_E(), l_lc_null)
         a.mov_ri32_sext(REG_RAX(), 0)
         a.mov_mr64(REG_RCX(), 8, REG_RAX())
+        a.bind_label(l_lc_null)
+        self.end_fn()
+
+        // __rt_list_is_empty(rcx = list) -> i64 (0/1)
+        self.begin_fn("__rt_list_is_empty", 32)
+        let l_lie_true = a.new_label()
+        let l_lie_done = a.new_label()
+        a.test_rr(REG_RCX(), REG_RCX())
+        a.jcc_rel32(CC_E(), l_lie_true)
+        a.mov_rm64(REG_RAX(), REG_RCX(), 8)
+        a.test_rr(REG_RAX(), REG_RAX())
+        a.jcc_rel32(CC_E(), l_lie_true)
+        a.mov_ri32_sext(REG_RAX(), 0)
+        a.jmp_rel32(l_lie_done)
+        a.bind_label(l_lie_true)
+        a.mov_ri32_sext(REG_RAX(), 1)
+        a.bind_label(l_lie_done)
+        self.end_fn()
+
+        // __rt_list_free(rcx = list)
+        self.begin_fn("__rt_list_free", 48)
+        let l_lf_ret = a.new_label()
+        a.test_rr(REG_RCX(), REG_RCX())
+        a.jcc_rel32(CC_E(), l_lf_ret)
+        a.mov_mr64(REG_RBP(), -8, REG_RCX())
+        a.mov_rm64(REG_RCX(), REG_RCX(), 0)
+        let l_lf_nd = a.new_label()
+        a.test_rr(REG_RCX(), REG_RCX())
+        a.jcc_rel32(CC_E(), l_lf_nd)
+        a.call_rip_iat(self.imp_free)
+        a.bind_label(l_lf_nd)
+        a.mov_rm64(REG_RCX(), REG_RBP(), -8)
+        a.call_rip_iat(self.imp_free)
+        a.bind_label(l_lf_ret)
         self.end_fn()
 
         // __rt_list_contains(rcx = list, rdx = val, r8 = is_str) -> 0/1
         self.begin_fn("__rt_list_contains", 64)
+        let l_cf = a.new_label()
+        a.test_rr(REG_RCX(), REG_RCX())
+        a.jcc_rel32(CC_E(), l_cf)
         a.mov_mr64(REG_RBP(), -8, REG_RCX())
         a.mov_mr64(REG_RBP(), -16, REG_RDX())
         a.mov_mr64(REG_RBP(), -24, REG_R8())
         a.mov_ri32_sext(REG_RCX(), 0)
         a.mov_mr64(REG_RBP(), -32, REG_RCX())
         let l_cl = a.new_label()
-        let l_cf = a.new_label()
         let l_ct = a.new_label()
         a.bind_label(l_cl)
         a.mov_rm64(REG_RCX(), REG_RBP(), -8)
@@ -1001,6 +1403,9 @@ pub class NativeRt {
 
         // __rt_list_join(rcx = list, rdx = sep) -> str
         self.begin_fn("__rt_list_join", 64)
+        let l_jnull = a.new_label()
+        a.test_rr(REG_RCX(), REG_RCX())
+        a.jcc_rel32(CC_E(), l_jnull)
         a.mov_mr64(REG_RBP(), -8, REG_RCX())
         a.mov_mr64(REG_RBP(), -16, REG_RDX())
         a.call_rel32(self.lbl("__rt_bb_new"))
@@ -1040,10 +1445,13 @@ pub class NativeRt {
         a.call_rel32(self.lbl("__rt_bb_free"))
         a.mov_rm64(REG_RAX(), REG_RBP(), -40)
         self.end_fn()
+        a.bind_label(l_jnull)
+        a.lea_rip_rdata(REG_RAX(), self.s_empty)
+        self.end_fn()
     }
 
     priv fn emit_map() {
-        let a = self.asm
+        let a = self.asmb
         // Map struct (32B): [0]=keys ptr, [8]=vals ptr, [16]=len, [24]=cap
         // __rt_map_new() -> ptr
         self.begin_fn("__rt_map_new", 48)
@@ -1054,13 +1462,15 @@ pub class NativeRt {
 
         // __rt_map_find(rcx = map, rdx = key, r8 = key_is_str) -> index or -1
         self.begin_fn("__rt_map_find", 64)
+        let l_nf = a.new_label()
+        a.test_rr(REG_RCX(), REG_RCX())
+        a.jcc_rel32(CC_E(), l_nf)
         a.mov_mr64(REG_RBP(), -8, REG_RCX())
         a.mov_mr64(REG_RBP(), -16, REG_RDX())
         a.mov_mr64(REG_RBP(), -24, REG_R8())
         a.mov_ri32_sext(REG_RCX(), 0)
         a.mov_mr64(REG_RBP(), -32, REG_RCX())
         let l_fl = a.new_label()
-        let l_nf = a.new_label()
         a.bind_label(l_fl)
         a.mov_rm64(REG_RCX(), REG_RBP(), -8)
         a.mov_rm64(REG_R8(), REG_RCX(), 16) // len
@@ -1068,6 +1478,8 @@ pub class NativeRt {
         a.cmp_rr(REG_RDX(), REG_R8())
         a.jcc_rel32(CC_GE(), l_nf)
         a.mov_rm64(REG_RAX(), REG_RCX(), 0)  // keys
+        a.test_rr(REG_RAX(), REG_RAX())
+        a.jcc_rel32(CC_E(), l_nf)
         a.add_rr(REG_RDX(), REG_RDX())
         a.add_rr(REG_RDX(), REG_RDX())
         a.add_rr(REG_RDX(), REG_RDX())
@@ -1103,6 +1515,9 @@ pub class NativeRt {
 
         // __rt_map_insert(rcx = map, rdx = key, r8 = val, r9 = key_is_str)
         self.begin_fn("__rt_map_insert", 80)
+        let l_ret_ins = a.new_label()
+        a.test_rr(REG_RCX(), REG_RCX())
+        a.jcc_rel32(CC_E(), l_ret_ins)
         a.mov_mr64(REG_RBP(), -8, REG_RCX())
         a.mov_mr64(REG_RBP(), -16, REG_RDX())
         a.mov_mr64(REG_RBP(), -24, REG_R8())
@@ -1172,17 +1587,22 @@ pub class NativeRt {
         a.mov_mr64(REG_RAX(), 0, REG_RDX())
         a.add_ri32(REG_R8(), 1)
         a.mov_mr64(REG_RCX(), 16, REG_R8())
+        a.bind_label(l_ret_ins)
         self.end_fn()
 
         // __rt_map_get(rcx = map, rdx = key, r8 = key_is_str) -> val or 0
         self.begin_fn("__rt_map_get", 48)
+        let l_mgz = a.new_label()
+        a.test_rr(REG_RCX(), REG_RCX())
+        a.jcc_rel32(CC_E(), l_mgz)
         a.mov_mr64(REG_RBP(), -8, REG_RCX())
         a.call_rel32(self.lbl("__rt_map_find"))
-        let l_mgz = a.new_label()
         a.cmp_ri32(REG_RAX(), 0)
         a.jcc_rel32(CC_L(), l_mgz)
         a.mov_rm64(REG_RCX(), REG_RBP(), -8)
         a.mov_rm64(REG_RDX(), REG_RCX(), 8)
+        a.test_rr(REG_RDX(), REG_RDX())
+        a.jcc_rel32(CC_E(), l_mgz)
         a.add_rr(REG_RAX(), REG_RAX())
         a.add_rr(REG_RAX(), REG_RAX())
         a.add_rr(REG_RAX(), REG_RAX())
@@ -1195,14 +1615,66 @@ pub class NativeRt {
 
         // __rt_map_has_key(rcx = map, rdx = key, r8 = key_is_str) -> 0/1
         self.begin_fn("__rt_map_has_key", 48)
+        let l_mhn = a.new_label()
+        a.test_rr(REG_RCX(), REG_RCX())
+        a.jcc_rel32(CC_E(), l_mhn)
         a.call_rel32(self.lbl("__rt_map_find"))
         a.cmp_ri32(REG_RAX(), 0)
         a.setcc_u8(CC_GE(), REG_RAX())
         self.end_fn()
+        a.bind_label(l_mhn)
+        a.mov_ri32_sext(REG_RAX(), 0)
+        self.end_fn()
 
         // __rt_map_len(rcx = map) -> i64
         self.begin_fn("__rt_map_len", 32)
+        let l_ml_null = a.new_label()
+        a.test_rr(REG_RCX(), REG_RCX())
+        a.jcc_rel32(CC_E(), l_ml_null)
         a.mov_rm64(REG_RAX(), REG_RCX(), 16)
+        self.end_fn()
+        a.bind_label(l_ml_null)
+        a.mov_ri32_sext(REG_RAX(), 0)
+        self.end_fn()
+
+        // __rt_map_is_empty(rcx = map) -> i64 (0/1)
+        self.begin_fn("__rt_map_is_empty", 32)
+        let l_mie_true = a.new_label()
+        let l_mie_done = a.new_label()
+        a.test_rr(REG_RCX(), REG_RCX())
+        a.jcc_rel32(CC_E(), l_mie_true)
+        a.mov_rm64(REG_RAX(), REG_RCX(), 16)
+        a.test_rr(REG_RAX(), REG_RAX())
+        a.jcc_rel32(CC_E(), l_mie_true)
+        a.mov_ri32_sext(REG_RAX(), 0)
+        a.jmp_rel32(l_mie_done)
+        a.bind_label(l_mie_true)
+        a.mov_ri32_sext(REG_RAX(), 1)
+        a.bind_label(l_mie_done)
+        self.end_fn()
+
+        // __rt_map_free(rcx = map)
+        self.begin_fn("__rt_map_free", 48)
+        let l_mf_ret = a.new_label()
+        a.test_rr(REG_RCX(), REG_RCX())
+        a.jcc_rel32(CC_E(), l_mf_ret)
+        a.mov_mr64(REG_RBP(), -8, REG_RCX())
+        a.mov_rm64(REG_RCX(), REG_RCX(), 0)
+        let l_mf_nk = a.new_label()
+        a.test_rr(REG_RCX(), REG_RCX())
+        a.jcc_rel32(CC_E(), l_mf_nk)
+        a.call_rip_iat(self.imp_free)
+        a.bind_label(l_mf_nk)
+        a.mov_rm64(REG_RAX(), REG_RBP(), -8)
+        a.mov_rm64(REG_RCX(), REG_RAX(), 8)
+        let l_mf_nv = a.new_label()
+        a.test_rr(REG_RCX(), REG_RCX())
+        a.jcc_rel32(CC_E(), l_mf_nv)
+        a.call_rip_iat(self.imp_free)
+        a.bind_label(l_mf_nv)
+        a.mov_rm64(REG_RCX(), REG_RBP(), -8)
+        a.call_rip_iat(self.imp_free)
+        a.bind_label(l_mf_ret)
         self.end_fn()
 
         // __rt_map_keys(rcx = map) -> List ptr
@@ -1210,10 +1682,13 @@ pub class NativeRt {
         a.mov_mr64(REG_RBP(), -8, REG_RCX())
         a.call_rel32(self.lbl("__rt_list_new"))
         a.mov_mr64(REG_RBP(), -16, REG_RAX())
+        a.mov_rm64(REG_RCX(), REG_RBP(), -8)
+        let l_kd = a.new_label()
+        a.test_rr(REG_RCX(), REG_RCX())
+        a.jcc_rel32(CC_E(), l_kd)
         a.mov_ri32_sext(REG_RCX(), 0)
         a.mov_mr64(REG_RBP(), -24, REG_RCX())
         let l_kl = a.new_label()
-        let l_kd = a.new_label()
         a.bind_label(l_kl)
         a.mov_rm64(REG_RCX(), REG_RBP(), -8)
         a.mov_rm64(REG_R8(), REG_RCX(), 16)
@@ -1221,6 +1696,8 @@ pub class NativeRt {
         a.cmp_rr(REG_RDX(), REG_R8())
         a.jcc_rel32(CC_GE(), l_kd)
         a.mov_rm64(REG_RAX(), REG_RCX(), 0)
+        a.test_rr(REG_RAX(), REG_RAX())
+        a.jcc_rel32(CC_E(), l_kd)
         a.add_rr(REG_RDX(), REG_RDX())
         a.add_rr(REG_RDX(), REG_RDX())
         a.add_rr(REG_RDX(), REG_RDX())
@@ -1237,8 +1714,244 @@ pub class NativeRt {
         self.end_fn()
     }
 
+    priv fn emit_queue() {
+        let a = self.asmb
+        // Queue struct (40B): [0]=data ptr, [8]=head, [16]=tail, [24]=len, [32]=cap
+        // __rt_queue_new() -> ptr
+        self.begin_fn("__rt_queue_new", 48)
+        a.mov_ri32_sext(REG_RCX(), 1)
+        a.mov_ri32_sext(REG_RDX(), 40)
+        a.call_rip_iat(self.imp_calloc)
+        a.mov_mr64(REG_RBP(), -8, REG_RAX())
+        a.mov_ri32_sext(REG_RCX(), 8)
+        a.mov_ri32_sext(REG_RDX(), 8)
+        a.call_rip_iat(self.imp_calloc)
+        a.mov_rm64(REG_RCX(), REG_RBP(), -8)
+        a.mov_mr64(REG_RCX(), 0, REG_RAX())
+        a.mov_ri32_sext(REG_RDX(), 8)
+        a.mov_mr64(REG_RCX(), 32, REG_RDX())
+        a.mov_rr(REG_RAX(), REG_RCX())
+        self.end_fn()
+
+        // __rt_queue_enqueue(rcx = queue, rdx = val)
+        self.begin_fn("__rt_queue_enqueue", 80)
+        let l_qret = a.new_label()
+        a.test_rr(REG_RCX(), REG_RCX())
+        a.jcc_rel32(CC_E(), l_qret)
+        a.mov_mr64(REG_RBP(), -8, REG_RCX())
+        a.mov_mr64(REG_RBP(), -16, REG_RDX())
+        a.mov_rm64(REG_R8(), REG_RCX(), 24)
+        a.mov_rm64(REG_R9(), REG_RCX(), 32)
+        let l_q_fit = a.new_label()
+        a.cmp_rr(REG_R8(), REG_R9())
+        a.jcc_rel32(CC_L(), l_q_fit)
+        a.mov_rr(REG_RDX(), REG_R9())
+        a.add_rr(REG_RDX(), REG_RDX())
+        a.mov_mr64(REG_RBP(), -24, REG_RDX())
+        a.mov_ri32_sext(REG_RCX(), 8)
+        a.call_rip_iat(self.imp_calloc)
+        a.mov_mr64(REG_RBP(), -32, REG_RAX())
+        a.mov_ri32_sext(REG_RAX(), 0)
+        a.mov_mr64(REG_RBP(), -40, REG_RAX())
+        let l_copy_loop = a.new_label()
+        let l_copy_done = a.new_label()
+        a.bind_label(l_copy_loop)
+        a.mov_rm64(REG_RAX(), REG_RBP(), -40)
+        a.mov_rm64(REG_RCX(), REG_RBP(), -8)
+        a.mov_rm64(REG_RDX(), REG_RCX(), 24)
+        a.cmp_rr(REG_RAX(), REG_RDX())
+        a.jcc_rel32(CC_GE(), l_copy_done)
+        a.mov_rm64(REG_R8(), REG_RCX(), 8)
+        a.add_rr(REG_R8(), REG_RAX())
+        a.mov_rm64(REG_R9(), REG_RCX(), 32)
+        a.sub_ri32(REG_R9(), 1)
+        a.and_rr(REG_R8(), REG_R9())
+        a.mov_rm64(REG_RCX(), REG_RCX(), 0)
+        a.add_rr(REG_R8(), REG_R8())
+        a.add_rr(REG_R8(), REG_R8())
+        a.add_rr(REG_R8(), REG_R8())
+        a.add_rr(REG_RCX(), REG_R8())
+        a.mov_rm64(REG_RDX(), REG_RCX(), 0)
+        a.mov_rm64(REG_RCX(), REG_RBP(), -32)
+        a.mov_rm64(REG_RAX(), REG_RBP(), -40)
+        a.add_rr(REG_RAX(), REG_RAX())
+        a.add_rr(REG_RAX(), REG_RAX())
+        a.add_rr(REG_RAX(), REG_RAX())
+        a.add_rr(REG_RCX(), REG_RAX())
+        a.mov_mr64(REG_RCX(), 0, REG_RDX())
+        a.mov_rm64(REG_RAX(), REG_RBP(), -40)
+        a.add_ri32(REG_RAX(), 1)
+        a.mov_mr64(REG_RBP(), -40, REG_RAX())
+        a.jmp_rel32(l_copy_loop)
+        a.bind_label(l_copy_done)
+        a.mov_rm64(REG_RAX(), REG_RBP(), -8)
+        a.mov_rm64(REG_RCX(), REG_RAX(), 0)
+        a.call_rip_iat(self.imp_free)
+        a.mov_rm64(REG_RAX(), REG_RBP(), -8)
+        a.mov_rm64(REG_RCX(), REG_RBP(), -32)
+        a.mov_mr64(REG_RAX(), 0, REG_RCX())
+        a.mov_ri32_sext(REG_RCX(), 0)
+        a.mov_mr64(REG_RAX(), 8, REG_RCX())
+        a.mov_rm64(REG_RCX(), REG_RAX(), 24)
+        a.mov_mr64(REG_RAX(), 16, REG_RCX())
+        a.mov_rm64(REG_RCX(), REG_RBP(), -24)
+        a.mov_mr64(REG_RAX(), 32, REG_RCX())
+        a.bind_label(l_q_fit)
+        a.mov_rm64(REG_RAX(), REG_RBP(), -8)
+        a.mov_rm64(REG_RCX(), REG_RAX(), 16)
+        a.mov_rm64(REG_RDX(), REG_RAX(), 32)
+        a.sub_ri32(REG_RDX(), 1)
+        a.and_rr(REG_RCX(), REG_RDX())
+        a.mov_rm64(REG_R8(), REG_RAX(), 0)
+        a.add_rr(REG_RCX(), REG_RCX())
+        a.add_rr(REG_RCX(), REG_RCX())
+        a.add_rr(REG_RCX(), REG_RCX())
+        a.add_rr(REG_R8(), REG_RCX())
+        a.mov_rm64(REG_R9(), REG_RBP(), -16)
+        a.mov_mr64(REG_R8(), 0, REG_R9())
+        a.mov_rm64(REG_RCX(), REG_RAX(), 16)
+        a.add_ri32(REG_RCX(), 1)
+        a.mov_mr64(REG_RAX(), 16, REG_RCX())
+        a.mov_rm64(REG_RCX(), REG_RAX(), 24)
+        a.add_ri32(REG_RCX(), 1)
+        a.mov_mr64(REG_RAX(), 24, REG_RCX())
+        a.bind_label(l_qret)
+        self.end_fn()
+
+        // __rt_queue_dequeue(rcx = queue) -> i64
+        self.begin_fn("__rt_queue_dequeue", 48)
+        let l_qdeq_err = a.new_label()
+        a.test_rr(REG_RCX(), REG_RCX())
+        a.jcc_rel32(CC_E(), l_qdeq_err)
+        a.mov_rm64(REG_RDX(), REG_RCX(), 24)
+        a.test_rr(REG_RDX(), REG_RDX())
+        a.jcc_rel32(CC_E(), l_qdeq_err)
+        a.mov_rm64(REG_R8(), REG_RCX(), 8)
+        a.mov_rm64(REG_R9(), REG_RCX(), 32)
+        a.sub_ri32(REG_R9(), 1)
+        a.and_rr(REG_R8(), REG_R9())
+        a.mov_rm64(REG_RAX(), REG_RCX(), 0)
+        a.add_rr(REG_R8(), REG_R8())
+        a.add_rr(REG_R8(), REG_R8())
+        a.add_rr(REG_R8(), REG_R8())
+        a.add_rr(REG_RAX(), REG_R8())
+        a.mov_rm64(REG_RAX(), REG_RAX(), 0)
+        a.mov_mr64(REG_RBP(), -8, REG_RAX())
+        a.mov_rm64(REG_R8(), REG_RCX(), 8)
+        a.add_ri32(REG_R8(), 1)
+        a.and_rr(REG_R8(), REG_R9())
+        a.mov_mr64(REG_RCX(), 8, REG_R8())
+        a.mov_rm64(REG_R8(), REG_RCX(), 24)
+        a.sub_ri32(REG_R8(), 1)
+        a.mov_mr64(REG_RCX(), 24, REG_R8())
+        a.mov_rm64(REG_RAX(), REG_RBP(), -8)
+        self.end_fn()
+        a.bind_label(l_qdeq_err)
+        a.mov_ri32_sext(REG_RAX(), 0)
+        self.end_fn()
+
+        // __rt_queue_peek(rcx = queue) -> i64
+        self.begin_fn("__rt_queue_peek", 32)
+        let l_qpeek_err = a.new_label()
+        a.test_rr(REG_RCX(), REG_RCX())
+        a.jcc_rel32(CC_E(), l_qpeek_err)
+        a.mov_rm64(REG_RDX(), REG_RCX(), 24)
+        a.test_rr(REG_RDX(), REG_RDX())
+        a.jcc_rel32(CC_E(), l_qpeek_err)
+        a.mov_rm64(REG_R8(), REG_RCX(), 8)
+        a.mov_rm64(REG_R9(), REG_RCX(), 32)
+        a.sub_ri32(REG_R9(), 1)
+        a.and_rr(REG_R8(), REG_R9())
+        a.mov_rm64(REG_RAX(), REG_RCX(), 0)
+        a.add_rr(REG_R8(), REG_R8())
+        a.add_rr(REG_R8(), REG_R8())
+        a.add_rr(REG_R8(), REG_R8())
+        a.add_rr(REG_RAX(), REG_R8())
+        a.mov_rm64(REG_RAX(), REG_RAX(), 0)
+        self.end_fn()
+        a.bind_label(l_qpeek_err)
+        a.mov_ri32_sext(REG_RAX(), 0)
+        self.end_fn()
+
+        // __rt_queue_len(rcx = queue) -> i64
+        self.begin_fn("__rt_queue_len", 32)
+        let l_qlen_zero = a.new_label()
+        a.test_rr(REG_RCX(), REG_RCX())
+        a.jcc_rel32(CC_E(), l_qlen_zero)
+        a.mov_rm64(REG_RAX(), REG_RCX(), 24)
+        self.end_fn()
+        a.bind_label(l_qlen_zero)
+        a.mov_ri32_sext(REG_RAX(), 0)
+        self.end_fn()
+
+        // __rt_queue_is_empty(rcx = queue) -> 0/1
+        self.begin_fn("__rt_queue_is_empty", 32)
+        let l_qie_true = a.new_label()
+        let l_qie_done = a.new_label()
+        a.test_rr(REG_RCX(), REG_RCX())
+        a.jcc_rel32(CC_E(), l_qie_true)
+        a.mov_rm64(REG_RAX(), REG_RCX(), 24)
+        a.test_rr(REG_RAX(), REG_RAX())
+        a.jcc_rel32(CC_E(), l_qie_true)
+        a.mov_ri32_sext(REG_RAX(), 0)
+        a.jmp_rel32(l_qie_done)
+        a.bind_label(l_qie_true)
+        a.mov_ri32_sext(REG_RAX(), 1)
+        a.bind_label(l_qie_done)
+        self.end_fn()
+
+        // __rt_queue_clear(rcx = queue)
+        self.begin_fn("__rt_queue_clear", 32)
+        let l_qc_null = a.new_label()
+        a.test_rr(REG_RCX(), REG_RCX())
+        a.jcc_rel32(CC_E(), l_qc_null)
+        a.mov_ri32_sext(REG_RAX(), 0)
+        a.mov_mr64(REG_RCX(), 8, REG_RAX())
+        a.mov_mr64(REG_RCX(), 16, REG_RAX())
+        a.mov_mr64(REG_RCX(), 24, REG_RAX())
+        a.bind_label(l_qc_null)
+        self.end_fn()
+
+        // __rt_queue_free(rcx = queue)
+        self.begin_fn("__rt_queue_free", 48)
+        let l_qf_ret = a.new_label()
+        a.test_rr(REG_RCX(), REG_RCX())
+        a.jcc_rel32(CC_E(), l_qf_ret)
+        a.mov_mr64(REG_RBP(), -8, REG_RCX())
+        a.mov_rm64(REG_RCX(), REG_RCX(), 0)
+        let l_qf_nd = a.new_label()
+        a.test_rr(REG_RCX(), REG_RCX())
+        a.jcc_rel32(CC_E(), l_qf_nd)
+        a.call_rip_iat(self.imp_free)
+        a.bind_label(l_qf_nd)
+        a.mov_rm64(REG_RCX(), REG_RBP(), -8)
+        a.call_rip_iat(self.imp_free)
+        a.bind_label(l_qf_ret)
+        self.end_fn()
+
+        // __rt_stack_peek(rcx = list) -> val
+        self.begin_fn("__rt_stack_peek", 32)
+        let l_speek_err = a.new_label()
+        a.test_rr(REG_RCX(), REG_RCX())
+        a.jcc_rel32(CC_E(), l_speek_err)
+        a.mov_rm64(REG_RDX(), REG_RCX(), 8)
+        a.test_rr(REG_RDX(), REG_RDX())
+        a.jcc_rel32(CC_E(), l_speek_err)
+        a.sub_ri32(REG_RDX(), 1)
+        a.mov_rm64(REG_RAX(), REG_RCX(), 0)
+        a.add_rr(REG_RDX(), REG_RDX())
+        a.add_rr(REG_RDX(), REG_RDX())
+        a.add_rr(REG_RDX(), REG_RDX())
+        a.add_rr(REG_RAX(), REG_RDX())
+        a.mov_rm64(REG_RAX(), REG_RAX(), 0)
+        self.end_fn()
+        a.bind_label(l_speek_err)
+        a.mov_ri32_sext(REG_RAX(), 0)
+        self.end_fn()
+    }
+
     priv fn emit_bytebuf() {
-        let a = self.asm
+        let a = self.asmb
         // ByteBuffer struct (32B): [0]=data, [8]=len, [16]=cap, [24]=pos
         self.begin_fn("__rt_bb_new", 48)
         a.mov_ri32_sext(REG_RCX(), 1)
@@ -1248,6 +1961,9 @@ pub class NativeRt {
 
         // __rt_bb_write_u8(rcx = bb, rdx = byte)
         self.begin_fn("__rt_bb_write_u8", 64)
+        let l_ret_w8 = a.new_label()
+        a.test_rr(REG_RCX(), REG_RCX())
+        a.jcc_rel32(CC_E(), l_ret_w8)
         a.mov_mr64(REG_RBP(), -8, REG_RCX())
         a.mov_mr64(REG_RBP(), -16, REG_RDX())
         a.mov_rm64(REG_R8(), REG_RCX(), 8)  // len
@@ -1281,10 +1997,16 @@ pub class NativeRt {
         a.mov_mr8(REG_RAX(), 0, REG_RDX())
         a.add_ri32(REG_R8(), 1)
         a.mov_mr64(REG_RCX(), 8, REG_R8())
+        a.bind_label(l_ret_w8)
         self.end_fn()
 
         // __rt_bb_write_str(rcx = bb, rdx = s)
         self.begin_fn("__rt_bb_write_str", 64)
+        let l_ret_wstr = a.new_label()
+        a.test_rr(REG_RCX(), REG_RCX())
+        a.jcc_rel32(CC_E(), l_ret_wstr)
+        a.test_rr(REG_RDX(), REG_RDX())
+        a.jcc_rel32(CC_E(), l_ret_wstr)
         a.mov_mr64(REG_RBP(), -8, REG_RCX())
         a.mov_mr64(REG_RBP(), -16, REG_RDX())
         a.mov_rr(REG_RCX(), REG_RDX())
@@ -1309,10 +2031,14 @@ pub class NativeRt {
         a.mov_mr64(REG_RBP(), -32, REG_RCX())
         a.jmp_rel32(l_bsl)
         a.bind_label(l_bsd)
+        a.bind_label(l_ret_wstr)
         self.end_fn()
 
         // __rt_bb_to_str(rcx = bb) -> str
         self.begin_fn("__rt_bb_to_str", 64)
+        let l_ret_emptystr = a.new_label()
+        a.test_rr(REG_RCX(), REG_RCX())
+        a.jcc_rel32(CC_E(), l_ret_emptystr)
         a.mov_mr64(REG_RBP(), -8, REG_RCX())
         a.mov_rm64(REG_RDX(), REG_RCX(), 8) // len
         a.mov_mr64(REG_RBP(), -16, REG_RDX())
@@ -1327,6 +2053,8 @@ pub class NativeRt {
         a.mov_rr(REG_RCX(), REG_RAX())
         a.mov_rm64(REG_R9(), REG_RBP(), -8)
         a.mov_rm64(REG_RDX(), REG_R9(), 0)
+        a.test_rr(REG_RDX(), REG_RDX())
+        a.jcc_rel32(CC_E(), l_bt_cp)
         a.call_rip_iat(self.imp_memcpy)
         a.mov_rm64(REG_RAX(), REG_RBP(), -24)
         a.bind_label(l_bt_cp)
@@ -1335,18 +2063,37 @@ pub class NativeRt {
         a.mov_ri32_sext(REG_RDX(), 0)
         a.mov_mr8(REG_R8(), 0, REG_RDX())
         self.end_fn()
+        a.bind_label(l_ret_emptystr)
+        a.lea_rip_rdata(REG_RAX(), self.s_empty)
+        self.end_fn()
 
-        // __rt_bb_read_u8 / write_i32_le / read_i32_le / write_f64_le / seek / pos / len / reset / free
+        // __rt_bb_read_u8(rcx = bb) -> u8 or 0
         self.begin_fn("__rt_bb_read_u8", 32)
-        a.mov_rm64(REG_R8(), REG_RCX(), 24)
-        a.mov_rm64(REG_RDX(), REG_RCX(), 0)
+        let l_eof = a.new_label()
+        a.test_rr(REG_RCX(), REG_RCX())
+        a.jcc_rel32(CC_E(), l_eof)
+        a.mov_rm64(REG_R8(), REG_RCX(), 24) // pos
+        a.cmp_ri32(REG_R8(), 0)
+        a.jcc_rel32(CC_L(), l_eof)
+        a.mov_rm64(REG_R9(), REG_RCX(), 8)  // len
+        a.cmp_rr(REG_R8(), REG_R9())
+        a.jcc_rel32(CC_GE(), l_eof)
+        a.mov_rm64(REG_RDX(), REG_RCX(), 0) // data
+        a.test_rr(REG_RDX(), REG_RDX())
+        a.jcc_rel32(CC_E(), l_eof)
         a.add_rr(REG_RDX(), REG_R8())
         a.movzx_rm8(REG_RAX(), REG_RDX(), 0)
         a.add_ri32(REG_R8(), 1)
         a.mov_mr64(REG_RCX(), 24, REG_R8())
         self.end_fn()
+        a.bind_label(l_eof)
+        a.mov_ri32_sext(REG_RAX(), 0)
+        self.end_fn()
 
         self.begin_fn("__rt_bb_write_i32_le", 48)
+        let l_ret_wi32 = a.new_label()
+        a.test_rr(REG_RCX(), REG_RCX())
+        a.jcc_rel32(CC_E(), l_ret_wi32)
         a.mov_mr64(REG_RBP(), -8, REG_RCX())
         a.mov_mr64(REG_RBP(), -16, REG_RDX())
         a.mov_ri32_sext(REG_R8(), 0)
@@ -1369,9 +2116,13 @@ pub class NativeRt {
         a.mov_mr64(REG_RBP(), -24, REG_R8())
         a.jmp_rel32(l_i32)
         a.bind_label(l_i32d)
+        a.bind_label(l_ret_wi32)
         self.end_fn()
 
         self.begin_fn("__rt_bb_write_f64_le", 48)
+        let l_ret_wf64 = a.new_label()
+        a.test_rr(REG_RCX(), REG_RCX())
+        a.jcc_rel32(CC_E(), l_ret_wf64)
         a.mov_mr64(REG_RBP(), -8, REG_RCX())
         a.mov_mr64(REG_RBP(), -16, REG_RDX())
         a.mov_ri32_sext(REG_R8(), 0)
@@ -1394,26 +2145,66 @@ pub class NativeRt {
         a.mov_mr64(REG_RBP(), -24, REG_R8())
         a.jmp_rel32(l_f64)
         a.bind_label(l_f64d)
+        a.bind_label(l_ret_wf64)
         self.end_fn()
 
+        // __rt_bb_seek(rcx = bb, rdx = pos)
         self.begin_fn("__rt_bb_seek", 32)
+        let l_sk_end = a.new_label()
+        a.test_rr(REG_RCX(), REG_RCX())
+        a.jcc_rel32(CC_E(), l_sk_end)
+        // Clamp pos: if rdx < 0 -> rdx = 0
+        let l_sk_ge0 = a.new_label()
+        a.cmp_ri32(REG_RDX(), 0)
+        a.jcc_rel32(CC_GE(), l_sk_ge0)
+        a.mov_ri32_sext(REG_RDX(), 0)
+        a.bind_label(l_sk_ge0)
+        // If rdx > len -> rdx = len
+        a.mov_rm64(REG_R8(), REG_RCX(), 8) // len
+        a.cmp_rr(REG_RDX(), REG_R8())
+        let l_sk_le = a.new_label()
+        a.jcc_rel32(CC_LE(), l_sk_le)
+        a.mov_rr(REG_RDX(), REG_R8())
+        a.bind_label(l_sk_le)
         a.mov_mr64(REG_RCX(), 24, REG_RDX())
+        a.bind_label(l_sk_end)
         self.end_fn()
 
         self.begin_fn("__rt_bb_len", 32)
+        let l_bbl_null = a.new_label()
+        a.test_rr(REG_RCX(), REG_RCX())
+        a.jcc_rel32(CC_E(), l_bbl_null)
         a.mov_rm64(REG_RAX(), REG_RCX(), 8)
+        self.end_fn()
+        a.bind_label(l_bbl_null)
+        a.mov_ri32_sext(REG_RAX(), 0)
         self.end_fn()
 
         self.begin_fn("__rt_bb_pos", 32)
+        let l_bbp_null = a.new_label()
+        a.test_rr(REG_RCX(), REG_RCX())
+        a.jcc_rel32(CC_E(), l_bbp_null)
         a.mov_rm64(REG_RAX(), REG_RCX(), 24)
         self.end_fn()
+        a.bind_label(l_bbp_null)
+        a.mov_ri32_sext(REG_RAX(), 0)
+        self.end_fn()
 
+        // __rt_bb_reset(rcx = bb) -> resets both len=0 and pos=0
         self.begin_fn("__rt_bb_reset", 32)
+        let l_bbr_null = a.new_label()
+        a.test_rr(REG_RCX(), REG_RCX())
+        a.jcc_rel32(CC_E(), l_bbr_null)
         a.mov_ri32_sext(REG_RDX(), 0)
-        a.mov_mr64(REG_RCX(), 24, REG_RDX())
+        a.mov_mr64(REG_RCX(), 8, REG_RDX())  // len = 0
+        a.mov_mr64(REG_RCX(), 24, REG_RDX()) // pos = 0
+        a.bind_label(l_bbr_null)
         self.end_fn()
 
         self.begin_fn("__rt_bb_free", 48)
+        let l_bbf_null = a.new_label()
+        a.test_rr(REG_RCX(), REG_RCX())
+        a.jcc_rel32(CC_E(), l_bbf_null)
         a.mov_mr64(REG_RBP(), -8, REG_RCX())
         a.mov_rm64(REG_RCX(), REG_RCX(), 0)
         let l_bfd = a.new_label()
@@ -1423,24 +2214,35 @@ pub class NativeRt {
         a.bind_label(l_bfd)
         a.mov_rm64(REG_RCX(), REG_RBP(), -8)
         a.call_rip_iat(self.imp_free)
+        a.bind_label(l_bbf_null)
         self.end_fn()
 
         // __rt_bin_write_file(rcx = bb, rdx = path) -> 1/0
         self.begin_fn("__rt_bin_write_file", 64)
+        let l_bwf = a.new_label()
+        a.test_rr(REG_RCX(), REG_RCX())
+        a.jcc_rel32(CC_E(), l_bwf)
+        a.test_rr(REG_RDX(), REG_RDX())
+        a.jcc_rel32(CC_E(), l_bwf)
         a.mov_mr64(REG_RBP(), -8, REG_RCX())
         a.mov_rr(REG_RCX(), REG_RDX())
         a.lea_rip_rdata(REG_RDX(), self.s_wb)
         a.call_rip_iat(self.imp_fopen)
-        let l_bwf = a.new_label()
         a.test_rr(REG_RAX(), REG_RAX())
         a.jcc_rel32(CC_E(), l_bwf)
         a.mov_mr64(REG_RBP(), -16, REG_RAX()) // FILE*
         a.mov_rm64(REG_R10(), REG_RBP(), -8)  // bb
-        a.mov_rm64(REG_RCX(), REG_R10(), 0)   // data
-        a.mov_ri32_sext(REG_RDX(), 1)
         a.mov_rm64(REG_R8(), REG_R10(), 8)    // len
+        let l_bw_skip = a.new_label()
+        a.cmp_ri32(REG_R8(), 0)
+        a.jcc_rel32(CC_LE(), l_bw_skip)
+        a.mov_rm64(REG_RCX(), REG_R10(), 0)   // data
+        a.test_rr(REG_RCX(), REG_RCX())
+        a.jcc_rel32(CC_E(), l_bw_skip)
+        a.mov_ri32_sext(REG_RDX(), 1)
         a.mov_rr(REG_R9(), REG_RAX())
         a.call_rip_iat(self.imp_fwrite)
+        a.bind_label(l_bw_skip)
         a.mov_rm64(REG_RCX(), REG_RBP(), -16)
         a.call_rip_iat(self.imp_fclose)
         a.mov_ri32_sext(REG_RAX(), 1)
@@ -1451,20 +2253,57 @@ pub class NativeRt {
     }
 
     priv fn emit_os_fs_env() {
-        let a = self.asm
+        let a = self.asmb
         // File.exists(rcx = path) -> 0/1
         self.begin_fn("__rt_file_exists", 48)
+        let l_fe_no = a.new_label()
+        let l_fe_done = a.new_label()
+        a.test_rr(REG_RCX(), REG_RCX())
+        a.jcc_rel32(CC_E(), l_fe_no)
         a.call_rip_iat(self.imp_get_attrs)
-        a.mov_ri32_sext(REG_RCX(), -1)
-        a.cmp_rr(REG_RAX(), REG_RCX())
-        a.setcc_u8(CC_NE(), REG_RAX())
+        a.movsxd(REG_RAX(), REG_RAX())
+        a.cmp_ri32(REG_RAX(), -1)
+        a.jcc_rel32(CC_E(), l_fe_no)
+        a.mov_rr(REG_RCX(), REG_RAX())
+        a.mov_ri32_sext(REG_RDX(), 16)
+        a.and_rr(REG_RCX(), REG_RDX())
+        a.test_rr(REG_RCX(), REG_RCX())
+        a.jcc_rel32(CC_NE(), l_fe_no)
+        a.mov_ri32_sext(REG_RAX(), 1)
+        a.jmp_rel32(l_fe_done)
+        a.bind_label(l_fe_no)
+        a.mov_ri32_sext(REG_RAX(), 0)
+        a.bind_label(l_fe_done)
+        self.end_fn()
+
+        // Directory.exists(rcx = path) -> 0/1
+        self.begin_fn("__rt_dir_exists", 48)
+        let l_de_no = a.new_label()
+        let l_de_done = a.new_label()
+        a.test_rr(REG_RCX(), REG_RCX())
+        a.jcc_rel32(CC_E(), l_de_no)
+        a.call_rip_iat(self.imp_get_attrs)
+        a.movsxd(REG_RAX(), REG_RAX())
+        a.cmp_ri32(REG_RAX(), -1)
+        a.jcc_rel32(CC_E(), l_de_no)
+        a.mov_ri32_sext(REG_RCX(), 16)
+        a.and_rr(REG_RAX(), REG_RCX())
+        a.test_rr(REG_RAX(), REG_RAX())
+        a.jcc_rel32(CC_E(), l_de_no)
+        a.mov_ri32_sext(REG_RAX(), 1)
+        a.jmp_rel32(l_de_done)
+        a.bind_label(l_de_no)
+        a.mov_ri32_sext(REG_RAX(), 0)
+        a.bind_label(l_de_done)
         self.end_fn()
 
         // File.read_to_string(rcx = path) -> str
         self.begin_fn("__rt_file_read", 64)
+        let l_fr_f = a.new_label()
+        a.test_rr(REG_RCX(), REG_RCX())
+        a.jcc_rel32(CC_E(), l_fr_f)
         a.lea_rip_rdata(REG_RDX(), self.s_rb)
         a.call_rip_iat(self.imp_fopen)
-        let l_fr_f = a.new_label()
         a.test_rr(REG_RAX(), REG_RAX())
         a.jcc_rel32(CC_E(), l_fr_f)
         a.mov_mr64(REG_RBP(), -8, REG_RAX())
@@ -1475,6 +2314,9 @@ pub class NativeRt {
         a.mov_rm64(REG_RCX(), REG_RBP(), -8)
         a.call_rip_iat(self.imp_ftell)
         a.mov_mr64(REG_RBP(), -16, REG_RAX()) // size
+        let l_fr_err = a.new_label()
+        a.cmp_ri32(REG_RAX(), 0)
+        a.jcc_rel32(CC_L(), l_fr_err)
         a.mov_rm64(REG_RCX(), REG_RBP(), -8)
         a.mov_ri32_sext(REG_RDX(), 0)
         a.mov_ri32_sext(REG_R8(), 0) // SEEK_SET
@@ -1482,73 +2324,155 @@ pub class NativeRt {
         a.mov_rm64(REG_RCX(), REG_RBP(), -16)
         a.add_ri32(REG_RCX(), 1)
         a.call_rip_iat(self.imp_malloc)
+        a.test_rr(REG_RAX(), REG_RAX())
+        a.jcc_rel32(CC_E(), l_fr_err)
         a.mov_mr64(REG_RBP(), -24, REG_RAX()) // buf
         a.mov_rr(REG_RCX(), REG_RAX())
         a.mov_ri32_sext(REG_RDX(), 1)
         a.mov_rm64(REG_R8(), REG_RBP(), -16)
         a.mov_rm64(REG_R9(), REG_RBP(), -8)
         a.call_rip_iat(self.imp_fread)
+        a.mov_mr64(REG_RBP(), -32, REG_RAX()) // nread
         a.mov_rm64(REG_RCX(), REG_RBP(), -8)
         a.call_rip_iat(self.imp_fclose)
         a.mov_rm64(REG_RAX(), REG_RBP(), -24)
-        a.mov_rm64(REG_RCX(), REG_RBP(), -16)
+        a.mov_rm64(REG_RCX(), REG_RBP(), -32)
         a.add_rr(REG_RCX(), REG_RAX())
         a.mov_ri32_sext(REG_RDX(), 0)
         a.mov_mr8(REG_RCX(), 0, REG_RDX())
         self.end_fn()
+        a.bind_label(l_fr_err)
+        a.mov_rm64(REG_RCX(), REG_RBP(), -8)
+        a.call_rip_iat(self.imp_fclose)
         a.bind_label(l_fr_f)
         a.lea_rip_rdata(REG_RAX(), self.s_empty)
         self.end_fn()
 
         // File.write_string(rcx = path, rdx = text) -> 0/1
         self.begin_fn("__rt_file_write", 64)
+        let l_fw_f = a.new_label()
+        a.test_rr(REG_RCX(), REG_RCX())
+        a.jcc_rel32(CC_E(), l_fw_f)
         a.mov_mr64(REG_RBP(), -8, REG_RDX())
         a.lea_rip_rdata(REG_RDX(), self.s_wb)
         a.call_rip_iat(self.imp_fopen)
-        let l_fw_f = a.new_label()
         a.test_rr(REG_RAX(), REG_RAX())
         a.jcc_rel32(CC_E(), l_fw_f)
         a.mov_mr64(REG_RBP(), -16, REG_RAX())
         a.mov_rm64(REG_RCX(), REG_RBP(), -8)
         a.call_rel32(self.lbl("__rt_str_len"))
-        a.mov_rr(REG_R8(), REG_RAX())
+        a.mov_mr64(REG_RBP(), -24, REG_RAX()) // len
+        let l_fw_empty = a.new_label()
+        a.cmp_ri32(REG_RAX(), 0)
+        a.jcc_rel32(CC_LE(), l_fw_empty)
         a.mov_rm64(REG_RCX(), REG_RBP(), -8)
         a.mov_ri32_sext(REG_RDX(), 1)
+        a.mov_rm64(REG_R8(), REG_RBP(), -24)
         a.mov_rm64(REG_R9(), REG_RBP(), -16)
         a.call_rip_iat(self.imp_fwrite)
+        a.mov_rm64(REG_RCX(), REG_RBP(), -24)
+        a.cmp_rr(REG_RAX(), REG_RCX())
+        let l_fw_err = a.new_label()
+        a.jcc_rel32(CC_NE(), l_fw_err)
+        a.bind_label(l_fw_empty)
         a.mov_rm64(REG_RCX(), REG_RBP(), -16)
         a.call_rip_iat(self.imp_fclose)
         a.mov_ri32_sext(REG_RAX(), 1)
         self.end_fn()
+        a.bind_label(l_fw_err)
+        a.mov_rm64(REG_RCX(), REG_RBP(), -16)
+        a.call_rip_iat(self.imp_fclose)
         a.bind_label(l_fw_f)
         a.mov_ri32_sext(REG_RAX(), 0)
         self.end_fn()
 
         // File.remove(rcx = path) -> bool
         self.begin_fn("__rt_file_remove", 48)
+        let l_rm_fail = a.new_label()
+        let l_rm_done = a.new_label()
+        a.test_rr(REG_RCX(), REG_RCX())
+        a.jcc_rel32(CC_E(), l_rm_fail)
         a.call_rip_iat(self.imp_delete_file)
-        a.cmp_ri32(REG_RAX(), 0)
-        a.setcc_u8(CC_NE(), REG_RAX())
+        a.test_rr(REG_RAX(), REG_RAX())
+        a.jcc_rel32(CC_E(), l_rm_fail)
+        a.mov_ri32_sext(REG_RAX(), 1)
+        a.jmp_rel32(l_rm_done)
+        a.bind_label(l_rm_fail)
+        a.mov_ri32_sext(REG_RAX(), 0)
+        a.bind_label(l_rm_done)
         self.end_fn()
 
         // File.copy(rcx = src, rdx = dst) -> bool
         self.begin_fn("__rt_file_copy", 48)
+        let l_cp_fail = a.new_label()
+        let l_cp_done = a.new_label()
+        a.test_rr(REG_RCX(), REG_RCX())
+        a.jcc_rel32(CC_E(), l_cp_fail)
+        a.test_rr(REG_RDX(), REG_RDX())
+        a.jcc_rel32(CC_E(), l_cp_fail)
         a.mov_ri32_sext(REG_R8(), 0)
         a.call_rip_iat(self.imp_copy_file)
-        a.cmp_ri32(REG_RAX(), 0)
-        a.setcc_u8(CC_NE(), REG_RAX())
+        a.test_rr(REG_RAX(), REG_RAX())
+        a.jcc_rel32(CC_E(), l_cp_fail)
+        a.mov_ri32_sext(REG_RAX(), 1)
+        a.jmp_rel32(l_cp_done)
+        a.bind_label(l_cp_fail)
+        a.mov_ri32_sext(REG_RAX(), 0)
+        a.bind_label(l_cp_done)
         self.end_fn()
 
         // Directory.create(rcx = path) -> bool
         self.begin_fn("__rt_dir_create", 48)
+        let l_dc_fail = a.new_label()
+        let l_dc_ok = a.new_label()
+        let l_dc_done = a.new_label()
+        a.test_rr(REG_RCX(), REG_RCX())
+        a.jcc_rel32(CC_E(), l_dc_fail)
+        a.mov_mr64(REG_RBP(), -8, REG_RCX())
+        a.call_rel32(self.lbl("__rt_dir_exists"))
+        a.test_rr(REG_RAX(), REG_RAX())
+        a.jcc_rel32(CC_NE(), l_dc_ok)
+        a.mov_rm64(REG_RCX(), REG_RBP(), -8)
         a.mov_ri32_sext(REG_RDX(), 0)
         a.call_rip_iat(self.imp_create_dir)
-        a.cmp_ri32(REG_RAX(), 0)
-        a.setcc_u8(CC_NE(), REG_RAX())
+        a.test_rr(REG_RAX(), REG_RAX())
+        a.jcc_rel32(CC_NE(), l_dc_ok)
+        a.mov_rm64(REG_RCX(), REG_RBP(), -8)
+        a.call_rel32(self.lbl("__rt_dir_exists"))
+        a.test_rr(REG_RAX(), REG_RAX())
+        a.jcc_rel32(CC_NE(), l_dc_ok)
+        a.bind_label(l_dc_fail)
+        a.mov_ri32_sext(REG_RAX(), 0)
+        a.jmp_rel32(l_dc_done)
+        a.bind_label(l_dc_ok)
+        a.mov_ri32_sext(REG_RAX(), 1)
+        a.bind_label(l_dc_done)
+        self.end_fn()
+
+        // Directory.remove(rcx = path) -> bool
+        self.begin_fn("__rt_dir_remove", 48)
+        let l_dr_fail = a.new_label()
+        let l_dr_done = a.new_label()
+        a.test_rr(REG_RCX(), REG_RCX())
+        a.jcc_rel32(CC_E(), l_dr_fail)
+        a.call_rip_iat(self.imp_remove_dir)
+        a.test_rr(REG_RAX(), REG_RAX())
+        a.jcc_rel32(CC_E(), l_dr_fail)
+        a.mov_ri32_sext(REG_RAX(), 1)
+        a.jmp_rel32(l_dr_done)
+        a.bind_label(l_dr_fail)
+        a.mov_ri32_sext(REG_RAX(), 0)
+        a.bind_label(l_dr_done)
         self.end_fn()
 
         // Env.get(rcx = key) -> str
         self.begin_fn("__rt_env_get", 48)
+        let l_eg_ok = a.new_label()
+        a.test_rr(REG_RCX(), REG_RCX())
+        a.jcc_rel32(CC_NE(), l_eg_ok)
+        a.lea_rip_rdata(REG_RAX(), self.s_empty)
+        self.end_fn()
+        a.bind_label(l_eg_ok)
         a.lea_rip_data(REG_RDX(), self.env_buf_off)
         a.mov_ri32_sext(REG_R8(), 4096)
         a.call_rip_iat(self.imp_get_env)
@@ -1559,6 +2483,29 @@ pub class NativeRt {
         self.end_fn()
         a.bind_label(l_eg)
         a.lea_rip_data(REG_RAX(), self.env_buf_off)
+        self.end_fn()
+
+        // Env.set(rcx = key, rdx = val) -> bool
+        self.begin_fn("__rt_env_set", 48)
+        let l_es_key_ok = a.new_label()
+        a.test_rr(REG_RCX(), REG_RCX())
+        a.jcc_rel32(CC_NE(), l_es_key_ok)
+        a.mov_ri32_sext(REG_RAX(), 0)
+        self.end_fn()
+        a.bind_label(l_es_key_ok)
+        let l_es_val_ok = a.new_label()
+        a.test_rr(REG_RDX(), REG_RDX())
+        a.jcc_rel32(CC_NE(), l_es_val_ok)
+        a.lea_rip_rdata(REG_RDX(), self.s_empty)
+        a.bind_label(l_es_val_ok)
+        a.call_rip_iat(self.imp_set_env)
+        a.cmp_ri32(REG_RAX(), 0)
+        a.setcc_u8(CC_NE(), REG_RAX())
+        self.end_fn()
+
+        // arx_env_set alias
+        self.begin_fn("arx_env_set", 48)
+        a.call_rel32(self.lbl("__rt_env_set"))
         self.end_fn()
 
         // Env.cwd() -> str
@@ -1611,6 +2558,24 @@ pub class NativeRt {
         a.mov_mr64(REG_RBP(), -32, REG_RAX()) // si
         a.mov_ri32_sext(REG_RCX(), 104)
         a.mov_mr64(REG_RAX(), 0, REG_RCX())
+        // si->dwFlags = STARTF_USESTDHANDLES (256) at offset 60
+        a.mov_ri32_sext(REG_RCX(), 256)
+        a.mov_mr32(REG_RAX(), 60, REG_RCX())
+        // si->hStdInput = GetStdHandle(-10) at offset 80
+        a.mov_ri32_sext(REG_RCX(), -10)
+        a.call_rip_iat(self.imp_get_std_handle)
+        a.mov_rm64(REG_RCX(), REG_RBP(), -32)
+        a.mov_mr64(REG_RCX(), 80, REG_RAX())
+        // si->hStdOutput = GetStdHandle(-11) at offset 88
+        a.mov_ri32_sext(REG_RCX(), -11)
+        a.call_rip_iat(self.imp_get_std_handle)
+        a.mov_rm64(REG_RCX(), REG_RBP(), -32)
+        a.mov_mr64(REG_RCX(), 88, REG_RAX())
+        // si->hStdError = GetStdHandle(-12) at offset 96
+        a.mov_ri32_sext(REG_RCX(), -12)
+        a.call_rip_iat(self.imp_get_std_handle)
+        a.mov_rm64(REG_RCX(), REG_RBP(), -32)
+        a.mov_mr64(REG_RCX(), 96, REG_RAX())
         // pi = calloc(1, 32) ([24] also holds exit_code dword)
         a.mov_ri32_sext(REG_RCX(), 1)
         a.mov_ri32_sext(REG_RDX(), 32)
@@ -1651,6 +2616,8 @@ pub class NativeRt {
         // exit_code = *(i32*)(pi + 24) zero-extended
         a.mov_rm64(REG_RAX(), REG_RBP(), -40)
         a.mov_rm64(REG_RAX(), REG_RAX(), 24)
+        a.mov_ri64(REG_RDX(), 4294967295)
+        a.and_rr(REG_RAX(), REG_RDX())
         a.mov_mr64(REG_RBP(), -48, REG_RAX())
         // CloseHandle(hProcess), CloseHandle(hThread), free(si), free(pi)
         a.mov_rm64(REG_RAX(), REG_RBP(), -40)
@@ -1682,9 +2649,16 @@ pub class NativeRt {
     }
 
     priv fn emit_env_args() {
-        let a = self.asm
+        let a = self.asmb
         // Parse GetCommandLineA() handling "..." quoted tokens and whitespace
         self.begin_fn("__rt_env_args", 80)
+        let l_need_parse = a.new_label()
+        a.mov_rm64_rip_data(REG_RAX(), self.args_list_off)
+        a.test_rr(REG_RAX(), REG_RAX())
+        a.jcc_rel32(CC_E(), l_need_parse)
+        self.end_fn()
+
+        a.bind_label(l_need_parse)
         a.call_rel32(self.lbl("__rt_list_new"))
         a.mov_mr64(REG_RBP(), -8, REG_RAX()) // list
         a.call_rip_iat(self.imp_get_cmd)
@@ -1756,6 +2730,7 @@ pub class NativeRt {
         a.jmp_rel32(l_al)
         a.bind_label(l_ad)
         a.mov_rm64(REG_RAX(), REG_RBP(), -8)
+        a.mov_mr64_rip_data(self.args_list_off, REG_RAX())
         self.end_fn()
 
         // Env.arg_count() -> i64
@@ -1763,6 +2738,20 @@ pub class NativeRt {
         a.call_rel32(self.lbl("__rt_env_args"))
         a.mov_rr(REG_RCX(), REG_RAX())
         a.call_rel32(self.lbl("__rt_list_len"))
+        self.end_fn()
+
+        // Env.arg(rcx = index: i64) -> str
+        self.begin_fn("__rt_env_arg", 48)
+        a.mov_mr64(REG_RBP(), -8, REG_RCX())
+        a.call_rel32(self.lbl("__rt_env_args"))
+        a.mov_rr(REG_RCX(), REG_RAX())
+        a.mov_rm64(REG_RDX(), REG_RBP(), -8)
+        a.call_rel32(self.lbl("__rt_list_get"))
+        self.end_fn()
+
+        // Arx_Env_arg alias
+        self.begin_fn("Arx_Env_arg", 48)
+        a.jmp_rel32(self.lbl("__rt_env_arg"))
         self.end_fn()
 
         // PRNG runtime implementations
@@ -1867,6 +2856,26 @@ pub class NativeRt {
         a.call_rip_iat(self.imp_sleep)
         self.end_fn()
 
+        // arx_sleep_ms(rcx = ms: i64) -> void
+        self.begin_fn("arx_sleep_ms", 48)
+        a.call_rip_iat(self.imp_sleep)
+        self.end_fn()
+
+        // __rt_time_sleep_ms(rcx = ms: i64) -> void
+        self.begin_fn("__rt_time_sleep_ms", 48)
+        a.call_rip_iat(self.imp_sleep)
+        self.end_fn()
+
+        // ticks() -> i64 (GetTickCount64)
+        self.begin_fn("ticks", 48)
+        a.call_rip_iat(self.imp_tick)
+        self.end_fn()
+
+        // __rt_time_ticks() -> i64
+        self.begin_fn("__rt_time_ticks", 48)
+        a.call_rip_iat(self.imp_tick)
+        self.end_fn()
+
         // Math builtin wrappers with safe Win64 shadow stack frames
         // __rt_math_sqrt(rcx = x bitpattern) -> rax (result bitpattern)
         self.begin_fn("__rt_math_sqrt", 48)
@@ -1932,6 +2941,115 @@ pub class NativeRt {
         a.movq_xmm_r(0, REG_RDX())
         a.call_rip_iat(self.imp_pow)
         a.movq_r_xmm(REG_RAX(), 0)
+        self.end_fn()
+    }
+
+    priv fn emit_assert() {
+        let a = self.asmb
+        // __rt_assert(rcx = cond: i64)
+        self.begin_fn("__rt_assert", 48)
+        let l_ok = a.new_label()
+        a.test_rr(REG_RCX(), REG_RCX())
+        a.jcc_rel32(CC_NE(), l_ok)
+        a.lea_rip_rdata(REG_RCX(), self.s_assert_failed)
+        a.call_rel32(self.lbl("__rt_eprintln_str"))
+        a.mov_ri32_sext(REG_RCX(), 1)
+        a.call_rip_iat(self.imp_exit_process)
+        a.bind_label(l_ok)
+        self.end_fn()
+
+        // label alias
+        self.begin_fn("assert", 48)
+        a.jmp_rel32(self.lbl("__rt_assert"))
+        self.end_fn()
+    }
+
+    priv fn emit_exceptions() {
+        let a = self.asmb
+        // __rt_try_push() -> rax: 0 (initial) or 1 (on exception throw)
+        self.begin_fn("__rt_try_push", 32)
+        // RAX = exc_depth
+        a.mov_rm64_rip_data(REG_RAX(), self.exc_depth_off)
+        // RDX = depth * 64
+        a.mov_rr(REG_RDX(), REG_RAX())
+        a.add_rr(REG_RDX(), REG_RDX())
+        a.add_rr(REG_RDX(), REG_RDX())
+        a.add_rr(REG_RDX(), REG_RDX())
+        a.add_rr(REG_RDX(), REG_RDX())
+        a.add_rr(REG_RDX(), REG_RDX())
+        a.add_rr(REG_RDX(), REG_RDX())
+        // RCX = jmp_stack_off + RDX
+        a.lea_rip_data(REG_RCX(), self.jmp_stack_off)
+        a.add_rr(REG_RCX(), REG_RDX())
+        // Save caller RSP and RBP
+        a.mov_rm64(REG_RDX(), REG_RBP(), 0)
+        a.mov_mr64(REG_RCX(), 8, REG_RDX())
+        a.lea_rm(REG_RDX(), REG_RBP(), 16)
+        a.mov_mr64(REG_RCX(), 0, REG_RDX())
+        a.mov_mr64(REG_RCX(), 16, REG_RBX())
+        a.mov_mr64(REG_RCX(), 24, REG_R12())
+        a.mov_mr64(REG_RCX(), 32, REG_R13())
+        a.mov_mr64(REG_RCX(), 40, REG_R14())
+        a.mov_mr64(REG_RCX(), 48, REG_R15())
+        a.mov_rm64(REG_RDX(), REG_RBP(), 8)
+        a.mov_mr64(REG_RCX(), 56, REG_RDX())
+        // depth = depth + 1
+        a.add_ri32(REG_RAX(), 1)
+        a.mov_mr64_rip_data(self.exc_depth_off, REG_RAX())
+        a.mov_ri32_sext(REG_RAX(), 0)
+        self.end_fn()
+
+        // __rt_try_pop()
+        self.begin_fn("__rt_try_pop", 32)
+        a.mov_rm64_rip_data(REG_RAX(), self.exc_depth_off)
+        let l_pop_ret = a.new_label()
+        a.test_rr(REG_RAX(), REG_RAX())
+        a.jcc_rel32(CC_E(), l_pop_ret)
+        a.sub_ri32(REG_RAX(), 1)
+        a.mov_mr64_rip_data(self.exc_depth_off, REG_RAX())
+        a.bind_label(l_pop_ret)
+        self.end_fn()
+
+        // __rt_throw(rcx = msg_ptr: str)
+        self.begin_fn("__rt_throw", 48)
+        a.mov_mr64_rip_data(self.exc_msg_off, REG_RCX())
+        a.mov_rm64_rip_data(REG_RAX(), self.exc_depth_off)
+        let l_uncaught = a.new_label()
+        a.test_rr(REG_RAX(), REG_RAX())
+        a.jcc_rel32(CC_E(), l_uncaught)
+        // depth = depth - 1
+        a.sub_ri32(REG_RAX(), 1)
+        a.mov_mr64_rip_data(self.exc_depth_off, REG_RAX())
+        // RDX = depth * 64
+        a.mov_rr(REG_RDX(), REG_RAX())
+        a.add_rr(REG_RDX(), REG_RDX())
+        a.add_rr(REG_RDX(), REG_RDX())
+        a.add_rr(REG_RDX(), REG_RDX())
+        a.add_rr(REG_RDX(), REG_RDX())
+        a.add_rr(REG_RDX(), REG_RDX())
+        a.add_rr(REG_RDX(), REG_RDX())
+        a.lea_rip_data(REG_RCX(), self.jmp_stack_off)
+        a.add_rr(REG_RCX(), REG_RDX())
+        // Restore registers
+        a.mov_rm64(REG_RSP(), REG_RCX(), 0)
+        a.mov_rm64(REG_RBP(), REG_RCX(), 8)
+        a.mov_rm64(REG_RBX(), REG_RCX(), 16)
+        a.mov_rm64(REG_R12(), REG_RCX(), 24)
+        a.mov_rm64(REG_R13(), REG_RCX(), 32)
+        a.mov_rm64(REG_R14(), REG_RCX(), 40)
+        a.mov_rm64(REG_R15(), REG_RCX(), 48)
+        a.mov_rm64(REG_RDX(), REG_RCX(), 56)
+        a.mov_ri32_sext(REG_RAX(), 1)
+        a.push_r(REG_RDX())
+        a.ret()
+
+        a.bind_label(l_uncaught)
+        a.lea_rip_rdata(REG_RCX(), self.s_uncaught_err)
+        a.call_rel32(self.lbl("__rt_eprint_str"))
+        a.mov_rm64_rip_data(REG_RCX(), self.exc_msg_off)
+        a.call_rel32(self.lbl("__rt_eprintln_str"))
+        a.mov_ri32_sext(REG_RCX(), 1)
+        a.call_rip_iat(self.imp_exit_process)
         self.end_fn()
     }
 }

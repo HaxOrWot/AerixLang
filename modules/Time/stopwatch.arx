@@ -64,7 +64,14 @@ pub class Stopwatch {
         if self.running {
             return ticks() - self.start_time
         }
-        return self.stop_time - self.start_time
+        if self.start_time == 0 {
+            return 0
+        }
+        let d = self.stop_time - self.start_time
+        if d < 0 {
+            return 0
+        }
+        return d
     }
 
     /// Returns elapsed time in fractional seconds (e.g. 1.250).

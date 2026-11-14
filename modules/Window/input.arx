@@ -17,7 +17,8 @@
 //   println("Cursor: " + (mouse.f0 as str) + ", " + (mouse.f1 as str));
 // ==============================================================================
 
-cextern fn arx_gui_is_key_down(vkey: i64) -> bool;
+#[extern("user32.dll", "GetAsyncKeyState")]
+pub fn arx_gui_is_key_down(vkey: i64) -> i16;
 
 #[extern("user32.dll", "SetCursorPos")]
 pub fn setCursorPos(x: i64, y: i64) -> i32;
@@ -33,7 +34,8 @@ pub fn getCursorPos(lp_point: str) -> i32;
 /// Returns:
 ///   `true` if currently pressed down, `false` otherwise.
 pub fn isKeyDown(vk_code: i64) -> bool {
-    return arx_gui_is_key_down(vk_code);
+    let state = (arx_gui_is_key_down(vk_code) as i64);
+    return (state & 32768) != 0;
 }
 
 /// Moves the mouse cursor to the specified absolute screen coordinates.
@@ -46,14 +48,21 @@ pub fn setMousePosition(x: i64, y: i64) -> bool {
 }
 
 /// Retrieves the current screen coordinates of the mouse cursor as a `(x, y)` tuple.
+/// Correctly handles negative virtual desktop coordinates on multi-monitor configurations.
 pub fn getMousePosition() -> (i64, i64) {
     let buf = " ".repeat(8);
     let ok = getCursorPos(buf);
     if ok == 0 {
         return (0, 0);
     }
-    let x = (buf.byte_at(0) & 255) | ((buf.byte_at(1) & 255) << 8) | ((buf.byte_at(2) & 255) << 16) | ((buf.byte_at(3) & 255) << 24);
-    let y = (buf.byte_at(4) & 255) | ((buf.byte_at(5) & 255) << 8) | ((buf.byte_at(6) & 255) << 16) | ((buf.byte_at(7) & 255) << 24);
+    mut x = (buf.byte_at(0) & 255) | ((buf.byte_at(1) & 255) << 8) | ((buf.byte_at(2) & 255) << 16) | ((buf.byte_at(3) & 255) << 24);
+    if x >= 2147483648 {
+        x = x - 4294967296;
+    }
+    mut y = (buf.byte_at(4) & 255) | ((buf.byte_at(5) & 255) << 8) | ((buf.byte_at(6) & 255) << 16) | ((buf.byte_at(7) & 255) << 24);
+    if y >= 2147483648 {
+        y = y - 4294967296;
+    }
     return (x, y);
 }
 

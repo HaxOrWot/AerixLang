@@ -3,6 +3,7 @@
 
 import "./tokens.arx"
 
+// Holds the flat array representation of scanned tokens for fast, cache-friendly indexing.
 pub class TokenStream {
     pub kinds: List<i64>
     pub vals: List<str>
@@ -21,6 +22,8 @@ pub class TokenStream {
     }
 }
 
+// Lexical analyzer that scans source characters into tokens, tracks source coordinates,
+// automatically inserts statement-terminating newlines, and accumulates syntax diagnostics.
 pub class Lexer {
     pub src: str
     pub filename: str
@@ -48,6 +51,7 @@ pub class Lexer {
     pub err_helps: List<str>
     pub err_count: i64
 
+    // Initializes a new Lexer instance for the given source string and filename.
     init(source: str, filename: str) {
         self.src = source
         self.filename = filename
@@ -149,6 +153,7 @@ pub class Lexer {
         return self.kinds.get(self.count - 1)
     }
 
+    // Skips nested block comments (/* ... */) and records trivia if configured.
     priv fn skip_block_comment(start_line: i64, start_col: i64) {
         self.advance_byte()
         mut seg_line = start_line
@@ -186,6 +191,7 @@ pub class Lexer {
         self.push_comment(seg_line, seg_col, self.col - seg_col)
     }
 
+    // Scans an alphanumeric identifier or keyword.
     priv fn scan_identifier(start_pos: i64, start_line: i64, start_col: i64) {
         while self.pos < self.length && is_alnum_byte(self.src.byte_at(self.pos)) {
             self.advance_byte()
@@ -195,6 +201,7 @@ pub class Lexer {
         self.push_tok(kind, word, start_line, start_col)
     }
 
+    // Scans integer and floating-point literals, including hex, binary, and octal bases.
     priv fn scan_number(first_b: i64, start_pos: i64, start_line: i64, start_col: i64) {
         // Hex / Binary / Octal
         if first_b == 48 && self.pos < self.length {
@@ -282,6 +289,7 @@ pub class Lexer {
         }
     }
 
+    // Scans double-quoted string literals, escape sequences, and interpolated expressions.
     priv fn scan_string(start_line: i64, start_col: i64) {
         let bb = ByteBuffer()
         mut has_interp = false
@@ -337,13 +345,14 @@ pub class Lexer {
         }
     }
 
+    // Scans single-quoted character literals or loop lifetime labels.
     priv fn scan_char(start_line: i64, start_col: i64) {
         if self.pos >= self.length || self.peek_at(0) == 10 {
             if self.recover_mode {
                 self.record_lex_err_full(start_line, start_col, 1, "E0002", "unterminated character literal", "close the character literal with a matching '''")
                 return
             }
-            eprintln("error[E0002]: unterminated char literal at " + self.filename + ":" + start_line + ":" + start_col)
+            eprintln("error[E0002]: unterminated character literal at " + self.filename + ":" + start_line + ":" + start_col)
             Env.exit(1)
         }
         // Check lifetime/loop label: 'ident (not followed by ')
@@ -362,7 +371,7 @@ pub class Lexer {
                 self.record_lex_err_full(start_line, start_col, 2, "E0003", "empty character literal", "character literals must contain one character or escape sequence")
                 return
             }
-            eprintln("error[E0003]: empty char literal at " + self.filename + ":" + start_line + ":" + start_col)
+            eprintln("error[E0003]: empty character literal at " + self.filename + ":" + start_line + ":" + start_col)
             Env.exit(1)
         }
         if ch == 92 {
@@ -376,7 +385,7 @@ pub class Lexer {
                 self.record_lex_err_full(start_line, start_col, span, "E0002", "unterminated character literal", "close the character literal with a matching '''")
                 return
             }
-            eprintln("error[E0002]: unterminated char literal at " + self.filename + ":" + start_line + ":" + start_col)
+            eprintln("error[E0002]: unterminated character literal at " + self.filename + ":" + start_line + ":" + start_col)
             Env.exit(1)
         }
         let bb = ByteBuffer()
@@ -386,6 +395,7 @@ pub class Lexer {
         self.push_tok(TK_CHAR(), s, start_line, start_col)
     }
 
+    // Performs lexical analysis over the input source, returning a completed TokenStream.
     pub fn tokenize() -> TokenStream {
         if self.length >= 3 && self.src.byte_at(0) == 239 && self.src.byte_at(1) == 187 && self.src.byte_at(2) == 191 {
             self.pos = 3
@@ -511,7 +521,7 @@ pub class Lexer {
                 if self.recover_mode {
                     self.record_lex_err_full(sl, sc, 1, "E0005", "unexpected character '" + uch + "' (ASCII " + ch + ")", "remove this unexpected character or put it inside a string literal")
                 } else {
-                    eprintln("error[E0005]: unexpected character '" + uch + "' at " + self.filename + ":" + sl + ":" + sc)
+                    eprintln("error[E0005]: unexpected character '" + uch + "' (ASCII " + ch + ") at " + self.filename + ":" + sl + ":" + sc)
                     Env.exit(1)
                 }
             }

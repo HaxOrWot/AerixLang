@@ -57,12 +57,16 @@ pub class HttpResponse {
         let lines = header_section.split("\r\n")
         if lines.len() > 0 {
             let status_line = lines.get(0)
-            let parts = status_line.split(" ")
-            if parts.len() >= 2 {
-                self.statusCode = parts.get(1).to_i64()
-            }
-            if parts.len() >= 3 {
-                self.statusText = parts.get(2)
+            let first_sp = status_line.find(" ")
+            if first_sp >= 0 {
+                let rest = status_line.slice(first_sp + 1, status_line.len())
+                let sec_sp = rest.find(" ")
+                if sec_sp >= 0 {
+                    self.statusCode = rest.slice(0, sec_sp).to_i64()
+                    self.statusText = rest.slice(sec_sp + 1, rest.len())
+                } else {
+                    self.statusCode = rest.to_i64()
+                }
             }
         }
     }

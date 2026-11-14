@@ -17,6 +17,8 @@ pub fn CK_STR_METHOD() -> i64 { return 7 }
 pub fn CK_ARR_METHOD() -> i64 { return 8 }
 pub fn CK_NEW() -> i64 { return 9 }
 
+// Semantic analysis pass that performs symbol resolution, type checking,
+// generic instantiation tracking, and validation diagnostics on the AST.
 pub class Analyzer {
     // Frozen AST arena copied from Parser
     pub nk: List<i64>
@@ -835,7 +837,7 @@ pub class Analyzer {
             if ref_min == 1 && ref_max == 1 { pl_s = "" }
             self.add_diag(nid, span, "E0203", kind_lbl + " '" + label + "' expects " + exp_s + " argument" + pl_s + ", but " + argc + " were supplied", "pass " + exp_s + " argument" + pl_s + " to '" + label + "'", 1)
         } else {
-            self.add_diag(nid, span, "E0203", "no overload of " + kind_lbl + " '" + label + "' accepts " + argc + " argument(s)", "check the parameter count of the available '" + label + "' overloads", 1)
+            self.add_diag(nid, span, "E0203", "no overload of " + kind_lbl + " '" + label + "' accepts " + argc + " arguments", "check the argument types and parameter counts of available '" + label + "' overloads", 1)
         }
     }
 
@@ -1457,7 +1459,11 @@ pub class Analyzer {
             }
             if !self.unresolved_nodes.has_key(lhs_id) && !self.unresolved_nodes.has_key(rhs_id) {
                 if !self.types_compatible(lt, rt) {
-                    self.add_diag(rhs_id, 1, "E0205", "mismatched types in assignment: expected '" + lt + "', found '" + rt + "'", "ensure the assigned expression matches type '" + lt + "'", 1)
+                    mut assign_msg = "mismatched types in assignment: expected '" + lt + "', found '" + rt + "'"
+                    if root_name != "" {
+                        assign_msg = "mismatched types in assignment to '" + root_name + "': expected '" + lt + "', found '" + rt + "'"
+                    }
+                    self.add_diag(rhs_id, 1, "E0205", assign_msg, "ensure the assigned expression matches type '" + lt + "'", 1)
                 }
             }
             self.node_types.set(nid, lt)
@@ -1876,7 +1882,8 @@ pub class Analyzer {
             let lhs = self.la.get(nid)
             let mname = self.sa.get(nid)
             let full_p = self.get_member_path(nid)
-            if full_p != "" && self.is_module_path(full_p) {
+            let root_id = self.get_root_ident(nid)
+            if (root_id == "" || self.scope_lookup(root_id) == "") && full_p != "" && self.is_module_path(full_p) {
                 self.node_types.set(nid, "module")
                 return "module"
             }
@@ -1899,7 +1906,10 @@ pub class Analyzer {
 
             mut is_mod_access = false
             if lpath != "" {
-                if self.is_module_path(lpath) {
+                let root_lhs = self.get_root_ident(lhs)
+                if root_lhs != "" && self.scope_lookup(root_lhs) != "" {
+                    // Local variable in scope, not a module access
+                } else if self.is_module_path(lpath) {
                     is_mod_access = true
                 } else if self.nk.get(lhs) == NK_IDENT() {
                     let lname = self.sa.get(lhs)
@@ -2044,8 +2054,11 @@ pub class Analyzer {
     }
 
     priv fn analyze_call_arg(arg_id: i64) -> str {
+        if arg_id < 0 { return "i64" }
         if self.nk.get(arg_id) == NK_NAMED_ARG() {
-            let vt = self.analyze_expr(self.la.get(arg_id))
+            let val_node = self.la.get(arg_id)
+            if val_node < 0 { return "i64" }
+            let vt = self.analyze_expr(val_node)
             self.node_types.set(arg_id, vt)
             return vt
         }
@@ -2054,6 +2067,10 @@ pub class Analyzer {
 
     priv fn analyze_call(nid: i64) -> str {
         let callee = self.la.get(nid)
+        if callee < 0 {
+            self.node_types.set(nid, "i64")
+            return "i64"
+        }
         let arg_types = List<str>()
         let ac = self.child_count(nid)
         mut i = 0
@@ -2163,7 +2180,7 @@ pub class Analyzer {
                 if self.sig_by_key.has_key("ctor::" + name) {
                     self.check_call_arity(callee, "ctor::" + name, name, ac, "constructor")
                 } else if ac > 0 {
-                    self.add_diag(callee, name.len(), "E0203", "class '" + name + "' has default 0-argument init, but " + ac + " argument(s) were supplied", "remove the extra constructor arguments or add an init(...) constructor to '" + name + "'", 1)
+                    self.add_diag(callee, name.len(), "E0203", "class '" + name + "' has default 0-argument constructor, but " + ac + " arguments were supplied", "remove the extra constructor arguments or add an init(...) constructor to '" + name + "'", 1)
                 }
                 let sig_i = self.find_best_overload("ctor::" + name, arg_types, ac)
                 self.call_kinds.set(nid, CK_CTOR())
@@ -2252,7 +2269,10 @@ pub class Analyzer {
             // Module-qualified function or constructor call: Mod.func(args) or Mod.Sub.func(args) or Alias.func(args)
             mut is_mod_call = false
             if lpath != "" {
-                if self.is_module_path(lpath) {
+                let root_lhs = self.get_root_ident(lhs)
+                if root_lhs != "" && self.scope_lookup(root_lhs) != "" {
+                    // Local variable in scope, not a module call!
+                } else if self.is_module_path(lpath) {
                     is_mod_call = true
                 } else if self.nk.get(lhs) == NK_IDENT() {
                     let lname = self.sa.get(lhs)
@@ -2302,6 +2322,16 @@ pub class Analyzer {
                         self.node_types.set(nid, rt)
                         return rt
                     }
+                }
+                if self.is_module_path(lpath) {
+                    let sug = self.suggest_ident(mname)
+                    mut hmsg = "verify module functions or spelling"
+                    if sug != "" { hmsg = "did you mean '" + sug + "'?" }
+                    self.add_diag(callee, mname.len(), "E0202", "cannot find function '" + mname + "' in module '" + lpath + "'", hmsg, 1)
+                    self.call_kinds.set(nid, CK_NORMAL())
+                    self.call_targets.set(nid, mname)
+                    self.node_types.set(nid, "i64")
+                    return "i64"
                 }
             }
 

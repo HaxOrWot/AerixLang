@@ -18,16 +18,36 @@ pub fn REG_R14() -> i64 { return 14 }
 pub fn REG_R15() -> i64 { return 15 }
 
 // Condition codes for Jcc (0x0F <cc>) and SETcc (0x0F <cc + 0x10>)
+pub fn CC_O() -> i64 { return 0x80 }
+pub fn CC_NO() -> i64 { return 0x81 }
 pub fn CC_B() -> i64 { return 0x82 }
+pub fn CC_C() -> i64 { return 0x82 }
+pub fn CC_NAE() -> i64 { return 0x82 }
 pub fn CC_AE() -> i64 { return 0x83 }
+pub fn CC_NB() -> i64 { return 0x83 }
+pub fn CC_NC() -> i64 { return 0x83 }
 pub fn CC_E() -> i64 { return 0x84 }
+pub fn CC_Z() -> i64 { return 0x84 }
 pub fn CC_NE() -> i64 { return 0x85 }
+pub fn CC_NZ() -> i64 { return 0x85 }
 pub fn CC_BE() -> i64 { return 0x86 }
+pub fn CC_NA() -> i64 { return 0x86 }
 pub fn CC_A() -> i64 { return 0x87 }
+pub fn CC_NBE() -> i64 { return 0x87 }
+pub fn CC_S() -> i64 { return 0x88 }
+pub fn CC_NS() -> i64 { return 0x89 }
+pub fn CC_P() -> i64 { return 0x8A }
+pub fn CC_PE() -> i64 { return 0x8A }
+pub fn CC_NP() -> i64 { return 0x8B }
+pub fn CC_PO() -> i64 { return 0x8B }
 pub fn CC_L() -> i64 { return 0x8C }
+pub fn CC_NGE() -> i64 { return 0x8C }
 pub fn CC_GE() -> i64 { return 0x8D }
+pub fn CC_NL() -> i64 { return 0x8D }
 pub fn CC_LE() -> i64 { return 0x8E }
+pub fn CC_NG() -> i64 { return 0x8E }
 pub fn CC_G() -> i64 { return 0x8F }
+pub fn CC_NLE() -> i64 { return 0x8F }
 
 // RIP fixup kinds resolved during PE linking
 pub fn FIX_IAT() -> i64 { return 1 }
@@ -63,15 +83,17 @@ pub class X64Asm {
     }
 
     pub fn emit_u16(v: i64) {
-        self.emit_u8(v & 255)
-        self.emit_u8((v >> 8) & 255)
+        let u = v & 0xFFFF
+        self.emit_u8(u & 255)
+        self.emit_u8((u >> 8) & 255)
     }
 
     pub fn emit_i32(v: i64) {
-        self.emit_u8(v & 255)
-        self.emit_u8((v >> 8) & 255)
-        self.emit_u8((v >> 16) & 255)
-        self.emit_u8((v >> 24) & 255)
+        let u = v & 0xFFFFFFFF
+        self.emit_u8(u & 255)
+        self.emit_u8((u >> 8) & 255)
+        self.emit_u8((u >> 16) & 255)
+        self.emit_u8((u >> 24) & 255)
     }
 
     pub fn emit_i64(v: i64) {
@@ -80,10 +102,11 @@ pub class X64Asm {
     }
 
     pub fn patch_i32(at: i64, v: i64) {
-        self.code.set(at, v & 255)
-        self.code.set(at + 1, (v >> 8) & 255)
-        self.code.set(at + 2, (v >> 16) & 255)
-        self.code.set(at + 3, (v >> 24) & 255)
+        let u = v & 0xFFFFFFFF
+        self.code.set(at, u & 255)
+        self.code.set(at + 1, (u >> 8) & 255)
+        self.code.set(at + 2, (u >> 16) & 255)
+        self.code.set(at + 3, (u >> 24) & 255)
     }
 
     priv fn rex(w: i64, r: i64, b: i64) {
@@ -120,10 +143,12 @@ pub class X64Asm {
         while i < n {
             let p = self.label_ref_pos.get(i)
             let lid = self.label_ref_id.get(i)
-            let target = self.label_addrs.get(lid)
-            if target >= 0 {
-                let rel = target - (p + 4)
-                self.patch_i32(p, rel)
+            if lid >= 0 && lid < self.label_addrs.len() {
+                let target = self.label_addrs.get(lid)
+                if target >= 0 {
+                    let rel = target - (p + 4)
+                    self.patch_i32(p, rel)
+                }
             }
             i = i + 1
         }
@@ -173,6 +198,14 @@ pub class X64Asm {
 
     pub fn mov_mr64(base: i64, disp: i64, src: i64) {
         self.rex(1, src, base)
+        self.emit_u8(0x89)
+        self.modrm(2, src, base)
+        if (base & 7) == 4 { self.emit_u8(0x24) }
+        self.emit_i32(disp)
+    }
+
+    pub fn mov_mr32(base: i64, disp: i64, src: i64) {
+        self.rex(0, src, base)
         self.emit_u8(0x89)
         self.modrm(2, src, base)
         if (base & 7) == 4 { self.emit_u8(0x24) }
@@ -282,7 +315,7 @@ pub class X64Asm {
 
     pub fn jcc_rel32(cc: i64, lbl: i64) {
         self.emit_u8(0x0F)
-        self.emit_u8(cc)
+        self.emit_u8(0x80 | (cc & 0x0F))
         self.label_ref_pos.push(self.pos())
         self.label_ref_id.push(lbl)
         self.emit_i32(0)
@@ -328,7 +361,7 @@ pub class X64Asm {
     pub fn setcc_u8(cc: i64, dst: i64) {
         self.rex(0, 0, dst)
         self.emit_u8(0x0F)
-        self.emit_u8(cc + 0x10)
+        self.emit_u8(0x90 | (cc & 0x0F))
         self.modrm(3, 0, dst)
         self.rex(1, dst, dst)
         self.emit_u8(0x0F)

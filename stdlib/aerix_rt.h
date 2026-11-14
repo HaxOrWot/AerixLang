@@ -49,7 +49,9 @@
     typedef pthread_t arx_thread_t;
 #endif
 
-// --- Fixed-Width Typedefs ---
+// ============================================================================
+// Fixed-Width Typedefs & Fundamental Aliases
+// ============================================================================
 typedef int8_t   i8;
 typedef int16_t  i16;
 typedef int32_t  i32;
@@ -63,7 +65,9 @@ typedef uint64_t u64;
 typedef float    f32;
 typedef double   f64;
 
-// --- Phase 25: 128-bit SIMD Vector Types ---
+// ============================================================================
+// 128-bit Hardware SIMD Vector Types
+// ============================================================================
 typedef float  f32x4 __attribute__ ((vector_size (16)));
 typedef double f64x2 __attribute__ ((vector_size (16)));
 
@@ -71,7 +75,9 @@ typedef size_t   usize;
 typedef intptr_t isize;
 typedef const char* str;
 
-// --- Runtime Panic Handler ---
+// ============================================================================
+// Runtime Diagnostics & Panic Handlers
+// ============================================================================
 static inline int arx_rt_use_color(void) {
     const char* nc = getenv("NO_COLOR");
     return !(nc && nc[0] != '\0');
@@ -98,7 +104,9 @@ static inline void arx_panic_bounds(const char* op, int64_t idx, size_t len, con
 #define ARX_ASSERT(cond, msg) \
     do { if (!(cond)) arx_panic(msg, __FILE__, __LINE__); } while(0)
 
-// --- Feature 1: Structured Exception Handling (SEH / setjmp-longjmp) ---
+// ============================================================================
+// Structured Exception Handling (SEH / setjmp-longjmp)
+// ============================================================================
 #if defined(_MSC_VER)
     #define ARX_THREAD_LOCAL __declspec(thread)
 #elif defined(__GNUC__) || defined(__clang__)
@@ -146,7 +154,9 @@ static inline void arx_throw(const char* msg, int code) {
     }
 }
 
-// --- Thread-Local O(1) String Bounds Cache ---
+// ============================================================================
+// Thread-Local O(1) String Bounds Cache
+// ============================================================================
 typedef struct {
     const char* ptr;
     size_t verified_len;
@@ -186,11 +196,13 @@ static inline Arx_StrCacheEntry* arx_str_cache_get(const char* s) {
     return &arx_str_cache[0];
 }
 
-// --- Safe Memory Allocators ---
+// ============================================================================
+// Memory Allocation & Deallocation
+// ============================================================================
 static inline void* arx_alloc(size_t bytes) {
     void* ptr = malloc(bytes);
     if (!ptr && bytes > 0) {
-        arx_panic("Out of memory allocation failure", __FILE__, __LINE__);
+        arx_panic("OutOfMemoryError: allocation failure in arx_alloc", __FILE__, __LINE__);
     }
     return ptr;
 }
@@ -202,7 +214,9 @@ static inline void arx_free(void* ptr) {
     }
 }
 
-// --- Feature 3: Slices & Sub-Array Range Views (&[T], &mut [T]) ---
+// ============================================================================
+// Slices & Sub-Array Range Views (&[T], &mut [T])
+// ============================================================================
 typedef struct {
     void* data;
     size_t len;
@@ -217,6 +231,7 @@ static inline Arx_Slice arx_slice_new(void* data, size_t len) {
 
 static inline Arx_Slice arx_slice_create(void* data, int64_t start, int64_t end, size_t elem_size, bool is_inclusive) {
     if (is_inclusive) end += 1;
+    // Bounds check: clamp start to non-negative, clamp end to start to avoid underflow
     if (start < 0) start = 0;
     if (end < start) end = start;
     Arx_Slice s;
@@ -227,6 +242,7 @@ static inline Arx_Slice arx_slice_create(void* data, int64_t start, int64_t end,
 
 static inline Arx_Slice arx_slice_sub(Arx_Slice s, int64_t start, int64_t end, size_t elem_size, bool is_inclusive) {
     if (is_inclusive) end += 1;
+    // Bounds check: clamp start to non-negative, clamp end to base slice length, ensure end >= start
     if (start < 0) start = 0;
     if ((size_t)end > s.len) end = (int64_t)s.len;
     if (end < start) end = start;
@@ -236,7 +252,9 @@ static inline Arx_Slice arx_slice_sub(Arx_Slice s, int64_t start, int64_t end, s
     return sub;
 }
 
-// --- High-Resolution Timer ---
+// ============================================================================
+// High-Resolution Monotonic Timer
+// ============================================================================
 static inline f64 arx_time_now(void) {
 #if defined(_WIN32) || defined(_WIN64)
     LARGE_INTEGER freq, counter;
@@ -250,7 +268,9 @@ static inline f64 arx_time_now(void) {
 #endif
 }
 
-// --- High-Performance PRNG (SplitMix64) ---
+// ============================================================================
+// High-Performance PRNG (SplitMix64)
+// ============================================================================
 static u64 _arx_prng_state = 0;
 
 static inline void arx_prng_seed(i64 seed) {
@@ -294,7 +314,9 @@ static inline void arx_prng_set_state(i64 s) {
     _arx_prng_state = (u64)s;
 }
 
-// --- Formatted String Utility ---
+// ============================================================================
+// Formatted String Construction Utility
+// ============================================================================
 static inline char* arx_format_str(const char* fmt, ...) {
     va_list args;
     va_start(args, fmt);
@@ -314,7 +336,9 @@ static inline char* arx_format_str(const char* fmt, ...) {
     return buf;
 }
 
-// --- Formatted Console Printing ---
+// ============================================================================
+// Standard Console Output Functions
+// ============================================================================
 static inline void arx_print_str(const char* s) {
     fputs(s, stdout);
 }
@@ -347,7 +371,9 @@ static inline void arx_println_bool(bool b) {
     puts(b ? "true" : "false");
 }
 
-// --- Console User Input ---
+// ============================================================================
+// Console Line Input Functions
+// ============================================================================
 static inline char* arx_input(const char* prompt) {
     if (prompt && prompt[0] != '\0') {
         fputs(prompt, stdout);
@@ -372,7 +398,9 @@ static inline char* arx_readln(void) {
     return arx_input("");
 }
 
-// --- Type Casting Helpers ---
+// ============================================================================
+// Fundamental Type Parsing & String Conversion Helpers
+// ============================================================================
 static inline int64_t arx_cast_to_i64(const char* s) {
     if (!s) return 0;
     while (*s == ' ' || *s == '\t' || *s == '\r' || *s == '\n') s++;
@@ -420,7 +448,9 @@ static inline const char* arx_cast_char_to_str(char v) {
     return s;
 }
 
-// --- Dynamic Typed Input Helpers ---
+// ============================================================================
+// Dynamic Typed Console Input Helpers
+// ============================================================================
 static inline int64_t arx_input_int(const char* prompt) {
     char* s = arx_input(prompt);
     return arx_cast_to_i64(s);
@@ -466,7 +496,9 @@ static inline char arx_readln_char(void) {
     return arx_input_char("");
 }
 
-// --- Linear Arena Allocator (Phase 14) ---
+// ============================================================================
+// Linear Arena Allocator
+// ============================================================================
 typedef struct Arx_Arena {
     uint8_t* buffer;
     size_t capacity;
@@ -477,7 +509,7 @@ static inline Arx_Arena arx_arena_create(size_t capacity) {
     Arx_Arena arena;
     arena.buffer = (uint8_t*)malloc(capacity);
     if (!arena.buffer && capacity > 0) {
-        arx_panic("Arena allocation failed: Out of memory", __FILE__, __LINE__);
+        arx_panic("OutOfMemoryError: linear arena buffer allocation failed", __FILE__, __LINE__);
     }
     arena.capacity = capacity;
     arena.offset = 0;
@@ -486,10 +518,10 @@ static inline Arx_Arena arx_arena_create(size_t capacity) {
 
 static inline void* arx_arena_alloc(Arx_Arena* arena, size_t size) {
     if (!arena || !arena->buffer) return NULL;
-    // 8-byte natural alignment
+    // 8-byte natural pointer alignment
     size_t aligned_offset = (arena->offset + 7) & ~((size_t)7);
     if (aligned_offset + size > arena->capacity) {
-        arx_panic("Arena overflow: exceeded allocated capacity", __FILE__, __LINE__);
+        arx_panic("CapacityExceededError: linear arena allocation exceeded total capacity", __FILE__, __LINE__);
     }
     void* ptr = (void*)(arena->buffer + aligned_offset);
     arena->offset = aligned_offset + size;
@@ -498,7 +530,7 @@ static inline void* arx_arena_alloc(Arx_Arena* arena, size_t size) {
 
 static inline void arx_arena_reset(Arx_Arena* arena) {
     if (arena) {
-        arena->offset = 0; // O(1) bulk deallocation in a single CPU cycle!
+        arena->offset = 0; // O(1) bulk deallocation reset
     }
 }
 
@@ -519,7 +551,9 @@ static inline size_t arx_arena_capacity(const Arx_Arena* arena) {
     return arena ? arena->capacity : 0;
 }
 
-// --- Hardware SIMD Vector Primitives (Phase 14 / Phase 25) ---
+// ============================================================================
+// Hardware SIMD Vector Primitives
+// ============================================================================
 static inline f32x4 arx_f32x4_create(float x, float y, float z, float w) {
     return (f32x4){x, y, z, w};
 }
@@ -536,8 +570,9 @@ static inline f32x4 arx_f32x4_mul(f32x4 a, f32x4 b) {
     return a * b;
 }
 
-
-// --- Native Threading & Channel Primitives (Phase 19) ---
+// ============================================================================
+// Native Multi-Threading & MPMC Channel Primitives
+// ============================================================================
 
 static inline void arx_sleep_ms(int64_t ms) {
 #if defined(_WIN32) || defined(_WIN64)
@@ -714,9 +749,9 @@ static inline void arx_channel_free(int64_t ch_handle) {
     arx_free(ch);
 }
 
-// ==========================================
-// Phase 21: Dynamic Collections (List<T>)
-// ==========================================
+// ============================================================================
+// Dynamic Collections: List<T>
+// ============================================================================
 
 typedef struct {
     int64_t* data;
@@ -740,7 +775,7 @@ static inline void arx_list_push(int64_t list_handle, int64_t val) {
         size_t new_cap = list->cap + (list->cap >> 1); // 1.5x golden ratio growth
         if (new_cap < 4) new_cap = 4;
         list->data = (int64_t*)realloc(list->data, new_cap * sizeof(int64_t));
-        if (!list->data) arx_panic("Out of memory growing List", __FILE__, __LINE__);
+        if (!list->data) arx_panic("OutOfMemoryError: memory allocation failed growing List", __FILE__, __LINE__);
         list->cap = new_cap;
     }
     list->data[list->len++] = val;
@@ -748,8 +783,9 @@ static inline void arx_list_push(int64_t list_handle, int64_t val) {
 
 static inline int64_t arx_list_pop(int64_t list_handle) {
     Arx_List* list = (Arx_List*)(intptr_t)list_handle;
+    // Bounds check: verify List has at least one element before popping
     if (!list || list->len == 0) {
-        arx_panic("IndexError: pop from empty List", __FILE__, __LINE__);
+        arx_panic("IndexError in List.pop: pop from empty List", __FILE__, __LINE__);
     }
     return list->data[--list->len];
 }
@@ -757,6 +793,7 @@ static inline int64_t arx_list_pop(int64_t list_handle) {
 static inline int64_t arx_list_get(int64_t list_handle, int64_t idx) {
     Arx_List* list = (Arx_List*)(intptr_t)list_handle;
     if (!list) arx_panic("NullPointerError: attempted to index a null List", __FILE__, __LINE__);
+    // Bounds check: verify index falls within valid range [0, list->len)
     if (idx < 0 || (size_t)idx >= list->len) {
         arx_panic_bounds("List.get", idx, list->len, __FILE__, __LINE__);
     }
@@ -766,6 +803,7 @@ static inline int64_t arx_list_get(int64_t list_handle, int64_t idx) {
 static inline void arx_list_set(int64_t list_handle, int64_t idx, int64_t val) {
     Arx_List* list = (Arx_List*)(intptr_t)list_handle;
     if (!list) arx_panic("NullPointerError: attempted to mutate a null List", __FILE__, __LINE__);
+    // Bounds check: verify index falls within valid range [0, list->len)
     if (idx < 0 || (size_t)idx >= list->len) {
         arx_panic_bounds("List.set", idx, list->len, __FILE__, __LINE__);
     }
@@ -792,6 +830,7 @@ static inline void arx_list_free(int64_t list_handle) {
 static inline int64_t arx_list_slice(int64_t list_handle, int64_t start, int64_t end) {
     Arx_List* list = (Arx_List*)(intptr_t)list_handle;
     if (!list) return arx_list_new(4);
+    // Bounds check: clamp start to non-negative, clamp end to list length, ensure end >= start
     if (start < 0) start = 0;
     if ((size_t)end > list->len) end = (int64_t)list->len;
     if (start > end) start = end;
@@ -868,8 +907,9 @@ static inline void arx_list_sort(int64_t h) {
 
 static inline int64_t arx_list_swap_remove(int64_t h, int64_t idx) {
     Arx_List* list = (Arx_List*)(intptr_t)h;
-    if (!list || list->len == 0) arx_panic("IndexError: swap_remove on empty List", __FILE__, __LINE__);
-    if (idx < 0 || (size_t)idx >= list->len) arx_panic("IndexOutOfBounds: swap_remove index out of bounds", __FILE__, __LINE__);
+    // Bounds check: verify list is non-empty and target index is within bounds [0, len)
+    if (!list || list->len == 0) arx_panic("IndexError in List.swap_remove: cannot swap_remove from empty List", __FILE__, __LINE__);
+    if (idx < 0 || (size_t)idx >= list->len) arx_panic_bounds("List.swap_remove", idx, list->len, __FILE__, __LINE__);
     int64_t removed = list->data[idx];
     list->data[idx] = list->data[list->len - 1];
     list->len--;
@@ -878,8 +918,9 @@ static inline int64_t arx_list_swap_remove(int64_t h, int64_t idx) {
 
 static inline int64_t arx_list_remove_at(int64_t h, int64_t idx) {
     Arx_List* list = (Arx_List*)(intptr_t)h;
-    if (!list || list->len == 0) arx_panic("IndexError: remove_at on empty List", __FILE__, __LINE__);
-    if (idx < 0 || (size_t)idx >= list->len) arx_panic("IndexOutOfBounds: remove_at index out of bounds", __FILE__, __LINE__);
+    // Bounds check: verify list is non-empty and target index is within bounds [0, len)
+    if (!list || list->len == 0) arx_panic("IndexError in List.remove_at: cannot remove from empty List", __FILE__, __LINE__);
+    if (idx < 0 || (size_t)idx >= list->len) arx_panic_bounds("List.remove_at", idx, list->len, __FILE__, __LINE__);
     int64_t removed = list->data[idx];
     for (size_t i = (size_t)idx; i + 1 < list->len; i++) {
         list->data[i] = list->data[i + 1];
@@ -891,7 +932,8 @@ static inline int64_t arx_list_remove_at(int64_t h, int64_t idx) {
 static inline void arx_list_insert(int64_t h, int64_t idx, int64_t val) {
     Arx_List* list = (Arx_List*)(intptr_t)h;
     if (!list) return;
-    if (idx < 0 || (size_t)idx > list->len) arx_panic("IndexOutOfBounds: insert index out of bounds", __FILE__, __LINE__);
+    // Bounds check: verify insertion index is within valid range [0, len]
+    if (idx < 0 || (size_t)idx > list->len) arx_panic("IndexOutOfBounds in List.insert: index out of bounds", __FILE__, __LINE__);
     if (list->len >= list->cap) {
         size_t new_cap = list->cap + (list->cap >> 1);
         if (new_cap < 4) new_cap = 4;
@@ -938,9 +980,9 @@ static inline int64_t arx_list_index_of_str(int64_t h, const char* query) {
 }
 
 
-// ==========================================
-// Phase 21: Dual-Tier Text Engine (str & String)
-// ==========================================
+// ============================================================================
+// Dual-Tier Text Engine (str & String)
+// ============================================================================
 
 static inline int64_t arx_str_len(const char* s) {
     if (!s) return 0;
@@ -1126,10 +1168,12 @@ static inline const char* arx_str_replace(const char* s, const char* old_sub, co
 
 static inline const char* arx_str_slice(const char* s, int64_t start, int64_t end) {
     if (!s) return "";
+    // Bounds check: clamp start to non-negative and return empty string if end <= start
     if (start < 0) start = 0;
     if (end <= start) return "";
     Arx_StrCacheEntry* e = arx_str_cache_get(s);
     size_t uend = (size_t)end;
+    // Bounds check: clamp upper slice boundary against verified cached string length
     if (e->exact_len != (size_t)-1) {
         if (uend > e->exact_len) uend = e->exact_len;
     } else if (uend > e->verified_len) {
@@ -1244,11 +1288,9 @@ static inline const char* arx_str_char_at(const char* s, int64_t idx) {
     return buf;
 }
 
-
-
-// ==========================================
-// Phase 22: Map<K, V> — Robin Hood Hash Table
-// ==========================================
+// ============================================================================
+// Robin Hood Hash Map: Map<K, V>
+// ============================================================================
 
 #define ARX_MAP_EMPTY_SLOT    0
 #define ARX_MAP_DELETED_SLOT  1
@@ -1509,9 +1551,9 @@ static inline int64_t arx_map_values(int64_t map_handle) {
     return list_h;
 }
 
-// ==========================================
-// Phase 22: Set<T> — Zero-Value Hash Set
-// ==========================================
+// ============================================================================
+// Zero-Value Hash Set: Set<T>
+// ============================================================================
 
 // Reuses Arx_Map with value always 1
 static inline int64_t arx_set_new(int64_t key_is_str) {
@@ -1635,11 +1677,9 @@ static inline bool arx_set_has_str(int64_t h, const char* v) { return arx_set_ha
 static inline bool arx_set_remove_i64(int64_t h, int64_t v) { return arx_set_remove(h, v); }
 static inline bool arx_set_remove_str(int64_t h, const char* v) { return arx_set_remove(h, (int64_t)(intptr_t)v); }
 
-
-
-// ==========================================
-// Phase 22: Stack<T> — LIFO Contiguous Buffer
-// ==========================================
+// ============================================================================
+// LIFO Stack Collection: Stack<T>
+// ============================================================================
 
 // Stack reuses Arx_List entirely — push/pop from back
 static inline int64_t arx_stack_new(void) {
@@ -1656,7 +1696,7 @@ static inline int64_t arx_stack_pop(int64_t h) {
 
 static inline int64_t arx_stack_peek(int64_t h) {
     Arx_List* s = (Arx_List*)(intptr_t)h;
-    if (!s || s->len == 0) arx_panic("PeekError: Stack is empty", __FILE__, __LINE__);
+    if (!s || s->len == 0) arx_panic("PeekError in Stack.peek: cannot peek into empty Stack", __FILE__, __LINE__);
     return s->data[s->len - 1];
 }
 
@@ -1676,9 +1716,9 @@ static inline void arx_stack_free(int64_t h) {
     arx_list_free(h);
 }
 
-// ==========================================
-// Phase 22: Queue<T> — FIFO Ring Buffer
-// ==========================================
+// ============================================================================
+// FIFO Ring Buffer: Queue<T>
+// ============================================================================
 
 typedef struct {
     int64_t* data;
@@ -1721,7 +1761,7 @@ static inline void arx_queue_enqueue(int64_t qh, int64_t val) {
 
 static inline int64_t arx_queue_dequeue(int64_t qh) {
     Arx_Queue* q = (Arx_Queue*)(intptr_t)qh;
-    if (!q || q->len == 0) arx_panic("DequeueError: Queue is empty", __FILE__, __LINE__);
+    if (!q || q->len == 0) arx_panic("DequeueError in Queue.dequeue: cannot dequeue from empty Queue", __FILE__, __LINE__);
     int64_t val = q->data[q->head & (q->cap - 1)];
     q->head = (q->head + 1) & (q->cap - 1);
     q->len--;
@@ -1730,7 +1770,7 @@ static inline int64_t arx_queue_dequeue(int64_t qh) {
 
 static inline int64_t arx_queue_peek_front(int64_t qh) {
     Arx_Queue* q = (Arx_Queue*)(intptr_t)qh;
-    if (!q || q->len == 0) arx_panic("PeekError: Queue is empty", __FILE__, __LINE__);
+    if (!q || q->len == 0) arx_panic("PeekError in Queue.peek_front: cannot peek into empty Queue", __FILE__, __LINE__);
     return q->data[q->head & (q->cap - 1)];
 }
 
@@ -1756,9 +1796,9 @@ static inline void arx_queue_free(int64_t qh) {
     arx_free(q);
 }
 
-// ==========================================
-// Phase 22: Deque<T> — Double-Ended Ring Buffer
-// ==========================================
+// ============================================================================
+// Double-Ended Ring Buffer: Deque<T>
+// ============================================================================
 
 // Deque reuses the same Arx_Queue struct; we expose both front+back operations
 static inline int64_t arx_deque_new(void) {
@@ -1791,7 +1831,7 @@ static inline void arx_deque_push_front(int64_t dh, int64_t val) {
 
 static inline int64_t arx_deque_pop_back(int64_t dh) {
     Arx_Queue* q = (Arx_Queue*)(intptr_t)dh;
-    if (!q || q->len == 0) arx_panic("PopError: Deque is empty", __FILE__, __LINE__);
+    if (!q || q->len == 0) arx_panic("PopError in Deque.pop_back: cannot pop from empty Deque", __FILE__, __LINE__);
     q->tail = (q->tail - 1 + q->cap) & (q->cap - 1);
     int64_t val = q->data[q->tail];
     q->len--;
@@ -1808,7 +1848,7 @@ static inline int64_t arx_deque_peek_front(int64_t dh) {
 
 static inline int64_t arx_deque_peek_back(int64_t dh) {
     Arx_Queue* q = (Arx_Queue*)(intptr_t)dh;
-    if (!q || q->len == 0) arx_panic("PeekError: Deque is empty", __FILE__, __LINE__);
+    if (!q || q->len == 0) arx_panic("PeekError in Deque.peek_back: cannot peek into empty Deque", __FILE__, __LINE__);
     return q->data[(q->tail - 1 + q->cap) & (q->cap - 1)];
 }
 
@@ -1828,9 +1868,9 @@ static inline void arx_deque_free(int64_t dh) {
     arx_queue_free(dh);
 }
 
-// ==========================================
-// Phase 22: ByteBuffer — Aligned Binary Stream
-// ==========================================
+// ============================================================================
+// Binary Stream Buffer: ByteBuffer
+// ============================================================================
 
 typedef struct {
     uint8_t* data;
@@ -1854,7 +1894,7 @@ static inline void arx_bytebuf_ensure(Arx_ByteBuf* buf, size_t extra) {
     size_t new_cap = buf->cap + (buf->cap >> 1);
     if (new_cap < buf->cap + extra) new_cap = buf->cap + extra + 64;
     buf->data = (uint8_t*)realloc(buf->data, new_cap);
-    if (!buf->data) arx_panic("OOM: ByteBuffer growth failed", __FILE__, __LINE__);
+    if (!buf->data) arx_panic("OutOfMemoryError: ByteBuffer growth failed", __FILE__, __LINE__);
     buf->cap = new_cap;
 }
 
@@ -1896,15 +1936,17 @@ static inline void arx_bytebuf_write_f64_le(int64_t bh, int64_t val_bits) {
 
 static inline int64_t arx_bytebuf_read_u8(int64_t bh) {
     Arx_ByteBuf* buf = (Arx_ByteBuf*)(intptr_t)bh;
+    // Bounds check: verify cursor has at least 1 readable byte remaining
     if (!buf || buf->pos >= buf->len)
-        arx_panic("ReadError: ByteBuffer underrun on read_u8", __FILE__, __LINE__);
+        arx_panic("ReadError in ByteBuffer.read_u8: buffer underrun", __FILE__, __LINE__);
     return (int64_t)buf->data[buf->pos++];
 }
 
 static inline int64_t arx_bytebuf_read_i32_le(int64_t bh) {
     Arx_ByteBuf* buf = (Arx_ByteBuf*)(intptr_t)bh;
+    // Bounds check: verify cursor has at least 4 contiguous readable bytes remaining
     if (!buf || buf->pos + 4 > buf->len)
-        arx_panic("ReadError: ByteBuffer underrun on read_i32_le", __FILE__, __LINE__);
+        arx_panic("ReadError in ByteBuffer.read_i32_le: buffer underrun (requires 4 bytes)", __FILE__, __LINE__);
     int32_t v;
     memcpy(&v, buf->data + buf->pos, 4);
     buf->pos += 4;
@@ -1913,8 +1955,9 @@ static inline int64_t arx_bytebuf_read_i32_le(int64_t bh) {
 
 static inline int64_t arx_bytebuf_read_i32_be(int64_t bh) {
     Arx_ByteBuf* buf = (Arx_ByteBuf*)(intptr_t)bh;
+    // Bounds check: verify cursor has at least 4 contiguous readable bytes remaining
     if (!buf || buf->pos + 4 > buf->len)
-        arx_panic("ReadError: ByteBuffer underrun on read_i32_be", __FILE__, __LINE__);
+        arx_panic("ReadError in ByteBuffer.read_i32_be: buffer underrun (requires 4 bytes)", __FILE__, __LINE__);
     int32_t v = ((int32_t)buf->data[buf->pos + 0] << 24)
               | ((int32_t)buf->data[buf->pos + 1] << 16)
               | ((int32_t)buf->data[buf->pos + 2] <<  8)
@@ -1952,9 +1995,9 @@ static inline void arx_bytebuf_free(int64_t bh) {
     arx_free(buf);
 }
 
-// ==========================================
-// Phase 22: str helper — arx_str_find
-// ==========================================
+// ============================================================================
+// String Search & Comparison Utilities
+// ============================================================================
 
 static inline int64_t arx_str_find(const char* s, const char* needle) {
     if (!s || !needle) return -1;
@@ -1969,9 +2012,9 @@ static inline int64_t arx_str_compare(const char* a, const char* b) {
     return (int64_t)strcmp(a, b);
 }
 
-// ==========================================
-// Phase 22: for..in List iterator helper
-// ==========================================
+// ============================================================================
+// Loop Iterator Helpers (List & Map)
+// ============================================================================
 
 // arx_list_iter_next: stateless helper for for-in codegen
 // iter_state is a mutable int64 holding current index (starts at 0)
@@ -1999,9 +2042,9 @@ static inline bool arx_map_iter_next(int64_t map_handle, int64_t* iter_idx, int6
     return false;
 }
 
-// ==========================================
-// Phase 24: Volatile MMIO Registers & Intrinsics
-// ==========================================
+// ============================================================================
+// Volatile MMIO Registers & Low-Level Intrinsics
+// ============================================================================
 
 #define arx_address_of(v) ((uintptr_t)&(v))
 #define address_of(v) ((uintptr_t)&(v))
@@ -2079,9 +2122,9 @@ static inline void arx_volatile_write_i64(uintptr_t addr, int64_t val) {
 #define volatile_write_i32 arx_volatile_write_i32
 #define volatile_write_i64 arx_volatile_write_i64
 
-// ==========================================
-// Phase 25: SIMD Vector Constructors & Intrinsics
-// ==========================================
+// ============================================================================
+// SIMD Vector Constructors & Intrinsics
+// ============================================================================
 
 static inline f32x4 arx_f32x4(float x, float y, float z, float w) {
     return (f32x4){x, y, z, w};
@@ -2196,9 +2239,9 @@ static inline bool arx_f64x2_ne(f64x2 a, f64x2 b) {
     return !arx_f64x2_eq(a, b);
 }
 
-// ==========================================
-// Phase 27: Self-Hosting Bootstrap Runtime (OS, FS, Process & Fast String/Byte Ops)
-// ==========================================
+// ============================================================================
+// Self-Hosting Bootstrap Runtime (OS, FS, Process & Byte Operations)
+// ============================================================================
 
 static int arx_cli_argc = 0;
 static char** arx_cli_argv = NULL;
@@ -2236,6 +2279,7 @@ static inline int64_t arx_args_list(void) {
 }
 
 static inline int64_t arx_str_byte_at(const char* s, int64_t idx) {
+    // Bounds check: negative indices are invalid; return -1 sentinel
     if (!s || idx < 0) return -1;
     Arx_StrCacheEntry* e = arx_str_cache_get(s);
     size_t uidx = (size_t)idx;
@@ -2551,6 +2595,10 @@ static inline int64_t arx_proc_execute(const char* cmdline) {
     for (int attempt = 0; attempt < 10; attempt++) {
         ZeroMemory(&si, sizeof(si));
         si.cb = sizeof(si);
+        si.dwFlags = STARTF_USESTDHANDLES;
+        si.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
+        si.hStdOutput = GetStdHandle(STD_OUTPUT_HANDLE);
+        si.hStdError = GetStdHandle(STD_ERROR_HANDLE);
         ZeroMemory(&pi, sizeof(pi));
         memcpy(mutable_cmd, cmdline, len + 1);
         ok = CreateProcessA(NULL, mutable_cmd, NULL, NULL, TRUE, 0, NULL, NULL, &si, &pi) != 0;
@@ -2691,7 +2739,9 @@ static inline const char* arx_os_name(void) {
 #endif
 }
 
-// --- Native Binary Stdio Transport for Language Server Protocol (LSP) ---
+// ============================================================================
+// Native Binary Stdio Transport for Language Server Protocol (LSP)
+// ============================================================================
 static char* g_arx_lsp_rx_buf = NULL;
 static int64_t g_arx_lsp_rx_len = 0;
 static int64_t g_arx_lsp_rx_cap = 0;
@@ -2782,7 +2832,9 @@ static inline int64_t arx_lsp_write_msg(const char* body) {
     return 0;
 }
 
-// Binary output helpers for native PE32+ executable writer
+// ============================================================================
+// Binary Executable Writer Helpers
+// ============================================================================
 static inline int64_t arx_bin_new(int64_t cap) {
     return arx_bytebuf_new(cap > 0 ? cap : 4096);
 }
@@ -2795,7 +2847,14 @@ static inline int64_t arx_bin_u8(int64_t bh, int64_t val) {
 static inline int64_t arx_bin_write_file(int64_t bh, const char* path) {
     Arx_ByteBuf* buf = (Arx_ByteBuf*)(intptr_t)bh;
     if (!buf || !path || !*path) return 0;
-    FILE* f = fopen(path, "wb");
+    FILE* f = NULL;
+    for (int retry = 0; retry < 10; retry++) {
+        f = fopen(path, "wb");
+        if (f) break;
+#ifdef _WIN32
+        Sleep(15);
+#endif
+    }
     if (!f) return 0;
     size_t wrote = buf->len > 0 ? fwrite(buf->data, 1, buf->len, f) : 0;
     fclose(f);
@@ -2807,6 +2866,9 @@ static inline int64_t arx_bin_free(int64_t bh) {
     return 0;
 }
 
+// ============================================================================
+// Background Auto-Update Trigger
+// ============================================================================
 static inline int64_t arx_autoupdate_bg_trigger(const char* uninst_exe) {
 #if defined(_WIN32) || defined(_WIN64)
     if (!uninst_exe || !*uninst_exe) return 0;
@@ -2867,7 +2929,9 @@ static inline int64_t arx_autoupdate_bg_trigger(const char* uninst_exe) {
 #endif
 }
 
-// --- Native Windows GUI & Canvas Double-Buffered Engine ---
+// ============================================================================
+// Native Windows GUI & Canvas Double-Buffered Engine
+// ============================================================================
 #if defined(_WIN32) || defined(_WIN64)
 
 typedef struct Arx_BackBuffer {

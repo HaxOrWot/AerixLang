@@ -57,20 +57,15 @@ pub fn getRandBits(k: i64) -> i64 {
         return 0;
     }
     if k >= 63 {
-        mut raw: i64 = arx_prng_next_i64();
-        if raw < 0 {
-            raw = 0 - raw;
-        }
-        return raw;
+        let raw: i64 = arx_prng_next_i64();
+        return raw & 9223372036854775807;
     }
     mut mask: i64 = 1;
     for i in 1..k {
         mask = (mask * 2) + 1;
     }
     mut r: i64 = arx_prng_next_i64();
-    if r < 0 {
-        r = 0 - r;
-    }
+    r = r & 9223372036854775807;
     return r % (mask + 1);
 }
 

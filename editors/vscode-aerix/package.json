@@ -1,8 +1,8 @@
 {
   "name": "aerix",
   "displayName": "Aerix Language & IntelliSense Support",
-  "description": "Official language support, IntelliSense completions, hover documentation, syntax highlighting, and X file icon for Aerix (.arx).",
-  "version": "1.2.22-b",
+  "description": "Official language support, LSP IntelliSense completions, hover documentation, semantic syntax highlighting, code navigation, and file icons for Aerix (.arx).",
+  "version": "2.2.25",
   "publisher": "aerix-lang",
   "icon": "icons/aerix-icon.png",
   "engines": {
@@ -110,7 +110,7 @@
         "aerix.executablePath": {
           "type": "string",
           "default": "",
-          "description": "Path to the Aerix compiler/LSP binary (arx / arxc). Leave empty to auto-detect on PATH, %LOCALAPPDATA%\\Programs\\Aerix\\bin, or ~/.aerix/bin."
+          "description": "Path to the Aerix compiler/LSP binary (arx / arxc). Leave empty to auto-detect on AERIX_HOME, PATH, %LOCALAPPDATA%\\Programs\\Aerix\\bin, C:\\Aerix\\bin, or ~/.aerix/bin."
         },
         "aerix.autoUpdate": {
           "type": "string",

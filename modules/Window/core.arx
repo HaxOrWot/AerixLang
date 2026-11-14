@@ -19,7 +19,8 @@
 #[extern("user32.dll", "MessageBoxA")]
 pub fn messageBox(hwnd: i64, text: str, caption: str, utype: i64) -> i64;
 
-cextern fn arx_gui_play_beep(freq: i64, duration_ms: i64) -> void;
+#[extern("kernel32.dll", "Beep")]
+pub fn arx_gui_play_beep(freq: i64, duration_ms: i64) -> i64;
 
 /// Generates a non-blocking asynchronous audio tone through the PC sound card or speaker.
 ///
@@ -27,6 +28,9 @@ cextern fn arx_gui_play_beep(freq: i64, duration_ms: i64) -> void;
 ///   `freq`       : Frequency in Hertz (e.g. 440 for A4, 880 for A5).
 ///   `duration_ms`: Duration in milliseconds.
 pub fn beep(freq: i64, duration_ms: i64) -> i64 {
+    if freq <= 0 || duration_ms <= 0 {
+        return 0;
+    }
     arx_gui_play_beep(freq, duration_ms);
     return 1;
 }
@@ -84,6 +88,9 @@ pub fn getActiveWindowTitle() -> str {
 ///   `width` : New width in pixels.
 ///   `height`: New height in pixels.
 pub fn setWindowPosition(hwnd: i64, x: i64, y: i64, width: i64, height: i64) -> bool {
+    if hwnd == 0 {
+        return false;
+    }
     // SWP_NOZORDER = 0x0004
     return win32SetWindowPos(hwnd, 0, x as i32, y as i32, width as i32, height as i32, 4) != 0;
 }
@@ -94,6 +101,9 @@ pub fn setWindowPosition(hwnd: i64, x: i64, y: i64, width: i64, height: i64) -> 
 ///   `hwnd` : Window handle.
 ///   `onTop`: `true` to pin on top, `false` to revert to normal Z-order.
 pub fn setWindowAlwaysOnTop(hwnd: i64, onTop: bool) -> bool {
+    if hwnd == 0 {
+        return false;
+    }
     // HWND_TOPMOST = -1, HWND_NOTOPMOST = -2, SWP_NOMOVE = 0x0002, SWP_NOSIZE = 0x0001
     mut insertAfter: i64 = -2;
     if onTop { insertAfter = -1; }
@@ -102,18 +112,27 @@ pub fn setWindowAlwaysOnTop(hwnd: i64, onTop: bool) -> bool {
 
 /// Minimizes the specified window to the Windows taskbar.
 pub fn minimizeWindow(hwnd: i64) -> bool {
+    if hwnd == 0 {
+        return false;
+    }
     // SW_MINIMIZE = 6
     return win32ShowWindow(hwnd, 6) != 0;
 }
 
 /// Maximizes the specified window to occupy the full monitor screen.
 pub fn maximizeWindow(hwnd: i64) -> bool {
+    if hwnd == 0 {
+        return false;
+    }
     // SW_MAXIMIZE = 3
     return win32ShowWindow(hwnd, 3) != 0;
 }
 
 /// Restores a minimized or maximized window to its original non-zoomed size and position.
 pub fn restoreWindow(hwnd: i64) -> bool {
+    if hwnd == 0 {
+        return false;
+    }
     // SW_RESTORE = 9
     return win32ShowWindow(hwnd, 9) != 0;
 }

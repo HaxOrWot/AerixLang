@@ -175,7 +175,7 @@ fn lsp_build_initialize_result() -> str {
     jb.key("serverInfo")
     jb.lbrace()
     jb.kv_str("name", "aerix-lsp", true)
-    jb.kv_str("version", "1.2.22b", false)
+    jb.kv_str("version", "2.2.25-stable", false)
     jb.rbrace()
 
     jb.rbrace()

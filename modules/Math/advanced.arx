@@ -97,6 +97,9 @@ pub fn pow(base: f64, exp: i64) -> f64 {
 
 /// Computes `base` raised to a floating-point `exponent` (`base^exponent`).
 pub fn pow(base: f64, exponent: f64) -> f64 {
+    if exponent == 0.0 {
+        return 1.0;
+    }
     if base <= 0.0 {
         return 0.0;
     }
@@ -121,10 +124,10 @@ pub fn factorial(n: i64) -> i64 {
 /// Computes the number of permutations `nPr = n! / (n - r)!`.
 ///
 /// Parameters:
-///   `n`: Total number of items.
-///   `r`: Number of chosen items.
+///   `n`: Total number of items (non-negative).
+///   `r`: Number of chosen items (`0 <= r <= n`).
 pub fn nPr(n: i64, r: i64) -> i64 {
-    if r < 0 || r > n {
+    if n < 0 || r < 0 || r > n {
         return 0;
     }
     mut res: i64 = 1;
@@ -137,10 +140,10 @@ pub fn nPr(n: i64, r: i64) -> i64 {
 /// Computes the number of combinations (binomial coefficient) `nCr = n! / (r! * (n - r)!)`.
 ///
 /// Parameters:
-///   `n`: Total number of items.
-///   `r`: Number of chosen items.
+///   `n`: Total number of items (non-negative).
+///   `r`: Number of chosen items (`0 <= r <= n`).
 pub fn nCr(n: i64, r: i64) -> i64 {
-    if r < 0 || r > n {
+    if n < 0 || r < 0 || r > n {
         return 0;
     }
     mut k: i64 = r;
@@ -188,11 +191,12 @@ pub fn lcm(a: i64, b: i64) -> i64 {
         return 0;
     }
     let g: i64 = gcd(a, b);
-    let prod: i64 = a * b;
+    let div: i64 = a / g;
+    let prod: i64 = div * b;
     if prod < 0 {
-        return (0 - prod) / g;
+        return 0 - prod;
     }
-    return prod / g;
+    return prod;
 }
 
 /// Determines whether an integer `n` is prime using 6k ± 1 trial division.

@@ -47,6 +47,8 @@ priv fn write_js(bb: ByteBuffer) {
     bb.write_str("\n</script>\n")
 }
 
+// Traverses source files in input_path, extracts declarations and doc-comments,
+// and generates a self-contained responsive HTML documentation website in out_dir.
 pub fn generate_docs(input_path: str, out_dir: str) -> i64 {
     mut target = input_path
     if target == "" { target = "." }

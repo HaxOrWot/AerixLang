@@ -13,7 +13,8 @@
     { "open": "{", "close": "}" },
     { "open": "[", "close": "]" },
     { "open": "(", "close": ")" },
-    { "open": "\"", "close": "\"", "notIn": ["string"] },
+    { "open": "<", "close": ">", "notIn": ["string", "comment"] },
+    { "open": "\"", "close": "\"", "notIn": ["string", "comment"] },
     { "open": "'", "close": "'", "notIn": ["string", "comment"] },
     { "open": "`", "close": "`", "notIn": ["string", "comment"] }
   ],
@@ -33,8 +34,8 @@
     }
   },
   "indentationRules": {
-    "increaseIndentPattern": "^.*(\\{|\\(|\\[|=>|\\b(else|case|match|guard|try|catch|finally)\\b)\\s*$",
-    "decreaseIndentPattern": "^\\s*(\\}|\\]|\\)|\\b(else|elif|catch|finally)\\b).*$"
+    "increaseIndentPattern": "^.*(\\{[^}\"']*|\\([^)\"']*|\\[[^\\]\"']*|=>)$|^\\s*(\\b(pub\\s+)?(fn|class|trait|enum)\\b|\\b(if|else|elif|while|for|loop|match|case|guard|try|catch|finally)\\b)(?!.*\\}).*$",
+    "decreaseIndentPattern": "^\\s*(\\}|\\]|\\)|\\b(else|elif|catch|finally|case)\\b).*$"
   },
   "onEnterRules": [
     {

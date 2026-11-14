@@ -42,7 +42,7 @@ const AERIX_FALLBACK_COMPLETIONS = [
     { label: 'defer', kind: vscode.CompletionItemKind.Keyword, detail: 'defer cleanup()', insertText: 'defer ${0:cleanup()}' },
     { label: 'match', kind: vscode.CompletionItemKind.Keyword, detail: 'match expr { case ... => ... }', insertText: 'match ${1:expr} {\n\tcase ${2:pattern} => {\n\t\t${0}\n\t}\n}' },
     { label: 'try', kind: vscode.CompletionItemKind.Keyword, detail: 'try { ... } catch err { ... }', insertText: 'try {\n\t${1}\n} catch ${2:err} {\n\t${0}\n}' },
-    { label: 'return', kind: vscode.CompletionItemKind.Keyword, detail: 'return value', insertText: 'return ${0};' },
+    { label: 'return', kind: vscode.CompletionItemKind.Keyword, detail: 'return value', insertText: 'return ${0}' },
     { label: 'spawn', kind: vscode.CompletionItemKind.Keyword, detail: 'spawn { ... }', insertText: 'let ${1:th} = spawn {\n\t${0}\n}' },
     { label: 'import', kind: vscode.CompletionItemKind.Keyword, detail: 'import Module', insertText: 'import ${0:Math}' },
     { label: 'from', kind: vscode.CompletionItemKind.Keyword, detail: 'from Module import ...', insertText: 'from ${1:Window.Gui.Canvas} import ${0:colorRed}' },
@@ -99,7 +99,7 @@ function buildFallbackCompletions() {
 const SEMANTIC_LEGEND = new vscode.SemanticTokensLegend(TOKEN_TYPES, TOKEN_MODIFIERS);
 
 function resolveAerixBinary() {
-    const cfgPath = (vscode.workspace.getConfiguration('aerix').get('executablePath') || '').trim();
+    const cfgPath = (vscode.workspace.getConfiguration('aerix').get('executablePath') || '').trim().replace(/^["']|["']$/g, '');
     if (cfgPath && fs.existsSync(cfgPath)) return cfgPath;
 
     const exe = process.platform === 'win32' ? '.exe' : '';
@@ -182,21 +182,30 @@ class AerixLspClient {
         return this.ready;
     }
 
-    stop() {
-        const proc = this.proc;
-        this.proc = null;
+    async stop() {
+        for (const [, pending] of this.dirtyTimers) clearTimeout(pending.timer);
+        this.dirtyTimers.clear();
+        for (const [, t] of this.diagTimers) clearTimeout(t);
+        this.diagTimers.clear();
+        for (const [, p] of this.pending) p.resolve(null);
+        this.pending.clear();
         this.ready = null;
         this.initialized = false;
         this.openedUris.clear();
-        for (const [, p] of this.pending) p.resolve(null);
-        this.pending.clear();
-        if (proc) {
-            try { proc.kill(); } catch (_) {}
+        const proc = this.proc;
+        this.proc = null;
+        if (!proc) return;
+        try {
+            await this._requestRaw('shutdown', null, 2000);
+            this._send({ jsonrpc: '2.0', method: 'exit', params: null });
+        } catch {
+            // ignore
         }
+        try { proc.kill(); } catch (_) {}
     }
 
-    restart() {
-        this.stop();
+    async restart() {
+        await this.stop();
         return this.start();
     }
 
@@ -205,7 +214,7 @@ class AerixLspClient {
         this.output.appendLine(`[Aerix LSP] Starting: ${bin} lsp`);
         this.initialized = false;
         this.openedUris.clear();
-        const proc = cp.spawn(bin, ['lsp'], { stdio: ['pipe', 'pipe', 'pipe'] });
+        const proc = cp.spawn(bin, ['lsp'], { stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true });
         this.proc = proc;
 
         proc.stdout.on('data', (chunk) => this._onData(chunk));
@@ -416,24 +425,6 @@ class AerixLspClient {
             });
             this.diagnostics.set(uri, list);
         }
-    }
-
-    async stop() {
-        for (const [, pending] of this.dirtyTimers) clearTimeout(pending.timer);
-        this.dirtyTimers.clear();
-        for (const [, t] of this.diagTimers) clearTimeout(t);
-        this.diagTimers.clear();
-        if (!this.proc) return;
-        try {
-            await this._requestRaw('shutdown', null, 2000);
-            this._send({ jsonrpc: '2.0', method: 'exit', params: null });
-        } catch {
-            // ignore
-        }
-        if (this.proc) this.proc.kill();
-        this.proc = null;
-        this.initialized = false;
-        this.openedUris.clear();
     }
 }
 
@@ -1048,7 +1039,12 @@ function resolveUninstallExe(bin) {
     if (process.env.LOCALAPPDATA) {
         cands.push(path.join(process.env.LOCALAPPDATA, 'Programs', 'Aerix', 'Uninstall.exe'));
     }
-    cands.push('C:\\Aerix\\Uninstall.exe');
+    if (process.platform === 'win32') {
+        const sysDrive = process.env.SystemDrive || 'C:';
+        cands.push(path.join(sysDrive + '\\', 'Aerix', 'Uninstall.exe'));
+    } else {
+        cands.push('C:\\Aerix\\Uninstall.exe');
+    }
     for (const c of cands) {
         if (fs.existsSync(c)) return c;
     }

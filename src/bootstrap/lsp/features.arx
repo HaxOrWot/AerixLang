@@ -38,6 +38,7 @@ pub fn SKIND_VAR() -> i64 { return 13 }
 pub fn SKIND_ENUM_MEM() -> i64 { return 22 }
 pub fn SKIND_STRUCT() -> i64 { return 23 }
 
+// Parses and semantically analyzes an in-memory document with error recovery enabled.
 pub fn lsp_analyze_document(doc_path: str, source: str, docs_by_path: Map<str, str>) -> Analyzer {
     let norm = bpath_normalize(doc_path)
     mut p = Parser(norm)
@@ -49,6 +50,7 @@ pub fn lsp_analyze_document(doc_path: str, source: str, docs_by_path: Map<str, s
     return az
 }
 
+// Extracts a 0-indexed line of text from the source buffer.
 pub fn lsp_get_line_text(source: str, target_line0: i64) -> str {
     let n = source.len()
     mut ln = 0

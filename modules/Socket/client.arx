@@ -39,6 +39,9 @@ pub class TcpClient {
     /// Returns:
     ///   `true` if connection succeeded, `false` otherwise.
     pub fn connect(ip: str, port: i64) -> bool {
+        if port < 0 || port > 65535 {
+            return false
+        }
         self.sock = createTcpSocket()
         if self.sock == INVALID_SOCKET() {
             return false
@@ -73,7 +76,7 @@ pub class TcpClient {
     /// Returns:
     ///   String containing data read from stream, or `""` on disconnect or error.
     pub fn recvStr(max_bytes: i64) -> str {
-        if !self.connected {
+        if !self.connected || max_bytes <= 0 {
             return ""
         }
         let buf = " ".repeat(max_bytes)

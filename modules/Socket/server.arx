@@ -43,6 +43,9 @@ pub class TcpServer {
     /// Returns:
     ///   `true` if successfully bound and listening, `false` otherwise.
     pub fn listen(port: i64, backlog: i64) -> bool {
+        if port < 0 || port > 65535 {
+            return false
+        }
         self.sock = createTcpSocket()
         if self.sock == INVALID_SOCKET() {
             return false
@@ -52,7 +55,11 @@ pub class TcpServer {
             self.close()
             return false
         }
-        if listen(self.sock, backlog) == SOCKET_ERROR() {
+        mut bl = backlog
+        if bl <= 0 {
+            bl = 128
+        }
+        if listen(self.sock, bl) == SOCKET_ERROR() {
             self.close()
             return false
         }

@@ -67,16 +67,22 @@ pub fn expoVariate(lambd: f64) -> f64 {
 /// Generates a triangular continuous distribution bounded by `low` and `high`, peaking at `mode`.
 ///
 /// Parameters:
-///   `low` : Minimum bound.
+///   `low` : Minimum bound (`low < high`).
 ///   `high`: Maximum bound.
 ///   `mode`: Peak location (`low <= mode <= high`).
 pub fn triangular(low: f64, high: f64, mode: f64) -> f64 {
-    let u = random();
-    let c = (mode - low) / (high - low);
-    if u <= c {
-        return low + sqrt(u * (high - low) * (mode - low));
+    if low >= high {
+        return low;
     }
-    return high - sqrt((1.0 - u) * (high - low) * (high - mode));
+    mut m = mode;
+    if m < low { m = low; }
+    if m > high { m = high; }
+    let u = random();
+    let c = (m - low) / (high - low);
+    if u <= c {
+        return low + sqrt(u * (high - low) * (m - low));
+    }
+    return high - sqrt((1.0 - u) * (high - low) * (high - m));
 }
 
 /// Generates a Pareto distribution variate (power-law distribution) with shape parameter `alpha`.
@@ -85,7 +91,7 @@ pub fn triangular(low: f64, high: f64, mode: f64) -> f64 {
 ///   `alpha`: Shape parameter α (> 0.0).
 pub fn pareto(alpha: f64) -> f64 {
     let u = random();
-    if alpha <= 0.0 || u == 0.0 {
+    if alpha <= 0.0 || u <= 0.0 || u >= 1.0 {
         return 1.0;
     }
     return 1.0 / pow(1.0 - u, 1.0 / alpha);
@@ -98,7 +104,7 @@ pub fn pareto(alpha: f64) -> f64 {
 ///   `beta` : Shape parameter β (> 0.0).
 pub fn weibull(alpha: f64, beta: f64) -> f64 {
     let u = random();
-    if u <= 0.000000000000001 || beta <= 0.0 {
+    if alpha <= 0.0 || beta <= 0.0 || u <= 0.000000000000001 || u >= 1.0 {
         return 0.0;
     }
     return alpha * pow(0.0 - ln(1.0 - u), 1.0 / beta);
