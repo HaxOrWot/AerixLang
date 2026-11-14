@@ -162,12 +162,12 @@ pub class PeBuilder {
         return off
     }
 
-    pub fn build_and_write(asm: X64Asm, out_path: str) -> bool {
-        if asm.code.len() == 0 {
-            asm.ret()
+    pub fn build_and_write(asmb: X64Asm, out_path: str) -> bool {
+        if asmb.code.len() == 0 {
+            asmb.ret()
         }
-        asm.patch_labels()
-        let text_len = asm.code.len()
+        asmb.patch_labels()
+        let text_len = asmb.code.len()
         let text_rva = 0x1000
         let text_virt = text_len
         let rdata_rva = pe_align_up(text_rva + text_virt, 0x1000)
@@ -277,10 +277,10 @@ pub class PeBuilder {
 
         // Patch all RIP+rel32 fixups in .text
         mut fi = 0
-        while fi < asm.fix_pos.len() {
-            let fp = asm.fix_pos.get(fi)
-            let fk = asm.fix_kind.get(fi)
-            let ft = asm.fix_target.get(fi)
+        while fi < asmb.fix_pos.len() {
+            let fp = asmb.fix_pos.get(fi)
+            let fk = asmb.fix_kind.get(fi)
+            let ft = asmb.fix_target.get(fi)
             mut target_rva = 0
             if fk == FIX_IAT() {
                 if ft >= 0 && ft < self.imp_iat_offs.len() {
@@ -292,7 +292,7 @@ pub class PeBuilder {
                 target_rva = data_rva + ft
             }
             let next_rip_rva = text_rva + fp + 4
-            asm.patch_i32(fp, target_rva - next_rip_rva)
+            asmb.patch_i32(fp, target_rva - next_rip_rva)
             fi = fi + 1
         }
 
@@ -409,7 +409,7 @@ pub class PeBuilder {
         while k < hdr.len() { arx_bin_u8(bh, hdr.get(k)); k = k + 1 }
 
         k = 0
-        while k < text_virt { arx_bin_u8(bh, asm.code.get(k)); k = k + 1 }
+        while k < text_virt { arx_bin_u8(bh, asmb.code.get(k)); k = k + 1 }
         while k < text_raw_size { arx_bin_u8(bh, 0); k = k + 1 }
 
         k = 0

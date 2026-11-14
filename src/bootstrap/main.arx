@@ -858,9 +858,9 @@ fn emit_native_exe(input_file: str, exe_path: str, verbose: bool) -> i64 {
     // Verify label resolution
     mut unresolved_labels = 0
     mut li = 0
-    while li < ncg.asm.label_ref_id.len() {
-        let lid = ncg.asm.label_ref_id.get(li)
-        if lid >= ncg.asm.label_addrs.len() || ncg.asm.label_addrs.get(lid) < 0 {
+    while li < ncg.asmb.label_ref_id.len() {
+        let lid = ncg.asmb.label_ref_id.get(li)
+        if lid >= ncg.asmb.label_addrs.len() || ncg.asmb.label_addrs.get(lid) < 0 {
             unresolved_labels = unresolved_labels + 1
         }
         li = li + 1
@@ -871,9 +871,9 @@ fn emit_native_exe(input_file: str, exe_path: str, verbose: bool) -> i64 {
             File.remove(target_exe)
         }
         mut ui = 0
-        while ui < ncg.asm.label_ref_id.len() {
-            let ulid = ncg.asm.label_ref_id.get(ui)
-            if ulid >= ncg.asm.label_addrs.len() || ncg.asm.label_addrs.get(ulid) < 0 {
+        while ui < ncg.asmb.label_ref_id.len() {
+            let ulid = ncg.asmb.label_ref_id.get(ui)
+            if ulid >= ncg.asmb.label_addrs.len() || ncg.asmb.label_addrs.get(ulid) < 0 {
                 mut lbl_name = "label_" + (ulid as str)
                 let rk = ncg.rt.labels.keys()
                 mut ki = 0
@@ -895,7 +895,7 @@ fn emit_native_exe(input_file: str, exe_path: str, verbose: bool) -> i64 {
 
     // Stage 3: PE binary write check
     if !compile_ok || !File.exists(target_exe) {
-        if ncg.asm.code.len() == 0 {
+        if ncg.asmb.code.len() == 0 {
             eprintln("error: native compilation failed at AST walk stage: no machine code generated")
         } else {
             eprintln("error: native compilation failed at PE binary write stage: unable to write " + target_exe)
