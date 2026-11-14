@@ -53,6 +53,44 @@ Copy-Item (Join-Path $repoRoot "USER.md") (Join-Path $stageDir "docs\USER.md") -
 Copy-Item (Join-Path $repoRoot "GUIDE.md") (Join-Path $stageDir "docs\GUIDE.md") -Force
 Copy-Item (Join-Path $repoRoot "LICENSE") (Join-Path $stageDir "LICENSE") -Force
 
+# 2.5 Compile standalone Updater.exe for payload
+Write-Host "Compiling standalone Updater.exe for payload..."
+$fwDir = Join-Path $env:windir "Microsoft.NET\Framework64\v4.0.30319"
+$csc   = Join-Path $fwDir "csc.exe"
+if (-not (Test-Path $csc)) { throw "Missing .NET Framework C# compiler: $csc" }
+
+$appIcon         = Join-Path $installerDir "assets\aerix.ico"
+$brandPng        = Join-Path $repoRoot "editors\vscode-aerix\icons\aerix-icon.png"
+$updaterManifest = Join-Path $srcDir "updater.manifest"
+$licenseFile     = Join-Path $repoRoot "LICENSE"
+$manifestRes     = Join-Path $srcDir "installer_manifest.json"
+$stageUpdater    = Join-Path $stageDir "Updater.exe"
+$stageBinUpdater = Join-Path $stageDir "bin\Updater.exe"
+
+& $csc /nologo /target:winexe /platform:x64 /optimize+ /warnaserror `
+    /out:"$stageUpdater" `
+    /win32icon:"$appIcon" `
+    /win32manifest:"$updaterManifest" `
+    /reference:"$fwDir\System.dll" `
+    /reference:"$fwDir\System.Core.dll" `
+    /reference:"$fwDir\System.Drawing.dll" `
+    /reference:"$fwDir\System.Windows.Forms.dll" `
+    /reference:"$fwDir\System.IO.Compression.dll" `
+    /reference:"$fwDir\System.IO.Compression.FileSystem.dll" `
+    /reference:"$fwDir\System.Web.Extensions.dll" `
+    /resource:"$licenseFile,LICENSE" `
+    /resource:"$appIcon,aerix.ico" `
+    /resource:"$brandPng,aerix-icon.png" `
+    /resource:"$manifestRes,installer_manifest.json" `
+    (Join-Path $srcDir "AssemblyInfo.cs") `
+    (Join-Path $srcDir "InstallerEngine.cs") `
+    (Join-Path $srcDir "UpdateProgressForm.cs") `
+    (Join-Path $srcDir "SetupForm.cs") `
+    (Join-Path $srcDir "Program.cs")
+
+if ($LASTEXITCODE -ne 0) { throw "Failed to compile Updater.exe" }
+Copy-Item "$stageUpdater" "$stageBinUpdater" -Force
+
 # 3. Compress staged tree into embedded AerixPayload.zip
 Write-Host "[3/4] Compressing AerixPayload.zip..."
 $payloadZip = Join-Path $buildDir "AerixPayload.zip"

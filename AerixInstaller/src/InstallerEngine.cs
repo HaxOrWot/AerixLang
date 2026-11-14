@@ -376,26 +376,26 @@ namespace AerixSetup
                 // 2. Grant modify permissions to Users on the install folder so auto-updates succeed without extra prompts
                 GrantDirectoryPermissions(root);
 
-                // 3. Copy self as Uninstall.exe and Updater.exe
-                Report(progress, 65, "Creating Windows uninstaller & updater...", "Creating Uninstall.exe & Updater.exe");
+                // 3. Copy self as Uninstall.exe
+                Report(progress, 65, "Creating Windows uninstaller...", "Creating Uninstall.exe");
                 string selfExe = Assembly.GetExecutingAssembly().Location;
                 string uninstExe = Path.Combine(root, "Uninstall.exe");
-                string updaterExe = Path.Combine(root, "Updater.exe");
-                string binUpdaterExe = Path.Combine(root, "bin", "Updater.exe");
                 if (!string.IsNullOrEmpty(selfExe) && File.Exists(selfExe))
                 {
                     if (!string.Equals(Path.GetFullPath(selfExe), Path.GetFullPath(uninstExe), StringComparison.OrdinalIgnoreCase))
                     {
                         CopyFileLockedSafe(selfExe, uninstExe);
                     }
-                    if (!string.Equals(Path.GetFullPath(selfExe), Path.GetFullPath(updaterExe), StringComparison.OrdinalIgnoreCase))
-                    {
-                        CopyFileLockedSafe(selfExe, updaterExe);
-                    }
-                    if (!string.Equals(Path.GetFullPath(selfExe), Path.GetFullPath(binUpdaterExe), StringComparison.OrdinalIgnoreCase))
-                    {
-                        CopyFileLockedSafe(selfExe, binUpdaterExe);
-                    }
+                }
+                string updaterExe = Path.Combine(root, "Updater.exe");
+                string binUpdaterExe = Path.Combine(root, "bin", "Updater.exe");
+                if (!File.Exists(updaterExe) && !string.IsNullOrEmpty(selfExe) && File.Exists(selfExe))
+                {
+                    CopyFileLockedSafe(selfExe, updaterExe);
+                }
+                if (!File.Exists(binUpdaterExe) && File.Exists(updaterExe))
+                {
+                    CopyFileLockedSafe(updaterExe, binUpdaterExe);
                 }
 
                 // 3. Configure Environment Variables & PATH
