@@ -52,6 +52,10 @@ pub class Analyzer {
     pub mod_aliases: Map<str, str>
     pub item_aliases: Map<str, str>
     pub loaded_mods: Map<str, i64>
+    pub file_imported_symbols: Map<str, str>
+    pub file_has_selective_imports: Map<str, i64>
+    pub file_explicit_modules: Map<str, i64>
+    pub explicit_mod_list: List<str>
 
     // Monomorphized generic registries
     pub gen_list_types: List<str>
@@ -167,6 +171,10 @@ pub class Analyzer {
         self.item_aliases = p.item_aliases
         self.loaded_mods = p.loaded_mods
         self.fn_externs = p.fn_externs
+        self.file_imported_symbols = p.file_imported_symbols
+        self.file_has_selective_imports = p.file_has_selective_imports
+        self.file_explicit_modules = p.file_explicit_modules
+        self.explicit_mod_list = p.explicit_mod_list
 
         self.gen_list_types = List<str>()
         self.gen_list_count = 0

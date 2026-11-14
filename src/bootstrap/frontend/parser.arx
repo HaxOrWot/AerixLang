@@ -61,6 +61,10 @@ pub class Parser {
     pub fn_externs: Map<str, str>
     pub mod_aliases: Map<str, str>
     pub item_aliases: Map<str, str>
+    pub file_imported_symbols: Map<str, str>
+    pub file_has_selective_imports: Map<str, i64>
+    pub file_explicit_modules: Map<str, i64>
+    pub explicit_mod_list: List<str>
     pub gen_list_types: List<str>
     pub gen_list_count: i64
     pub gen_map_keys: List<str>
@@ -128,6 +132,10 @@ pub class Parser {
         self.fn_externs = Map<str, str>()
         self.mod_aliases = Map<str, str>()
         self.item_aliases = Map<str, str>()
+        self.file_imported_symbols = Map<str, str>()
+        self.file_has_selective_imports = Map<str, i64>()
+        self.file_explicit_modules = Map<str, i64>()
+        self.explicit_mod_list = List<str>()
         self.gen_list_types = List<str>()
         self.gen_list_count = 0
         self.gen_map_keys = List<str>()
@@ -437,6 +445,14 @@ pub class Parser {
     priv fn skip_stmt_end() {
         while self.cur_kind() == TK_SEMICOLON() || self.cur_kind() == TK_NEWLINE() {
             self.pos = self.pos + 1
+        }
+    }
+
+    pub fn add_explicit_module(mod_name: str) {
+        if mod_name == "" { return }
+        if !self.file_explicit_modules.has_key(mod_name) {
+            self.file_explicit_modules.insert(mod_name, 1)
+            self.explicit_mod_list.push(mod_name)
         }
     }
 
@@ -855,16 +871,18 @@ pub class Parser {
             self.adv()
             mut mod_src = ""
             mut from_dotted = ""
+            mut last_seg = ""
             if self.cur_kind() == TK_STR() {
                 let t = self.adv()
                 mod_src = self.tok_vals.get(t)
                 self.load_file(mod_src)
                 from_dotted = mod_src
+                last_seg = bpath_basename(mod_src)
             } else if self.cur_kind() == TK_IDENT() {
                 let t = self.adv()
                 mut mpath = self.tok_vals.get(t)
                 from_dotted = mpath
-                mut last_seg = mpath
+                last_seg = mpath
                 while self.match_k(TK_DOT()) {
                     let sub_t = self.expect_k(TK_IDENT(), "Expected identifier after '.' in module path")
                     let sub_nm = self.tok_vals.get(sub_t)
@@ -874,10 +892,8 @@ pub class Parser {
                 }
                 mod_src = mpath
                 self.load_module(mod_src)
-                self.mod_aliases.insert(from_dotted, from_dotted)
-                self.mod_aliases.insert(last_seg, from_dotted)
-                self.loaded_mods.insert(from_dotted, 1)
-                self.loaded_mods.insert(last_seg, 1)
+                self.file_has_selective_imports.insert(from_dotted, 1)
+                self.file_has_selective_imports.insert(last_seg, 1)
             } else {
                 self.fail("Expected path or module name after 'from'")
                 return
@@ -894,6 +910,20 @@ pub class Parser {
                             alias_nm = self.tok_vals.get(atok)
                         }
                         self.register_imported_item(from_dotted, orig_nm, alias_nm)
+                        self.file_imported_symbols.insert(orig_nm, from_dotted)
+                        if alias_nm != "" {
+                            self.file_imported_symbols.insert(alias_nm, from_dotted)
+                        }
+                        let low_orig = orig_nm.slice(0, 1).to_lower() + orig_nm.slice(1, orig_nm.len())
+                        let cap_orig = orig_nm.slice(0, 1).to_upper() + orig_nm.slice(1, orig_nm.len())
+                        if orig_nm != low_orig {
+                            self.item_aliases.insert(orig_nm, low_orig)
+                            self.file_imported_symbols.insert(low_orig, from_dotted)
+                        }
+                        if orig_nm != cap_orig {
+                            self.item_aliases.insert(cap_orig, orig_nm)
+                            self.file_imported_symbols.insert(cap_orig, from_dotted)
+                        }
                     } else {
                         self.adv()
                     }
@@ -902,6 +932,12 @@ pub class Parser {
                 self.expect_k(TK_RBRACE(), "Expected closing brace in from ... import")
             } else if self.match_k(TK_STAR()) {
                 // from Mod import *
+                self.mod_aliases.insert(from_dotted, from_dotted)
+                self.mod_aliases.insert(last_seg, from_dotted)
+                self.loaded_mods.insert(from_dotted, 1)
+                self.loaded_mods.insert(last_seg, 1)
+                self.add_explicit_module(from_dotted)
+                self.add_explicit_module(last_seg)
             } else {
                 while self.cur_kind() == TK_IDENT() {
                     let orig_tok = self.adv()
@@ -912,6 +948,20 @@ pub class Parser {
                         alias_nm = self.tok_vals.get(atok)
                     }
                     self.register_imported_item(from_dotted, orig_nm, alias_nm)
+                    self.file_imported_symbols.insert(orig_nm, from_dotted)
+                    if alias_nm != "" {
+                        self.file_imported_symbols.insert(alias_nm, from_dotted)
+                    }
+                    let low_orig = orig_nm.slice(0, 1).to_lower() + orig_nm.slice(1, orig_nm.len())
+                    let cap_orig = orig_nm.slice(0, 1).to_upper() + orig_nm.slice(1, orig_nm.len())
+                    if orig_nm != low_orig {
+                        self.item_aliases.insert(orig_nm, low_orig)
+                        self.file_imported_symbols.insert(low_orig, from_dotted)
+                    }
+                    if orig_nm != cap_orig {
+                        self.item_aliases.insert(cap_orig, orig_nm)
+                        self.file_imported_symbols.insert(cap_orig, from_dotted)
+                    }
                     if !self.match_k(TK_COMMA()) { break }
                 }
             }
@@ -959,16 +1009,30 @@ pub class Parser {
                     last_seg = sub_nm
                 }
                 self.load_module(mpath)
-                self.mod_aliases.insert(sel_dotted, sel_dotted)
-                self.mod_aliases.insert(last_seg, sel_dotted)
-                self.loaded_mods.insert(sel_dotted, 1)
-                self.loaded_mods.insert(last_seg, 1)
+                self.file_has_selective_imports.insert(sel_dotted, 1)
+                self.file_has_selective_imports.insert(last_seg, 1)
             } else {
                 self.fail("Expected path or module name after 'from'")
             }
             mut ni = 0
             while ni < names.len() {
-                self.register_imported_item(sel_dotted, names.get(ni), aliases.get(ni))
+                let onm = names.get(ni)
+                let anm = aliases.get(ni)
+                self.register_imported_item(sel_dotted, onm, anm)
+                self.file_imported_symbols.insert(onm, sel_dotted)
+                if anm != "" {
+                    self.file_imported_symbols.insert(anm, sel_dotted)
+                }
+                let low_onm = onm.slice(0, 1).to_lower() + onm.slice(1, onm.len())
+                let cap_onm = onm.slice(0, 1).to_upper() + onm.slice(1, onm.len())
+                if onm != low_onm {
+                    self.item_aliases.insert(onm, low_onm)
+                    self.file_imported_symbols.insert(low_onm, sel_dotted)
+                }
+                if onm != cap_onm {
+                    self.item_aliases.insert(cap_onm, onm)
+                    self.file_imported_symbols.insert(cap_onm, sel_dotted)
+                }
                 ni = ni + 1
             }
             return
@@ -983,12 +1047,14 @@ pub class Parser {
             if stem.ends_with(".arx") && stem.len() > 4 { stem = stem.slice(0, stem.len() - 4) }
             self.mod_aliases.insert(stem, stem)
             self.loaded_mods.insert(stem, 1)
+            self.add_explicit_module(stem)
             if self.match_k(TK_AS()) {
                 let atok = self.expect_k(TK_IDENT(), "Expected alias identifier after 'as'")
                 let alias_nm = self.tok_vals.get(atok)
                 self.mod_aliases.insert(alias_nm, stem)
                 self.mod_aliases.insert(alias_nm, pth)
                 self.loaded_mods.insert(alias_nm, 1)
+                self.add_explicit_module(alias_nm)
             }
             return
         }
@@ -1010,6 +1076,8 @@ pub class Parser {
             self.mod_aliases.insert(last_seg, dotted_id)
             self.loaded_mods.insert(dotted_id, 1)
             self.loaded_mods.insert(last_seg, 1)
+            self.add_explicit_module(dotted_id)
+            self.add_explicit_module(last_seg)
             if dotted_id.len() > 0 {
                 let cap_mod = dotted_id.slice(0, 1).to_upper() + dotted_id.slice(1, dotted_id.len())
                 self.mod_aliases.insert(cap_mod, dotted_id)
@@ -1027,6 +1095,7 @@ pub class Parser {
                 let alias_nm = self.tok_vals.get(atok)
                 self.mod_aliases.insert(alias_nm, dotted_id)
                 self.loaded_mods.insert(alias_nm, 1)
+                self.add_explicit_module(alias_nm)
                 // Also insert capitalized and lowercase forms for robustness
                 if alias_nm.len() > 0 {
                     let cap_mod = alias_nm.slice(0, 1).to_upper() + alias_nm.slice(1, alias_nm.len())

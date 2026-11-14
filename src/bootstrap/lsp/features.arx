@@ -1593,10 +1593,178 @@ fn lsp_is_type_position(before_word: str) -> bool {
     return false
 }
 
-fn lsp_emit_import_completions(doc_path: str, line0: i64, prefix: str, cpos: i64, jb: JsonBuf, is_first: List<i64>) -> bool {
+fn lsp_emit_import_completions(az: Analyzer, doc_path: str, line0: i64, prefix: str, cpos: i64, jb: JsonBuf, is_first: List<i64>) -> bool {
     let tr = prefix.trim()
     if !tr.starts_with("import ") && !tr.starts_with("use ") && !tr.starts_with("from ") && tr != "import" && tr != "use" && tr != "from" { return false }
     let qpos = lsp_str_find(prefix, "\"", 0)
+
+    let from_pos = lsp_str_find(prefix, "from ", 0)
+    let imp_pos = lsp_str_find(prefix, " import", from_pos)
+    if from_pos >= 0 && imp_pos > from_pos && cpos > imp_pos + 6 {
+        // Cursor is after `from <module> import `
+        mut mod_raw = prefix.slice(from_pos + 5, imp_pos).trim()
+        if mod_raw.starts_with("\"") && mod_raw.ends_with("\"") && mod_raw.len() > 1 {
+            mod_raw = mod_raw.slice(1, mod_raw.len() - 1)
+        }
+        let seen_syms = Map<str, i64>()
+
+        // 1. Functions from mod_raw
+        mut fi = 0
+        while fi < az.fn_count {
+            let fid = az.fn_nodes.get(fi)
+            let fn_file = az.nf.get(fid)
+            if lsp_file_matches_mod(fn_file, mod_raw) {
+                let fnm = az.sa.get(fid)
+                if fnm != "" && !seen_syms.has_key("f::" + fnm) {
+                    seen_syms.insert("f::" + fnm, 1)
+                    let sig = lsp_fn_signature_str(az, fid)
+                    let fst = is_first.get(0) == 1
+                    is_first.set(0, 0)
+                    emit_comp_item_ex(jb, fnm, "", "function", CKIND_FUNCTION(), sig,
+                                      "Function `" + fnm + "` exported from `" + mod_raw + "`.",
+                                      fnm, "0_" + fnm, "", -1, 0, 0, "", false, fst)
+                }
+            }
+            fi = fi + 1
+        }
+
+        // 2. Classes & Structs from mod_raw
+        mut ci = 0
+        while ci < az.cls_count {
+            let cid = az.cls_nodes.get(ci)
+            let c_file = az.nf.get(cid)
+            if lsp_file_matches_mod(c_file, mod_raw) {
+                let cnm = az.cls_names.get(ci)
+                if cnm != "" && !seen_syms.has_key("c::" + cnm) {
+                    seen_syms.insert("c::" + cnm, 1)
+                    let fst = is_first.get(0) == 1
+                    is_first.set(0, 0)
+                    emit_comp_item_ex(jb, cnm, "", "class", CKIND_CLASS(), "class " + cnm,
+                                      "Class/Struct `" + cnm + "` exported from `" + mod_raw + "`.",
+                                      cnm, "0_" + cnm, "", -1, 0, 0, "", false, fst)
+                }
+            }
+            ci = ci + 1
+        }
+
+        // 3. Enums from mod_raw
+        mut ei = 0
+        while ei < az.enum_count {
+            let eid = az.enum_nodes.get(ei)
+            let e_file = az.nf.get(eid)
+            if lsp_file_matches_mod(e_file, mod_raw) {
+                let enm = az.enum_names.get(ei)
+                if enm != "" && !seen_syms.has_key("e::" + enm) {
+                    seen_syms.insert("e::" + enm, 1)
+                    let fst = is_first.get(0) == 1
+                    is_first.set(0, 0)
+                    emit_comp_item_ex(jb, enm, "", "enum", CKIND_ENUM(), "enum " + enm,
+                                      "Enum `" + enm + "` exported from `" + mod_raw + "`.",
+                                      enm, "0_" + enm, "", -1, 0, 0, "", false, fst)
+                }
+            }
+            ei = ei + 1
+        }
+
+        // 4. Built-in module symbol catalogs (covers case when module files were not pre-parsed into az AST yet)
+        let std_items = List<str>()
+        let std_kinds = List<i64>()
+        let std_details = List<str>()
+        if mod_raw == "Window.Gui" || mod_raw == "Gui" {
+            std_items.push("createWindow"); std_kinds.push(CKIND_FUNCTION()); std_details.push("fn createWindow(title: str, width: i64, height: i64) -> i64")
+            std_items.push("CreateWindow"); std_kinds.push(CKIND_FUNCTION()); std_details.push("fn CreateWindow(title: str, width: i64, height: i64) -> i64")
+            std_items.push("AppWindow"); std_kinds.push(CKIND_CLASS()); std_details.push("class AppWindow")
+            std_items.push("Button"); std_kinds.push(CKIND_CLASS()); std_details.push("class Button")
+            std_items.push("TextBox"); std_kinds.push(CKIND_CLASS()); std_details.push("class TextBox")
+            std_items.push("CheckBox"); std_kinds.push(CKIND_CLASS()); std_details.push("class CheckBox")
+            std_items.push("ProgressBar"); std_kinds.push(CKIND_CLASS()); std_details.push("class ProgressBar")
+            std_items.push("ListBox"); std_kinds.push(CKIND_CLASS()); std_details.push("class ListBox")
+            std_items.push("ComboBox"); std_kinds.push(CKIND_CLASS()); std_details.push("class ComboBox")
+            std_items.push("Canvas"); std_kinds.push(CKIND_CLASS()); std_details.push("class Canvas")
+            std_items.push("dialogInfo"); std_kinds.push(CKIND_FUNCTION()); std_details.push("fn dialogInfo(title: str, msg: str) -> void")
+            std_items.push("dialogWarning"); std_kinds.push(CKIND_FUNCTION()); std_details.push("fn dialogWarning(title: str, msg: str) -> void")
+            std_items.push("dialogError"); std_kinds.push(CKIND_FUNCTION()); std_details.push("fn dialogError(title: str, msg: str) -> void")
+        } else if mod_raw == "Window.Gui.Canvas" || mod_raw == "Canvas" {
+            std_items.push("Canvas"); std_kinds.push(CKIND_CLASS()); std_details.push("class Canvas")
+            std_items.push("rgb"); std_kinds.push(CKIND_FUNCTION()); std_details.push("fn rgb(r: i64, g: i64, b: i64) -> i64")
+            std_items.push("RGB"); std_kinds.push(CKIND_FUNCTION()); std_details.push("fn RGB(r: i64, g: i64, b: i64) -> i64")
+            std_items.push("colorRed"); std_kinds.push(CKIND_FUNCTION()); std_details.push("fn colorRed() -> i64")
+            std_items.push("colorBlack"); std_kinds.push(CKIND_FUNCTION()); std_details.push("fn colorBlack() -> i64")
+            std_items.push("colorWhite"); std_kinds.push(CKIND_FUNCTION()); std_details.push("fn colorWhite() -> i64")
+            std_items.push("colorGreen"); std_kinds.push(CKIND_FUNCTION()); std_details.push("fn colorGreen() -> i64")
+            std_items.push("colorBlue"); std_kinds.push(CKIND_FUNCTION()); std_details.push("fn colorBlue() -> i64")
+            std_items.push("colorYellow"); std_kinds.push(CKIND_FUNCTION()); std_details.push("fn colorYellow() -> i64")
+            std_items.push("colorCyan"); std_kinds.push(CKIND_FUNCTION()); std_details.push("fn colorCyan() -> i64")
+            std_items.push("colorGray"); std_kinds.push(CKIND_FUNCTION()); std_details.push("fn colorGray() -> i64")
+        } else if mod_raw == "Window" {
+            std_items.push("createWindow"); std_kinds.push(CKIND_FUNCTION()); std_details.push("fn createWindow(title: str, width: i64, height: i64) -> i64")
+            std_items.push("AppWindow"); std_kinds.push(CKIND_CLASS()); std_details.push("class AppWindow")
+            std_items.push("MessageBox"); std_kinds.push(CKIND_FUNCTION()); std_details.push("fn MessageBox(title: str, msg: str) -> void")
+            std_items.push("beep"); std_kinds.push(CKIND_FUNCTION()); std_details.push("fn beep(freq: i64, dur_ms: i64) -> void")
+            std_items.push("isKeyDown"); std_kinds.push(CKIND_FUNCTION()); std_details.push("fn isKeyDown(vk: i64) -> bool")
+            std_items.push("screenWidth"); std_kinds.push(CKIND_FUNCTION()); std_details.push("fn screenWidth() -> i64")
+            std_items.push("screenHeight"); std_kinds.push(CKIND_FUNCTION()); std_details.push("fn screenHeight() -> i64")
+            std_items.push("Gui"); std_kinds.push(CKIND_MODULE()); std_details.push("submodule Window.Gui")
+            std_items.push("Clipboard"); std_kinds.push(CKIND_MODULE()); std_details.push("submodule Window.Clipboard")
+        } else if mod_raw == "Time" {
+            std_items.push("now"); std_kinds.push(CKIND_FUNCTION()); std_details.push("fn now() -> i64")
+            std_items.push("now_ms"); std_kinds.push(CKIND_FUNCTION()); std_details.push("fn now_ms() -> i64")
+            std_items.push("now_ns"); std_kinds.push(CKIND_FUNCTION()); std_details.push("fn now_ns() -> i64")
+            std_items.push("sleep"); std_kinds.push(CKIND_FUNCTION()); std_details.push("fn sleep(ms: i64) -> void")
+            std_items.push("Date"); std_kinds.push(CKIND_CLASS()); std_details.push("class Date")
+            std_items.push("Stopwatch"); std_kinds.push(CKIND_CLASS()); std_details.push("class Stopwatch")
+        } else if mod_raw == "Random" {
+            std_items.push("randInt"); std_kinds.push(CKIND_FUNCTION()); std_details.push("fn randInt(min: i64, max: i64) -> i64")
+            std_items.push("randFloat"); std_kinds.push(CKIND_FUNCTION()); std_details.push("fn randFloat() -> f64")
+            std_items.push("randBool"); std_kinds.push(CKIND_FUNCTION()); std_details.push("fn randBool() -> bool")
+            std_items.push("seed"); std_kinds.push(CKIND_FUNCTION()); std_details.push("fn seed(val: i64) -> void")
+            std_items.push("choice"); std_kinds.push(CKIND_FUNCTION()); std_details.push("fn choice(items: List<T>) -> T")
+            std_items.push("shuffle"); std_kinds.push(CKIND_FUNCTION()); std_details.push("fn shuffle(items: List<T>) -> void")
+        } else if mod_raw == "Math" {
+            std_items.push("sqrt"); std_kinds.push(CKIND_FUNCTION()); std_details.push("fn sqrt(x: f64) -> f64")
+            std_items.push("sin"); std_kinds.push(CKIND_FUNCTION()); std_details.push("fn sin(x: f64) -> f64")
+            std_items.push("cos"); std_kinds.push(CKIND_FUNCTION()); std_details.push("fn cos(x: f64) -> f64")
+            std_items.push("tan"); std_kinds.push(CKIND_FUNCTION()); std_details.push("fn tan(x: f64) -> f64")
+            std_items.push("pow"); std_kinds.push(CKIND_FUNCTION()); std_details.push("fn pow(base: f64, exp: f64) -> f64")
+            std_items.push("abs"); std_kinds.push(CKIND_FUNCTION()); std_details.push("fn abs(x: i64) -> i64")
+            std_items.push("min"); std_kinds.push(CKIND_FUNCTION()); std_details.push("fn min(a: i64, b: i64) -> i64")
+            std_items.push("max"); std_kinds.push(CKIND_FUNCTION()); std_details.push("fn max(a: i64, b: i64) -> i64")
+            std_items.push("floor"); std_kinds.push(CKIND_FUNCTION()); std_details.push("fn floor(x: f64) -> f64")
+            std_items.push("ceil"); std_kinds.push(CKIND_FUNCTION()); std_details.push("fn ceil(x: f64) -> f64")
+            std_items.push("round"); std_kinds.push(CKIND_FUNCTION()); std_details.push("fn round(x: f64) -> f64")
+            std_items.push("log"); std_kinds.push(CKIND_FUNCTION()); std_details.push("fn log(x: f64) -> f64")
+            std_items.push("exp"); std_kinds.push(CKIND_FUNCTION()); std_details.push("fn exp(x: f64) -> f64")
+            std_items.push("PI"); std_kinds.push(CKIND_FIELD()); std_details.push("const PI: f64 = 3.141592653589793")
+            std_items.push("E"); std_kinds.push(CKIND_FIELD()); std_details.push("const E: f64 = 2.718281828459045")
+        } else if mod_raw == "Socket" {
+            std_items.push("TcpListener"); std_kinds.push(CKIND_CLASS()); std_details.push("class TcpListener")
+            std_items.push("TcpStream"); std_kinds.push(CKIND_CLASS()); std_details.push("class TcpStream")
+            std_items.push("UdpSocket"); std_kinds.push(CKIND_CLASS()); std_details.push("class UdpSocket")
+        }
+
+        mut s_i = 0
+        while s_i < std_items.len() {
+            let snm = std_items.get(s_i)
+            let skd = std_kinds.get(s_i)
+            let sdt = std_details.get(s_i)
+            if !seen_syms.has_key("std::" + snm) && !seen_syms.has_key("f::" + snm) && !seen_syms.has_key("c::" + snm) {
+                seen_syms.insert("std::" + snm, 1)
+                let fst = is_first.get(0) == 1
+                is_first.set(0, 0)
+                emit_comp_item_ex(jb, snm, "", "stdlib", skd, sdt,
+                                  "Exported symbol `" + snm + "` from `" + mod_raw + "`.",
+                                  snm, "0_" + snm, "", -1, 0, 0, "", false, fst)
+            }
+            s_i = s_i + 1
+        }
+
+        let lb_snip = lsp_lbrace()
+        let fst_snip = is_first.get(0) == 1
+        is_first.set(0, 0)
+        emit_comp_item_ex(jb, lb_snip + " ... }", "", "selective", CKIND_SNIPPET(), "Selective import block",
+                          "Import multiple symbols in braces.", lb_snip + " $1 }", "0a_braces", "", -1, 0, 0, "", false, fst_snip)
+        return true
+    }
     if qpos < 0 {
         // Unquoted import completion: suggest standard modules, submodules, snippets, and local files
         let mods = List<str>()
@@ -1863,7 +2031,8 @@ fn lsp_file_matches_mod(file_path: str, mod_name: str) -> bool {
     if mod_name == "" || file_path == "" { return false }
     let norm = file_path.replace("\\", "/")
     let low_f = norm.to_lower()
-    let low_m = mod_name.to_lower()
+    let norm_m = mod_name.replace(".", "/")
+    let low_m = norm_m.to_lower()
     if low_f.contains("/modules/" + low_m + "/") || low_f.contains("/modules/" + low_m + ".arx") {
         return true
     }
@@ -1879,16 +2048,29 @@ fn lsp_file_matches_mod(file_path: str, mod_name: str) -> bool {
     return false
 }
 
-fn lsp_source_module_label(file_path: str, doc_path: str) -> str {
+fn lsp_source_module_label(az: Analyzer, file_path: str, doc_path: str) -> str {
     if file_path == "" || file_path == doc_path { return "" }
     let norm = file_path.replace("\\", "/")
     let m_idx = lsp_str_find(norm, "/modules/", 0)
     if m_idx >= 0 {
         let sub = norm.slice(m_idx + 9, norm.len())
-        let sl_idx = lsp_str_find(sub, "/", 0)
-        if sl_idx > 0 { return sub.slice(0, sl_idx) }
-        if sub.ends_with(".arx") && sub.len() > 4 { return sub.slice(0, sub.len() - 4) }
-        return sub
+        let dir_sub = bpath_dirname(sub)
+        if dir_sub != "" && dir_sub != "." {
+            let dotted = dir_sub.replace("/", ".")
+            let base_sub = bpath_basename(dir_sub)
+            if az.file_explicit_modules.has_key(dotted) { return dotted }
+            if az.file_explicit_modules.has_key(base_sub) { return base_sub }
+            let p0 = dir_sub.split("/").get(0)
+            if az.file_explicit_modules.has_key(p0) { return p0 }
+            if az.file_has_selective_imports.has_key(dotted) { return dotted }
+            if az.file_has_selective_imports.has_key(base_sub) { return base_sub }
+            if az.mod_aliases.has_key(dotted) { return dotted }
+            if az.mod_aliases.has_key(base_sub) { return base_sub }
+            return dotted
+        }
+        let base = bpath_basename(sub)
+        if base.ends_with(".arx") && base.len() > 4 { return base.slice(0, base.len() - 4) }
+        return base
     }
     let base = bpath_basename(norm)
     if base.ends_with(".arx") && base.len() > 4 { return base.slice(0, base.len() - 4) }
@@ -1904,6 +2086,11 @@ fn collect_module_or_file_completions(az: Analyzer, source: str, doc_path: str, 
         target_mod = az.mod_aliases.get(mod_name)
     }
     let is_static_prelude = lsp_is_static_runtime(mod_name) || lsp_is_static_runtime(target_mod)
+    let is_mod_alias = az.mod_aliases.has_key(mod_name) || az.mod_aliases.has_key(target_mod)
+    let is_explicit = az.file_explicit_modules.has_key(mod_name) || az.file_explicit_modules.has_key(target_mod)
+    if !is_static_prelude && !is_mod_alias && !is_explicit {
+        return false
+    }
 
     // 1. All functions declared in that module or file
     mut fi = 0
@@ -2172,7 +2359,7 @@ pub fn lsp_build_completion_json(source: str, az: Analyzer, doc_path: str, line0
     is_first.push(1)
 
     // Case 0: Import / Use file & stdlib path completion inside quotes
-    if lsp_emit_import_completions(doc_path, line0, prefix, cpos, jb, is_first) {
+    if lsp_emit_import_completions(az, doc_path, line0, prefix, cpos, jb, is_first) {
         jb.rbrack()
         jb.rbrace()
         return jb.finish()
@@ -2323,16 +2510,37 @@ pub fn lsp_build_completion_json(source: str, az: Analyzer, doc_path: str, line0
     while fi < az.fn_count {
         let fid = az.fn_nodes.get(fi)
         let fnm = az.sa.get(fid)
+        let fn_file = az.nf.get(fid)
+        let same_file = fn_file == doc_path
+        mut is_visible = same_file
+        if !is_visible {
+            let low_fnm = fnm.slice(0, 1).to_lower() + fnm.slice(1, fnm.len())
+            let cap_fnm = fnm.slice(0, 1).to_upper() + fnm.slice(1, fnm.len())
+            if az.file_imported_symbols.has_key(fnm) || az.file_imported_symbols.has_key(low_fnm) || az.file_imported_symbols.has_key(cap_fnm) || az.item_aliases.has_key(fnm) {
+                is_visible = true
+            } else {
+                let mod_lbl = lsp_source_module_label(az, fn_file, doc_path)
+                if mod_lbl != "" {
+                    if az.file_has_selective_imports.has_key(mod_lbl) {
+                        is_visible = false
+                    } else if az.file_explicit_modules.has_key(mod_lbl) {
+                        is_visible = true
+                    }
+                }
+            }
+        }
+        if !is_visible {
+            fi = fi + 1
+            continue
+        }
         if fnm != "" && !seen.has_key("fn::" + fnm) {
             seen.insert("fn::" + fnm, 1)
             let sig = lsp_fn_signature_str(az, fid)
             let lparts = lsp_sig_to_label_parts(sig)
             let snip = lsp_build_call_snippet(fnm, lparts.get(0), insert_parens)
             let rt = lparts.get(1)
-            let fn_file = az.nf.get(fid)
-            let same_file = fn_file == doc_path
             mut fdoc = lsp_extract_doc_comments(source, doc_path, fn_file, az.ln.get(fid))
-            let mod_lbl = lsp_source_module_label(fn_file, doc_path)
+            let mod_lbl = lsp_source_module_label(az, fn_file, doc_path)
             mut src_note = "*Defined in* `" + bpath_basename(fn_file) + ":" + az.ln.get(fid) + "`"
             if mod_lbl != "" {
                 src_note = "*Imported from module/file* `" + mod_lbl + "` (" + bpath_basename(fn_file) + ":" + az.ln.get(fid) + ")"
@@ -2349,6 +2557,15 @@ pub fn lsp_build_completion_json(source: str, az: Analyzer, doc_path: str, line0
             is_first.set(0, 0)
             emit_comp_item_ex(jb, fnm, lparts.get(0), desc, CKIND_FUNCTION(), sig, fdoc,
                               snip, stxt, "", -1, 0, 0, "", matched, fst)
+            let cap_fnm = fnm.slice(0, 1).to_upper() + fnm.slice(1, fnm.len())
+            if cap_fnm != fnm && (az.file_imported_symbols.has_key(cap_fnm) || az.item_aliases.has_key(cap_fnm)) && !seen.has_key("fn::" + cap_fnm) {
+                seen.insert("fn::" + cap_fnm, 1)
+                let fst2 = is_first.get(0) == 1
+                is_first.set(0, 0)
+                let cap_snip = lsp_build_call_snippet(cap_fnm, lparts.get(0), insert_parens)
+                emit_comp_item_ex(jb, cap_fnm, lparts.get(0), desc, CKIND_FUNCTION(), sig, fdoc,
+                                  cap_snip, stxt, "", -1, 0, 0, "", matched, fst2)
+            }
         }
         fi = fi + 1
     }
@@ -2358,10 +2575,31 @@ pub fn lsp_build_completion_json(source: str, az: Analyzer, doc_path: str, line0
     while ci < az.cls_count {
         let cid = az.cls_nodes.get(ci)
         let cnm = az.cls_names.get(ci)
+        let c_file = az.nf.get(cid)
+        let same_file = c_file == doc_path
+        mut is_visible = same_file
+        if !is_visible {
+            let low_cnm = cnm.slice(0, 1).to_lower() + cnm.slice(1, cnm.len())
+            let cap_cnm = cnm.slice(0, 1).to_upper() + cnm.slice(1, cnm.len())
+            if az.file_imported_symbols.has_key(cnm) || az.file_imported_symbols.has_key(low_cnm) || az.file_imported_symbols.has_key(cap_cnm) || az.item_aliases.has_key(cnm) {
+                is_visible = true
+            } else {
+                let mod_lbl = lsp_source_module_label(az, c_file, doc_path)
+                if mod_lbl != "" {
+                    if az.file_has_selective_imports.has_key(mod_lbl) {
+                        is_visible = false
+                    } else if az.file_explicit_modules.has_key(mod_lbl) {
+                        is_visible = true
+                    }
+                }
+            }
+        }
+        if !is_visible {
+            ci = ci + 1
+            continue
+        }
         if !seen.has_key("c::" + cnm) {
             seen.insert("c::" + cnm, 1)
-            let c_file = az.nf.get(cid)
-            let same_file = c_file == doc_path
             mut cdetail = ""
             mut csnip = ""
             let ctor_k = "ctor::" + cnm
@@ -2373,7 +2611,7 @@ pub fn lsp_build_completion_json(source: str, az: Analyzer, doc_path: str, line0
                 csnip = lsp_build_call_snippet(cnm, cdetail, insert_parens && in_fn)
             }
             mut cdoc = lsp_extract_doc_comments(source, doc_path, c_file, az.ln.get(cid))
-            let mod_lbl = lsp_source_module_label(c_file, doc_path)
+            let mod_lbl = lsp_source_module_label(az, c_file, doc_path)
             mut src_note = "*Defined in* `" + bpath_basename(c_file) + ":" + az.ln.get(cid) + "`"
             if mod_lbl != "" {
                 src_note = "*Imported from module/file* `" + mod_lbl + "` (" + bpath_basename(c_file) + ":" + az.ln.get(cid) + ")"
@@ -2414,12 +2652,33 @@ pub fn lsp_build_completion_json(source: str, az: Analyzer, doc_path: str, line0
     while ei < az.enum_count {
         let eid = az.enum_nodes.get(ei)
         let enm = az.enum_names.get(ei)
+        let e_file = az.nf.get(eid)
+        let same_file = e_file == doc_path
+        mut is_visible = same_file
+        if !is_visible {
+            let low_enm = enm.slice(0, 1).to_lower() + enm.slice(1, enm.len())
+            let cap_enm = enm.slice(0, 1).to_upper() + enm.slice(1, enm.len())
+            if az.file_imported_symbols.has_key(enm) || az.file_imported_symbols.has_key(low_enm) || az.file_imported_symbols.has_key(cap_enm) || az.item_aliases.has_key(enm) {
+                is_visible = true
+            } else {
+                let mod_lbl = lsp_source_module_label(az, e_file, doc_path)
+                if mod_lbl != "" {
+                    if az.file_has_selective_imports.has_key(mod_lbl) {
+                        is_visible = false
+                    } else if az.file_explicit_modules.has_key(mod_lbl) {
+                        is_visible = true
+                    }
+                }
+            }
+        }
+        if !is_visible {
+            ei = ei + 1
+            continue
+        }
         if !seen.has_key("e::" + enm) {
             seen.insert("e::" + enm, 1)
-            let e_file = az.nf.get(eid)
-            let same_file = e_file == doc_path
             mut edoc = lsp_extract_doc_comments(source, doc_path, e_file, az.ln.get(eid))
-            let mod_lbl = lsp_source_module_label(e_file, doc_path)
+            let mod_lbl = lsp_source_module_label(az, e_file, doc_path)
             mut src_note = "*Defined in* `" + bpath_basename(e_file) + ":" + az.ln.get(eid) + "`"
             if mod_lbl != "" {
                 src_note = "*Imported from module/file* `" + mod_lbl + "` (" + bpath_basename(e_file) + ":" + az.ln.get(eid) + ")"
@@ -2441,10 +2700,9 @@ pub fn lsp_build_completion_json(source: str, az: Analyzer, doc_path: str, line0
     }
 
     // Modules and imported file namespaces (e.g. Math, Random, Socket, Time, Window, helper)
-    mut nfi = 0
-    while nfi < az.nf.len() {
-        let fpath = az.nf.get(nfi)
-        let mlbl = lsp_source_module_label(fpath, doc_path)
+    mut mi = 0
+    while mi < az.explicit_mod_list.len() {
+        let mlbl = az.explicit_mod_list.get(mi)
         if mlbl != "" && !seen.has_key("mod::" + mlbl) {
             seen.insert("mod::" + mlbl, 1)
             let fst = is_first.get(0) == 1
@@ -2453,7 +2711,7 @@ pub fn lsp_build_completion_json(source: str, az: Analyzer, doc_path: str, line0
                               "Imported module or source file `" + mlbl + "`.\n\nType `" + mlbl + ".` to access all its functions and members.",
                               "", "1b_" + mlbl, "", -1, 0, 0, "", false, fst)
         }
-        nfi = nfi + 1
+        mi = mi + 1
     }
 
     // Builtin Functions (only relevant inside function/expression bodies or untyped positions)

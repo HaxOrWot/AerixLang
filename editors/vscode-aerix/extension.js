@@ -44,8 +44,8 @@ const AERIX_FALLBACK_COMPLETIONS = [
     { label: 'try', kind: vscode.CompletionItemKind.Keyword, detail: 'try { ... } catch err { ... }', insertText: 'try {\n\t${1}\n} catch ${2:err} {\n\t${0}\n}' },
     { label: 'return', kind: vscode.CompletionItemKind.Keyword, detail: 'return value', insertText: 'return ${0}' },
     { label: 'spawn', kind: vscode.CompletionItemKind.Keyword, detail: 'spawn { ... }', insertText: 'let ${1:th} = spawn {\n\t${0}\n}' },
-    { label: 'import', kind: vscode.CompletionItemKind.Keyword, detail: 'import Module', insertText: 'import ${0:Math}' },
-    { label: 'from', kind: vscode.CompletionItemKind.Keyword, detail: 'from Module import ...', insertText: 'from ${1:Window.Gui.Canvas} import ${0:colorRed}' },
+    { label: 'import', kind: vscode.CompletionItemKind.Keyword, detail: 'import Module', insertText: 'import ${0:Time}' },
+    { label: 'from', kind: vscode.CompletionItemKind.Keyword, detail: 'from Module import ...', insertText: 'from ${1:Module} import ${0:symbol}' },
     // Standard Built-in Functions & Methods
     { label: 'println', kind: vscode.CompletionItemKind.Function, detail: 'println(text: str) -> void', insertText: 'println(${1:"${0}"})' },
     { label: 'print', kind: vscode.CompletionItemKind.Function, detail: 'print(text: str) -> void', insertText: 'print(${1:val})' },
@@ -53,16 +53,6 @@ const AERIX_FALLBACK_COMPLETIONS = [
     { label: 'len', kind: vscode.CompletionItemKind.Function, detail: 'len(collection) -> i64', insertText: 'len(${1:coll})' },
     { label: 'assert', kind: vscode.CompletionItemKind.Function, detail: 'assert(cond: bool)', insertText: 'assert(${1:condition})' },
     { label: 'assert_eq', kind: vscode.CompletionItemKind.Function, detail: 'assert_eq(actual, expected)', insertText: 'assert_eq(${1:actual}, ${2:expected})' },
-    { label: 'rgb', kind: vscode.CompletionItemKind.Function, detail: 'rgb(r: i64, g: i64, b: i64) -> i64', insertText: 'rgb(${1:255}, ${2:0}, ${3:0})' },
-    { label: 'RGB', kind: vscode.CompletionItemKind.Function, detail: 'RGB(r: i64, g: i64, b: i64) -> i64', insertText: 'RGB(${1:255}, ${2:0}, ${3:0})' },
-    { label: 'colorRed', kind: vscode.CompletionItemKind.Function, detail: 'colorRed() -> i64 (0x0000FF)', insertText: 'colorRed()' },
-    { label: 'colorBlack', kind: vscode.CompletionItemKind.Function, detail: 'colorBlack() -> i64 (0x000000)', insertText: 'colorBlack()' },
-    { label: 'colorWhite', kind: vscode.CompletionItemKind.Function, detail: 'colorWhite() -> i64 (0xFFFFFF)', insertText: 'colorWhite()' },
-    { label: 'colorGreen', kind: vscode.CompletionItemKind.Function, detail: 'colorGreen() -> i64 (0x00FF00)', insertText: 'colorGreen()' },
-    { label: 'colorBlue', kind: vscode.CompletionItemKind.Function, detail: 'colorBlue() -> i64 (0xFF0000)', insertText: 'colorBlue()' },
-    { label: 'colorYellow', kind: vscode.CompletionItemKind.Function, detail: 'colorYellow() -> i64 (0x00FFFF)', insertText: 'colorYellow()' },
-    { label: 'colorCyan', kind: vscode.CompletionItemKind.Function, detail: 'colorCyan() -> i64 (0xFFFF00)', insertText: 'colorCyan()' },
-    { label: 'colorGray', kind: vscode.CompletionItemKind.Function, detail: 'colorGray() -> i64 (0x808080)', insertText: 'colorGray()' },
     // Standard Primitive Types
     { label: 'i64', kind: vscode.CompletionItemKind.TypeParameter, detail: '64-bit signed integer' },
     { label: 'i32', kind: vscode.CompletionItemKind.TypeParameter, detail: '32-bit signed integer' },
@@ -72,17 +62,11 @@ const AERIX_FALLBACK_COMPLETIONS = [
     { label: 'char', kind: vscode.CompletionItemKind.TypeParameter, detail: 'Unicode codepoint character' },
     { label: 'str', kind: vscode.CompletionItemKind.TypeParameter, detail: 'Immutable UTF-8 string' },
     { label: 'void', kind: vscode.CompletionItemKind.TypeParameter, detail: 'Unit / void return type' },
-    // Standard Collections & Modules
+    // Standard Collections
     { label: 'List', kind: vscode.CompletionItemKind.Class, detail: 'Dynamic growable array List<T>', insertText: 'List<${1:i64}>()' },
     { label: 'Map', kind: vscode.CompletionItemKind.Class, detail: 'Key-value hash map Map<K, V>', insertText: 'Map<${1:str}, ${2:i64}>()' },
     { label: 'Set', kind: vscode.CompletionItemKind.Class, detail: 'Unique element hash set Set<T>', insertText: 'Set<${1:str}>()' },
-    { label: 'Channel', kind: vscode.CompletionItemKind.Class, detail: 'Thread-safe bounded channel Channel<T>', insertText: 'Channel<${1:str}>(${2:32})' },
-    { label: 'Math', kind: vscode.CompletionItemKind.Module, detail: 'Standard mathematics module' },
-    { label: 'Random', kind: vscode.CompletionItemKind.Module, detail: 'PRNG pseudo-random generator module' },
-    { label: 'Time', kind: vscode.CompletionItemKind.Module, detail: 'High-resolution timing & clock module' },
-    { label: 'Socket', kind: vscode.CompletionItemKind.Module, detail: 'TCP/UDP networking module' },
-    { label: 'Canvas', kind: vscode.CompletionItemKind.Class, detail: 'Double-buffered GDI graphics canvas', insertText: 'Canvas(${1:hwnd})' },
-    { label: 'Application', kind: vscode.CompletionItemKind.Class, detail: 'Native Win32 GUI application window', insertText: 'Application("${1:Title}", ${2:800}, ${3:600})' }
+    { label: 'Channel', kind: vscode.CompletionItemKind.Class, detail: 'Thread-safe bounded channel Channel<T>', insertText: 'Channel<${1:str}>(${2:32})' }
 ];
 
 function buildFallbackCompletions() {
@@ -124,7 +108,11 @@ function resolveAerixBinary() {
         const sysDrive = process.env.SystemDrive || 'C:';
         candidates.push(
             path.join(sysDrive + '\\', 'Aerix', 'bin', 'arx.exe'),
-            path.join(sysDrive + '\\', 'Aerix', 'bin', 'arxc.exe')
+            path.join(sysDrive + '\\', 'Aerix', 'bin', 'arxc.exe'),
+            path.join(sysDrive + '\\', 'Aerix', 'arx.exe'),
+            path.join(sysDrive + '\\', 'Aerix', 'arxc.exe'),
+            'C:\\Aerix\\bin\\arx.exe',
+            'C:\\Aerix\\arx.exe'
         );
     }
     for (const c of candidates) {
@@ -525,9 +513,12 @@ function activate(context) {
                     textDocument: { uri: doc.uri.toString() },
                     position: toLspPos(pos)
                 }, doc);
-                const items = res && Array.isArray(res.items) ? res.items : (Array.isArray(res) ? res : []);
-                if (!items.length) {
+                if (res === null || res === undefined) {
                     return buildFallbackCompletions();
+                }
+                const items = Array.isArray(res.items) ? res.items : (Array.isArray(res) ? res : []);
+                if (!items.length) {
+                    return [];
                 }
                 return items.map((it) => {
                     const labelObj = it.labelDetails
