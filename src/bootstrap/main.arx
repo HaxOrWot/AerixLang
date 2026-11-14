@@ -57,13 +57,16 @@ fn print_usage() {
     println("")
     println("Common Options:")
     println("  -o, --output <path>    Specify output executable name or destination path")
+    println("  --native               Compile using self-hosting native x86-64 backend (no GCC)")
+    println("  --backend=c|native     Code generation backend (default: c with GCC)")
     println("  --debug                Build with debug symbols (-g) and runtime safety bounds")
     println("  --release              Build with full optimizations (-O3 -flto -s)")
     println("  -O0, -O1, -O2, -O3     Optimization level (default: -O2)")
     println("  --gui, --windows       Target Windows GUI subsystem (no console window)")
     println("  --emit-c               Keep intermediate generated C99 source file")
+    println("  -v, --verbose          Show verbose backend status information")
     println("  -h, --help             Show help for any command (e.g. '" + bin + " build --help')")
-    println("  -v, --version          Show compiler version information")
+    println("  --version              Show compiler version information")
     println("")
     println("Run '" + bin + " <command> --help' or '" + bin + " help <command>' for detailed command options.")
 }
@@ -79,17 +82,21 @@ fn print_build_usage() {
     println("Options:")
     println("  -o, --output <path>    Specify output executable name or destination path")
     println("                         (defaults to input filename with .exe on Windows)")
+    println("  --native               Compile using self-hosting native x86-64 backend (no GCC)")
+    println("  --backend=c|native     Code generation backend (default: c with GCC; --native)")
+    println("  -v, --verbose          Print verbose backend status and diagnostics")
     println("  --debug                Build with debug symbols (-g) and runtime safety bounds")
     println("  --release              Build with -O3 -flto -s for production performance")
     println("  -O0, -O1, -O2, -O3     Optimization level (default: -O2)")
     println("  --gui, --windows       Target Windows GUI subsystem (no console window);")
     println("  --no-console           automatically enabled when Window.Gui module is imported")
     println("  --emit-c               Keep intermediate generated C99 source file")
-    println("  --backend=c|native     Code generation backend (default: c with GCC)")
     println("  -h, --help             Show this help message")
     println("")
     println("Examples:")
     println("  " + bin + " build main.arx")
+    println("  " + bin + " build main.arx --native")
+    println("  " + bin + " build main.arx --native -o app.exe")
     println("  " + bin + " build main.arx --release -o app.exe")
     println("  " + bin + " build SnakeGame.arx -o SnakeGame.exe")
     println("  " + bin + " build app.arx --gui -o app.exe")
@@ -105,15 +112,18 @@ fn print_run_usage() {
     println("  " + bin + " run <file.arx> [options] [-- <program-args...>]")
     println("")
     println("Options:")
+    println("  --native               Run using self-hosting native x86-64 backend (no GCC)")
+    println("  --backend=c|native     Code generation backend (default: c; --native)")
+    println("  -v, --verbose          Print verbose backend status and diagnostics")
     println("  --debug                Run with debug symbols and bounds checks enabled")
     println("  --release              Run with full optimization (-O3 -flto)")
     println("  -O0, -O1, -O2, -O3     Optimization level for JIT/run (default: -O2)")
-    println("  --backend=c|native     Code generation backend (default: c)")
     println("  -- <args...>           Pass all arguments after '--' directly to program via Env.args()")
     println("  -h, --help             Show this help message")
     println("")
     println("Examples:")
     println("  " + bin + " run hello.arx")
+    println("  " + bin + " run hello.arx --native")
     println("  " + bin + " run server.arx -- -p 8080 --debug")
     println("  " + bin + " run script.arx -- foo bar baz")
 }
@@ -151,14 +161,17 @@ fn print_test_usage() {
     println("  [target]               File or directory containing tests (default: current directory)")
     println("")
     println("Options:")
+    println("  --native               Run tests with self-hosting native x86-64 backend (no GCC)")
+    println("  --backend=c|native     Code generation backend (default: c; --native)")
+    println("  -v, --verbose          Print verbose test execution status")
     println("  -O0, -O1, -O2, -O3     Optimization level for test builds (default: -O0)")
     println("  --debug                Compile tests with debug symbols and runtime bounds checks")
-    println("  --backend=c|native     Code generation backend (default: c)")
     println("  -h, --help             Show this help message")
     println("")
     println("Examples:")
     println("  " + bin + " test")
-    println("  " + bin + " test tests/")
+    println("  " + bin + " test --native")
+    println("  " + bin + " test tests/ --native")
     println("  " + bin + " test test_math.arx")
 }
 
@@ -715,12 +728,23 @@ fn cmd_fmt(target_path: str, check_only: bool) -> i64 {
     return 0
 }
 
-fn cmd_test(target_path: str, opt_flag: str, backend: str) -> i64 {
+fn cmd_test(target_path: str, opt_flag: str, backend: str, verbose: bool) -> i64 {
     mut scan_dir = "."
     if target_path != "" {
         scan_dir = target_path
     }
     let norm = bpath_normalize(scan_dir)
+
+    mut is_native = false
+    let env_be = Env.get("AERIX_BACKEND")
+    if backend == "native" || backend == "--native" || (backend == "auto" && (env_be == "native" || env_be == "ncg")) {
+        is_native = true
+    }
+
+    let is_verbose = verbose || Env.get("AERIX_VERBOSE") == "1" || Env.get("VERBOSE") == "1"
+    if is_native && is_verbose {
+        println("[Native x86-64 backend — zero external toolchain dependencies]")
+    }
 
     let test_files = List<str>()
     if File.exists(norm) && norm.ends_with(".arx") {
@@ -771,7 +795,7 @@ fn cmd_test(target_path: str, opt_flag: str, backend: str) -> i64 {
     while i < ntests {
         let tf = test_files.get(i)
         let tname = bpath_basename(tf)
-        let rc = cmd_run(tf, opt_flag, backend, empty_args, 0)
+        let rc = cmd_run(tf, opt_flag, backend, empty_args, 0, false)
         if rc == 0 {
             println("  ✓ " + tname + " ... ok")
             passed = passed + 1
@@ -808,24 +832,62 @@ fn cmd_emit_c(input_file: str, out_file: str) -> i64 {
     return 0
 }
 
-fn emit_native_exe(input_file: str, exe_path: str) -> i64 {
-    let dir = bpath_dirname(exe_path)
+fn emit_native_exe(input_file: str, exe_path: str, verbose: bool) -> i64 {
+    let target_exe = ensure_exe_ext(bpath_normalize(exe_path))
+    let dir = bpath_dirname(target_exe)
     if dir != "" && dir != "." {
         Directory.create(dir)
     }
+
+    let is_verbose = verbose || Env.get("AERIX_VERBOSE") == "1" || Env.get("VERBOSE") == "1"
+    if is_verbose {
+        println("[Native x86-64 backend — zero external toolchain dependencies]")
+    }
+
+    // Stage 1: AST parsing and frontend validation
     let az = compile_frontend(input_file)
     if az.has_errors > 0 {
+        eprintln("error: native compilation failed at AST walk / frontend analysis stage (" + (az.has_errors as str) + " error(s))")
         return 1
     }
+
+    // Stage 2: Native machine code emission & label resolution
     mut ncg = NativeCodegen(az)
-    if !ncg.compile(exe_path) {
-        eprintln("ERROR: Failed to emit native PE32+ executable: " + exe_path)
+    let compile_ok = ncg.compile(target_exe)
+
+    // Verify label resolution
+    mut unresolved_labels = 0
+    mut li = 0
+    while li < ncg.asm.label_ref_id.len() {
+        let lid = ncg.asm.label_ref_id.get(li)
+        if lid >= ncg.asm.label_addrs.len() || ncg.asm.label_addrs.get(lid) < 0 {
+            unresolved_labels = unresolved_labels + 1
+        }
+        li = li + 1
+    }
+
+    if unresolved_labels > 0 {
+        if File.exists(target_exe) {
+            File.remove(target_exe)
+        }
+        eprintln("error: native compilation failed at label resolution stage (" + (unresolved_labels as str) + " unresolved label reference(s))")
         return 1
     }
+
+    // Stage 3: PE binary write check
+    if !compile_ok || !File.exists(target_exe) {
+        if ncg.asm.code.len() == 0 {
+            eprintln("error: native compilation failed at AST walk stage: no machine code generated")
+        } else {
+            eprintln("error: native compilation failed at PE binary write stage: unable to write " + target_exe)
+        }
+        return 1
+    }
+
     return 0
 }
 
-fn cmd_build(input_file: str, out_file: str, opt_flag: str, keep_c: bool, backend: str) -> i64 {
+fn cmd_build(input_file: str, out_file: str, opt_flag: str, keep_c: bool, backend: str, verbose: bool) -> i64 {
     let norm_in = bpath_normalize(input_file)
     mut exe_path = out_file
     if exe_path == "" {
@@ -834,7 +896,8 @@ fn cmd_build(input_file: str, out_file: str, opt_flag: str, keep_c: bool, backen
     exe_path = ensure_exe_ext(bpath_normalize(exe_path))
 
     mut use_native = false
-    if backend == "native" {
+    let env_be = Env.get("AERIX_BACKEND")
+    if backend == "native" || backend == "--native" || (backend == "auto" && (env_be == "native" || env_be == "ncg")) {
         use_native = true
     } else if backend == "c" || keep_c {
         use_native = false
@@ -843,7 +906,7 @@ fn cmd_build(input_file: str, out_file: str, opt_flag: str, keep_c: bool, backen
     }
 
     if use_native {
-        let rc = emit_native_exe(norm_in, exe_path)
+        let rc = emit_native_exe(norm_in, exe_path, verbose)
         if rc == 0 {
             println("Built " + exe_path)
         }
@@ -855,16 +918,16 @@ fn cmd_build(input_file: str, out_file: str, opt_flag: str, keep_c: bool, backen
     return link_c_to_exe_from(c_src, c_path, exe_path, opt_flag, keep_c, norm_in)
 }
 
-fn cmd_run(input_file: str, opt_flag: str, backend: str, prog_args: List<str>, prog_argc: i64) -> i64 {
+fn cmd_run(input_file: str, opt_flag: str, backend: str, prog_args: List<str>, prog_argc: i64, verbose: bool) -> i64 {
     let norm_in = bpath_normalize(input_file)
     let tmp_dir = bpath_join(get_temp_dir(), "aerix_boot_run")
     Directory.create(tmp_dir)
     let base = strip_arx_ext(bpath_basename(norm_in))
-    let c_path = bpath_join(tmp_dir, base + ".c")
     let exe_path = ensure_exe_ext(bpath_join(tmp_dir, base))
 
     mut use_native = false
-    if backend == "native" {
+    let env_be = Env.get("AERIX_BACKEND")
+    if backend == "native" || backend == "--native" || (backend == "auto" && (env_be == "native" || env_be == "ncg")) {
         use_native = true
     } else if backend == "c" {
         use_native = false
@@ -874,8 +937,9 @@ fn cmd_run(input_file: str, opt_flag: str, backend: str, prog_args: List<str>, p
 
     mut rc_link = 0
     if use_native {
-        rc_link = emit_native_exe(norm_in, exe_path)
+        rc_link = emit_native_exe(norm_in, exe_path, verbose)
     } else {
+        let c_path = bpath_join(tmp_dir, base + ".c")
         let c_src = emit_c_for_file(norm_in)
         rc_link = link_c_to_exe_from(c_src, c_path, exe_path, opt_flag, false, norm_in)
     }
@@ -965,7 +1029,7 @@ fn cmd_repl() -> i64 {
 
         File.write_string(tmp_src, harness)
         let prog_args = List<str>()
-        cmd_run(tmp_src, "-O0", "c", prog_args, 0)
+        cmd_run(tmp_src, "-O0", "c", prog_args, 0, false)
         if File.exists(tmp_src) {
             File.remove(tmp_src)
         }
@@ -1040,6 +1104,7 @@ fn main() -> i64 {
         mut target = ""
         mut test_opt = "-O0"
         mut test_backend = "c"
+        mut test_verbose = false
         mut ti = 2
         while ti < cli_argc {
             let ta = cli_args.get(ti)
@@ -1052,10 +1117,22 @@ fn main() -> i64 {
                 test_opt = "-O3 -flto"
             } else if ta == "-O0" || ta == "-O1" || ta == "-O2" || ta == "-O3" {
                 test_opt = ta
-            } else if ta == "--backend=c" {
+            } else if ta == "--backend=c" || ta == "--c" {
                 test_backend = "c"
-            } else if ta == "--backend=native" {
+            } else if ta == "--backend=native" || ta == "--native" {
                 test_backend = "native"
+            } else if ta == "--backend" {
+                if ti + 1 < cli_argc {
+                    ti = ti + 1
+                    let next_ta = cli_args.get(ti)
+                    if next_ta == "native" {
+                        test_backend = "native"
+                    } else if next_ta == "c" {
+                        test_backend = "c"
+                    }
+                }
+            } else if ta == "-v" || ta == "--verbose" || ta == "--status" {
+                test_verbose = true
             } else if !ta.starts_with("-") && target == "" {
                 target = ta
             } else {
@@ -1065,7 +1142,7 @@ fn main() -> i64 {
             }
             ti = ti + 1
         }
-        return cmd_test(target, test_opt, test_backend)
+        return cmd_test(target, test_opt, test_backend, test_verbose)
     }
     if first == "lsp" {
         if cli_argc >= 3 {
@@ -1173,6 +1250,7 @@ fn main() -> i64 {
     mut opt_flag = "-O2"
     mut keep_c = false
     mut backend = "auto"
+    mut verbose = false
     let prog_args = List<str>()
     mut prog_argc = 0
     mut after_dashdash = false
@@ -1190,18 +1268,33 @@ fn main() -> i64 {
                 i = i + 1
                 out_file = cli_args.get(i)
             }
+        } else if a.starts_with("-o=") || a.starts_with("--output=") {
+            let eq = a.index_of("=")
+            out_file = a.slice(eq + 1, a.len())
         } else if a == "--emit-c" {
             keep_c = true
-        } else if a == "--backend=c" {
+        } else if a == "--backend=c" || a == "--c" {
             backend = "c"
-        } else if a == "--backend=native" {
+        } else if a == "--backend=native" || a == "--native" {
             backend = "native"
+        } else if a == "--backend" {
+            if i + 1 < cli_argc {
+                i = i + 1
+                let next_a = cli_args.get(i)
+                if next_a == "native" {
+                    backend = "native"
+                } else if next_a == "c" {
+                    backend = "c"
+                }
+            }
         } else if a == "-O0" || a == "-O1" || a == "-O2" || a == "-O3" {
             opt_flag = a
         } else if a == "--debug" || a == "-g" {
             opt_flag = "-O0 -g"
         } else if a == "--release" {
             opt_flag = "-O3 -flto -s"
+        } else if a == "-v" || a == "--verbose" || a == "--status" {
+            verbose = true
         } else if a == "--gui" || a == "--windows" || a == "--no-console" || a == "-mwindows" {
             // Flag accepted for windowed GUI subsystem mode
         } else if a == "--help" || a == "-h" {
@@ -1235,15 +1328,15 @@ fn main() -> i64 {
         return cmd_emit_c(input_file, out_file)
     }
     if mode == "build" {
-        return cmd_build(input_file, out_file, opt_flag, keep_c, backend)
+        return cmd_build(input_file, out_file, opt_flag, keep_c, backend, verbose)
     }
     if mode == "run" {
-        return cmd_run(input_file, opt_flag, backend, prog_args, prog_argc)
+        return cmd_run(input_file, opt_flag, backend, prog_args, prog_argc, verbose)
     }
 
     // "auto" mode: if -o specified, build executable; otherwise compile & run
     if out_file != "" {
-        return cmd_build(input_file, out_file, opt_flag, keep_c, backend)
+        return cmd_build(input_file, out_file, opt_flag, keep_c, backend, verbose)
     }
-    return cmd_run(input_file, opt_flag, backend, prog_args, prog_argc)
+    return cmd_run(input_file, opt_flag, backend, prog_args, prog_argc, verbose)
 }

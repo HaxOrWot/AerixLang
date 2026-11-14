@@ -2,6 +2,9 @@
 
 import "./x64.arx"
 
+pub fn IMAGE_SUBSYSTEM_WINDOWS_GUI() -> i64 { return 2 }
+pub fn IMAGE_SUBSYSTEM_WINDOWS_CUI() -> i64 { return 3 }
+
 fn pe_align_up(val: i64, align: i64) -> i64 {
     let rem = val % align
     if rem == 0 { return val }
@@ -9,15 +12,17 @@ fn pe_align_up(val: i64, align: i64) -> i64 {
 }
 
 fn pe_push_u16(buf: List<i64>, v: i64) {
-    buf.push(v & 255)
-    buf.push((v >> 8) & 255)
+    let u = v & 0xFFFF
+    buf.push(u & 255)
+    buf.push((u >> 8) & 255)
 }
 
 fn pe_push_u32(buf: List<i64>, v: i64) {
-    buf.push(v & 255)
-    buf.push((v >> 8) & 255)
-    buf.push((v >> 16) & 255)
-    buf.push((v >> 24) & 255)
+    let u = v & 0xFFFFFFFF
+    buf.push(u & 255)
+    buf.push((u >> 8) & 255)
+    buf.push((u >> 16) & 255)
+    buf.push((u >> 24) & 255)
 }
 
 fn pe_push_u64(buf: List<i64>, v: i64) {
@@ -56,6 +61,7 @@ pub class PeBuilder {
     pub imp_syms: List<str>
     pub imp_map: Map<str, i64>
     pub imp_iat_offs: List<i64>
+    pub subsystem: i64
 
     init() {
         self.rdata = List<i64>()
@@ -65,6 +71,11 @@ pub class PeBuilder {
         self.imp_syms = List<str>()
         self.imp_map = Map<str, i64>()
         self.imp_iat_offs = List<i64>()
+        self.subsystem = IMAGE_SUBSYSTEM_WINDOWS_CUI()
+    }
+
+    pub fn set_subsystem(subsys: i64) {
+        self.subsystem = subsys
     }
 
     pub fn add_rdata_cstr(s: str) -> i64 {
@@ -152,14 +163,14 @@ pub class PeBuilder {
     }
 
     pub fn build_and_write(asm: X64Asm, out_path: str) -> bool {
+        if asm.code.len() == 0 {
+            asm.ret()
+        }
         asm.patch_labels()
         let text_len = asm.code.len()
         let text_rva = 0x1000
         let text_virt = text_len
-        if text_virt == 0 {
-            asm.ret()
-        }
-        let rdata_rva = pe_align_up(text_rva + asm.code.len(), 0x1000)
+        let rdata_rva = pe_align_up(text_rva + text_virt, 0x1000)
 
         // Group imports by unique DLL order
         let dll_names = List<str>()
@@ -272,7 +283,9 @@ pub class PeBuilder {
             let ft = asm.fix_target.get(fi)
             mut target_rva = 0
             if fk == FIX_IAT() {
-                target_rva = rdata_rva + self.imp_iat_offs.get(ft)
+                if ft >= 0 && ft < self.imp_iat_offs.len() {
+                    target_rva = rdata_rva + self.imp_iat_offs.get(ft)
+                }
             } else if fk == FIX_RDATA() {
                 target_rva = rdata_rva + ft
             } else if fk == FIX_DATA() {
@@ -284,7 +297,7 @@ pub class PeBuilder {
         }
 
         let headers_size = 0x400
-        let text_raw_size = pe_align_up(asm.code.len(), 0x200)
+        let text_raw_size = pe_align_up(text_virt, 0x200)
         let rdata_raw_size = pe_align_up(rdata_virt, 0x200)
         let data_raw_size = pe_align_up(data_virt, 0x200)
 
@@ -331,7 +344,7 @@ pub class PeBuilder {
         pe_push_u32(hdr, size_of_image)
         pe_push_u32(hdr, headers_size)
         pe_push_u32(hdr, 0)            // CheckSum
-        pe_push_u16(hdr, 3)            // Subsystem = WINDOWS_CUI
+        pe_push_u16(hdr, self.subsystem) // Subsystem: IMAGE_SUBSYSTEM_WINDOWS_CUI (3) or IMAGE_SUBSYSTEM_WINDOWS_GUI (2)
         pe_push_u16(hdr, 0x8100)       // DllCharacteristics = NX_COMPAT | TERMINAL_SERVER_AWARE
         pe_push_u64(hdr, 0x100000)     // SizeOfStackReserve
         pe_push_u64(hdr, 0x10000)      // SizeOfStackCommit
@@ -359,7 +372,7 @@ pub class PeBuilder {
         // Section Headers (.text, .rdata, .data)
         // .text
         pe_push_str_fixed8(hdr, ".text")
-        pe_push_u32(hdr, asm.code.len())
+        pe_push_u32(hdr, text_virt)
         pe_push_u32(hdr, text_rva)
         pe_push_u32(hdr, text_raw_size)
         pe_push_u32(hdr, text_ptr)
@@ -396,7 +409,7 @@ pub class PeBuilder {
         while k < hdr.len() { arx_bin_u8(bh, hdr.get(k)); k = k + 1 }
 
         k = 0
-        while k < asm.code.len() { arx_bin_u8(bh, asm.code.get(k)); k = k + 1 }
+        while k < text_virt { arx_bin_u8(bh, asm.code.get(k)); k = k + 1 }
         while k < text_raw_size { arx_bin_u8(bh, 0); k = k + 1 }
 
         k = 0

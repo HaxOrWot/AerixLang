@@ -14,8 +14,12 @@ pub fn detect_cc() -> str {
 
 // Ensures the output executable has the appropriate file extension for the platform.
 pub fn ensure_exe_ext(out_path: str) -> str {
-    if Env.os_name() == "windows" && !out_path.ends_with(".exe") {
-        return out_path + ".exe"
+    if out_path == "" { return out_path }
+    if Env.os_name() == "windows" {
+        let lower = out_path.to_lower()
+        if !lower.ends_with(".exe") {
+            return out_path + ".exe"
+        }
     }
     return out_path
 }
@@ -138,6 +142,7 @@ pub fn link_c_to_exe_from(c_source: str, c_path: str, exe_path: str, opt_flag: s
     }
     if rc != 0 {
         eprintln("LINKER ERROR: C compiler failed with exit code " + (rc as str))
+        eprintln("  = hint: compile with '--native' for the zero-dependency self-hosting native x86-64 backend")
         return rc
     }
     return 0
