@@ -2,7 +2,7 @@
   "name": "aerix",
   "displayName": "Aerix Language & IntelliSense Support",
   "description": "Official language support, LSP IntelliSense completions, hover documentation, semantic syntax highlighting, code navigation, and file icons for Aerix (.arx).",
-  "version": "1.2.24-b",
+  "version": "2.2.25",
   "publisher": "aerix-lang",
   "icon": "icons/aerix-icon.png",
   "engines": {

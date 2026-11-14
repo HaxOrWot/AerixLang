@@ -12,8 +12,8 @@
 ### **The Expressive Native Systems Programming Language**
 *The velocity and elegance of modern scripting — fused with the raw speed, minimal footprint, and bare-metal power of native C.*
 
-[![Version](https://img.shields.io/badge/version-1.2.23b-00DCFF.svg?style=for-the-badge&logo=visualstudiocode)](#)
-[![Backend](https://img.shields.io/badge/backend-ANSI%20C99%20%2F%20GCC-1E90FF.svg?style=for-the-badge&logo=c)](#)
+[![Version](https://img.shields.io/badge/version-2.2.25--stable-00DCFF.svg?style=for-the-badge&logo=visualstudiocode)](#)
+[![Backend](https://img.shields.io/badge/backend-Native%20x86--64%20%2F%20PE32%2B-1E90FF.svg?style=for-the-badge&logo=assemblyscript)](#)
 [![Performance](https://img.shields.io/badge/performance-100%25%20C%20Native-00E676.svg?style=for-the-badge&logo=speedtest)](#)
 [![Tests](https://img.shields.io/badge/test%20suite-198%2F198%20PASS%20(100%25)-00E5FF.svg?style=for-the-badge)](#)
 [![Examples](https://img.shields.io/badge/examples-41%20files-FF9100.svg?style=for-the-badge)](#)
@@ -62,8 +62,8 @@ fn main() {
 > **Repository Branches:**
 > * **`master`** *(default)* — Minimal self-hosting Aerix compiler tree (`src/bootstrap/` + C bootstrap seed `src/bootstrap/seed/arxc.c`, `stdlib/`, `modules/`, and docs). Builds natively with GCC/Clang alone — **no Python required**.
 > * **`pre`** — Pre-release development repository (`*-pre` releases) including the Stage 0 Python compiler (`src/`), bootstrap source (`src/bootstrap/`), automated test suite (`198` tests in `src/tests/`), `41` example files (`examples/`), VS Code / Antigravity extension (`editors/`), C++ installer (`AerixInstaller/`), installer scripts (`install.ps1` / `install.sh`), LSP, formatter, linter, REPL, and WASM backend.
-> * **`stable`** — Verified stable release branch (`1.1.12c-stable`) carrying production `*-stable` releases, the C# Windows installer (`AerixSetup-1.1.12c-stable.exe`), and editor extension (`aerix-1.1.12c-stable.vsix`).
-> * **`beta`** — Active development branch (`1.2.23b`) carrying latest compiler features, hardware GUI engine, and `aerix-1.2.23b.vsix`.
+> * **`stable`** — Verified stable release branch (`2.2.25-stable`) carrying production `*-stable` releases, the C# Windows installer (`AerixSetup-2.2.25-stable.exe`), and editor extension (`aerix-2.2.25-stable.vsix`).
+> * **`beta`** — Active development branch carrying latest compiler features, hardware GUI engine, and editor extensions.
 
 <details open>
 <summary><b>🧬 Option A: Self-Hosting Native Compiler (<code>arxc</code> — Zero Python Required, <code>master</code> / <code>pre</code> / <code>stable</code>)</b></summary>

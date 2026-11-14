@@ -57770,7 +57770,7 @@ const char* arx_lsp_build_initialize_result(void) {
     const char* __t23608 = "aerix-lsp";
     Arx_JsonBuf_kv_str((&(jb)), __t23607, __t23608, true);
     const char* __t23609 = "version";
-    const char* __t23610 = "1.2.24b";
+    const char* __t23610 = "2.2.25-stable";
     Arx_JsonBuf_kv_str((&(jb)), __t23609, __t23610, false);
     Arx_JsonBuf_rbrace((&(jb)));
     Arx_JsonBuf_rbrace((&(jb)));
@@ -58360,7 +58360,7 @@ void arx_print_usage(void) {
     const char* __t23827 = ")";
     const char* __t23828 = arx_str_concat(__t23826, __t23827);
     arx_println_str(__t23828);
-    const char* __t23829 = "Version: 1.2.24b (Beta Channel) - x86_64-windows";
+    const char* __t23829 = "Version: 2.2.25-stable (Stable Channel) - x86_64-windows";
     arx_println_str(__t23829);
     const char* __t23830 = "";
     arx_println_str(__t23830);
@@ -59470,7 +59470,7 @@ int64_t arx_cmd_vm(Arx_List_str cli_args, int64_t cli_argc, int64_t start_idx, c
                     if (__t24435) {
                         const char* __t24437 = "";
                         if ((arx_str_compare(target, __t24437) == 0)) {
-                            const char* __t24438 = "error: missing version for 'arx vm install' (e.g. 'arx vm install 1.2.24b')";
+                            const char* __t24438 = "error: missing version for 'arx vm install' (e.g. 'arx vm install 2.2.25-stable')";
                             fprintf(stderr, "%s\n", __t24438);
                             int64_t __t24439 = ((int64_t)1LL);
                             return __t24439;
@@ -60726,7 +60726,7 @@ int64_t arx_cmd_repl(void) {
     const char* bin = __t25017;
     const char* __t25018 = "==================================================================";
     arx_println_str(__t25018);
-    const char* __t25019 = "  Aerix Interactive REPL v1.2.24b (x86_64-windows)";
+    const char* __t25019 = "  Aerix Interactive REPL v2.2.25-stable (x86_64-windows)";
     arx_println_str(__t25019);
     const char* __t25020 = "  Type :help for commands, :exit or :quit to quit.";
     arx_println_str(__t25020);
@@ -60797,7 +60797,7 @@ int64_t arx_cmd_repl(void) {
         if (__t25049) {
             const char* __t25051 = "Aerix Self-Hosting Bootstrap Compiler (";
             const char* __t25052 = arx_str_concat(__t25051, bin);
-            const char* __t25053 = ") v1.2.24b";
+            const char* __t25053 = ") v2.2.25-stable";
             const char* __t25054 = arx_str_concat(__t25052, __t25053);
             arx_println_str(__t25054);
             continue;
@@ -60940,7 +60940,7 @@ int64_t arx_main(void) {
                 return __t25112;
             }
         }
-        const char* __t25113 = "Aerix Self-Hosting Bootstrap Compiler (arxc) v1.2.24b";
+        const char* __t25113 = "Aerix Self-Hosting Bootstrap Compiler (arxc) v2.2.25-stable";
         arx_println_str(__t25113);
         arx_maybe_trigger_bg_update();
         int64_t __t25114 = ((int64_t)0LL);

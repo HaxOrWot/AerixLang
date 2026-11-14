@@ -24,7 +24,7 @@ fn resolve_bin_name() -> str {
 fn print_usage() {
     let bin = resolve_bin_name()
     println("Aerix Native Systems Programming Language Toolchain (" + bin + ")")
-    println("Version: 1.2.24b (Beta Channel) - x86_64-windows")
+    println("Version: 2.2.25-stable (Stable Channel) - x86_64-windows")
     println("")
     println("Usage:")
     println("  " + bin + " <command> [arguments...] [options]")
@@ -450,7 +450,7 @@ fn cmd_vm(cli_args: List<str>, cli_argc: i64, start_idx: i64, default_sub: str) 
         }
     } else if sub == "install" || sub == "add" {
         if target == "" {
-            eprintln("error: missing version for 'arx vm install' (e.g. 'arx vm install 1.2.24b')")
+            eprintln("error: missing version for 'arx vm install' (e.g. 'arx vm install 2.2.25-stable')")
             return 1
         }
         cmd = cmd + " " + quote_shell_arg("--vm-install=" + target)
@@ -995,7 +995,7 @@ fn cmd_doc(target_path: str, out_dir: str) -> i64 {
 fn cmd_repl() -> i64 {
     let bin = resolve_bin_name()
     println("==================================================================")
-    println("  Aerix Interactive REPL v1.2.24b (x86_64-windows)")
+    println("  Aerix Interactive REPL v2.2.25-stable (x86_64-windows)")
     println("  Type :help for commands, :exit or :quit to quit.")
     println("==================================================================")
     println("")
@@ -1020,7 +1020,7 @@ fn cmd_repl() -> i64 {
             continue
         }
         if trimmed == ":version" || trimmed == ":v" {
-            println("Aerix Self-Hosting Bootstrap Compiler (" + bin + ") v1.2.24b")
+            println("Aerix Self-Hosting Bootstrap Compiler (" + bin + ") v2.2.25-stable")
             continue
         }
         if trimmed == ":clear" || trimmed == ":cls" {
@@ -1070,7 +1070,7 @@ fn main() -> i64 {
                 return 0
             }
         }
-        println("Aerix Self-Hosting Bootstrap Compiler (arxc) v1.2.24b")
+        println("Aerix Self-Hosting Bootstrap Compiler (arxc) v2.2.25-stable")
         maybe_trigger_bg_update()
         return 0
     }
