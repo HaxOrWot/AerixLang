@@ -11,15 +11,17 @@ namespace AerixSetup
 {
     public sealed class UpdateProgressForm : Form
     {
-        private static readonly Color BgWindow = Color.FromArgb(18, 27, 46);      // #121B2E
-        private static readonly Color BgHeader = Color.FromArgb(11, 16, 28);      // #0B101C
-        private static readonly Color BgCard = Color.FromArgb(23, 34, 59);        // #17223B
-        private static readonly Color BorderSubtle = Color.FromArgb(36, 52, 82);  // #243452
-        private static readonly Color TextPrimary = Color.FromArgb(235, 242, 252);
-        private static readonly Color TextMuted = Color.FromArgb(142, 160, 189);
-        private static readonly Color AccentCyan = Color.FromArgb(0, 220, 255);   // #00DCFF
-        private static readonly Color AccentGreen = Color.FromArgb(34, 211, 153);
-        private static readonly Color AccentDanger = Color.FromArgb(244, 91, 105);
+        private static readonly Color BgWindow = Color.FromArgb(14, 22, 38);        // #0E1626
+        private static readonly Color BgHeader = Color.FromArgb(7, 11, 20);         // #070B14
+        private static readonly Color BgCard = Color.FromArgb(20, 31, 54);          // #141F36
+        private static readonly Color BgInput = Color.FromArgb(10, 16, 28);         // #0A101C
+        private static readonly Color BorderSubtle = Color.FromArgb(34, 50, 80);    // #223250
+        private static readonly Color TextPrimary = Color.FromArgb(241, 245, 249);
+        private static readonly Color TextMuted = Color.FromArgb(148, 163, 184);
+        private static readonly Color AccentCyan = Color.FromArgb(0, 229, 255);     // Electric Cyan
+        private static readonly Color AccentBlue = Color.FromArgb(59, 130, 246);    // Electric Blue
+        private static readonly Color AccentGreen = Color.FromArgb(16, 185, 129);   // Emerald
+        private static readonly Color AccentDanger = Color.FromArgb(239, 68, 68);   // Crimson
 
         private readonly StableReleaseInfo _rel;
         private readonly string _installDir;
@@ -44,12 +46,45 @@ namespace AerixSetup
             InitializeUi();
         }
 
+        private static GraphicsPath CreateRoundedPath(Rectangle rect, int radius)
+        {
+            var path = new GraphicsPath();
+            if (radius <= 0)
+            {
+                path.AddRectangle(rect);
+                return path;
+            }
+            int d = radius * 2;
+            path.AddArc(rect.X, rect.Y, d, d, 180, 90);
+            path.AddArc(rect.Right - d, rect.Y, d, d, 270, 90);
+            path.AddArc(rect.Right - d, rect.Bottom - d, d, d, 0, 90);
+            path.AddArc(rect.X, rect.Bottom - d, d, d, 90, 90);
+            path.CloseFigure();
+            return path;
+        }
+
+        private static void FillRoundedRect(Graphics g, Brush brush, Rectangle rect, int radius)
+        {
+            using (GraphicsPath p = CreateRoundedPath(rect, radius))
+            {
+                g.FillPath(brush, p);
+            }
+        }
+
+        private static void DrawRoundedRect(Graphics g, Pen pen, Rectangle rect, int radius)
+        {
+            using (GraphicsPath p = CreateRoundedPath(rect, radius))
+            {
+                g.DrawPath(pen, p);
+            }
+        }
+
         private void InitializeUi()
         {
             Text = "Aerix Toolchain Updater";
             FormBorderStyle = FormBorderStyle.None;
             StartPosition = FormStartPosition.CenterScreen;
-            Size = new Size(520, 230);
+            Size = new Size(540, 240);
             BackColor = BgWindow;
             ForeColor = TextPrimary;
 
@@ -78,7 +113,7 @@ namespace AerixSetup
             {
                 Text = "Aerix Toolchain Updater",
                 ForeColor = TextMuted,
-                Font = new Font("Segoe UI", 9F, FontStyle.Regular),
+                Font = new Font("Segoe UI Semibold", 9F, FontStyle.Regular),
                 Location = new Point(14, 9),
                 AutoSize = true
             };
@@ -91,61 +126,68 @@ namespace AerixSetup
             Panel accentLine = new Panel
             {
                 Dock = DockStyle.Top,
-                Height = 2,
-                BackColor = AccentCyan
+                Height = 2
+            };
+            accentLine.Paint += delegate(object s, PaintEventArgs e)
+            {
+                var r = new Rectangle(0, 0, accentLine.Width, accentLine.Height);
+                using (var br = new LinearGradientBrush(r, AccentCyan, AccentBlue, LinearGradientMode.Horizontal))
+                {
+                    e.Graphics.FillRectangle(br, r);
+                }
             };
 
             // Main Content Panel
             Panel content = new Panel
             {
                 Dock = DockStyle.Fill,
-                Padding = new Padding(24, 16, 24, 16)
+                Padding = new Padding(26, 18, 26, 18)
             };
 
             _lblTitle = new Label
             {
                 Text = "Updating Aerix to v" + (_rel != null ? _rel.Version : ""),
-                Font = new Font("Segoe UI", 12F, FontStyle.Bold),
+                Font = new Font("Segoe UI", 13F, FontStyle.Bold),
                 ForeColor = AccentCyan,
-                Location = new Point(24, 16),
+                Location = new Point(26, 18),
                 AutoSize = true
             };
 
             _lblSubtitle = new Label
             {
-                Text = "Downloading and applying the latest stable toolchain...",
-                Font = new Font("Segoe UI", 9F, FontStyle.Regular),
+                Text = "Downloading and applying the latest verified stable release...",
+                Font = new Font("Segoe UI", 9.2F, FontStyle.Regular),
                 ForeColor = TextMuted,
-                Location = new Point(24, 46),
+                Location = new Point(26, 48),
                 AutoSize = true
             };
 
             _progressBar = new SimpleProgressBar
             {
-                Location = new Point(24, 80),
-                Size = new Size(472, 16),
+                Location = new Point(26, 84),
+                Size = new Size(488, 16),
                 Value = 10
             };
 
             _lblStatus = new Label
             {
                 Text = "Connecting to GitHub...",
-                Font = new Font("Segoe UI", 8.5F, FontStyle.Regular),
+                Font = new Font("Segoe UI", 8.6F, FontStyle.Regular),
                 ForeColor = TextMuted,
-                Location = new Point(24, 108),
-                Size = new Size(472, 20),
+                Location = new Point(26, 112),
+                Size = new Size(488, 20),
                 AutoEllipsis = true
             };
 
             _btnClose = new Button
             {
                 Text = "Updating...",
-                Size = new Size(110, 32),
-                Location = new Point(386, 140),
+                Size = new Size(114, 34),
+                Location = new Point(400, 144),
                 FlatStyle = FlatStyle.Flat,
                 BackColor = BgCard,
                 ForeColor = TextMuted,
-                Font = new Font("Segoe UI", 9F, FontStyle.Bold),
+                Font = new Font("Segoe UI Semibold", 9.2F),
                 Enabled = false,
                 Cursor = Cursors.Hand
             };
@@ -220,11 +262,12 @@ namespace AerixSetup
                             _lblTitle.Text = "Update Complete!";
                             _lblTitle.ForeColor = AccentGreen;
                             _lblSubtitle.Text = "Aerix was successfully updated to v" + res.LatestVersion + "!";
-                            _lblStatus.Text = "All binaries, standard library, and editor tooling are up to date.";
+                            _lblStatus.Text = "All binaries, standard library, and IDE tooling are ready.";
                             _progressBar.Value = 100;
                             _btnClose.Text = "Finish";
                             _btnClose.BackColor = AccentCyan;
-                            _btnClose.ForeColor = Color.FromArgb(11, 16, 28);
+                            _btnClose.ForeColor = Color.FromArgb(7, 11, 20);
+                            _btnClose.FlatAppearance.BorderSize = 0;
                             _btnClose.Enabled = true;
                         }
                         else
@@ -236,6 +279,7 @@ namespace AerixSetup
                             _btnClose.Text = "Close";
                             _btnClose.BackColor = AccentDanger;
                             _btnClose.ForeColor = Color.White;
+                            _btnClose.FlatAppearance.BorderSize = 0;
                             _btnClose.Enabled = true;
                         }
                     });
@@ -294,24 +338,22 @@ namespace AerixSetup
                 Graphics g = e.Graphics;
                 g.SmoothingMode = SmoothingMode.AntiAlias;
 
-                using (var brush = new SolidBrush(Color.FromArgb(10, 16, 28)))
+                Rectangle track = new Rectangle(0, 0, Width - 1, Height - 1);
+                using (var brush = new SolidBrush(BgInput))
+                using (var pen = new Pen(BorderSubtle, 1))
                 {
-                    g.FillRectangle(brush, ClientRectangle);
+                    FillRoundedRect(g, brush, track, 5);
+                    DrawRoundedRect(g, pen, track, 5);
                 }
 
                 if (_value > 0)
                 {
-                    int fillWidth = (int)((ClientRectangle.Width * _value) / 100.0);
-                    var fillRect = new Rectangle(0, 0, fillWidth, ClientRectangle.Height);
-                    using (var fillBrush = new SolidBrush(AccentCyan))
+                    int fillWidth = Math.Max(6, (int)((ClientRectangle.Width * _value) / 100.0));
+                    var fillRect = new Rectangle(1, 1, fillWidth, ClientRectangle.Height - 2);
+                    using (var fillBrush = new LinearGradientBrush(fillRect, AccentCyan, AccentBlue, LinearGradientMode.Horizontal))
                     {
-                        g.FillRectangle(fillBrush, fillRect);
+                        FillRoundedRect(g, fillBrush, fillRect, 4);
                     }
-                }
-
-                using (var pen = new Pen(BorderSubtle, 1))
-                {
-                    g.DrawRectangle(pen, 0, 0, Width - 1, Height - 1);
                 }
             }
         }

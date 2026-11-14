@@ -12,19 +12,20 @@ namespace AerixSetup
 {
     public sealed class SetupForm : Form
     {
-        // Theme palette (Deep Obsidian + Aerix Cyan)
-        private static readonly Color BgWindow = Color.FromArgb(18, 27, 46);      // #121B2E
-        private static readonly Color BgSidebar = Color.FromArgb(13, 20, 34);     // #0D1422
-        private static readonly Color BgHeader = Color.FromArgb(11, 16, 28);      // #0B101C
-        private static readonly Color BgCard = Color.FromArgb(23, 34, 59);        // #17223B
-        private static readonly Color BgInput = Color.FromArgb(10, 16, 28);       // #0A101C
-        private static readonly Color BorderSubtle = Color.FromArgb(36, 52, 82);  // #243452
-        private static readonly Color TextPrimary = Color.FromArgb(235, 242, 252);
-        private static readonly Color TextMuted = Color.FromArgb(142, 160, 189);
-        private static readonly Color AccentCyan = Color.FromArgb(0, 220, 255);   // #00DCFF
-        private static readonly Color AccentBlue = Color.FromArgb(56, 139, 253);
-        private static readonly Color AccentGreen = Color.FromArgb(34, 211, 153);
-        private static readonly Color AccentDanger = Color.FromArgb(244, 91, 105);
+        // Modernized Theme Palette (Deep Obsidian Navy + Aerix Electric Cyan & Emerald)
+        private static readonly Color BgWindow = Color.FromArgb(14, 22, 38);        // #0E1626
+        private static readonly Color BgSidebar = Color.FromArgb(9, 15, 27);        // #090F1B
+        private static readonly Color BgHeader = Color.FromArgb(7, 11, 20);         // #070B14
+        private static readonly Color BgCard = Color.FromArgb(20, 31, 54);          // #141F36
+        private static readonly Color BgInput = Color.FromArgb(10, 16, 28);         // #0A101C
+        private static readonly Color BorderSubtle = Color.FromArgb(34, 50, 80);    // #223250
+        private static readonly Color BorderHighlight = Color.FromArgb(0, 180, 216);
+        private static readonly Color TextPrimary = Color.FromArgb(241, 245, 249);  // Slate 100
+        private static readonly Color TextMuted = Color.FromArgb(148, 163, 184);    // Slate 400
+        private static readonly Color AccentCyan = Color.FromArgb(0, 229, 255);     // Electric Cyan #00E5FF
+        private static readonly Color AccentBlue = Color.FromArgb(59, 130, 246);    // Electric Blue #3B82F6
+        private static readonly Color AccentGreen = Color.FromArgb(16, 185, 129);   // Emerald #10B981
+        private static readonly Color AccentDanger = Color.FromArgb(239, 68, 68);   // Crimson #EF4444
 
         private readonly bool _uninstallMode;
         private readonly InstallOptions _opts;
@@ -83,14 +84,15 @@ namespace AerixSetup
             AutoScaleDimensions = new SizeF(96F, 96F);
             FormBorderStyle = FormBorderStyle.None;
             StartPosition = FormStartPosition.CenterScreen;
-            ClientSize = new Size(780, 510);
+            ClientSize = new Size(800, 520);
             BackColor = BgWindow;
             ForeColor = TextPrimary;
             Font = new Font("Segoe UI", 9.5F, FontStyle.Regular);
-            Text = "Aerix " + _version + " Setup";
+            Text = "Aerix " + _version + " Setup Wizard";
 
             LoadEmbeddedIcon();
             BuildChrome();
+
             if (_uninstallMode)
             {
                 BuildUninstallView();
@@ -112,6 +114,16 @@ namespace AerixSetup
             }
         }
 
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            base.OnPaint(e);
+            // Draw subtle outer border around borderless form
+            using (var p = new Pen(BorderSubtle, 1))
+            {
+                e.Graphics.DrawRectangle(p, 0, 0, Width - 1, Height - 1);
+            }
+        }
+
         private void LoadEmbeddedIcon()
         {
             try
@@ -122,9 +134,7 @@ namespace AerixSetup
                     this.Icon = Icon.ExtractAssociatedIcon(selfExe);
                 }
             }
-            catch
-            {
-            }
+            catch { }
 
             try
             {
@@ -138,25 +148,28 @@ namespace AerixSetup
                     }
                 }
             }
-            catch
-            {
-            }
+            catch { }
         }
 
         private void BuildChrome()
         {
-            // Top accent line (2px cyan)
+            // Top accent gradient line (2px cyan-to-blue)
             var topAccent = new Panel();
             topAccent.Dock = DockStyle.Top;
-            topAccent.Width = ClientSize.Width;
             topAccent.Height = 2;
-            topAccent.BackColor = AccentCyan;
+            topAccent.Paint += delegate(object s, PaintEventArgs e)
+            {
+                var r = new Rectangle(0, 0, topAccent.Width, topAccent.Height);
+                using (var br = new LinearGradientBrush(r, AccentCyan, AccentBlue, LinearGradientMode.Horizontal))
+                {
+                    e.Graphics.FillRectangle(br, r);
+                }
+            };
 
-            // Title Bar (36px)
+            // Custom Title Bar (38px)
             var titleBar = new Panel();
             titleBar.Dock = DockStyle.Top;
-            titleBar.Width = ClientSize.Width;
-            titleBar.Height = 36;
+            titleBar.Height = 38;
             titleBar.BackColor = BgHeader;
             titleBar.MouseDown += OnHeaderMouseDown;
             titleBar.MouseMove += OnHeaderMouseMove;
@@ -164,27 +177,27 @@ namespace AerixSetup
 
             var lblTitle = new Label();
             lblTitle.Text = _uninstallMode
-                ? "Aerix " + _version + "  —  Uninstall"
-                : "Aerix " + _version + "  —  Windows Setup";
+                ? "Aerix " + _version + "  —  Uninstallation Wizard"
+                : "Aerix " + _version + "  —  Windows Setup Wizard";
             lblTitle.ForeColor = TextMuted;
             lblTitle.Font = new Font("Segoe UI Semibold", 9.2F);
             lblTitle.UseMnemonic = false;
             lblTitle.AutoSize = false;
-            lblTitle.Size = new Size(520, 36);
+            lblTitle.Size = new Size(540, 38);
             lblTitle.Location = new Point(16, 0);
             lblTitle.TextAlign = ContentAlignment.MiddleLeft;
             lblTitle.MouseDown += OnHeaderMouseDown;
             lblTitle.MouseMove += OnHeaderMouseMove;
             lblTitle.MouseUp += OnHeaderMouseUp;
 
-            var btnClose = CreateTitleButton("×", new Point(titleBar.Width - 40, 0), true);
+            var btnClose = CreateTitleButton("×", new Point(titleBar.Width - 44, 0), true);
             btnClose.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             btnClose.Click += delegate
             {
                 if (!_isBusy) Close();
             };
 
-            var btnMin = CreateTitleButton("—", new Point(titleBar.Width - 80, 0), false);
+            var btnMin = CreateTitleButton("—", new Point(titleBar.Width - 88, 0), false);
             btnMin.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             btnMin.Click += delegate
             {
@@ -195,17 +208,16 @@ namespace AerixSetup
             titleBar.Controls.Add(btnMin);
             titleBar.Controls.Add(btnClose);
 
-            // Left Sidebar (216px)
+            // Left Sidebar (224px)
             _sidebar = new Panel();
             _sidebar.Dock = DockStyle.Left;
-            _sidebar.Width = 216;
+            _sidebar.Width = 224;
             _sidebar.BackColor = BgSidebar;
             _sidebar.Paint += PaintSidebar;
 
             // Footer Bar (58px)
             _footer = new Panel();
             _footer.Dock = DockStyle.Bottom;
-            _footer.Width = ClientSize.Width;
             _footer.Height = 58;
             _footer.BackColor = BgHeader;
             _footer.Paint += delegate(object s, PaintEventArgs e)
@@ -219,7 +231,7 @@ namespace AerixSetup
             _contentHost = new Panel();
             _contentHost.Dock = DockStyle.Fill;
             _contentHost.BackColor = BgWindow;
-            _contentHost.Padding = new Padding(26, 20, 26, 16);
+            _contentHost.Padding = new Padding(24, 18, 24, 16);
 
             Controls.Add(_contentHost);
             Controls.Add(_footer);
@@ -234,11 +246,11 @@ namespace AerixSetup
             b.Text = txt;
             b.FlatStyle = FlatStyle.Flat;
             b.FlatAppearance.BorderSize = 0;
-            b.FlatAppearance.MouseOverBackColor = isClose ? Color.FromArgb(196, 43, 28) : Color.FromArgb(30, 44, 72);
+            b.FlatAppearance.MouseOverBackColor = isClose ? Color.FromArgb(220, 38, 38) : Color.FromArgb(30, 44, 72);
             b.BackColor = BgHeader;
             b.ForeColor = TextMuted;
             b.Font = new Font("Segoe UI", 10.5F);
-            b.Size = new Size(40, 36);
+            b.Size = new Size(44, 38);
             b.Location = loc;
             b.Cursor = Cursors.Hand;
             b.TabStop = false;
@@ -247,57 +259,111 @@ namespace AerixSetup
             return b;
         }
 
+        private static GraphicsPath CreateRoundedPath(Rectangle rect, int radius)
+        {
+            var path = new GraphicsPath();
+            if (radius <= 0)
+            {
+                path.AddRectangle(rect);
+                return path;
+            }
+            int d = radius * 2;
+            path.AddArc(rect.X, rect.Y, d, d, 180, 90);
+            path.AddArc(rect.Right - d, rect.Y, d, d, 270, 90);
+            path.AddArc(rect.Right - d, rect.Bottom - d, d, d, 0, 90);
+            path.AddArc(rect.X, rect.Bottom - d, d, d, 90, 90);
+            path.CloseFigure();
+            return path;
+        }
+
+        private static void FillRoundedRect(Graphics g, Brush brush, Rectangle rect, int radius)
+        {
+            using (GraphicsPath p = CreateRoundedPath(rect, radius))
+            {
+                g.FillPath(brush, p);
+            }
+        }
+
+        private static void DrawRoundedRect(Graphics g, Pen pen, Rectangle rect, int radius)
+        {
+            using (GraphicsPath p = CreateRoundedPath(rect, radius))
+            {
+                g.DrawPath(pen, p);
+            }
+        }
+
         private void PaintSidebar(object sender, PaintEventArgs e)
         {
             Graphics g = e.Graphics;
             g.SmoothingMode = SmoothingMode.AntiAlias;
             g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
 
-            // Right divider
+            // Right vertical divider line
             using (var pen = new Pen(BorderSubtle, 1))
             {
                 g.DrawLine(pen, _sidebar.Width - 1, 0, _sidebar.Width - 1, _sidebar.Height);
             }
 
-            // Brand badge
+            // Brand Header with Icon & Version Badge
             if (_brandImg != null)
             {
-                g.DrawImage(_brandImg, new Rectangle(22, 22, 36, 36));
+                g.DrawImage(_brandImg, new Rectangle(20, 20, 36, 36));
             }
-            using (var fBrand = new Font("Segoe UI", 14F, FontStyle.Bold))
+            using (var fBrand = new Font("Segoe UI", 13.5F, FontStyle.Bold))
             using (var bTitle = new SolidBrush(TextPrimary))
             {
-                g.DrawString("AERIX", fBrand, bTitle, new PointF(66, 20));
-            }
-            using (var fVer = new Font("Segoe UI Semibold", 8.2F))
-            using (var bCyan = new SolidBrush(AccentCyan))
-            {
-                g.DrawString("v" + _version, fVer, bCyan, new PointF(67, 45));
+                g.DrawString("AERIX", fBrand, bTitle, new PointF(62, 17));
             }
 
-            // Stepper items
-            string[] steps = { "Welcome & License", "Setup & Editors", "Installing", "Ready to Code" };
-            int y = 104;
+            // Version Pill Badge
+            Rectangle verBadge = new Rectangle(62, 41, 102, 18);
+            using (var brBadge = new SolidBrush(Color.FromArgb(16, 42, 68)))
+            using (var penBadge = new Pen(Color.FromArgb(0, 160, 200), 1))
+            using (var fVer = new Font("Segoe UI Semibold", 8F))
+            using (var bCyan = new SolidBrush(AccentCyan))
+            {
+                FillRoundedRect(g, brBadge, verBadge, 4);
+                DrawRoundedRect(g, penBadge, verBadge, 4);
+                var sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
+                g.DrawString("v" + _version, fVer, bCyan, verBadge, sf);
+            }
+
+            // Step Indicator Navigation
+            string[] steps = { "Welcome & License", "Options & IDEs", "Installing", "Ready to Code" };
+            int y = 106;
             for (int i = 0; i < steps.Length; i++)
             {
                 bool active = (i == _pageIndex);
                 bool done = (i < _pageIndex);
 
+                // Connecting vertical step lines
                 if (i < steps.Length - 1)
                 {
-                    using (var penLine = new Pen(done ? AccentGreen : BorderSubtle, 2))
+                    Color lineCol = done ? AccentGreen : BorderSubtle;
+                    using (var penLine = new Pen(lineCol, 2))
                     {
-                        g.DrawLine(penLine, 34, y + 22, 34, y + 48);
+                        g.DrawLine(penLine, 32, y + 24, 32, y + 50);
                     }
                 }
 
-                Rectangle circle = new Rectangle(23, y, 22, 22);
-                Color fill = active ? AccentCyan : (done ? AccentGreen : Color.FromArgb(24, 36, 62));
+                // Step Circle
+                Rectangle circle = new Rectangle(21, y, 22, 22);
+                Color fill = active ? AccentCyan : (done ? AccentGreen : Color.FromArgb(18, 28, 48));
                 using (var brFill = new SolidBrush(fill))
                 {
                     g.FillEllipse(brFill, circle);
                 }
-                if (!active && !done)
+
+                if (active)
+                {
+                    // Outer glow halo around active circle
+                    Rectangle halo = new Rectangle(circle.X - 3, circle.Y - 3, circle.Width + 6, circle.Height + 6);
+                    using (var penHalo = new Pen(Color.FromArgb(60, 0, 229, 255), 2))
+                    {
+                        g.DrawEllipse(penHalo, halo);
+                    }
+                }
+                else if (!done)
                 {
                     using (var penC = new Pen(BorderSubtle, 1.5F))
                     {
@@ -307,29 +373,43 @@ namespace AerixSetup
 
                 string badgeTxt = done ? "✓" : (i + 1).ToString();
                 Color badgeFg = (active || done) ? BgHeader : TextMuted;
-                using (var fNum = new Font("Segoe UI", 8.5F, FontStyle.Bold))
+                using (var fNum = new Font("Segoe UI", 8.2F, FontStyle.Bold))
                 using (var bNum = new SolidBrush(badgeFg))
                 {
-                    var sf = new StringFormat();
-                    sf.Alignment = StringAlignment.Center;
-                    sf.LineAlignment = StringAlignment.Center;
+                    var sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
                     g.DrawString(badgeTxt, fNum, bNum, new RectangleF(circle.X, circle.Y + 0.5F, circle.Width, circle.Height), sf);
                 }
 
-                using (var fStep = new Font("Segoe UI", 9.5F, active ? FontStyle.Bold : FontStyle.Regular))
+                using (var fStep = new Font("Segoe UI", 9.2F, active ? FontStyle.Bold : FontStyle.Regular))
                 using (var bStep = new SolidBrush(active ? TextPrimary : (done ? AccentGreen : TextMuted)))
                 {
-                    g.DrawString(steps[i], fStep, bStep, new PointF(56, y + 2));
+                    g.DrawString(steps[i], fStep, bStep, new PointF(54, y + 2));
                 }
 
                 y += 52;
             }
 
-            // Bottom subtle architecture tag
-            using (var fNote = new Font("Segoe UI", 8F))
-            using (var bNote = new SolidBrush(Color.FromArgb(100, 118, 148)))
+            // Bottom Architecture Glass Card
+            Rectangle archCard = new Rectangle(16, _sidebar.Height - 74, _sidebar.Width - 32, 54);
+            using (var brCard = new SolidBrush(Color.FromArgb(14, 23, 40)))
+            using (var penCard = new Pen(BorderSubtle, 1))
             {
-                g.DrawString("Native PE32+ x86-64\r\nZero External Dependencies", fNote, bNote, new PointF(22, _sidebar.Height - 48));
+                FillRoundedRect(g, brCard, archCard, 6);
+                DrawRoundedRect(g, penCard, archCard, 6);
+            }
+
+            // Cyan indicator dot
+            using (var brDot = new SolidBrush(AccentCyan))
+            {
+                g.FillEllipse(brDot, new Rectangle(28, archCard.Y + 14, 8, 8));
+            }
+            using (var fArch = new Font("Segoe UI Semibold", 8.4F))
+            using (var bArch = new SolidBrush(TextPrimary))
+            using (var fSub = new Font("Segoe UI", 7.8F))
+            using (var bSub = new SolidBrush(TextMuted))
+            {
+                g.DrawString("Native x86-64 Backend", fArch, bArch, new PointF(42, archCard.Y + 10));
+                g.DrawString("Zero External Dependencies", fSub, bSub, new PointF(42, archCard.Y + 28));
             }
         }
 
@@ -349,14 +429,14 @@ namespace AerixSetup
                 _contentHost.Controls.Add(p);
             }
 
-            // Footer buttons
+            // Footer navigation buttons
             _btnBack = MakeButton("< Back", false);
-            _btnBack.Location = new Point(_footer.Width - 310, 12);
+            _btnBack.Location = new Point(_footer.Width - 324, 12);
             _btnBack.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             _btnBack.Click += delegate { if (_pageIndex == 1) ShowPage(0); };
 
             _btnNext = MakeButton("Next >", true);
-            _btnNext.Location = new Point(_footer.Width - 210, 12);
+            _btnNext.Location = new Point(_footer.Width - 216, 12);
             _btnNext.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             _btnNext.Click += OnNextClicked;
 
@@ -376,28 +456,26 @@ namespace AerixSetup
 
             var title = MakeHeaderLabel("Install Aerix " + _version, 0, 0);
             var sub = MakeSubLabel(
-                "Sets up the self-hosting native x86-64 Aerix compiler, standard runtime, language modules, LSP editor integration (highlighting, hover & F12 navigation), and system PATH.",
-                0, 32, 508, 40);
+                "Modern, high-performance systems programming language with autonomous self-hosting native PE32+ code generation.",
+                0, 32, 528, 24);
 
-            var card = MakeCard(0, 82, 508, 90);
-            var bullets = new Label();
-            bullets.UseMnemonic = false;
-            bullets.Text =
-                "• Native PE32+ compiler (arx.exe, arxc.exe) — zero GCC required at runtime\r\n" +
-                "• Stdlib & modules (aerix_rt.h, Math, Random) + .arx Explorer file icons\r\n" +
-                "• Compiler LSP extension v" + _version + " auto-installed for detected IDEs";
-            bullets.ForeColor = TextPrimary;
-            bullets.Font = new Font("Segoe UI", 9.0F);
-            bullets.Location = new Point(14, 12);
-            bullets.Size = new Size(480, 66);
-            card.Controls.Add(bullets);
+            // Feature Highlights Hero Card
+            var card = MakeCard(0, 62, 528, 102);
+
+            var row1 = MakeFeatureRow("⚡", "Zero-Dependency Native Backend", "Emits direct Win64 PE32+ executables without GCC, Clang, or external linkers.", 14, 10);
+            var row2 = MakeFeatureRow("📦", "Rich Standard Library & Modules", "Includes native Sockets, Math, Window/Canvas GUI, Exception handling & generics.", 14, 38);
+            var row3 = MakeFeatureRow("🧩", "Automated IDE Language Server", "Full syntax highlighting, hover documentation, typecheck, and F12 navigation.", 14, 66);
+
+            card.Controls.Add(row1);
+            card.Controls.Add(row2);
+            card.Controls.Add(row3);
 
             var lblLic = new Label();
             lblLic.UseMnemonic = false;
             lblLic.Text = "License Agreement (MIT)";
             lblLic.ForeColor = TextMuted;
             lblLic.Font = new Font("Segoe UI Semibold", 8.8F);
-            lblLic.Location = new Point(0, 182);
+            lblLic.Location = new Point(0, 172);
             lblLic.AutoSize = true;
 
             var txtLic = new TextBox();
@@ -406,11 +484,11 @@ namespace AerixSetup
             txtLic.TabStop = false;
             txtLic.ScrollBars = ScrollBars.Vertical;
             txtLic.BackColor = BgInput;
-            txtLic.ForeColor = TextMuted;
+            txtLic.ForeColor = Color.FromArgb(178, 196, 222);
             txtLic.BorderStyle = BorderStyle.FixedSingle;
             txtLic.Font = new Font("Consolas", 8.3F);
-            txtLic.Location = new Point(0, 204);
-            txtLic.Size = new Size(508, 134);
+            txtLic.Location = new Point(0, 194);
+            txtLic.Size = new Size(528, 132);
             txtLic.Text = InstallerEngine.GetLicenseText();
             txtLic.Select(0, 0);
 
@@ -420,7 +498,7 @@ namespace AerixSetup
             _chkAcceptLicense.Checked = true;
             _chkAcceptLicense.ForeColor = TextPrimary;
             _chkAcceptLicense.Font = new Font("Segoe UI Semibold", 9.2F);
-            _chkAcceptLicense.Location = new Point(2, 348);
+            _chkAcceptLicense.Location = new Point(2, 336);
             _chkAcceptLicense.AutoSize = true;
             _chkAcceptLicense.CheckedChanged += delegate
             {
@@ -442,17 +520,45 @@ namespace AerixSetup
             return p;
         }
 
+        private Control MakeFeatureRow(string icon, string title, string desc, int x, int y)
+        {
+            var pnl = new Panel();
+            pnl.Location = new Point(x, y);
+            pnl.Size = new Size(500, 24);
+            pnl.BackColor = Color.Transparent;
+
+            var lblIcon = new Label();
+            lblIcon.Text = icon;
+            lblIcon.Font = new Font("Segoe UI", 9F);
+            lblIcon.ForeColor = AccentCyan;
+            lblIcon.Location = new Point(0, 1);
+            lblIcon.Size = new Size(20, 20);
+
+            var lblText = new Label();
+            lblText.UseMnemonic = false;
+            lblText.Text = title + "  —  " + desc;
+            lblText.Font = new Font("Segoe UI", 8.8F);
+            lblText.ForeColor = TextPrimary;
+            lblText.Location = new Point(22, 1);
+            lblText.Size = new Size(478, 20);
+            lblText.AutoEllipsis = true;
+
+            pnl.Controls.Add(lblIcon);
+            pnl.Controls.Add(lblText);
+            return pnl;
+        }
+
         private Panel BuildOptionsPage()
         {
             var p = new Panel();
-            var title = MakeHeaderLabel("Customize Setup & Detected IDEs", 0, 0);
-            var sub = MakeSubLabel("Choose your install folder and integration features for this Windows user.", 0, 32, 505, 22);
+            var title = MakeHeaderLabel("Customize Setup & Integrations", 0, 0);
+            var sub = MakeSubLabel("Choose installation folder and configure system integration components.", 0, 32, 528, 22);
 
             var lblDir = new Label();
             lblDir.Text = "Destination Folder";
             lblDir.ForeColor = TextMuted;
             lblDir.Font = new Font("Segoe UI Semibold", 8.8F);
-            lblDir.Location = new Point(0, 62);
+            lblDir.Location = new Point(0, 60);
             lblDir.AutoSize = true;
 
             _txtDir = new TextBox();
@@ -461,12 +567,12 @@ namespace AerixSetup
             _txtDir.ForeColor = TextPrimary;
             _txtDir.BorderStyle = BorderStyle.FixedSingle;
             _txtDir.Font = new Font("Segoe UI", 9.5F);
-            _txtDir.Location = new Point(0, 84);
-            _txtDir.Size = new Size(412, 26);
+            _txtDir.Location = new Point(0, 82);
+            _txtDir.Size = new Size(424, 26);
 
             var btnBrowse = MakeButton("Browse...", false);
-            btnBrowse.Size = new Size(88, 26);
-            btnBrowse.Location = new Point(420, 83);
+            btnBrowse.Size = new Size(96, 26);
+            btnBrowse.Location = new Point(432, 81);
             btnBrowse.Click += delegate
             {
                 using (var dlg = new FolderBrowserDialog())
@@ -480,20 +586,22 @@ namespace AerixSetup
                 }
             };
 
-            var cardOpts = MakeCard(0, 122, 508, 152);
-            _chkEnv = MakeOptionCheck("Configure AERIX_HOME, stdlib/modules env vars & add bin to User PATH", _opts.ConfigureEnv, 14, 12);
-            _chkAssoc = MakeOptionCheck("Register .arx file icon & Explorer right-click actions (Open / Run / Build)", _opts.FileAssociations, 14, 44);
-            _chkIdes = MakeOptionCheck("Install Aerix v" + _version + " LSP Extension into all detected IDEs", _opts.InstallIdeExtensions, 14, 76);
-            _chkSmoke = MakeOptionCheck("Verify toolchain with a quick native compile & run smoke test", _opts.RunSmokeTest, 14, 108);
+            // Options Card
+            var cardOpts = MakeCard(0, 118, 528, 148);
+            _chkEnv = MakeOptionCheck("Configure AERIX_HOME, stdlib/modules and add bin\\ to User PATH", _opts.ConfigureEnv, 14, 12);
+            _chkAssoc = MakeOptionCheck("Register .arx file associations & Explorer context actions (Open / Run / Build)", _opts.FileAssociations, 14, 44);
+            _chkIdes = MakeOptionCheck("Automatically install Aerix Language Server (LSP) into detected IDEs", _opts.InstallIdeExtensions, 14, 76);
+            _chkSmoke = MakeOptionCheck("Verify compiler with an instant native compile-and-run smoke test", _opts.RunSmokeTest, 14, 108);
+
             cardOpts.Controls.Add(_chkEnv);
             cardOpts.Controls.Add(_chkAssoc);
             cardOpts.Controls.Add(_chkIdes);
             cardOpts.Controls.Add(_chkSmoke);
 
-            // Detected IDE chips card
-            var cardIdes = MakeCard(0, 286, 508, 92);
+            // Detected IDEs Card
+            var cardIdes = MakeCard(0, 276, 528, 88);
             var lblEdHdr = new Label();
-            lblEdHdr.Text = "Detected Editors on this PC:";
+            lblEdHdr.Text = "Detected Editors on this computer:";
             lblEdHdr.ForeColor = TextMuted;
             lblEdHdr.Font = new Font("Segoe UI Semibold", 8.6F);
             lblEdHdr.Location = new Point(14, 10);
@@ -509,7 +617,7 @@ namespace AerixSetup
                 foundCount++;
                 var pill = new Label();
                 pill.Text = "✓ " + ed.Name;
-                pill.BackColor = Color.FromArgb(16, 62, 56);
+                pill.BackColor = Color.FromArgb(14, 52, 44);
                 pill.ForeColor = AccentGreen;
                 pill.Font = new Font("Segoe UI Semibold", 8.4F);
                 pill.Padding = new Padding(8, 4, 8, 4);
@@ -517,16 +625,16 @@ namespace AerixSetup
                 pill.Location = new Point(cx, cy);
                 cardIdes.Controls.Add(pill);
                 cx += pill.PreferredWidth + 8;
-                if (cx > 390) { cx = 14; cy += 28; }
+                if (cx > 410) { cx = 14; cy += 28; }
             }
             if (foundCount == 0)
             {
                 var lblNone = new Label();
-                lblNone.Text = "No VS Code / Antigravity / Cursor installs found automatically (VSIX will still be staged in editors\\).";
+                lblNone.Text = "No IDEs detected automatically (VSIX package will be ready in editors\\ folder).";
                 lblNone.ForeColor = TextMuted;
                 lblNone.Font = new Font("Segoe UI", 8.5F);
                 lblNone.Location = new Point(14, 38);
-                lblNone.Size = new Size(480, 38);
+                lblNone.Size = new Size(500, 36);
                 cardIdes.Controls.Add(lblNone);
             }
 
@@ -550,19 +658,19 @@ namespace AerixSetup
             _lblProgTitle.ForeColor = TextMuted;
             _lblProgTitle.Font = new Font("Segoe UI", 9.5F);
             _lblProgTitle.Location = new Point(0, 42);
-            _lblProgTitle.Size = new Size(430, 22);
+            _lblProgTitle.Size = new Size(450, 22);
 
             _lblProgPct = new Label();
             _lblProgPct.Text = "0%";
             _lblProgPct.ForeColor = AccentCyan;
-            _lblProgPct.Font = new Font("Segoe UI", 10.5F, FontStyle.Bold);
-            _lblProgPct.Location = new Point(442, 40);
-            _lblProgPct.Size = new Size(66, 24);
+            _lblProgPct.Font = new Font("Segoe UI", 11F, FontStyle.Bold);
+            _lblProgPct.Location = new Point(458, 40);
+            _lblProgPct.Size = new Size(70, 24);
             _lblProgPct.TextAlign = ContentAlignment.MiddleRight;
 
             _progressBar = new AerixProgressBar();
             _progressBar.Location = new Point(0, 72);
-            _progressBar.Size = new Size(508, 16);
+            _progressBar.Size = new Size(528, 16);
 
             _txtLog = new TextBox();
             _txtLog.Multiline = true;
@@ -573,7 +681,7 @@ namespace AerixSetup
             _txtLog.BorderStyle = BorderStyle.FixedSingle;
             _txtLog.Font = new Font("Consolas", 8.4F);
             _txtLog.Location = new Point(0, 102);
-            _txtLog.Size = new Size(508, 276);
+            _txtLog.Size = new Size(528, 268);
 
             p.Controls.Add(title);
             p.Controls.Add(_lblProgTitle);
@@ -586,20 +694,22 @@ namespace AerixSetup
         private Panel BuildFinishPage()
         {
             var p = new Panel();
-            _lblFinishHeadline = MakeHeaderLabel("Aerix " + _version + " is Ready!", 0, 8);
+            _lblFinishHeadline = MakeHeaderLabel("Aerix " + _version + " is Ready to Code!", 0, 6);
             _lblFinishHeadline.ForeColor = AccentGreen;
 
-            var card = MakeCard(0, 52, 508, 226);
+            var sub = MakeSubLabel("All toolchain binaries, standard libraries, and IDE extensions have been set up.", 0, 36, 528, 22);
+
+            var card = MakeCard(0, 68, 528, 206);
             _lblFinishBody = new Label();
             _lblFinishBody.ForeColor = TextPrimary;
             _lblFinishBody.Font = new Font("Segoe UI", 9.5F);
-            _lblFinishBody.Location = new Point(16, 16);
-            _lblFinishBody.Size = new Size(476, 196);
+            _lblFinishBody.Location = new Point(18, 16);
+            _lblFinishBody.Size = new Size(492, 174);
             card.Controls.Add(_lblFinishBody);
 
-            _btnVerifyTerminal = MakeButton("Open Terminal & Run arx version", false);
-            _btnVerifyTerminal.Size = new Size(248, 36);
-            _btnVerifyTerminal.Location = new Point(0, 294);
+            _btnVerifyTerminal = MakeButton("Open Terminal & Test arx", true);
+            _btnVerifyTerminal.Size = new Size(220, 36);
+            _btnVerifyTerminal.Location = new Point(0, 286);
             _btnVerifyTerminal.Click += delegate
             {
                 try
@@ -611,13 +721,14 @@ namespace AerixSetup
             };
 
             var lblTip = new Label();
-            lblTip.Text = "Tip: If VS Code or Antigravity is currently open, run 'Developer: Reload Window' (Ctrl+Shift+P) to start the updated v" + _version + " LSP server.";
+            lblTip.Text = "💡 Tip: If VS Code or Antigravity is open, run 'Developer: Reload Window' to connect to the updated LSP.";
             lblTip.ForeColor = TextMuted;
             lblTip.Font = new Font("Segoe UI", 8.6F);
-            lblTip.Location = new Point(0, 342);
-            lblTip.Size = new Size(508, 36);
+            lblTip.Location = new Point(0, 332);
+            lblTip.Size = new Size(528, 32);
 
             p.Controls.Add(_lblFinishHeadline);
+            p.Controls.Add(sub);
             p.Controls.Add(card);
             p.Controls.Add(_btnVerifyTerminal);
             p.Controls.Add(lblTip);
@@ -636,21 +747,21 @@ namespace AerixSetup
 
             var title = MakeHeaderLabel("Uninstall Aerix " + _version, 0, 6);
             _lblUninstInfo = new Label();
-            _lblUninstInfo.Text = "This will remove Aerix binaries, environment variables, PATH entries, .arx file associations, and registry records from:\r\n\r\n" + _opts.InstallDir;
+            _lblUninstInfo.Text = "This wizard will completely remove Aerix binaries, standard library, environment variables, PATH records, and .arx file associations from:\r\n\r\n" + _opts.InstallDir;
             _lblUninstInfo.ForeColor = TextPrimary;
             _lblUninstInfo.Font = new Font("Segoe UI", 9.6F);
             _lblUninstInfo.Location = new Point(0, 50);
-            _lblUninstInfo.Size = new Size(720, 90);
+            _lblUninstInfo.Size = new Size(740, 90);
 
             _lblUninstStatus = new Label();
             _lblUninstStatus.Text = "Click Uninstall to proceed.";
             _lblUninstStatus.ForeColor = TextMuted;
             _lblUninstStatus.Location = new Point(0, 160);
-            _lblUninstStatus.Size = new Size(720, 24);
+            _lblUninstStatus.Size = new Size(740, 24);
 
             _uninstProgress = new AerixProgressBar();
             _uninstProgress.Location = new Point(0, 192);
-            _uninstProgress.Size = new Size(724, 16);
+            _uninstProgress.Size = new Size(740, 16);
 
             _contentHost.Controls.Add(title);
             _contentHost.Controls.Add(_lblUninstInfo);
@@ -660,8 +771,8 @@ namespace AerixSetup
             _btnUninstRun = MakeButton("Uninstall", true);
             _btnUninstRun.BackColor = AccentDanger;
             _btnUninstRun.ForeColor = Color.White;
-            _btnUninstRun.FlatAppearance.MouseOverBackColor = Color.FromArgb(255, 110, 122);
-            _btnUninstRun.Location = new Point(_footer.Width - 210, 12);
+            _btnUninstRun.FlatAppearance.MouseOverBackColor = Color.FromArgb(248, 113, 113);
+            _btnUninstRun.Location = new Point(_footer.Width - 216, 12);
             _btnUninstRun.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             _btnUninstRun.Click += OnStartUninstall;
 
@@ -814,16 +925,16 @@ namespace AerixSetup
 
                     if (rep.Success)
                     {
-                        string eds = rep.InstalledEditors.Count > 0 ? string.Join(", ", rep.InstalledEditors.ToArray()) : "None detected (VSIX staged in editors\\)";
+                        string eds = rep.InstalledEditors.Count > 0 ? string.Join(", ", rep.InstalledEditors.ToArray()) : "None detected (VSIX ready in editors\\)";
                         string smoke = string.IsNullOrEmpty(rep.SmokeTestSummary) ? "Skipped" : rep.SmokeTestSummary;
                         _lblFinishHeadline.Text = "Aerix " + rep.InstalledVersion + " Installed Successfully!";
                         _lblFinishHeadline.ForeColor = AccentGreen;
                         _lblFinishBody.Text = string.Format(
-                            "Install Folder:\r\n  {0}\r\n\r\n" +
-                            "Files Extracted:  {1}\r\n" +
-                            "IDE Extensions:   {2}\r\n" +
-                            "Verification:     {3}",
-                            _opts.InstallDir, rep.ExtractedFiles, eds, smoke);
+                            "Destination Folder:\r\n  {0}\r\n\r\n" +
+                            "Core Toolchain:\r\n  arx.exe, arxc.exe, Updater.exe (Native PE32+)\r\n\r\n" +
+                            "IDE Integrations:\r\n  {1}\r\n\r\n" +
+                            "Verification:\r\n  {2}",
+                            _opts.InstallDir, eds, smoke);
                         _btnVerifyTerminal.Visible = true;
                         ShowPage(3);
                     }
@@ -847,7 +958,7 @@ namespace AerixSetup
             l.UseMnemonic = false;
             l.Text = txt;
             l.ForeColor = TextPrimary;
-            l.Font = new Font("Segoe UI", 16F, FontStyle.Bold);
+            l.Font = new Font("Segoe UI", 15.5F, FontStyle.Bold);
             l.Location = new Point(x, y);
             l.AutoSize = true;
             return l;
@@ -874,9 +985,12 @@ namespace AerixSetup
             c.Paint += delegate(object s, PaintEventArgs e)
             {
                 e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+                var r = new Rectangle(0, 0, c.Width - 1, c.Height - 1);
+                using (var br = new SolidBrush(BgCard))
                 using (var pen = new Pen(BorderSubtle, 1))
                 {
-                    e.Graphics.DrawRectangle(pen, 0, 0, c.Width - 1, c.Height - 1);
+                    FillRoundedRect(e.Graphics, br, r, 7);
+                    DrawRoundedRect(e.Graphics, pen, r, 7);
                 }
             };
             return c;
@@ -899,7 +1013,7 @@ namespace AerixSetup
         {
             var b = new Button();
             b.Text = txt;
-            b.Size = new Size(92, 34);
+            b.Size = new Size(96, 34);
             b.FlatStyle = FlatStyle.Flat;
             b.Cursor = Cursors.Hand;
             b.Font = new Font("Segoe UI Semibold", 9.2F);
@@ -908,7 +1022,7 @@ namespace AerixSetup
                 b.BackColor = AccentCyan;
                 b.ForeColor = BgHeader;
                 b.FlatAppearance.BorderSize = 0;
-                b.FlatAppearance.MouseOverBackColor = Color.FromArgb(46, 232, 255);
+                b.FlatAppearance.MouseOverBackColor = Color.FromArgb(56, 238, 255);
             }
             else
             {
@@ -916,7 +1030,7 @@ namespace AerixSetup
                 b.ForeColor = TextPrimary;
                 b.FlatAppearance.BorderSize = 1;
                 b.FlatAppearance.BorderColor = BorderSubtle;
-                b.FlatAppearance.MouseOverBackColor = Color.FromArgb(32, 46, 80);
+                b.FlatAppearance.MouseOverBackColor = Color.FromArgb(28, 44, 76);
             }
             return b;
         }
@@ -973,16 +1087,16 @@ namespace AerixSetup
                 using (var bg = new SolidBrush(BgInput))
                 using (var pen = new Pen(BorderSubtle, 1))
                 {
-                    e.Graphics.FillRectangle(bg, track);
-                    e.Graphics.DrawRectangle(pen, track);
+                    FillRoundedRect(e.Graphics, bg, track, 5);
+                    DrawRoundedRect(e.Graphics, pen, track, 5);
                 }
                 if (_value > 0)
                 {
-                    int fillW = Math.Max(4, ((Width - 2) * _value) / 100);
+                    int fillW = Math.Max(6, ((Width - 2) * _value) / 100);
                     Rectangle fill = new Rectangle(1, 1, fillW, Height - 2);
                     using (var br = new LinearGradientBrush(fill, AccentCyan, AccentBlue, LinearGradientMode.Horizontal))
                     {
-                        e.Graphics.FillRectangle(br, fill);
+                        FillRoundedRect(e.Graphics, br, fill, 4);
                     }
                 }
             }
