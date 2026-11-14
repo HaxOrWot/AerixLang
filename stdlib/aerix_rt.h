@@ -2911,7 +2911,7 @@ static inline int64_t arx_autoupdate_bg_trigger(const char* uninst_exe) {
     }
 
     char cmd[MAX_PATH + 64];
-    snprintf(cmd, sizeof(cmd), "\"%s\" --update --silent --quiet", uninst_exe);
+    snprintf(cmd, sizeof(cmd), "\"%s\" --auto", uninst_exe);
     STARTUPINFOA si;
     PROCESS_INFORMATION pi;
     ZeroMemory(&si, sizeof(si));

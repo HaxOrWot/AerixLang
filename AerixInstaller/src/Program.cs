@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Reflection;
 using System.Runtime.InteropServices;
@@ -97,6 +98,22 @@ namespace AerixSetup
             return iso.Trim();
         }
 
+        private static bool IsAdministrator()
+        {
+            try
+            {
+                using (var id = System.Security.Principal.WindowsIdentity.GetCurrent())
+                {
+                    var p = new System.Security.Principal.WindowsPrincipal(id);
+                    return p.IsInRole(System.Security.Principal.WindowsBuiltInRole.Administrator);
+                }
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
         [STAThread]
         private static int Main(string[] args)
         {
@@ -107,6 +124,7 @@ namespace AerixSetup
             bool forceUpdate = false;
             bool quietUpdate = false;
             bool verboseUpdate = false;
+            bool autoUpdateCheck = false;
             string vmAction = "";
             string vmTarget = "";
             string vmChannel = "";
@@ -116,11 +134,12 @@ namespace AerixSetup
             var opts = new InstallOptions();
 
             string selfExe = Assembly.GetExecutingAssembly().Location;
-            if (!string.IsNullOrEmpty(selfExe) &&
-                string.Equals(Path.GetFileName(selfExe), "Uninstall.exe", StringComparison.OrdinalIgnoreCase))
+            string selfName = string.IsNullOrEmpty(selfExe) ? "" : Path.GetFileName(selfExe);
+            if (string.Equals(selfName, "Uninstall.exe", StringComparison.OrdinalIgnoreCase))
             {
                 uninstall = true;
             }
+            bool isUpdater = string.Equals(selfName, "Updater.exe", StringComparison.OrdinalIgnoreCase);
 
             if (args != null)
             {
@@ -135,6 +154,11 @@ namespace AerixSetup
                     else if (low == "--uninstall" || low == "/uninstall")
                     {
                         uninstall = true;
+                    }
+                    else if (low == "--auto" || low == "/auto" || low == "--bg")
+                    {
+                        autoUpdateCheck = true;
+                        uninstall = false;
                     }
                     else if (low == "--update" || low == "/update")
                     {
@@ -245,6 +269,35 @@ namespace AerixSetup
                     {
                         opts.RunSmokeTest = false;
                     }
+                }
+            }
+
+            // If running the Setup Wizard interactively (first-time install) and not running as Administrator,
+            // request elevation via UAC so Aerix sets up directory permissions and tools properly.
+            if (!isUpdater && !uninstall && !silent && string.IsNullOrEmpty(vmAction) && !updateMode && !IsAdministrator())
+            {
+                try
+                {
+                    var psi = new ProcessStartInfo(selfExe);
+                    psi.UseShellExecute = true;
+                    psi.Verb = "runas";
+                    if (args != null && args.Length > 0)
+                    {
+                        var sb = new StringBuilder();
+                        foreach (string a in args)
+                        {
+                            if (sb.Length > 0) sb.Append(" ");
+                            if (a.Contains(" ")) sb.Append("\"").Append(a).Append("\"");
+                            else sb.Append(a);
+                        }
+                        psi.Arguments = sb.ToString();
+                    }
+                    Process p = Process.Start(psi);
+                    if (p != null) return 0;
+                }
+                catch
+                {
+                    // User declined UAC or headless environment, continue as-is
                 }
             }
 
@@ -478,6 +531,93 @@ namespace AerixSetup
                         try { Console.Out.Flush(); Console.Error.Flush(); } catch { }
                     }
                     return vmRes.Success ? 0 : 1;
+                }
+            }
+
+            if (autoUpdateCheck || (isUpdater && !updateMode && string.IsNullOrEmpty(vmAction) && !uninstall))
+            {
+                string activeDir = InstallerEngine.ResolveActiveInstallDir(opts.InstallDir);
+                string currentVer = InstallerEngine.GetInstalledVersionFromDisk(activeDir);
+
+                StableReleaseInfo latest = null;
+                string checkErr = null;
+                try
+                {
+                    latest = InstallerEngine.FetchLatestStableRelease();
+                }
+                catch (Exception ex)
+                {
+                    checkErr = ex.Message;
+                }
+
+                if (latest == null)
+                {
+                    if (!autoUpdateCheck && !quietUpdate && !silent)
+                    {
+                        Application.EnableVisualStyles();
+                        Application.SetCompatibleTextRenderingDefault(false);
+                        MessageBox.Show(
+                            "Could not check for Aerix updates:\n\n" + (checkErr ?? "No stable release found on GitHub."),
+                            "Aerix Updater",
+                            MessageBoxButtons.OK,
+                            MessageBoxIcon.Warning);
+                    }
+                    return autoUpdateCheck ? 0 : 1;
+                }
+
+                InstallerEngine.TouchUpdateCheckStamp(latest.Version);
+                int cmp = InstallerEngine.CompareVersions(latest.Version, currentVer);
+
+                if (cmp <= 0 && !forceUpdate)
+                {
+                    if (!autoUpdateCheck && !quietUpdate && !silent)
+                    {
+                        Application.EnableVisualStyles();
+                        Application.SetCompatibleTextRenderingDefault(false);
+                        MessageBox.Show(
+                            string.Format("Aerix is up to date.\n\n" +
+                                          "  Installed version:  v{0}\n" +
+                                          "  Latest stable:      v{1}\n" +
+                                          "  Release channel:    stable\n\n" +
+                                          "Your installation is running the latest stable release.",
+                                          currentVer, latest.Version),
+                            "Aerix Updater",
+                            MessageBoxButtons.OK,
+                            MessageBoxIcon.Information);
+                    }
+                    return 0;
+                }
+
+                Application.EnableVisualStyles();
+                Application.SetCompatibleTextRenderingDefault(false);
+
+                string promptMsg = string.Format(
+                    "A new stable update for Aerix is available!\n\n" +
+                    "  Current version:  v{0}\n" +
+                    "  Latest version:   v{1}\n" +
+                    "  Published:        {2}\n" +
+                    "  Package size:     {3}\n\n" +
+                    "Do you want to install this update now?",
+                    currentVer,
+                    latest.Version,
+                    FormatPublishedDate(latest.PublishedAt),
+                    InstallerEngine.FormatBytes(latest.SetupSize));
+
+                DialogResult dr = MessageBox.Show(
+                    promptMsg,
+                    "Aerix Update Available",
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Question);
+
+                if (dr != DialogResult.Yes)
+                {
+                    return 0;
+                }
+
+                using (var prog = new UpdateProgressForm(latest, activeDir, !opts.InstallIdeExtensions))
+                {
+                    Application.Run(prog);
+                    return prog.Success ? 0 : 1;
                 }
             }
 
