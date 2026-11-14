@@ -19,7 +19,8 @@
 #[extern("user32.dll", "MessageBoxA")]
 pub fn messageBox(hwnd: i64, text: str, caption: str, utype: i64) -> i64;
 
-cextern fn arx_gui_play_beep(freq: i64, duration_ms: i64) -> void;
+#[extern("kernel32.dll", "Beep")]
+pub fn arx_gui_play_beep(freq: i64, duration_ms: i64) -> i64;
 
 /// Generates a non-blocking asynchronous audio tone through the PC sound card or speaker.
 ///

@@ -15,13 +15,15 @@
 //   let duration = epochMs() - start;
 // ==============================================================================
 
-cextern fn arx_sleep_ms(ms: i64) -> void;
-
 #[extern("kernel32.dll", "GetTickCount64")]
 pub fn ticks() -> i64;
 
 #[extern("kernel32.dll", "Sleep")]
 pub fn win32Sleep(ms: i64) -> void;
+
+pub fn arx_sleep_ms(ms: i64) -> void {
+    win32Sleep(ms);
+}
 
 /// Returns current UNIX timestamp in fractional seconds since Jan 1, 1970 00:00:00 UTC.
 pub fn now() -> f64 {

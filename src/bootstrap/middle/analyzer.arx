@@ -2323,6 +2323,16 @@ pub class Analyzer {
                         return rt
                     }
                 }
+                if self.is_module_path(lpath) {
+                    let sug = self.suggest_ident(mname)
+                    mut hmsg = "verify module functions or spelling"
+                    if sug != "" { hmsg = "did you mean '" + sug + "'?" }
+                    self.add_diag(callee, mname.len(), "E0202", "cannot find function '" + mname + "' in module '" + lpath + "'", hmsg, 1)
+                    self.call_kinds.set(nid, CK_NORMAL())
+                    self.call_targets.set(nid, mname)
+                    self.node_types.set(nid, "i64")
+                    return "i64"
+                }
             }
 
             // Instance method call: recv.method(args)

@@ -478,6 +478,16 @@ pub class Parser {
         if !bpath_is_abs(resolved) {
             resolved = bpath_join(self.cur_dir, file_path)
         }
+        if !File.exists(resolved) && !resolved.ends_with(".arx") && File.exists(resolved + ".arx") {
+            resolved = resolved + ".arx"
+        }
+        if !File.exists(resolved) {
+            let mdir = find_module_dir(file_path, self.entry_dir)
+            if mdir != "" {
+                self.load_module(file_path)
+                return
+            }
+        }
         self.load_resolved_file(resolved)
     }
 
@@ -972,11 +982,13 @@ pub class Parser {
             mut stem = base
             if stem.ends_with(".arx") && stem.len() > 4 { stem = stem.slice(0, stem.len() - 4) }
             self.mod_aliases.insert(stem, stem)
+            self.loaded_mods.insert(stem, 1)
             if self.match_k(TK_AS()) {
                 let atok = self.expect_k(TK_IDENT(), "Expected alias identifier after 'as'")
                 let alias_nm = self.tok_vals.get(atok)
                 self.mod_aliases.insert(alias_nm, stem)
                 self.mod_aliases.insert(alias_nm, pth)
+                self.loaded_mods.insert(alias_nm, 1)
             }
             return
         }

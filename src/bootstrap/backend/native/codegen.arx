@@ -244,7 +244,7 @@ pub class NativeCodegen {
             ei = ei + 1
         }
 
-        // 3. Globals
+        // 3. Globals & Win32 PE IAT extern bindings
         mut ri = 0
         while ri < self.az.root_count {
             let nid = self.az.root_decls.get(ri)
@@ -254,21 +254,24 @@ pub class NativeCodegen {
                     self.global_offs.insert(nm, self.pe.alloc_data_qword(0))
                 }
                 self.global_nodes.push(nid)
-            } else if self.nk.get(nid) == NK_FN_DEF() {
-                let fname = self.sa.get(nid)
-                if self.fn_externs.has_key(fname) {
-                    let full_ext = self.fn_externs.get(fname)
-                    let parts = full_ext.split("::")
-                    if parts.len() >= 2 {
-                        let dll = parts.get(0)
-                        let sym = parts.get(1)
-                        let iat_off = self.pe.add_import(dll, sym)
-                        self.extern_iats.insert(fname, iat_off)
-                        self.extern_iats.insert("arx_" + fname, iat_off)
-                    }
-                }
             }
             ri = ri + 1
+        }
+
+        let ext_keys = self.fn_externs.keys()
+        mut eki = 0
+        while eki < ext_keys.len() {
+            let ek = ext_keys.get(eki)
+            let full_ext = self.fn_externs.get(ek)
+            let parts = full_ext.split("::")
+            if parts.len() >= 2 {
+                let dll = parts.get(0)
+                let sym = parts.get(1)
+                let iat_off = self.pe.add_import(dll, sym)
+                self.extern_iats.insert(ek, iat_off)
+                self.extern_iats.insert("arx_" + ek, iat_off)
+            }
+            eki = eki + 1
         }
     }
 
@@ -408,7 +411,7 @@ pub class NativeCodegen {
         while ri < self.az.root_count {
             let nid = self.az.root_decls.get(ri)
             let k = self.nk.get(nid)
-            if k == NK_FN_DEF() {
+            if k == NK_FN_DEF() || k == NK_CEXTERN() {
                 self.emit_fn(nid, "", false)
             } else if k == NK_CLASS_DEF() {
                 let cname = self.sa.get(nid)
@@ -473,7 +476,57 @@ pub class NativeCodegen {
 
     priv fn emit_fn(nid: i64, cname: str, is_ctor: bool) {
         let body = self.ra.get(nid)
-        if body < 0 { return }
+        if body < 0 {
+            let fn_sym = self.fn_symbol_name(nid)
+            let fn_name = self.sa.get(nid)
+            mut iat_slot = -1
+            if self.extern_iats.has_key(fn_name) {
+                iat_slot = self.extern_iats.get(fn_name)
+            } else if self.extern_iats.has_key("arx_" + fn_name) {
+                iat_slot = self.extern_iats.get("arx_" + fn_name)
+            } else if self.extern_iats.has_key(fn_sym) {
+                iat_slot = self.extern_iats.get(fn_sym)
+            }
+            let fn_lbl = self.rt.lbl(fn_sym)
+            if fn_lbl < self.asm.label_addrs.len() && self.asm.label_addrs.get(fn_lbl) < 0 {
+                self.asm.bind_label(fn_lbl)
+                if iat_slot >= 0 {
+                    self.asm.call_rip_iat(iat_slot)
+                    self.asm.ret()
+                } else {
+                    self.asm.mov_ri32_sext(REG_RAX(), 0)
+                    self.asm.ret()
+                }
+            }
+            if fn_name != "" && fn_name != fn_sym {
+                let fn_lbl2 = self.rt.lbl(fn_name)
+                if fn_lbl2 < self.asm.label_addrs.len() && self.asm.label_addrs.get(fn_lbl2) < 0 {
+                    self.asm.bind_label(fn_lbl2)
+                    if iat_slot >= 0 {
+                        self.asm.call_rip_iat(iat_slot)
+                        self.asm.ret()
+                    } else {
+                        self.asm.mov_ri32_sext(REG_RAX(), 0)
+                        self.asm.ret()
+                    }
+                }
+            }
+            let arx_pref = "arx_" + fn_name
+            if fn_name != "" && arx_pref != fn_sym {
+                let fn_lbl3 = self.rt.lbl(arx_pref)
+                if fn_lbl3 < self.asm.label_addrs.len() && self.asm.label_addrs.get(fn_lbl3) < 0 {
+                    self.asm.bind_label(fn_lbl3)
+                    if iat_slot >= 0 {
+                        self.asm.call_rip_iat(iat_slot)
+                        self.asm.ret()
+                    } else {
+                        self.asm.mov_ri32_sext(REG_RAX(), 0)
+                        self.asm.ret()
+                    }
+                }
+            }
+            return
+        }
 
         let a = self.asm
         let fn_lbl = self.rt.lbl(self.fn_symbol_name(nid))
@@ -1979,6 +2032,38 @@ pub class NativeCodegen {
             if nm == "log" && ac == 1 { self.emit_call_with_temps(self.rt.lbl("__rt_math_log"), false, arg_temps); return }
             if nm == "exp" && ac == 1 { self.emit_call_with_temps(self.rt.lbl("__rt_math_exp"), false, arg_temps); return }
 
+            if nm == "to_string" && ac >= 1 {
+                a.mov_rm64(REG_RAX(), REG_RBP(), -arg_temps.get(0))
+                self.emit_val_to_str_in_rax(arg_types.get(0))
+                return
+            }
+            if nm == "parse_int" && ac >= 1 {
+                a.mov_rm64(REG_RCX(), REG_RBP(), -arg_temps.get(0))
+                a.call_rel32(self.rt.lbl("__rt_str_to_i64"))
+                return
+            }
+            if nm == "parse_float" && ac >= 1 {
+                a.mov_rm64(REG_RCX(), REG_RBP(), -arg_temps.get(0))
+                a.call_rel32(self.rt.lbl("__rt_str_to_f64"))
+                return
+            }
+            if nm == "chr" && ac >= 1 {
+                a.mov_rm64(REG_RCX(), REG_RBP(), -arg_temps.get(0))
+                a.call_rel32(self.rt.lbl("__rt_char_to_str"))
+                return
+            }
+            if nm == "ord" && ac >= 1 {
+                a.mov_rm64(REG_RAX(), REG_RBP(), -arg_temps.get(0))
+                a.movzx_rm8(REG_RAX(), REG_RAX(), 0)
+                return
+            }
+            if nm == "arx_free" && ac >= 1 {
+                a.mov_rm64(REG_RCX(), REG_RBP(), -arg_temps.get(0))
+                a.call_rip_iat(self.rt.imp_free)
+                a.mov_ri32_sext(REG_RAX(), 0)
+                return
+            }
+
             // Runtime binary buffer helpers for self-hosting PE output
             if nm == "arx_bin_new" { a.call_rel32(self.rt.lbl("__rt_bb_new")); return }
             if nm == "arx_bin_u8" { self.emit_call_with_temps(self.rt.lbl("__rt_bb_write_u8"), false, arg_temps); return }
@@ -2097,6 +2182,7 @@ pub class NativeCodegen {
                 if mname == "contains" { self.emit_call_with_temps(self.rt.lbl("__rt_str_contains"), false, margs); return }
                 if mname == "starts_with" { self.emit_call_with_temps(self.rt.lbl("__rt_str_starts_with"), false, margs); return }
                 if mname == "ends_with" { self.emit_call_with_temps(self.rt.lbl("__rt_str_ends_with"), false, margs); return }
+                if mname == "index_of" || mname == "find" { self.emit_call_with_temps(self.rt.lbl("__rt_str_index_of"), false, margs); return }
                 if mname == "trim" { self.emit_call_with_temps(self.rt.lbl("__rt_str_trim"), false, margs); return }
                 if mname == "to_upper" || mname == "upper" { self.emit_call_with_temps(self.rt.lbl("__rt_str_upper"), false, margs); return }
                 if mname == "to_lower" || mname == "lower" { self.emit_call_with_temps(self.rt.lbl("__rt_str_lower"), false, margs); return }
@@ -2219,9 +2305,40 @@ pub class NativeCodegen {
                 }
                 mut k = 0
                 while k < arg_temps.len() { margs.push(arg_temps.get(k)); k = k + 1 }
+                mut fn_sym = tgt
+                mut fn_name = ""
                 if fn_node >= 0 {
                     self.emit_default_args_if_needed(fn_node, arg_temps.len(), margs)
-                    self.emit_call_with_temps(self.rt.lbl(self.fn_symbol_name(fn_node)), false, margs)
+                    fn_name = self.sa.get(fn_node)
+                    fn_sym = self.fn_symbol_name(fn_node)
+                }
+                if fn_name != "" && self.extern_iats.has_key(fn_name) {
+                    self.emit_call_with_temps(self.extern_iats.get(fn_name), true, margs)
+                    if ncg_is_float(self.node_types.get(nid)) { a.movq_r_xmm(REG_RAX(), 0) }
+                    return
+                }
+                if fn_name != "" && self.extern_iats.has_key("arx_" + fn_name) {
+                    self.emit_call_with_temps(self.extern_iats.get("arx_" + fn_name), true, margs)
+                    if ncg_is_float(self.node_types.get(nid)) { a.movq_r_xmm(REG_RAX(), 0) }
+                    return
+                }
+                if fn_sym != "" && self.extern_iats.has_key(fn_sym) {
+                    self.emit_call_with_temps(self.extern_iats.get(fn_sym), true, margs)
+                    if ncg_is_float(self.node_types.get(nid)) { a.movq_r_xmm(REG_RAX(), 0) }
+                    return
+                }
+                if tgt != "" && self.extern_iats.has_key(tgt) {
+                    self.emit_call_with_temps(self.extern_iats.get(tgt), true, margs)
+                    if ncg_is_float(self.node_types.get(nid)) { a.movq_r_xmm(REG_RAX(), 0) }
+                    return
+                }
+                if tgt != "" && self.extern_iats.has_key("arx_" + tgt) {
+                    self.emit_call_with_temps(self.extern_iats.get("arx_" + tgt), true, margs)
+                    if ncg_is_float(self.node_types.get(nid)) { a.movq_r_xmm(REG_RAX(), 0) }
+                    return
+                }
+                if fn_node >= 0 {
+                    self.emit_call_with_temps(self.rt.lbl(fn_sym), false, margs)
                 } else {
                     self.emit_call_with_temps(self.rt.lbl(tgt), false, margs)
                 }
@@ -2350,6 +2467,69 @@ pub class NativeCodegen {
             if self.extern_iats.has_key(tgt) {
                 self.emit_call_with_temps(self.extern_iats.get(tgt), true, arg_temps)
                 if ncg_is_float(self.node_types.get(nid)) { a.movq_r_xmm(REG_RAX(), 0) }
+                return
+            }
+            if self.extern_iats.has_key("arx_" + tgt) {
+                self.emit_call_with_temps(self.extern_iats.get("arx_" + tgt), true, arg_temps)
+                if ncg_is_float(self.node_types.get(nid)) { a.movq_r_xmm(REG_RAX(), 0) }
+                return
+            }
+            if tgt == "to_string" && ac >= 1 {
+                a.mov_rm64(REG_RAX(), REG_RBP(), -arg_temps.get(0))
+                self.emit_val_to_str_in_rax(arg_types.get(0))
+                return
+            }
+            if tgt == "parse_int" && ac >= 1 {
+                a.mov_rm64(REG_RCX(), REG_RBP(), -arg_temps.get(0))
+                a.call_rel32(self.rt.lbl("__rt_str_to_i64"))
+                return
+            }
+            if tgt == "parse_float" && ac >= 1 {
+                a.mov_rm64(REG_RCX(), REG_RBP(), -arg_temps.get(0))
+                a.call_rel32(self.rt.lbl("__rt_str_to_f64"))
+                return
+            }
+            if tgt == "ord" && ac >= 1 {
+                a.mov_rm64(REG_RAX(), REG_RBP(), -arg_temps.get(0))
+                a.movzx_rm8(REG_RAX(), REG_RAX(), 0)
+                return
+            }
+            if tgt == "chr" && ac >= 1 {
+                a.mov_rm64(REG_RCX(), REG_RBP(), -arg_temps.get(0))
+                a.call_rel32(self.rt.lbl("__rt_char_to_str"))
+                return
+            }
+            if (tgt == "min" || tgt == "max") && ac >= 2 {
+                a.mov_rm64(REG_RAX(), REG_RBP(), -arg_temps.get(0))
+                a.mov_rm64(REG_RCX(), REG_RBP(), -arg_temps.get(1))
+                a.cmp_rr(REG_RAX(), REG_RCX())
+                let l_keep = a.new_label()
+                mut cc_mm = CC_GE()
+                if tgt == "min" { cc_mm = CC_LE() }
+                a.jcc_rel32(cc_mm, l_keep)
+                a.mov_rr(REG_RAX(), REG_RCX())
+                a.bind_label(l_keep)
+                return
+            }
+            if (tgt == "abs" || tgt == "fabs") && ac >= 1 {
+                a.mov_rm64(REG_RAX(), REG_RBP(), -arg_temps.get(0))
+                if ncg_is_float(arg_types.get(0)) {
+                    a.movq_xmm_r(0, REG_RAX())
+                    a.call_rip_iat(self.rt.imp_fabs)
+                    a.movq_r_xmm(REG_RAX(), 0)
+                    return
+                }
+                let l_p = a.new_label()
+                a.cmp_ri32(REG_RAX(), 0)
+                a.jcc_rel32(CC_GE(), l_p)
+                a.neg_r(REG_RAX())
+                a.bind_label(l_p)
+                return
+            }
+            if tgt == "arx_free" && ac >= 1 {
+                a.mov_rm64(REG_RCX(), REG_RBP(), -arg_temps.get(0))
+                a.call_rip_iat(self.rt.imp_free)
+                a.mov_ri32_sext(REG_RAX(), 0)
                 return
             }
             if tgt == "sqrt" { self.emit_call_with_temps(self.rt.lbl("__rt_math_sqrt"), false, arg_temps); return }

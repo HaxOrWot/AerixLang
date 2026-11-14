@@ -17,7 +17,8 @@
 //   println("Cursor: " + (mouse.f0 as str) + ", " + (mouse.f1 as str));
 // ==============================================================================
 
-cextern fn arx_gui_is_key_down(vkey: i64) -> bool;
+#[extern("user32.dll", "GetAsyncKeyState")]
+pub fn arx_gui_is_key_down(vkey: i64) -> i16;
 
 #[extern("user32.dll", "SetCursorPos")]
 pub fn setCursorPos(x: i64, y: i64) -> i32;
@@ -33,7 +34,8 @@ pub fn getCursorPos(lp_point: str) -> i32;
 /// Returns:
 ///   `true` if currently pressed down, `false` otherwise.
 pub fn isKeyDown(vk_code: i64) -> bool {
-    return arx_gui_is_key_down(vk_code);
+    let state = (arx_gui_is_key_down(vk_code) as i64);
+    return (state & 32768) != 0;
 }
 
 /// Moves the mouse cursor to the specified absolute screen coordinates.

@@ -2595,6 +2595,10 @@ static inline int64_t arx_proc_execute(const char* cmdline) {
     for (int attempt = 0; attempt < 10; attempt++) {
         ZeroMemory(&si, sizeof(si));
         si.cb = sizeof(si);
+        si.dwFlags = STARTF_USESTDHANDLES;
+        si.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
+        si.hStdOutput = GetStdHandle(STD_OUTPUT_HANDLE);
+        si.hStdError = GetStdHandle(STD_ERROR_HANDLE);
         ZeroMemory(&pi, sizeof(pi));
         memcpy(mutable_cmd, cmdline, len + 1);
         ok = CreateProcessA(NULL, mutable_cmd, NULL, NULL, TRUE, 0, NULL, NULL, &si, &pi) != 0;
@@ -2843,7 +2847,14 @@ static inline int64_t arx_bin_u8(int64_t bh, int64_t val) {
 static inline int64_t arx_bin_write_file(int64_t bh, const char* path) {
     Arx_ByteBuf* buf = (Arx_ByteBuf*)(intptr_t)bh;
     if (!buf || !path || !*path) return 0;
-    FILE* f = fopen(path, "wb");
+    FILE* f = NULL;
+    for (int retry = 0; retry < 10; retry++) {
+        f = fopen(path, "wb");
+        if (f) break;
+#ifdef _WIN32
+        Sleep(15);
+#endif
+    }
     if (!f) return 0;
     size_t wrote = buf->len > 0 ? fwrite(buf->data, 1, buf->len, f) : 0;
     fclose(f);

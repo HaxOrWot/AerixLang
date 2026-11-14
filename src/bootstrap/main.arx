@@ -24,7 +24,7 @@ fn resolve_bin_name() -> str {
 fn print_usage() {
     let bin = resolve_bin_name()
     println("Aerix Native Systems Programming Language Toolchain (" + bin + ")")
-    println("Version: 1.2.23b (Beta Channel) - x86_64-windows")
+    println("Version: 1.2.24b (Beta Channel) - x86_64-windows")
     println("")
     println("Usage:")
     println("  " + bin + " <command> [arguments...] [options]")
@@ -450,7 +450,7 @@ fn cmd_vm(cli_args: List<str>, cli_argc: i64, start_idx: i64, default_sub: str) 
         }
     } else if sub == "install" || sub == "add" {
         if target == "" {
-            eprintln("error: missing version for 'arx vm install' (e.g. 'arx vm install 1.2.23b')")
+            eprintln("error: missing version for 'arx vm install' (e.g. 'arx vm install 1.2.24b')")
             return 1
         }
         cmd = cmd + " " + quote_shell_arg("--vm-install=" + target)
@@ -870,6 +870,25 @@ fn emit_native_exe(input_file: str, exe_path: str, verbose: bool) -> i64 {
         if File.exists(target_exe) {
             File.remove(target_exe)
         }
+        mut ui = 0
+        while ui < ncg.asm.label_ref_id.len() {
+            let ulid = ncg.asm.label_ref_id.get(ui)
+            if ulid >= ncg.asm.label_addrs.len() || ncg.asm.label_addrs.get(ulid) < 0 {
+                mut lbl_name = "label_" + (ulid as str)
+                let rk = ncg.rt.labels.keys()
+                mut ki = 0
+                while ki < rk.len() {
+                    let k = rk.get(ki)
+                    if ncg.rt.labels.get(k) == ulid {
+                        lbl_name = k
+                        break
+                    }
+                    ki = ki + 1
+                }
+                eprintln("error: unresolved label reference '" + lbl_name + "'")
+            }
+            ui = ui + 1
+        }
         eprintln("error: native compilation failed at label resolution stage (" + (unresolved_labels as str) + " unresolved label reference(s))")
         return 1
     }
@@ -976,7 +995,7 @@ fn cmd_doc(target_path: str, out_dir: str) -> i64 {
 fn cmd_repl() -> i64 {
     let bin = resolve_bin_name()
     println("==================================================================")
-    println("  Aerix Interactive REPL v1.2.23b (x86_64-windows)")
+    println("  Aerix Interactive REPL v1.2.24b (x86_64-windows)")
     println("  Type :help for commands, :exit or :quit to quit.")
     println("==================================================================")
     println("")
@@ -1001,7 +1020,7 @@ fn cmd_repl() -> i64 {
             continue
         }
         if trimmed == ":version" || trimmed == ":v" {
-            println("Aerix Self-Hosting Bootstrap Compiler (" + bin + ") v1.2.23b")
+            println("Aerix Self-Hosting Bootstrap Compiler (" + bin + ") v1.2.24b")
             continue
         }
         if trimmed == ":clear" || trimmed == ":cls" {
@@ -1051,7 +1070,7 @@ fn main() -> i64 {
                 return 0
             }
         }
-        println("Aerix Self-Hosting Bootstrap Compiler (arxc) v1.2.23b")
+        println("Aerix Self-Hosting Bootstrap Compiler (arxc) v1.2.24b")
         maybe_trigger_bg_update()
         return 0
     }

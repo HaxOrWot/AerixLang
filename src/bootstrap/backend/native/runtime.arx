@@ -26,6 +26,7 @@ pub class NativeRt {
     pub imp_wait_obj: i64
     pub imp_get_exit: i64
     pub imp_close_handle: i64
+    pub imp_get_std_handle: i64
 
     pub imp_malloc: i64
     pub imp_calloc: i64
@@ -106,6 +107,7 @@ pub class NativeRt {
         self.imp_wait_obj = pe.add_import("kernel32.dll", "WaitForSingleObject")
         self.imp_get_exit = pe.add_import("kernel32.dll", "GetExitCodeProcess")
         self.imp_close_handle = pe.add_import("kernel32.dll", "CloseHandle")
+        self.imp_get_std_handle = pe.add_import("kernel32.dll", "GetStdHandle")
 
         self.imp_malloc = pe.add_import("msvcrt.dll", "malloc")
         self.imp_calloc = pe.add_import("msvcrt.dll", "calloc")
@@ -731,6 +733,24 @@ pub class NativeRt {
         self.end_fn()
         a.bind_label(l_cf)
         a.mov_ri32_sext(REG_RAX(), 0)
+        self.end_fn()
+
+        // __rt_str_index_of(rcx = s, rdx = sub) -> i64 (-1 if not found)
+        self.begin_fn("__rt_str_index_of", 64)
+        let l_io_nf = a.new_label()
+        a.test_rr(REG_RCX(), REG_RCX())
+        a.jcc_rel32(CC_E(), l_io_nf)
+        a.test_rr(REG_RDX(), REG_RDX())
+        a.jcc_rel32(CC_E(), l_io_nf)
+        a.mov_mr64(REG_RBP(), -8, REG_RCX())
+        a.call_rip_iat(self.imp_strstr)
+        a.test_rr(REG_RAX(), REG_RAX())
+        a.jcc_rel32(CC_E(), l_io_nf)
+        a.mov_rm64(REG_RCX(), REG_RBP(), -8)
+        a.sub_rr(REG_RAX(), REG_RCX())
+        self.end_fn()
+        a.bind_label(l_io_nf)
+        a.mov_ri32_sext(REG_RAX(), -1)
         self.end_fn()
 
         // __rt_str_starts_with(rcx = s, rdx = prefix) -> 0/1
@@ -2216,6 +2236,24 @@ pub class NativeRt {
         a.mov_mr64(REG_RBP(), -32, REG_RAX()) // si
         a.mov_ri32_sext(REG_RCX(), 104)
         a.mov_mr64(REG_RAX(), 0, REG_RCX())
+        // si->dwFlags = STARTF_USESTDHANDLES (256) at offset 60
+        a.mov_ri32_sext(REG_RCX(), 256)
+        a.mov_mr32(REG_RAX(), 60, REG_RCX())
+        // si->hStdInput = GetStdHandle(-10) at offset 80
+        a.mov_ri32_sext(REG_RCX(), -10)
+        a.call_rip_iat(self.imp_get_std_handle)
+        a.mov_rm64(REG_RCX(), REG_RBP(), -32)
+        a.mov_mr64(REG_RCX(), 80, REG_RAX())
+        // si->hStdOutput = GetStdHandle(-11) at offset 88
+        a.mov_ri32_sext(REG_RCX(), -11)
+        a.call_rip_iat(self.imp_get_std_handle)
+        a.mov_rm64(REG_RCX(), REG_RBP(), -32)
+        a.mov_mr64(REG_RCX(), 88, REG_RAX())
+        // si->hStdError = GetStdHandle(-12) at offset 96
+        a.mov_ri32_sext(REG_RCX(), -12)
+        a.call_rip_iat(self.imp_get_std_handle)
+        a.mov_rm64(REG_RCX(), REG_RBP(), -32)
+        a.mov_mr64(REG_RCX(), 96, REG_RAX())
         // pi = calloc(1, 32) ([24] also holds exit_code dword)
         a.mov_ri32_sext(REG_RCX(), 1)
         a.mov_ri32_sext(REG_RDX(), 32)

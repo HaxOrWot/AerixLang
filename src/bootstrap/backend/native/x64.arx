@@ -204,6 +204,14 @@ pub class X64Asm {
         self.emit_i32(disp)
     }
 
+    pub fn mov_mr32(base: i64, disp: i64, src: i64) {
+        self.rex(0, src, base)
+        self.emit_u8(0x89)
+        self.modrm(2, src, base)
+        if (base & 7) == 4 { self.emit_u8(0x24) }
+        self.emit_i32(disp)
+    }
+
     pub fn movzx_rm8(dst: i64, base: i64, disp: i64) {
         self.rex(1, dst, base)
         self.emit_u8(0x0F)
