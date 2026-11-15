@@ -201,5 +201,5 @@ gcc -O2 -mconsole -Istdlib src/bootstrap/seed/arxc.c -o arx.exe
 ---
 
 <div align="center">
-  <sub>Built with ❤️ for high-performance systems engineers. Designed by HaxOrWot.</sub>
+  <sub>Built with ❤️ for high-performance systems engineers. Designed by Aerix Core Team.</sub>
 </div>
