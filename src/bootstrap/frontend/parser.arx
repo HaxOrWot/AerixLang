@@ -638,11 +638,17 @@ pub class Parser {
         }
 
         // Automatic Module & Submodule Sync:
-        // Automatically collect and load all .arx files and submodules in mod_dir
+        // Automatically collect and load all .arx files and submodules in scan_dir (preferring src/ if present)
+        mut scan_dir = mod_dir
+        let cand_src = bpath_normalize(mod_dir + "/src")
+        if Directory.exists(cand_src) {
+            scan_dir = cand_src
+        }
+
         let arx_files = List<str>()
         let count_box = List<i64>()
         count_box.push(0)
-        self.collect_dir_arx(mod_dir, arx_files, count_box)
+        self.collect_dir_arx(scan_dir, arx_files, count_box)
         let total = count_box.get(0)
         sort_str_list(arx_files, total)
 
@@ -658,7 +664,7 @@ pub class Parser {
 
         // Automatic Submodule Registry:
         // Automatically discover all subdirectories recursively and register them as submodules
-        self.register_submodules_recursive(mod_dir, dotted_norm)
+        self.register_submodules_recursive(scan_dir, dotted_norm)
     }
 
     priv fn register_submodules_recursive(dir_path: str, pfx_dotted: str) {
