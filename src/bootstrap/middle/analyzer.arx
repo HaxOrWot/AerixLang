@@ -2086,6 +2086,9 @@ pub class Analyzer {
             return false
         }
         let m_base = self.str_last_dot_seg(mname)
+        if self.file_explicit_modules.has_key(mname) || self.file_explicit_modules.has_key(m_base) {
+            return false
+        }
         if self.file_has_selective_imports.has_key(mname) || self.file_has_selective_imports.has_key(m_base) {
             if !self.file_imported_symbols.has_key(name) && !self.file_imported_symbols.has_key(raw_name) {
                 self.add_diag(callee, raw_name.len(), "E0202", "cannot find function '" + raw_name + "' in this scope", "function '" + raw_name + "' belongs to module '" + m_base + "' but was not imported. Add it with 'from " + m_base + " import " + raw_name + "' or qualify it with '" + m_base + "." + raw_name + "'", 1)
