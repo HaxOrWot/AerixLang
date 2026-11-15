@@ -621,10 +621,14 @@ pub class Parser {
             return
         }
 
-        // Module 2.5: If explicit mod.arx exists, load it first
+        // Module 2.5: If explicit mod.arx or src/mod.arx exists, load it first
         let mod_entry = bpath_normalize(mod_dir + "/mod.arx")
         if File.exists(mod_entry) {
             self.load_resolved_file(mod_entry)
+        }
+        let mod_src_entry = bpath_normalize(mod_dir + "/src/mod.arx")
+        if File.exists(mod_src_entry) {
+            self.load_resolved_file(mod_src_entry)
         }
 
         // Automatic Module & Submodule Sync:

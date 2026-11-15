@@ -88,6 +88,7 @@ pub fn print_pkg_usage() {
     println("  " + bin + " pkg <command> [arguments...] [options]")
     println("")
     println("Commands:")
+    println("  available | avail         List all packages available in the official community registry")
     println("  search [query]            Search verified packages in the official community registry")
     println("  install <name|url>        Audit, cryptographically verify, and install a package")
     println("  add <name|url>            Alias for 'install'")
@@ -369,6 +370,32 @@ fn cmd_pkg_search(query: str) -> i64 {
     return 0
 }
 
+fn cmd_pkg_available() -> i64 {
+    println("Fetching Aerix Community Package Registry (https://github.com/HaxOrWot/aerix-packages)...")
+    let reg = get_known_registry()
+    println("")
+    println("NAME             VERSION   RISK RATING      DESCRIPTION")
+    println("----             -------   -----------      -----------")
+    mut i = 0
+    let n = reg.len()
+    while i < n {
+        let item = reg.get(i)
+        let name_padded = item.name.pad_right(16, " ")
+        let ver_padded = item.version.pad_right(9, " ")
+        let risk_padded = item.risk.pad_right(16, " ")
+        println(name_padded + " " + ver_padded + " " + risk_padded + " " + item.description)
+        i = i + 1
+    }
+    println("")
+    if n == 0 {
+        println("No packages found in the community registry.")
+        println("To contribute, submit a PR to https://github.com/HaxOrWot/aerix-packages")
+    } else {
+        println("Total: " + (n as str) + " package(s) available. Install using: arx pkg install <name>")
+    }
+    return 0
+}
+
 fn cmd_pkg_list() -> i64 {
     let cwd = bpath_normalize(Env.cwd())
     let mod_dir = bpath_join(cwd, "modules")
@@ -619,10 +646,10 @@ fn cmd_pkg_install(target: str, force: bool, allow_insecure: bool) -> i64 {
         let clean_cmd = "powershell -Command \"Remove-Item -Path '" + dest_dir.replace("/", "\\") + "' -Recurse -Force\""
         Process.execute(clean_cmd)
     }
-    Directory.create(dest_dir)
 
-    // Copy contents excluding .git
-    let copy_cmd = "powershell -Command \"Get-ChildItem -Path '" + stage_dir.replace("/", "\\") + "' -Exclude '.git*' | Copy-Item -Destination '" + dest_dir.replace("/", "\\") + "' -Recurse -Force\""
+    let s_path = stage_dir.replace("/", "\\")
+    let d_path = dest_dir.replace("/", "\\")
+    let copy_cmd = "powershell -Command \"New-Item -ItemType Directory -Path '" + d_path + "' -Force | Out-Null; Copy-Item -Path '" + s_path + "\\*' -Destination '" + d_path + "' -Recurse -Force; Remove-Item -Path '" + d_path + "\\.git' -Recurse -Force -ErrorAction SilentlyContinue\""
     Process.execute(copy_cmd)
 
     // Clean staging folder
@@ -654,6 +681,10 @@ pub fn cmd_pkg(cli_args: List<str>, cli_argc: i64) -> i64 {
     if sub == "help" || sub == "--help" || sub == "-h" {
         print_pkg_usage()
         return 0
+    }
+
+    if sub == "available" || sub == "avail" || sub == "remote" {
+        return cmd_pkg_available()
     }
 
     if sub == "search" || sub == "find" {
