@@ -123,6 +123,7 @@ pub fn print_pkg_usage() {
     println("  search [query]            Search verified packages in the official community registry")
     println("  install <name|url>        Audit, verify, and install a package globally (or locally)")
     println("  add <name|url>            Alias for 'install'")
+    println("  update | upgrade [name]   Update an installed package (or all packages) to latest version")
     println("  list | ls                 List installed packages (both global and local)")
     println("  remove | rm <name>        Remove an installed package")
     println("  audit [path|name]         Run security capability & extern analysis on modules")
@@ -766,6 +767,51 @@ fn cmd_pkg_install(target: str, force: bool, allow_insecure: bool, local_install
     return 0
 }
 
+fn cmd_pkg_update(target: str, allow_insecure: bool, local_scope: bool) -> i64 {
+    if target != "" {
+        println("Updating package '" + target + "' to latest version...")
+        return cmd_pkg_install(target, true, allow_insecure, local_scope)
+    }
+
+    // Update all installed community packages
+    mut target_dir = get_aerix_global_modules_dir()
+    if local_scope {
+        let cwd = bpath_normalize(Env.cwd())
+        target_dir = bpath_join(cwd, "modules")
+    }
+
+    if !Directory.exists(target_dir) {
+        println("No modules directory found at " + target_dir)
+        return 0
+    }
+
+    let subdirs = Directory.list_dirs(target_dir)
+    mut updated_count = 0
+    mut i = 0
+    while i < subdirs.len() {
+        let name = subdirs.get(i)
+        // Skip standard library modules
+        if name != "Math" && name != "Random" && name != "Socket" && name != "Time" && name != "Window" {
+            println("------------------------------------------------------------------")
+            println("Checking and updating package '" + name + "'...")
+            let code = cmd_pkg_install(name, true, allow_insecure, local_scope)
+            if code == 0 {
+                updated_count = updated_count + 1
+            }
+        }
+        i = i + 1
+    }
+
+    if updated_count == 0 {
+        println("No third-party packages installed to update.")
+    } else {
+        println("==================================================================")
+        println("  [SUCCESS] Updated " + (updated_count as str) + " package(s) to latest version!")
+        println("==================================================================")
+    }
+    return 0
+}
+
 pub fn cmd_pkg(cli_args: List<str>, cli_argc: i64) -> i64 {
     if cli_argc <= 2 {
         print_pkg_usage()
@@ -804,6 +850,31 @@ pub fn cmd_pkg(cli_args: List<str>, cli_argc: i64) -> i64 {
             target = cli_args.get(3)
         }
         return cmd_pkg_audit(target)
+    }
+
+    if sub == "update" || sub == "upgrade" || sub == "up" {
+        mut target = ""
+        mut allow_insecure = false
+        mut local_scope = false
+        mut i = 3
+        while i < cli_argc {
+            let arg = cli_args.get(i)
+            if arg == "--allow-insecure" || arg == "--insecure" {
+                allow_insecure = true
+            } else if arg == "--local" {
+                local_scope = true
+            } else if arg == "-g" || arg == "--global" {
+                local_scope = false
+            } else if !arg.starts_with("-") && target == "" {
+                target = arg
+            } else {
+                eprintln("error: unknown option '" + arg + "' for 'arx pkg update'")
+                eprintln("  = help: run 'arx pkg --help' for supported options")
+                return 1
+            }
+            i = i + 1
+        }
+        return cmd_pkg_update(target, allow_insecure, local_scope)
     }
 
     if sub == "remove" || sub == "rm" || sub == "uninstall" || sub == "delete" {
