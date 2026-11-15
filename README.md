@@ -196,7 +196,7 @@ gcc -O2 -mconsole -Istdlib src/bootstrap/seed/arxc.c -o arx.exe
 | ⚙️ **[USER.md](USER.md)** | **Internals** | Deep technical architecture of the AST arena, native AMD64 code generator, PE32+ emission, and Win64 ABI. |
 | 🤝 **[CONTRIBUTING.md](CONTRIBUTING.md)** | **Governance** | Contributing guidelines, compiler bootstrap workflow, coding standards, and branch policies. |
 | 🛡️ **[SECURITY.md](SECURITY.md)** | **Security** | Security advisory procedures and vulnerability reporting channels. |
-| 📜 **[LICENSE](LICENSE)** | **Legal** | Dual-licensed under the **MIT** or **Apache-2.0** open-source licenses. |
+| 📜 **[LICENSE](LICENSE-MIT)** | **Legal** | Dual-licensed under the **MIT** or **Apache-2.0** open-source licenses. |
 
 </div>
 

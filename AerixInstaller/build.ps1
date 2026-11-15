@@ -51,7 +51,16 @@ Copy-Item (Join-Path $installerDir "assets\aerix_file.ico") (Join-Path $stageDir
 Copy-Item (Join-Path $repoRoot "README.md") (Join-Path $stageDir "docs\README.md") -Force
 Copy-Item (Join-Path $repoRoot "USER.md") (Join-Path $stageDir "docs\USER.md") -Force
 Copy-Item (Join-Path $repoRoot "GUIDE.md") (Join-Path $stageDir "docs\GUIDE.md") -Force
-Copy-Item (Join-Path $repoRoot "LICENSE") (Join-Path $stageDir "LICENSE") -Force
+$licSource = if (Test-Path (Join-Path $repoRoot "LICENSE")) { 
+    Join-Path $repoRoot "LICENSE" 
+} elseif (Test-Path (Join-Path $repoRoot "LICENSE-MIT")) { 
+    Join-Path $repoRoot "LICENSE-MIT" 
+} else { 
+    $null 
+}
+if ($licSource) {
+    Copy-Item $licSource (Join-Path $stageDir "LICENSE") -Force
+}
 
 # 2.5 Compile standalone Updater.exe for payload
 Write-Host "Compiling standalone Updater.exe for payload..."
@@ -62,7 +71,8 @@ if (-not (Test-Path $csc)) { throw "Missing .NET Framework C# compiler: $csc" }
 $appIcon         = Join-Path $installerDir "assets\aerix.ico"
 $brandPng        = Join-Path $repoRoot "editors\vscode-aerix\icons\aerix-icon.png"
 $updaterManifest = Join-Path $srcDir "updater.manifest"
-$licenseFile     = Join-Path $repoRoot "LICENSE"
+$licenseFile     = if ($licSource) { $licSource } else { Join-Path $stageDir "LICENSE" }
+if (-not (Test-Path $licenseFile)) { Set-Content $licenseFile "MIT License`r`n`r`nCopyright (c) HaxOrWot / AerixLang" }
 $manifestRes     = Join-Path $srcDir "installer_manifest.json"
 $stageUpdater    = Join-Path $stageDir "Updater.exe"
 $stageBinUpdater = Join-Path $stageDir "bin\Updater.exe"
@@ -112,7 +122,7 @@ if (-not (Test-Path $csc)) { throw "Missing .NET Framework C# compiler: $csc" }
 $appIcon     = Join-Path $installerDir "assets\aerix.ico"
 $brandPng    = Join-Path $repoRoot "editors\vscode-aerix\icons\aerix-icon.png"
 $appManifest = Join-Path $srcDir "app.manifest"
-$licenseFile = Join-Path $repoRoot "LICENSE"
+$licenseFile = if ($licSource) { $licSource } else { Join-Path $stageDir "LICENSE" }
 $manifestRes = Join-Path $srcDir "installer_manifest.json"
 
 & $csc /nologo /target:winexe /platform:x64 /optimize+ /warnaserror `
