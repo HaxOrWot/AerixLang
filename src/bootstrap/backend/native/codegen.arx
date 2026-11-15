@@ -109,6 +109,9 @@ pub class NativeCodegen {
     pub loop_brk_lbls: List<i64>
     pub loop_cnt_lbls: List<i64>
     pub loop_defer_marks: List<i64>
+    pub loop_scope_marks: List<i64>
+    pub temp_str_slots: List<i64>
+    pub fn_param_mark: i64
     pub defer_nodes: List<i64>
     pub defer_marks: List<i64>
 
@@ -157,6 +160,9 @@ pub class NativeCodegen {
         self.loop_brk_lbls = List<i64>()
         self.loop_cnt_lbls = List<i64>()
         self.loop_defer_marks = List<i64>()
+        self.loop_scope_marks = List<i64>()
+        self.temp_str_slots = List<i64>()
+        self.fn_param_mark = 0
         self.defer_nodes = List<i64>()
         self.defer_marks = List<i64>()
     }
@@ -300,6 +306,41 @@ pub class NativeCodegen {
             self.emit_stmt(self.defer_nodes.get(i))
             i = i - 1
         }
+    }
+
+    priv fn emit_scope_drops(mark: i64) {
+        let a = self.asmb
+        mut i = self.scope_names.len() - 1
+        while i >= mark {
+            let st = self.scope_types.get(i)
+            if ncg_is_str(st) {
+                let off = self.scope_offs.get(i)
+                a.mov_rm64(REG_RCX(), REG_RBP(), -off)
+                a.call_rel32(self.rt.lbl("__rt_arc_release"))
+            }
+            i = i - 1
+        }
+    }
+
+    priv fn emit_temp_drops(mark: i64) {
+        let a = self.asmb
+        mut i = self.temp_str_slots.len() - 1
+        while i >= mark {
+            let slot = self.temp_str_slots.get(i)
+            a.mov_rm64(REG_RCX(), REG_RBP(), -slot)
+            a.call_rel32(self.rt.lbl("__rt_arc_release"))
+            i = i - 1
+        }
+        while self.temp_str_slots.len() > mark {
+            self.temp_str_slots.pop()
+        }
+    }
+
+    priv fn track_temp_str() {
+        let a = self.asmb
+        let slot = self.alloc_slot("", "str")
+        a.mov_mr64(REG_RBP(), -slot, REG_RAX())
+        self.temp_str_slots.push(slot)
     }
 
     priv fn alloc_slot(vname: str, vtype: str) -> i64 {
@@ -681,10 +722,12 @@ pub class NativeCodegen {
             }
             idx = idx + 1
         }
+        self.fn_param_mark = self.scope_names.len()
 
         // Check default parameter values when omitted? Handled at call site; compile body statements
         self.emit_block_stmts(body)
         self.emit_scope_defers(0)
+        self.emit_scope_drops(self.fn_param_mark)
 
         a.bind_label(self.cur_ret_lbl)
         if self.cur_ret_type == "void" {
@@ -726,23 +769,54 @@ pub class NativeCodegen {
 
         if k == NK_BLOCK() {
             let dmark = self.defer_nodes.len()
+            let smark = self.scope_names.len()
             self.push_scope()
             self.emit_block_stmts(nid)
             self.emit_scope_defers(dmark)
+            self.emit_scope_drops(smark)
             self.pop_scope()
             return
         }
 
         if k == NK_VAR_DECL() {
             let vname = self.sa.get(nid)
+            let val_id = self.la.get(nid)
             mut vt = btype_norm(self.sb.get(nid))
             if vt == "" { vt = btype_norm(self.node_types.get(nid)) }
-            let val_id = self.la.get(nid)
+            if (vt == "" || vt == "i64") && val_id >= 0 {
+                let inferred = btype_norm(self.node_types.get(val_id))
+                if ncg_is_str(inferred) { vt = inferred }
+            }
             let off = self.alloc_slot(vname, vt)
+            let tmark = self.temp_str_slots.len()
             if val_id >= 0 {
                 self.emit_expr(val_id)
             } else {
                 a.mov_ri32_sext(REG_RAX(), 0)
+            }
+            if ncg_is_str(vt) || self.temp_str_slots.len() > tmark {
+                if !ncg_is_str(vt) {
+                    mut si = self.scope_names.len() - 1
+                    while si >= 0 {
+                        if self.scope_names.get(si) == vname {
+                            self.scope_types.set(si, "str")
+                            break
+                        }
+                        si = si - 1
+                    }
+                }
+                let r_val = self.alloc_slot("", "str")
+                a.mov_mr64(REG_RBP(), -r_val, REG_RAX())
+                if self.temp_str_slots.len() > tmark {
+                    self.temp_str_slots.pop()
+                } else {
+                    a.mov_rr(REG_RCX(), REG_RAX())
+                    a.call_rel32(self.rt.lbl("__rt_arc_retain"))
+                }
+                self.emit_temp_drops(tmark)
+                a.mov_rm64(REG_RAX(), REG_RBP(), -r_val)
+            } else {
+                self.emit_temp_drops(tmark)
             }
             a.mov_mr64(REG_RBP(), -off, REG_RAX())
             return
@@ -756,7 +830,12 @@ pub class NativeCodegen {
         if k == NK_IF() {
             let l_else = a.new_label()
             let l_end = a.new_label()
+            let cmark = self.temp_str_slots.len()
             self.emit_expr(self.la.get(nid))
+            let rslot = self.alloc_slot("", "i64")
+            a.mov_mr64(REG_RBP(), -rslot, REG_RAX())
+            self.emit_temp_drops(cmark)
+            a.mov_rm64(REG_RAX(), REG_RBP(), -rslot)
             a.test_rr(REG_RAX(), REG_RAX())
             a.jcc_rel32(CC_E(), l_else)
             self.emit_stmt(self.ra.get(nid))
@@ -775,8 +854,14 @@ pub class NativeCodegen {
             self.loop_cnt_lbls.push(l_top)
             self.loop_brk_lbls.push(l_end)
             self.loop_defer_marks.push(self.defer_nodes.len())
+            self.loop_scope_marks.push(self.scope_names.len())
             a.bind_label(l_top)
+            let cmark = self.temp_str_slots.len()
             self.emit_expr(self.la.get(nid))
+            let rslot = self.alloc_slot("", "i64")
+            a.mov_mr64(REG_RBP(), -rslot, REG_RAX())
+            self.emit_temp_drops(cmark)
+            a.mov_rm64(REG_RAX(), REG_RBP(), -rslot)
             a.test_rr(REG_RAX(), REG_RAX())
             a.jcc_rel32(CC_E(), l_end)
             self.emit_stmt(self.ra.get(nid))
@@ -785,6 +870,7 @@ pub class NativeCodegen {
             self.loop_cnt_lbls.pop()
             self.loop_brk_lbls.pop()
             self.loop_defer_marks.pop()
+            self.loop_scope_marks.pop()
             return
         }
 
@@ -794,6 +880,7 @@ pub class NativeCodegen {
             self.loop_cnt_lbls.push(l_top)
             self.loop_brk_lbls.push(l_end)
             self.loop_defer_marks.push(self.defer_nodes.len())
+            self.loop_scope_marks.push(self.scope_names.len())
             a.bind_label(l_top)
             self.emit_stmt(self.la.get(nid))
             a.jmp_rel32(l_top)
@@ -801,6 +888,7 @@ pub class NativeCodegen {
             self.loop_cnt_lbls.pop()
             self.loop_brk_lbls.pop()
             self.loop_defer_marks.pop()
+            self.loop_scope_marks.pop()
             return
         }
 
@@ -812,6 +900,7 @@ pub class NativeCodegen {
         if k == NK_BREAK() {
             if self.loop_brk_lbls.len() > 0 {
                 self.emit_scope_defers(self.loop_defer_marks.get(self.loop_defer_marks.len() - 1))
+                self.emit_scope_drops(self.loop_scope_marks.get(self.loop_scope_marks.len() - 1))
                 a.jmp_rel32(self.loop_brk_lbls.get(self.loop_brk_lbls.len() - 1))
             }
             return
@@ -820,12 +909,14 @@ pub class NativeCodegen {
         if k == NK_CONTINUE() {
             if self.loop_cnt_lbls.len() > 0 {
                 self.emit_scope_defers(self.loop_defer_marks.get(self.loop_defer_marks.len() - 1))
+                self.emit_scope_drops(self.loop_scope_marks.get(self.loop_scope_marks.len() - 1))
                 a.jmp_rel32(self.loop_cnt_lbls.get(self.loop_cnt_lbls.len() - 1))
             }
             return
         }
 
         if k == NK_RETURN() {
+            let tmark = self.temp_str_slots.len()
             let val_id = self.la.get(nid)
             if val_id >= 0 {
                 self.emit_expr(val_id)
@@ -834,7 +925,17 @@ pub class NativeCodegen {
             }
             let rslot = self.alloc_slot("", "i64")
             a.mov_mr64(REG_RBP(), -rslot, REG_RAX())
+            if ncg_is_str(self.cur_ret_type) {
+                if self.temp_str_slots.len() > tmark {
+                    self.temp_str_slots.pop()
+                } else {
+                    a.mov_rm64(REG_RCX(), REG_RBP(), -rslot)
+                    a.call_rel32(self.rt.lbl("__rt_arc_retain"))
+                }
+            }
+            self.emit_temp_drops(tmark)
             self.emit_scope_defers(0)
+            self.emit_scope_drops(self.fn_param_mark)
             a.mov_rm64(REG_RAX(), REG_RBP(), -rslot)
             a.jmp_rel32(self.cur_ret_lbl)
             return
@@ -914,7 +1015,9 @@ pub class NativeCodegen {
         }
 
         if k == NK_EXPR_STMT() {
+            let tmark = self.temp_str_slots.len()
             self.emit_expr(self.la.get(nid))
+            self.emit_temp_drops(tmark)
             return
         }
 
@@ -958,6 +1061,7 @@ pub class NativeCodegen {
         self.loop_cnt_lbls.push(l_step)
         self.loop_brk_lbls.push(l_end)
         self.loop_defer_marks.push(self.defer_nodes.len())
+        self.loop_scope_marks.push(self.scope_names.len())
 
         if ik == NK_RANGE() {
             self.emit_expr(self.la.get(iter_id))
@@ -1058,6 +1162,7 @@ pub class NativeCodegen {
         self.loop_cnt_lbls.pop()
         self.loop_brk_lbls.pop()
         self.loop_defer_marks.pop()
+        self.loop_scope_marks.pop()
         self.pop_scope()
     }
 
@@ -1173,15 +1278,40 @@ pub class NativeCodegen {
         let op_s = self.sa.get(nid)
         let lk = self.nk.get(lhs)
         let lt = btype_norm(self.node_types.get(lhs))
+        let tmark = self.temp_str_slots.len()
 
         if lk == NK_IDENT() {
             let vname = self.sa.get(lhs)
             let loff = self.find_local(vname)
+            mut lt = btype_norm(self.node_types.get(lhs))
+            if lt == "" || lt == "i64" {
+                let llt = self.find_local_type(vname)
+                if ncg_is_str(llt) { lt = llt }
+            }
             self.emit_expr(rhs)
             if op_s == "=" {
                 if loff >= 0 {
-                    a.mov_mr64(REG_RBP(), -loff, REG_RAX())
+                    if ncg_is_str(lt) || self.temp_str_slots.len() > tmark {
+                        let r_val = self.alloc_slot("", "str")
+                        a.mov_mr64(REG_RBP(), -r_val, REG_RAX())
+                        if self.temp_str_slots.len() > tmark {
+                            self.temp_str_slots.pop()
+                        } else {
+                            a.mov_rr(REG_RCX(), REG_RAX())
+                            a.call_rel32(self.rt.lbl("__rt_arc_retain"))
+                        }
+                        self.emit_temp_drops(tmark)
+                        a.mov_rm64(REG_RCX(), REG_RBP(), -loff)
+                        a.mov_rm64(REG_RAX(), REG_RBP(), -r_val)
+                        a.mov_mr64(REG_RBP(), -loff, REG_RAX())
+                        a.call_rel32(self.rt.lbl("__rt_arc_release"))
+                    } else {
+                        self.emit_temp_drops(tmark)
+                        a.mov_mr64(REG_RBP(), -loff, REG_RAX())
+                    }
+                    return
                 } else if self.global_offs.has_key(vname) {
+                    self.emit_temp_drops(tmark)
                     a.mov_mr64_rip_data(self.global_offs.get(vname), REG_RAX())
                 } else if self.cur_class != "" {
                     mut cur_c = self.cur_class
@@ -1191,6 +1321,7 @@ pub class NativeCodegen {
                         if self.cls_field_offs.has_key(fk) {
                             let soff = self.find_local("self")
                             if soff >= 0 {
+                                self.emit_temp_drops(tmark)
                                 a.mov_rm64(REG_RCX(), REG_RBP(), -soff)
                                 a.mov_mr64(REG_RCX(), self.cls_field_offs.get(fk), REG_RAX())
                                 return
@@ -1203,6 +1334,7 @@ pub class NativeCodegen {
                         }
                         guard_c = guard_c + 1
                     }
+                    self.emit_temp_drops(tmark)
                 }
                 return
             }
@@ -1251,6 +1383,7 @@ pub class NativeCodegen {
                     a.mov_mr64(REG_RCX(), foff_field, REG_RAX())
                 }
             }
+            self.emit_temp_drops(tmark)
             return
         }
 
@@ -1294,6 +1427,7 @@ pub class NativeCodegen {
             a.mov_mr64(REG_RBP(), -o_tmp, REG_RAX())
             self.emit_expr(rhs)
             if op_s == "=" {
+                self.emit_temp_drops(tmark)
                 a.mov_rm64(REG_RCX(), REG_RBP(), -o_tmp)
                 a.mov_mr64(REG_RCX(), foff, REG_RAX())
                 return
@@ -1307,6 +1441,7 @@ pub class NativeCodegen {
             self.emit_bin_values(op_s.slice(0, op_s.len() - 1), lt, lt, l_tmp, r_tmp)
             a.mov_rm64(REG_RCX(), REG_RBP(), -o_tmp)
             a.mov_mr64(REG_RCX(), foff, REG_RAX())
+            self.emit_temp_drops(tmark)
             return
         }
 
@@ -1352,8 +1487,14 @@ pub class NativeCodegen {
                 a.mov_ri32_sext(REG_R9(), ks_f)
                 a.call_rel32(self.rt.lbl("__rt_map_insert"))
             } else {
-                a.call_rel32(self.rt.lbl("__rt_list_set"))
+                let et = btype_list_elem(ct)
+                if ncg_is_str(et) {
+                    a.call_rel32(self.rt.lbl("__rt_list_set_str"))
+                } else {
+                    a.call_rel32(self.rt.lbl("__rt_list_set"))
+                }
             }
+            self.emit_temp_drops(tmark)
             return
         }
     }
@@ -1389,9 +1530,11 @@ pub class NativeCodegen {
 
         if k == NK_BLOCK() {
             let dmark = self.defer_nodes.len()
+            let smark = self.scope_names.len()
             self.push_scope()
             self.emit_block_stmts(nid)
             self.emit_scope_defers(dmark)
+            self.emit_scope_drops(smark)
             self.pop_scope()
             return
         }
@@ -1823,15 +1966,18 @@ pub class NativeCodegen {
         if nt == "char" {
             a.mov_rr(REG_RCX(), REG_RAX())
             a.call_rel32(self.rt.lbl("__rt_char_to_str"))
+            self.track_temp_str()
             return
         }
         if ncg_is_float(nt) {
             a.mov_rr(REG_RCX(), REG_RAX())
             a.call_rel32(self.rt.lbl("__rt_f64_to_str"))
+            self.track_temp_str()
             return
         }
         a.mov_rr(REG_RCX(), REG_RAX())
         a.call_rel32(self.rt.lbl("__rt_i64_to_str"))
+        self.track_temp_str()
     }
 
     priv fn emit_str_interp(nid: i64) {
@@ -1856,6 +2002,7 @@ pub class NativeCodegen {
             a.mov_mr64(REG_RBP(), -acc_tmp, REG_RAX())
             i = i + 1
         }
+        self.track_temp_str()
         a.mov_rm64(REG_RAX(), REG_RBP(), -acc_tmp)
     }
 
@@ -1933,6 +2080,7 @@ pub class NativeCodegen {
                 a.mov_rr(REG_RDX(), REG_RAX())
                 a.mov_rm64(REG_RCX(), REG_RBP(), -l_tmp)
                 a.call_rel32(self.rt.lbl("__rt_str_concat"))
+                self.track_temp_str()
                 return
             }
             if op_s == "==" || op_s == "!=" {
@@ -2145,6 +2293,7 @@ pub class NativeCodegen {
                     a.call_rel32(self.rt.lbl("__rt_print_str"))
                 }
                 a.call_rel32(self.rt.lbl("__rt_read_line"))
+                self.track_temp_str()
                 return
             }
 
@@ -2214,6 +2363,7 @@ pub class NativeCodegen {
             if nm == "chr" && ac >= 1 {
                 a.mov_rm64(REG_RCX(), REG_RBP(), -arg_temps.get(0))
                 a.call_rel32(self.rt.lbl("__rt_char_to_str"))
+                self.track_temp_str()
                 return
             }
             if nm == "ord" && ac >= 1 {
@@ -2252,7 +2402,7 @@ pub class NativeCodegen {
                 let ns = self.sa.get(recv_id)
                 if ns == "File" {
                     if mname == "exists" { self.emit_call_with_temps(self.rt.lbl("__rt_file_exists"), false, arg_temps); return }
-                    if mname == "read_to_string" || mname == "read_string" { self.emit_call_with_temps(self.rt.lbl("__rt_file_read"), false, arg_temps); return }
+                    if mname == "read_to_string" || mname == "read_string" { self.emit_call_with_temps(self.rt.lbl("__rt_file_read"), false, arg_temps); self.track_temp_str(); return }
                     if mname == "write_string" || mname == "write" { self.emit_call_with_temps(self.rt.lbl("__rt_file_write"), false, arg_temps); return }
                     if mname == "remove" { self.emit_call_with_temps(self.rt.lbl("__rt_file_remove"), false, arg_temps); return }
                     if mname == "copy" { self.emit_call_with_temps(self.rt.lbl("__rt_file_copy"), false, arg_temps); return }
@@ -2326,7 +2476,7 @@ pub class NativeCodegen {
                 if mname == "write_i32_le" { self.emit_call_with_temps(self.rt.lbl("__rt_bb_write_i32_le"), false, margs); return }
                 if mname == "write_f64_le" { self.emit_call_with_temps(self.rt.lbl("__rt_bb_write_f64_le"), false, margs); return }
                 if mname == "write_str" { self.emit_call_with_temps(self.rt.lbl("__rt_bb_write_str"), false, margs); return }
-                if mname == "to_str" { self.emit_call_with_temps(self.rt.lbl("__rt_bb_to_str"), false, margs); return }
+                if mname == "to_str" { self.emit_call_with_temps(self.rt.lbl("__rt_bb_to_str"), false, margs); self.track_temp_str(); return }
                 if mname == "seek" { self.emit_call_with_temps(self.rt.lbl("__rt_bb_seek"), false, margs); return }
                 if mname == "pos" { self.emit_call_with_temps(self.rt.lbl("__rt_bb_pos"), false, margs); return }
                 if mname == "len" { self.emit_call_with_temps(self.rt.lbl("__rt_bb_len"), false, margs); return }
@@ -2344,17 +2494,17 @@ pub class NativeCodegen {
                 while k < arg_temps.len() { margs.push(arg_temps.get(k)); k = k + 1 }
                 if mname == "len" || mname == "length" { self.emit_call_with_temps(self.rt.lbl("__rt_str_len"), false, margs); return }
                 if mname == "byte_at" || mname == "char_at" { self.emit_call_with_temps(self.rt.lbl("__rt_str_byte_at"), false, margs); return }
-                if mname == "slice" { self.emit_call_with_temps(self.rt.lbl("__rt_str_slice"), false, margs); return }
+                if mname == "slice" { self.emit_call_with_temps(self.rt.lbl("__rt_str_slice"), false, margs); self.track_temp_str(); return }
                 if mname == "contains" { self.emit_call_with_temps(self.rt.lbl("__rt_str_contains"), false, margs); return }
                 if mname == "starts_with" { self.emit_call_with_temps(self.rt.lbl("__rt_str_starts_with"), false, margs); return }
                 if mname == "ends_with" { self.emit_call_with_temps(self.rt.lbl("__rt_str_ends_with"), false, margs); return }
                 if mname == "index_of" || mname == "find" { self.emit_call_with_temps(self.rt.lbl("__rt_str_index_of"), false, margs); return }
-                if mname == "trim" { self.emit_call_with_temps(self.rt.lbl("__rt_str_trim"), false, margs); return }
-                if mname == "to_upper" || mname == "upper" { self.emit_call_with_temps(self.rt.lbl("__rt_str_upper"), false, margs); return }
-                if mname == "to_lower" || mname == "lower" { self.emit_call_with_temps(self.rt.lbl("__rt_str_lower"), false, margs); return }
-                if mname == "replace" { self.emit_call_with_temps(self.rt.lbl("__rt_str_replace"), false, margs); return }
+                if mname == "trim" { self.emit_call_with_temps(self.rt.lbl("__rt_str_trim"), false, margs); self.track_temp_str(); return }
+                if mname == "to_upper" || mname == "upper" { self.emit_call_with_temps(self.rt.lbl("__rt_str_upper"), false, margs); self.track_temp_str(); return }
+                if mname == "to_lower" || mname == "lower" { self.emit_call_with_temps(self.rt.lbl("__rt_str_lower"), false, margs); self.track_temp_str(); return }
+                if mname == "replace" { self.emit_call_with_temps(self.rt.lbl("__rt_str_replace"), false, margs); self.track_temp_str(); return }
                 if mname == "split" { self.emit_call_with_temps(self.rt.lbl("__rt_str_split"), false, margs); return }
-                if mname == "repeat" { self.emit_call_with_temps(self.rt.lbl("__rt_str_repeat"), false, margs); return }
+                if mname == "repeat" { self.emit_call_with_temps(self.rt.lbl("__rt_str_repeat"), false, margs); self.track_temp_str(); return }
                 if mname == "to_i64" { self.emit_call_with_temps(self.rt.lbl("__rt_str_to_i64"), false, margs); return }
                 if mname == "to_f64" {
                     self.emit_call_with_temps(self.rt.lbl("__rt_str_to_f64"), false, margs)
@@ -2375,12 +2525,26 @@ pub class NativeCodegen {
                 if mname == "push" { self.emit_call_with_temps(self.rt.lbl("__rt_list_push"), false, margs); return }
                 if mname == "pop" { self.emit_call_with_temps(self.rt.lbl("__rt_list_pop"), false, margs); return }
                 if mname == "get" { self.emit_call_with_temps(self.rt.lbl("__rt_list_get"), false, margs); return }
-                if mname == "set" { self.emit_call_with_temps(self.rt.lbl("__rt_list_set"), false, margs); return }
+                if mname == "set" {
+                    if ncg_is_str(et) {
+                        self.emit_call_with_temps(self.rt.lbl("__rt_list_set_str"), false, margs)
+                    } else {
+                        self.emit_call_with_temps(self.rt.lbl("__rt_list_set"), false, margs)
+                    }
+                    return
+                }
                 if mname == "len" || mname == "length" { self.emit_call_with_temps(self.rt.lbl("__rt_list_len"), false, margs); return }
                 if mname == "is_empty" { self.emit_call_with_temps(self.rt.lbl("__rt_list_is_empty"), false, margs); return }
                 if mname == "clear" { self.emit_call_with_temps(self.rt.lbl("__rt_list_clear"), false, margs); return }
-                if mname == "free" { self.emit_call_with_temps(self.rt.lbl("__rt_list_free"), false, margs); return }
-                if mname == "join" { self.emit_call_with_temps(self.rt.lbl("__rt_list_join"), false, margs); return }
+                if mname == "free" {
+                    if ncg_is_str(et) {
+                        self.emit_call_with_temps(self.rt.lbl("__rt_list_free_str"), false, margs)
+                    } else {
+                        self.emit_call_with_temps(self.rt.lbl("__rt_list_free"), false, margs)
+                    }
+                    return
+                }
+                if mname == "join" { self.emit_call_with_temps(self.rt.lbl("__rt_list_join"), false, margs); self.track_temp_str(); return }
                 if mname == "contains" {
                     let is_s = self.alloc_slot("", "i64")
                     mut es_f = 0
@@ -2560,6 +2724,7 @@ pub class NativeCodegen {
                 } else {
                     self.emit_call_with_temps(self.rt.lbl(tgt), false, margs)
                 }
+                if ncg_is_str(self.node_types.get(nid)) { self.track_temp_str() }
                 return
             }
         }
@@ -2678,6 +2843,7 @@ pub class NativeCodegen {
                 return
             }
             self.emit_call_with_temps(self.rt.lbl(self.fn_symbol_name(fn_node)), false, fargs)
+            if ncg_is_str(self.node_types.get(nid)) { self.track_temp_str() }
             return
         }
 
@@ -2715,6 +2881,7 @@ pub class NativeCodegen {
             if tgt == "chr" && ac >= 1 {
                 a.mov_rm64(REG_RCX(), REG_RBP(), -arg_temps.get(0))
                 a.call_rel32(self.rt.lbl("__rt_char_to_str"))
+                self.track_temp_str()
                 return
             }
             if (tgt == "min" || tgt == "max") && ac >= 2 {
@@ -2760,6 +2927,7 @@ pub class NativeCodegen {
             if tgt == "log" { self.emit_call_with_temps(self.rt.lbl("__rt_math_log"), false, arg_temps); return }
             if tgt == "exp" { self.emit_call_with_temps(self.rt.lbl("__rt_math_exp"), false, arg_temps); return }
             self.emit_call_with_temps(self.rt.lbl(tgt), false, arg_temps)
+            if ncg_is_str(self.node_types.get(nid)) { self.track_temp_str() }
             return
         }
     }
