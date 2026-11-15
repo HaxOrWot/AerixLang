@@ -1,8 +1,8 @@
 # The Complete Aerix Language Handbook & Tutorial (`GUIDE.md`)
 
-Welcome to the **Official Aerix Programming Language Handbook**. This comprehensive tutorial is designed for developers of all backgrounds—from beginners taking their first steps in systems programming to experienced engineers looking for a modern, high-performance alternative to C, C++, Rust, and Go.
+Welcome to the **Official Aerix Programming Language Handbook**. This handbook is designed for developers of all skill levels—from beginners taking their first steps in systems programming to experienced engineers looking for a high-performance, modern alternative to C, C++, Rust, and Go.
 
-Every concept in this guide is accompanied by clear explanations, practical code snippets, and best practices.
+Every concept in this guide is accompanied by clear explanations, practical code examples, and best practices.
 
 ---
 
@@ -14,8 +14,8 @@ Every concept in this guide is accompanied by clear explanations, practical code
 4. [Strings, Interpolation & Text Operations](#chapter-4-strings-interpolation--text-operations)
 5. [Operators, Expressions & Pipelines](#chapter-5-operators-expressions--pipelines)
 6. [Control Flow & Pattern Matching](#chapter-6-control-flow--pattern-matching)
-7. [Functions & Signatures](#chapter-7-functions--signatures)
-8. [Structs & Value Types](#chapter-8-structs--value-types)
+7. [Functions & Generic Signatures](#chapter-7-functions--generic-signatures)
+8. [Structs & Value Records](#chapter-8-structs--value-records)
 9. [Classes & Object-Oriented Programming](#chapter-9-classes--object-oriented-programming)
 10. [Enums, Tagged Unions & Exhaustive Matching](#chapter-10-enums-tagged-unions--exhaustive-matching)
 11. [Retroactive Type Extensions (`extend`)](#chapter-11-retroactive-type-extensions-extend)
@@ -33,17 +33,19 @@ Every concept in this guide is accompanied by clear explanations, practical code
 
 ## Chapter 1: Introduction & Toolchain Setup
 
-### What Makes Aerix Special?
-Aerix is designed with three core architectural pillars:
-1. **Bare-Metal Speed with Zero GC:** Aerix generates direct machine code or standalone ANSI C99. There is no garbage collector running in the background, which means zero GC pauses, minimal memory footprints, and predictable real-time execution.
-2. **Zero External Compiler Dependencies:** The native PE32+ backend generates standard Windows `.exe` files directly without needing GCC, Clang, or MSVC installed.
+### Why Aerix?
+Aerix is engineered around three foundational ideas:
+1. **Bare-Metal Speed with Zero GC:** Aerix generates direct machine code or standalone ANSI C99. There is no background garbage collector, ensuring predictable latency, minimal memory footprints, and real-time responsiveness.
+2. **Zero External Compiler Dependencies:** The native PE32+ backend generates standard Windows `.exe` binaries directly from memory without requiring GCC, Clang, or MSVC installed.
 3. **Ergonomic Safety:** Memory safety features like `guard`, `defer`, strong nominal typing, and pattern matching prevent common classes of bugs without the cognitive overhead of complex borrow checkers.
 
 ### Verifying Your Toolchain
-Once Aerix is installed, verify your installation:
+Once Aerix is installed, verify your installation from PowerShell or Command Prompt:
+
 ```powershell
 arx version
 ```
+
 Expected output:
 ```text
 Aerix Toolchain v2.2.25 (Stable Channel) - x86_64-windows
@@ -58,7 +60,7 @@ Every executable Aerix program starts execution in `fn main()`:
 
 ```aerix
 fn main() {
-    println("Welcome to Aerix!")
+    println("Welcome to Aerix Systems Programming!")
 }
 ```
 
@@ -80,7 +82,8 @@ fn distance(dx: f64, dy: f64) -> f64 {
     return Math.sqrt(dx * dx + dy * dy)
 }
 ```
-Doc-comments (`///`) are automatically extracted by the Language Server Protocol (LSP) and displayed when hovering over functions in VS Code / Antigravity IDE.
+
+Doc-comments (`///`) are automatically extracted by the Language Server Protocol (LSP) daemon and displayed when hovering over functions in VS Code and Antigravity IDE.
 
 ---
 
@@ -111,7 +114,7 @@ Aerix provides comprehensive fixed-width integer, floating-point, boolean, and c
 | `i8`, `i16`, `i32`, `i64` | 1, 2, 4, 8 bytes | Signed two's-complement integers | `let a: i64 = -42` |
 | `u8`, `u16`, `u32`, `u64` | 1, 2, 4, 8 bytes | Unsigned integers | `let b: u8 = 255` |
 | `f32`, `f64` | 4, 8 bytes | IEEE 754 floating-point numbers | `let pi: f64 = 3.14159265` |
-| `bool` | 1 byte | Boolean logical value | `let active: bool = true` |
+| `bool` | 1 byte | Boolean logical value (`true` / `false`) | `let active: bool = true` |
 | `char` | 4 bytes | 32-bit Unicode codepoint | `let symbol: char = 'A'` |
 | `str` | Pointer + Len | Immutable UTF-8 string reference | `let msg: str = "Aerix"` |
 | `void` | 0 bytes | Unit / empty return type | `fn log() -> void` |
@@ -128,7 +131,7 @@ fn main() {
     let version = 2
     
     // String Interpolation with {expression}
-    let greeting = "Language: {name}, Major Version: {version + 0}"
+    let greeting = "Language: {name}, Major Version: {version}"
     println(greeting)
     
     // String Methods
@@ -257,7 +260,7 @@ fn main() {
 
 ---
 
-## Chapter 7: Functions & Signatures
+## Chapter 7: Functions & Generic Signatures
 
 ### Standard Functions
 ```aerix
@@ -278,7 +281,7 @@ fn identity<T>(val: T) -> T {
 
 ---
 
-## Chapter 8: Structs & Value Types
+## Chapter 8: Structs & Value Records
 
 Structs represent lightweight, contiguous data records:
 
@@ -454,6 +457,7 @@ fn main() {
     perform_task()
 }
 ```
+
 Output:
 ```text
 1. Starting task
@@ -556,7 +560,7 @@ Create native desktop applications with zero third-party dependencies:
 from Window.Gui import createWindow, AppWindow, Button, TextBox
 
 fn main() {
-    // 1. Create a 800x600 centered Win32 window
+    // 1. Create an 800x600 centered Win32 window
     let hwnd = createWindow("Aerix Desktop Studio", 800, 600)
     let app = AppWindow(hwnd)
     
@@ -590,9 +594,6 @@ fn main() {
     // Environment Variables
     let user = Env.get("USERNAME")
     println("Current User: {user}")
-    
-    // Process Exit
-    // Process.exit(0)
 }
 ```
 

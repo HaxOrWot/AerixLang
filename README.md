@@ -10,7 +10,7 @@
 ```
 
 ### **The Expressive Native Systems Programming Language**
-*The speed, control, and zero-overhead of bare-metal C — paired with the elegance, safety, and velocity of modern language design.*
+*The uncompromising speed and control of bare-metal C — fused with the elegance, safety, and rapid feedback of modern language design.*
 
 [![Version](https://img.shields.io/badge/version-2.2.25-00DCFF.svg?style=for-the-badge&logo=visualstudiocode)](#)
 [![Backend](https://img.shields.io/badge/backend-Native%20x86--64%20PE32%2B-1E90FF.svg?style=for-the-badge)](#)
@@ -18,7 +18,7 @@
 [![Platform](https://img.shields.io/badge/platform-Windows%20x64-orange.svg?style=for-the-badge)](#)
 [![LSP Engine](https://img.shields.io/badge/LSP-Compiler%20Daemon%20(JSON--RPC)-7C4DFF.svg?style=for-the-badge)](#)
 
-[Quickstart](#-quickstart-in-60-seconds) • [Language Highlights](#-why-aerix) • [Code Showcase](#-code-showcase) • [Installation](#-installation) • [Handbooks](#-documentation-handbooks) • [Toolchain CLI](#-cli-toolchain-reference) • [Contributing](CONTRIBUTING.md)
+[Quickstart](#-quickstart-in-60-seconds) • [Why Aerix?](#-why-aerix) • [Code Showcase](#-code-showcase) • [Installation](#-installation) • [Handbooks](#-handbooks--documentation) • [Toolchain CLI](#-cli-toolchain-reference) • [Contributing](CONTRIBUTING.md)
 
 </div>
 
@@ -26,33 +26,34 @@
 
 ## ⚡ What is Aerix?
 
-**Aerix** is a statically-typed, compiled systems programming language engineered to eliminate the historic dilemma between **developer ergonomics** and **bare-metal execution performance**.
+**Aerix** is a compiled, statically typed systems programming language engineered to eliminate the historic dilemma between **developer velocity** and **bare-metal execution performance**.
 
-* **C and C++** offer raw speed and memory control, but place the burden of pointer safety, arcane build systems, header management, and decades of technical debt on the programmer.
-* **Rust** provides strong compile-time guarantees, but introduces steep borrow-checker friction and lengthy compilation cycles.
-* **Go and Java** simplify concurrency, but rely on garbage collector pauses and heavier runtime runtimes.
-* **Python and TypeScript** provide rapid prototyping, but suffer from significant execution overhead and high memory usage.
+* **C and C++** offer raw hardware speed and memory control, but burden developers with manual pointer hazards, header file management, complex build systems, and decades of legacy complexity.
+* **Rust** provides compile-time memory safety, but introduces steep borrow-checker cognitive friction and lengthy compilation times.
+* **Go and Java** simplify programming, but rely on background garbage collectors that introduce unpredictable latency spikes and larger memory footprints.
+* **Python and TypeScript** offer great developer ergonomics, but suffer from significant execution overhead and high memory consumption.
 
 **Aerix delivers the sweet spot:**
-1. **Zero-Dependency Native Code Generation:** Directly synthesizes AMD64/x86-64 machine instructions and Win64 PE32+ `.exe` files straight from the AST with **zero GCC/Clang or external linker dependencies**.
-2. **Dual-Pipeline Flexibility:** Build with the blazing fast native PE generator for instant builds, or transpile to ANSI C99 with GCC `-O3` / `-flto` for peak optimization.
-3. **Zero Garbage Collection:** Deterministic memory management with scope cleanup (`defer`), fast arenas, and manual control where needed.
-4. **Rich Native Standard Library:** Built-in Win32 desktop GUI windowing (`Window.Gui`), high-resolution timers (`Time`), TCP/UDP networking (`Socket`), PRNG (`Random`), and thread channels (`spawn`, `Channel`).
-5. **First-Class IDE Integration:** Built-in Language Server Protocol (`arx lsp`) engine providing instant semantic highlighting, scoped autocomplete, hover signatures, and Go-to-Definition.
+1. **Zero-Dependency Native PE32+ Code Generation:** The compiler synthesizes AMD64/x86-64 machine instructions and standalone Windows `.exe` binaries directly from the AST with **zero GCC, Clang, or external linker dependencies**.
+2. **Dual-Pipeline Flexibility:** Build with the blazing-fast native PE generator for instant builds, or transpile to ANSI C99 with GCC `-O3` / `-flto` for peak mathematical optimization.
+3. **Zero Garbage Collection:** Deterministic, real-time memory management with scope cleanup (`defer`), lightweight arenas, and explicit control.
+4. **First-Class Win32 Desktop GUI:** Built-in desktop windowing (`Window.Gui`) enabling high-performance desktop applications with zero third-party UI framework dependencies.
+5. **Native Concurrency:** True OS-level thread spawning (`spawn`) paired with thread-safe typed synchronization queues (`Channel<T>`).
+6. **Built-in Language Server (LSP):** A native background daemon (`arx lsp`) providing instant semantic token highlighting, context-ranked autocompletions, strict import scoping, hover docs, and Go-to-Definition.
 
 ---
 
 ## 🎯 Language Highlights
 
-| Feature | Description |
+| Capability | Description |
 | :--- | :--- |
-| **Strict Type Safety** | Robust compile-time type inference, strong nominal typing, generics (`List<T>`, `Map<K,V>`), and tagged unions. |
-| **Direct PE32+ Generation** | Zero-dependency compilation pipeline emitting standalone `.exe` files directly from memory without external assemblers. |
+| **Strict Type Safety** | Robust compile-time type inference, strong nominal typing, generic collections (`List<T>`, `Map<K, V>`), and tagged unions. |
+| **Direct PE32+ Engine** | Generates standalone PE32+ Windows executables directly from memory without invoking external assemblers or linkers. |
 | **Modern Syntax** | Pattern matching (`match`), conditional guards (`guard`), expressive pipelines (`\|>`), and fluent cascades (`~>`). |
 | **Zero-Cost Concurrency** | Lightweight native thread spawning (`spawn`) paired with typed bounded synchronization queues (`Channel<T>`). |
-| **Scoped Module Isolation** | Granular module importing (`import Window.Gui`, `from Window.Gui import createWindow`) preventing namespace pollution. |
-| **Native GUI Engine** | First-class Win32 desktop applications and hardware windowing without third-party frameworks. |
-| **Retroactive Extensions** | Add methods to existing structs and types outside their definition (`extend <Type>`). |
+| **Scoped Module Isolation** | Strict module importing (`import Window.Gui`, `from Window.Gui import createWindow`) preventing symbol and namespace pollution. |
+| **Native Win32 GUI** | Create high-performance native desktop applications without relying on bulky web-view runtimes or external UI kits. |
+| **Retroactive Extensions** | Add new methods to existing structs and classes outside their initial declaration (`extend <Type>`). |
 | **Dual-Licensed** | 100% Free & Open Source under your choice of **MIT** or **Apache-2.0**. |
 
 ---
@@ -60,14 +61,15 @@
 ## 🚀 Quickstart in 60 Seconds
 
 ### 1. Hello World
-Save as `hello.arx`:
+Save the following as `hello.arx`:
+
 ```aerix
 fn main() {
-    println("Hello, Aerix World!")
+    println("Hello from Aerix Systems Programming!")
 }
 ```
 
-Compile and run immediately:
+Compile and run immediately in one command:
 ```powershell
 arx run hello.arx
 ```
@@ -91,11 +93,11 @@ fn worker(id: i64, ch: Channel<str>) {
 fn main() {
     mut ch = Channel<str>(10)
     
-    // Spawn background worker threads
+    // Spawn concurrent native OS threads
     let t1 = spawn worker(1, ch)
     let t2 = spawn worker(2, ch)
     
-    // Receive messages
+    // Receive messages from workers
     println(ch.recv())
     println(ch.recv())
     
@@ -105,23 +107,27 @@ fn main() {
 }
 ```
 
-### 2. Tagged Unions & Pattern Matching
+### 2. Tagged Unions & Exhaustive Pattern Matching
 ```aerix
-enum Shape {
-    Circle(radius: f64),
-    Rectangle(width: f64, height: f64)
+enum NetworkStatus {
+    Disconnected,
+    Connecting(attempt: i64),
+    Connected(ip: str, ping_ms: i64),
+    Failed(reason: str)
 }
 
-fn calculate_area(s: Shape) -> f64 {
-    match s {
-        case Circle(r) => 3.14159 * r * r
-        case Rectangle(w, h) => w * h
+fn log_status(status: NetworkStatus) {
+    match status {
+        case Disconnected => println("Status: Offline")
+        case Connecting(att) => println("Status: Connecting (attempt {att})...")
+        case Connected(ip, ping) => println("Status: Online ({ip}) - {ping}ms")
+        case Failed(err) => println("Status: Connection Failed - {err}")
     }
 }
 
 fn main() {
-    let disk = Shape.Circle(5.0)
-    println("Area: {calculate_area(disk)}")
+    let state = NetworkStatus.Connected("192.168.1.100", 14)
+    log_status(state)
 }
 ```
 
@@ -130,10 +136,35 @@ fn main() {
 from Window.Gui import createWindow, AppWindow
 
 fn main() {
-    let win = createWindow("Aerix Native Desktop Window", 800, 600)
+    let win = createWindow("Aerix Native Window", 800, 600)
     let app = AppWindow(win)
     app.show()
     app.run()
+}
+```
+
+### 4. Retroactive Type Extensions (`extend`)
+```aerix
+struct Vector2D {
+    pub x: f64
+    pub y: f64
+    
+    init(x: f64, y: f64) {
+        self.x = x
+        self.y = y
+    }
+}
+
+// Add methods to Vector2D after declaration
+extend Vector2D {
+    pub fn magnitude() -> f64 {
+        return Math.sqrt(self.x * self.x + self.y * self.y)
+    }
+}
+
+fn main() {
+    let vec = Vector2D(3.0, 4.0)
+    println("Magnitude: {vec.magnitude()}") // 5.0
 }
 ```
 
@@ -142,14 +173,14 @@ fn main() {
 ## 📦 Installation
 
 ### Option 1: Standalone Windows GUI Installer
-Download the latest `AerixSetup.exe` from [Releases](https://github.com/HaxOrWot/AerixLang/releases):
-* Automatically installs `arx.exe` to `C:\Aerix\bin`
-* Adds Aerix to your system `PATH`
-* Includes the standard library, documentation, and the VS Code / Antigravity extension
-* Embeds the background updater and Version Manager
+Download the latest `AerixSetup-2.2.25.exe` from [Releases](https://github.com/HaxOrWot/AerixLang/releases):
+* Installs the complete compiler toolchain to `C:\Aerix\bin`
+* Automatically configures your system `PATH`
+* Includes the standard library, documentation, and the VS Code / Antigravity IDE extension
+* Automatically installs the background update checker and Version Manager
 
-### Option 2: Self-Hosting Build from Source
-Aerix can bootstrap itself using any standard C99 compiler (`gcc` or `clang`) via the pre-generated bootstrap seed:
+### Option 2: Self-Hosting Bootstrap Build from Source
+Aerix can bootstrap itself using any standard C99 compiler (`gcc` or `clang`) via the checked-in bootstrap seed:
 
 ```powershell
 # 1. Clone repository
@@ -197,16 +228,17 @@ Version & Toolchain Management:
 
 ---
 
-## 📚 Documentation Handbooks
+## 📚 Handbooks & Documentation
 
-Aerix comes with complete, in-depth documentation handbooks:
+Aerix includes comprehensive documentation:
 
-| Document | Purpose | Audience |
+| Handbook | Purpose | Target Audience |
 | :--- | :--- | :--- |
-| **[GUIDE.md](GUIDE.md)** | **The Complete Language Handbook & Tutorial** | Everyone. A complete from-scratch guide explaining syntax, types, OOP, pattern matching, memory model, and GUI with clear code examples. |
+| **[GUIDE.md](GUIDE.md)** | **The Complete Language Handbook & Tutorial** | Everyone. A complete tutorial explaining syntax, types, OOP, pattern matching, memory model, and GUI with clear code examples. |
 | **[USER.md](USER.md)** | **Core Technical Deep-Dive Handbook** | Compiler developers & systems architects. Explains compiler architecture, AST arena, type inference, native x86-64 code generation, Win64 ABI, and LSP internals. |
 | **[CONTRIBUTING.md](CONTRIBUTING.md)** | **Contribution & Development Guide** | Community contributors. Explains repository structure, branch workflow, how to transpile seeds, and PR guidelines. |
 | **[SECURITY.md](SECURITY.md)** | **Security Policy** | Security researchers. Explains vulnerability reporting and disclosure policies. |
+| **[CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)** | **Community Code of Conduct** | Community members and contributors. |
 
 ---
 
