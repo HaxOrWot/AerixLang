@@ -110,14 +110,6 @@ pub fn print_pkg_usage() {
 
 fn get_known_registry() -> List<PkgRegistryItem> {
     let list = List<PkgRegistryItem>()
-    list.push(PkgRegistryItem("AerixJson", "1.0.0", "High-performance SIMD JSON parser and serializer", "https://github.com/HaxOrWot/AerixJson.git", "CLEAN (LOW)"))
-    list.push(PkgRegistryItem("ColorTerm", "1.1.0", "ANSI 24-bit TrueColor terminal text and CLI styling", "https://github.com/HaxOrWot/ColorTerm.git", "CLEAN (LOW)"))
-    list.push(PkgRegistryItem("VecMath", "1.0.2", "2D, 3D, and 4D SIMD vector, matrix, and quaternion math", "https://github.com/HaxOrWot/VecMath.git", "CLEAN (LOW)"))
-    list.push(PkgRegistryItem("MatrixMath", "1.0.0", "Linear algebra, matrix decompositions, and tensor utilities", "https://github.com/HaxOrWot/MatrixMath.git", "CLEAN (LOW)"))
-    list.push(PkgRegistryItem("AsyncHttp", "1.0.0", "Lightweight asynchronous HTTP 1.1 client and REST server", "https://github.com/HaxOrWot/AsyncHttp.git", "MODERATE (Network)"))
-    list.push(PkgRegistryItem("IniConfig", "1.0.1", "Structured INI and TOML configuration file reader", "https://github.com/HaxOrWot/IniConfig.git", "CLEAN (LOW)"))
-    list.push(PkgRegistryItem("CryptoHash", "1.0.0", "Cryptographic hashing algorithms (SHA-256, MD5, HMAC)", "https://github.com/HaxOrWot/CryptoHash.git", "CLEAN (LOW)"))
-    list.push(PkgRegistryItem("Canvas2D", "1.0.0", "High-performance Win32 GDI 2D graphics & canvas helpers", "https://github.com/HaxOrWot/Canvas2D.git", "CLEAN (LOW)"))
     return list
 }
 
