@@ -185,8 +185,11 @@ fn parse_registry_json_content(content: str) -> List<PkgRegistryItem> {
             cur_risk = extract_registry_json_val(line)
         }
 
-        if (line.starts_with("}") || line.starts_with("},")) && cur_name != "" {
-            list.push(PkgRegistryItem(cur_name, cur_ver, cur_desc, cur_repo, cur_risk))
+        // Object closing (byte 125 is '}')
+        if line.len() > 0 && line.byte_at(0) == 125 {
+            if cur_name != "" && cur_repo != "" {
+                list.push(PkgRegistryItem(cur_name, cur_ver, cur_desc, cur_repo, cur_risk))
+            }
             cur_name = ""
             cur_ver = ""
             cur_desc = ""
@@ -201,13 +204,54 @@ fn parse_registry_json_content(content: str) -> List<PkgRegistryItem> {
 }
 
 fn get_known_registry() -> List<PkgRegistryItem> {
+    // 1. Check explicit environment override
+    let env_reg = Env.get("AERIX_REGISTRY")
+    if env_reg != "" && File.exists(env_reg) {
+        let c = File.read_to_string(env_reg)
+        if c.contains("\"packages\"") {
+            return parse_registry_json_content(c)
+        }
+    }
+
+    // 2. Check local workspace paths (developer editing aerix-packages)
+    let cwd = bpath_normalize(Env.cwd())
+    let cand_local1 = bpath_join(cwd, "registry.json")
+    if File.exists(cand_local1) {
+        let c = File.read_to_string(cand_local1)
+        if c.contains("\"packages\"") {
+            return parse_registry_json_content(c)
+        }
+    }
+    let cand_local2 = bpath_join(cwd, "../aerix-packages/registry.json")
+    if File.exists(cand_local2) {
+        let c = File.read_to_string(cand_local2)
+        if c.contains("\"packages\"") {
+            return parse_registry_json_content(c)
+        }
+    }
+    let cand_local3 = "Z:/VSCode/aerix-packages/registry.json"
+    if File.exists(cand_local3) {
+        let c = File.read_to_string(cand_local3)
+        if c.contains("\"packages\"") {
+            return parse_registry_json_content(c)
+        }
+    }
+
     let tmp_dir = get_pkg_temp_dir()
     let cache_file = bpath_join(tmp_dir, "aerix_registry.json")
 
-    // Fetch live registry from GitHub
-    let reg_url = "https://raw.githubusercontent.com/HaxOrWot/aerix-packages/main/registry.json"
-    let curl_cmd = "curl -s -f -m 6 " + quote_pkg_arg(reg_url) + " -o " + quote_pkg_arg(cache_file.replace("/", "\\"))
-    Process.execute(curl_cmd)
+    // 3. Real-time fetch via GitHub API (Accept: application/vnd.github.raw has ZERO CDN cache delay!)
+    let q = "\""
+    let api_url = "https://api.github.com/repos/HaxOrWot/aerix-packages/contents/registry.json"
+    let api_cmd = "curl -s -f -m 6 -H " + q + "Accept: application/vnd.github.raw" + q + " -H " + q + "User-Agent: aerix-pkg" + q + " " + quote_pkg_arg(api_url) + " -o " + quote_pkg_arg(cache_file.replace("/", "\\"))
+    let exit_code = Process.execute(api_cmd)
+
+    // 4. Fallback to raw.githubusercontent.com if API fails
+    if exit_code != 0 || !File.exists(cache_file) {
+        let raw_url = "https://raw.githubusercontent.com/HaxOrWot/aerix-packages/main/registry.json"
+        let raw_cmd = "curl -s -f -m 6 " + quote_pkg_arg(raw_url) + " -o " + quote_pkg_arg(cache_file.replace("/", "\\"))
+        Process.execute(raw_cmd)
+    }
 
     if File.exists(cache_file) {
         let content = File.read_to_string(cache_file)
