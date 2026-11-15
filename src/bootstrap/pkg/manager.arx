@@ -110,6 +110,7 @@ pub fn print_pkg_usage() {
 
 fn get_known_registry() -> List<PkgRegistryItem> {
     let list = List<PkgRegistryItem>()
+    list.push(PkgRegistryItem("ColorTerm", "1.0.0", "ANSI 24-bit TrueColor and styling library for terminal text", "https://github.com/HaxOrWot/ColorTerm.git", "CLEAN (LOW)"))
     return list
 }
 
