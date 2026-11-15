@@ -63,6 +63,7 @@ pub class Parser {
     pub item_aliases: Map<str, str>
     pub file_imported_symbols: Map<str, str>
     pub file_has_selective_imports: Map<str, i64>
+    pub file_to_mod: Map<str, str>
     pub file_explicit_modules: Map<str, i64>
     pub explicit_mod_list: List<str>
     pub gen_list_types: List<str>
@@ -134,6 +135,7 @@ pub class Parser {
         self.item_aliases = Map<str, str>()
         self.file_imported_symbols = Map<str, str>()
         self.file_has_selective_imports = Map<str, i64>()
+        self.file_to_mod = Map<str, str>()
         self.file_explicit_modules = Map<str, i64>()
         self.explicit_mod_list = List<str>()
         self.gen_list_types = List<str>()
@@ -617,6 +619,8 @@ pub class Parser {
         self.loaded_mods.insert(dotted_norm, 1)
 
         if File.exists(mod_dir) && str_ends_with_arx(mod_dir) {
+            let norm_md = bpath_normalize(mod_dir)
+            self.file_to_mod.insert(norm_md, dotted_norm)
             self.load_resolved_file(mod_dir)
             return
         }
@@ -624,10 +628,12 @@ pub class Parser {
         // Module 2.5: If explicit mod.arx or src/mod.arx exists, load it first
         let mod_entry = bpath_normalize(mod_dir + "/mod.arx")
         if File.exists(mod_entry) {
+            self.file_to_mod.insert(mod_entry, dotted_norm)
             self.load_resolved_file(mod_entry)
         }
         let mod_src_entry = bpath_normalize(mod_dir + "/src/mod.arx")
         if File.exists(mod_src_entry) {
+            self.file_to_mod.insert(mod_src_entry, dotted_norm)
             self.load_resolved_file(mod_src_entry)
         }
 
@@ -643,6 +649,7 @@ pub class Parser {
         mut i = 0
         while i < total {
             let af = bpath_normalize(arx_files.get(i))
+            self.file_to_mod.insert(af, dotted_norm)
             if !self.loaded_files.has_key(af) {
                 self.load_resolved_file(af)
             }
@@ -882,6 +889,8 @@ pub class Parser {
                 self.load_file(mod_src)
                 from_dotted = mod_src
                 last_seg = bpath_basename(mod_src)
+                self.file_has_selective_imports.insert(from_dotted, 1)
+                self.file_has_selective_imports.insert(last_seg, 1)
             } else if self.cur_kind() == TK_IDENT() {
                 let t = self.adv()
                 mut mpath = self.tok_vals.get(t)

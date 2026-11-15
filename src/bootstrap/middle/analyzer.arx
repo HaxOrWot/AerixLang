@@ -54,6 +54,7 @@ pub class Analyzer {
     pub loaded_mods: Map<str, i64>
     pub file_imported_symbols: Map<str, str>
     pub file_has_selective_imports: Map<str, i64>
+    pub file_to_mod: Map<str, str>
     pub file_explicit_modules: Map<str, i64>
     pub explicit_mod_list: List<str>
 
@@ -173,6 +174,7 @@ pub class Analyzer {
         self.fn_externs = p.fn_externs
         self.file_imported_symbols = p.file_imported_symbols
         self.file_has_selective_imports = p.file_has_selective_imports
+        self.file_to_mod = p.file_to_mod
         self.file_explicit_modules = p.file_explicit_modules
         self.explicit_mod_list = p.explicit_mod_list
 
@@ -2073,6 +2075,26 @@ pub class Analyzer {
         return self.analyze_expr(arg_id)
     }
 
+    priv fn is_hidden_by_selective_import(callee: i64, name: str, raw_name: str, fn_nid: i64) -> bool {
+        if fn_nid < 0 || self.file_has_selective_imports.len() == 0 { return false }
+        let fn_file = self.nf.get(fn_nid)
+        let caller_file = self.nf.get(callee)
+        if fn_file == caller_file { return false }
+        if !self.file_to_mod.has_key(fn_file) { return false }
+        let mname = self.file_to_mod.get(fn_file)
+        if self.file_to_mod.has_key(caller_file) && self.file_to_mod.get(caller_file) == mname {
+            return false
+        }
+        let m_base = self.str_last_dot_seg(mname)
+        if self.file_has_selective_imports.has_key(mname) || self.file_has_selective_imports.has_key(m_base) {
+            if !self.file_imported_symbols.has_key(name) && !self.file_imported_symbols.has_key(raw_name) {
+                self.add_diag(callee, raw_name.len(), "E0202", "cannot find function '" + raw_name + "' in this scope", "function '" + raw_name + "' belongs to module '" + m_base + "' but was not imported. Add it with 'from " + m_base + " import " + raw_name + "' or qualify it with '" + m_base + "." + raw_name + "'", 1)
+                return true
+            }
+        }
+        return false
+    }
+
     priv fn analyze_call(nid: i64) -> str {
         let callee = self.la.get(nid)
         if callee < 0 {
@@ -2100,10 +2122,15 @@ pub class Analyzer {
                 self.check_call_arity(callee, "fn::" + name, name, ac, "function")
                 let sig_i = self.find_best_overload("fn::" + name, arg_types, ac)
                 if sig_i >= 0 {
+                    let fn_nid = self.sig_nodes.get(sig_i)
+                    if self.is_hidden_by_selective_import(callee, name, raw_name, fn_nid) {
+                        self.node_types.set(nid, "i64")
+                        return "i64"
+                    }
                     let rt = self.sig_rets.get(sig_i)
                     self.call_kinds.set(nid, CK_NORMAL())
                     self.call_targets.set(nid, self.sig_cnames.get(sig_i))
-                    self.call_fn_nodes.set(nid, self.sig_nodes.get(sig_i))
+                    self.call_fn_nodes.set(nid, fn_nid)
                     self.node_types.set(nid, rt)
                     return rt
                 }
@@ -2208,10 +2235,15 @@ pub class Analyzer {
             }
             let sig_i = self.find_best_overload("fn::" + name, arg_types, ac)
             if sig_i >= 0 {
+                let fn_nid = self.sig_nodes.get(sig_i)
+                if self.is_hidden_by_selective_import(callee, name, raw_name, fn_nid) {
+                    self.node_types.set(nid, "i64")
+                    return "i64"
+                }
                 let rt = self.sig_rets.get(sig_i)
                 self.call_kinds.set(nid, CK_NORMAL())
                 self.call_targets.set(nid, self.sig_cnames.get(sig_i))
-                self.call_fn_nodes.set(nid, self.sig_nodes.get(sig_i))
+                self.call_fn_nodes.set(nid, fn_nid)
                 self.node_types.set(nid, rt)
                 return rt
             }
