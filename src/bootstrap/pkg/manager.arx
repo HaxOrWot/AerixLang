@@ -108,10 +108,78 @@ pub fn print_pkg_usage() {
     println("  " + bin + " pkg list")
 }
 
-fn get_known_registry() -> List<PkgRegistryItem> {
+fn extract_registry_json_val(line: str) -> str {
+    let col = line.index_of(":")
+    if col < 0 { return "" }
+    let rest = line.slice(col + 1, line.len())
+    let v_q1 = rest.index_of("\"")
+    if v_q1 < 0 { return "" }
+    let v_rest = rest.slice(v_q1 + 1, rest.len())
+    let v_q2 = v_rest.index_of("\"")
+    if v_q2 < 0 { return "" }
+    return v_rest.slice(0, v_q2)
+}
+
+fn parse_registry_json_content(content: str) -> List<PkgRegistryItem> {
     let list = List<PkgRegistryItem>()
-    list.push(PkgRegistryItem("ColorTerm", "1.0.0", "ANSI 24-bit TrueColor and styling library for terminal text", "https://github.com/HaxOrWot/ColorTerm.git", "CLEAN (LOW)"))
+    let lines = content.split("\n")
+    mut i = 0
+    let n = lines.len()
+
+    mut cur_name = ""
+    mut cur_ver = ""
+    mut cur_desc = ""
+    mut cur_repo = ""
+    mut cur_risk = "CLEAN (LOW)"
+
+    while i < n {
+        let raw_line = lines.get(i)
+        let line = raw_line.trim()
+
+        if line.contains("\"name\":") {
+            cur_name = extract_registry_json_val(line)
+        } else if line.contains("\"version\":") {
+            cur_ver = extract_registry_json_val(line)
+        } else if line.contains("\"description\":") {
+            cur_desc = extract_registry_json_val(line)
+        } else if line.contains("\"repository\":") {
+            cur_repo = extract_registry_json_val(line)
+        } else if line.contains("\"risk_rating\":") {
+            cur_risk = extract_registry_json_val(line)
+        }
+
+        if (line.starts_with("}") || line.starts_with("},")) && cur_name != "" {
+            list.push(PkgRegistryItem(cur_name, cur_ver, cur_desc, cur_repo, cur_risk))
+            cur_name = ""
+            cur_ver = ""
+            cur_desc = ""
+            cur_repo = ""
+            cur_risk = "CLEAN (LOW)"
+        }
+
+        i = i + 1
+    }
+
     return list
+}
+
+fn get_known_registry() -> List<PkgRegistryItem> {
+    let tmp_dir = get_pkg_temp_dir()
+    let cache_file = bpath_join(tmp_dir, "aerix_registry.json")
+
+    // Fetch live registry from GitHub
+    let reg_url = "https://raw.githubusercontent.com/HaxOrWot/aerix-packages/main/registry.json"
+    let curl_cmd = "curl -s -f -m 6 " + quote_pkg_arg(reg_url) + " -o " + quote_pkg_arg(cache_file.replace("/", "\\"))
+    Process.execute(curl_cmd)
+
+    if File.exists(cache_file) {
+        let content = File.read_to_string(cache_file)
+        if content.contains("\"packages\"") {
+            return parse_registry_json_content(content)
+        }
+    }
+
+    return List<PkgRegistryItem>()
 }
 
 fn pkg_audit_source_line(line: str, fpath: str, res: PkgAuditResult) {
