@@ -1,6 +1,31 @@
 // Aerix Package Manager & Capability Security Scanner (arx pkg)
 // Zero-execution dependency manager with static #[extern] security auditing.
 
+import "../middle/paths.arx"
+
+fn resolve_pkg_bin_name() -> str {
+    let a0 = bpath_normalize(Env.arg(0))
+    if a0.ends_with("arxc.exe") || a0.ends_with("arxc") {
+        return "arxc"
+    }
+    return "arx"
+}
+
+fn get_pkg_temp_dir() -> str {
+    let t1 = Env.get("TEMP")
+    if t1 != "" { return bpath_normalize(t1) }
+    let t2 = Env.get("TMP")
+    if t2 != "" { return bpath_normalize(t2) }
+    let t3 = Env.get("TMPDIR")
+    if t3 != "" { return bpath_normalize(t3) }
+    return "/tmp"
+}
+
+fn quote_pkg_arg(s: str) -> str {
+    let q = "\""
+    return q + s + q
+}
+
 pub class PkgRegistryItem {
     pub name: str
     pub version: str
@@ -55,7 +80,7 @@ fn audit_get_risk(res: PkgAuditResult) -> str {
 }
 
 pub fn print_pkg_usage() {
-    let bin = resolve_bin_name()
+    let bin = resolve_pkg_bin_name()
     println("Aerix Package Manager & Security Scanner (" + bin + " pkg)")
     println("Curated, zero-execution community package manager with capability auditing.")
     println("")
@@ -317,9 +342,9 @@ fn cmd_pkg_list() -> i64 {
 }
 
 fn cmd_pkg_audit(target: str) -> i64 {
-    let cwd = bpath_normalize(Env.cwd())
-    mut scan_path = cwd
-    mut title = "Current Workspace"
+    let cwd: str = bpath_normalize(Env.cwd())
+    mut scan_path: str = cwd
+    mut title: str = "Current Workspace"
     if target != "" {
         let local_mod = bpath_join(bpath_join(cwd, "modules"), target)
         if Directory.exists(local_mod) {
@@ -488,7 +513,7 @@ fn cmd_pkg_install(target: str, force: bool, allow_insecure: bool) -> i64 {
     println("  Destination:        " + dest_dir)
     println("------------------------------------------------------------------")
 
-    let tmp_root = get_temp_dir()
+    let tmp_root = get_pkg_temp_dir()
     let stage_dir = bpath_join(tmp_root, "aerix_stage_" + pkg_name)
     if Directory.exists(stage_dir) {
         let clean_cmd = "powershell -Command \"Remove-Item -Path '" + stage_dir.replace("/", "\\") + "' -Recurse -Force -ErrorAction SilentlyContinue\""
@@ -496,7 +521,7 @@ fn cmd_pkg_install(target: str, force: bool, allow_insecure: bool) -> i64 {
     }
 
     println("[1/4] Cloning package repository via Git...")
-    let clone_cmd = "git clone --depth 1 " + quote_shell_arg(repo_url) + " " + quote_shell_arg(stage_dir.replace("/", "\\"))
+    let clone_cmd = "git clone --depth 1 " + quote_pkg_arg(repo_url) + " " + quote_pkg_arg(stage_dir.replace("/", "\\"))
     let clone_exit = Process.execute(clone_cmd)
     if clone_exit != 0 {
         eprintln("error: failed to clone repository: " + repo_url)
