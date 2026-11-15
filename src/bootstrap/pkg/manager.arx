@@ -121,6 +121,7 @@ pub fn print_pkg_usage() {
     println("Commands:")
     println("  available | avail         List all packages available in the official community registry")
     println("  search [query]            Search verified packages in the official community registry")
+    println("  info | show <name>        Display detailed metadata, repository, and security rating for a package")
     println("  install <name|url>        Audit, verify, and install a package globally (or locally)")
     println("  add <name|url>            Alias for 'install'")
     println("  update | upgrade [name]   Update an installed package (or all packages) to latest version")
@@ -417,13 +418,53 @@ pub fn print_audit_report(target_name: str, res: PkgAuditResult) {
     }
 }
 
+fn get_installed_pkg_version(pkg_name: str) -> str {
+    let global_dir = get_aerix_global_modules_dir()
+    let cwd = bpath_normalize(Env.cwd())
+    let local_dir = bpath_join(cwd, "modules")
+
+    mut manifest_path = bpath_join(global_dir, pkg_name + "/aerix.json")
+    if !File.exists(manifest_path) {
+        manifest_path = bpath_join(local_dir, pkg_name + "/aerix.json")
+    }
+    if !File.exists(manifest_path) {
+        if Directory.exists(bpath_join(global_dir, pkg_name)) || Directory.exists(bpath_join(local_dir, pkg_name)) {
+            return "installed"
+        }
+        return ""
+    }
+
+    let content = File.read_to_string(manifest_path)
+    let lines = content.split("\n")
+    mut i = 0
+    let n = lines.len()
+    while i < n {
+        let line = lines.get(i).trim()
+        if line.contains("\"version\":") {
+            let ver = extract_registry_json_val(line)
+            if ver != "" {
+                return ver
+            }
+        }
+        i = i + 1
+    }
+    return "installed"
+}
+
+fn format_desc_field(desc: str, max_len: i64) -> str {
+    if desc.len() <= max_len {
+        return desc
+    }
+    return desc.slice(0, max_len - 3) + "..."
+}
+
 fn cmd_pkg_search(query: str) -> i64 {
     let q_lower = query.to_lower()
     let reg = get_known_registry()
-    println("Searching Aerix Community Package Registry (https://github.com/HaxOrWot/aerix-packages)...")
+    println("Searching Aerix Community Packages:")
     println("")
-    println("NAME             VERSION   RISK RATING      DESCRIPTION")
-    println("----             -------   -----------      -----------")
+    println("  NAME          VERSION   STATUS       DESCRIPTION")
+    println("  ----          -------   ------       -----------")
     mut found = 0
     mut i = 0
     let n = reg.len()
@@ -432,10 +473,21 @@ fn cmd_pkg_search(query: str) -> i64 {
         let name_lower = item.name.to_lower()
         let desc_lower = item.description.to_lower()
         if q_lower == "" || name_lower.contains(q_lower) || desc_lower.contains(q_lower) {
-            let name_padded = item.name.pad_right(16, " ")
-            let ver_padded = item.version.pad_right(9, " ")
-            let risk_padded = item.risk.pad_right(16, " ")
-            println(name_padded + " " + ver_padded + " " + risk_padded + " " + item.description)
+            let installed_ver = get_installed_pkg_version(item.name)
+            mut status = "available"
+            if installed_ver != "" {
+                if installed_ver != "installed" && installed_ver != item.version {
+                    status = "updateable"
+                } else {
+                    status = "installed"
+                }
+            }
+
+            let name_padded = item.name.pad_right(14, " ")
+            let ver_padded = item.version.pad_right(10, " ")
+            let status_padded = status.pad_right(13, " ")
+            let desc_clean = format_desc_field(item.description, 65)
+            println("  " + name_padded + ver_padded + status_padded + desc_clean)
             found = found + 1
         }
         i = i + 1
@@ -443,35 +495,100 @@ fn cmd_pkg_search(query: str) -> i64 {
     println("")
     if found == 0 {
         println("No packages found matching '" + query + "'.")
-        println("To contribute a new package, submit a PR to https://github.com/HaxOrWot/aerix-packages")
     } else {
-        println("Found " + (found as str) + " package(s). Install using: arx pkg install <name>")
+        println("Found " + (found as str) + " package(s). Run 'arx pkg install <name>' to install.")
     }
     return 0
 }
 
 fn cmd_pkg_available() -> i64 {
-    println("Fetching Aerix Community Package Registry (https://github.com/HaxOrWot/aerix-packages)...")
     let reg = get_known_registry()
-    println("")
-    println("NAME             VERSION   RISK RATING      DESCRIPTION")
-    println("----             -------   -----------      -----------")
-    mut i = 0
     let n = reg.len()
+
+    println("Aerix Community Packages:")
+    println("")
+    println("  NAME          VERSION   STATUS       DESCRIPTION")
+    println("  ----          -------   ------       -----------")
+    mut i = 0
     while i < n {
         let item = reg.get(i)
-        let name_padded = item.name.pad_right(16, " ")
-        let ver_padded = item.version.pad_right(9, " ")
-        let risk_padded = item.risk.pad_right(16, " ")
-        println(name_padded + " " + ver_padded + " " + risk_padded + " " + item.description)
+        let installed_ver = get_installed_pkg_version(item.name)
+        mut status = "available"
+        if installed_ver != "" {
+            if installed_ver != "installed" && installed_ver != item.version {
+                status = "updateable"
+            } else {
+                status = "installed"
+            }
+        }
+
+        let name_padded = item.name.pad_right(14, " ")
+        let ver_padded = item.version.pad_right(10, " ")
+        let status_padded = status.pad_right(13, " ")
+        let desc_clean = format_desc_field(item.description, 65)
+        println("  " + name_padded + ver_padded + status_padded + desc_clean)
         i = i + 1
     }
     println("")
     if n == 0 {
-        println("No packages found in the community registry.")
-        println("To contribute, submit a PR to https://github.com/HaxOrWot/aerix-packages")
+        println("No packages found in community registry.")
     } else {
-        println("Total: " + (n as str) + " package(s) available. Install using: arx pkg install <name>")
+        println("Total: " + (n as str) + " package(s) found. Run 'arx pkg install <name>' to install.")
+    }
+    return 0
+}
+
+fn cmd_pkg_info(target: str) -> i64 {
+    if target == "" {
+        eprintln("error: package name required for 'arx pkg info <name>'")
+        return 1
+    }
+
+    let reg = get_known_registry()
+    mut found_item = PkgRegistryItem("", "", "", "", "")
+    mut is_found = false
+    mut i = 0
+    let n = reg.len()
+    let t_lower = target.to_lower()
+    while i < n {
+        let it = reg.get(i)
+        if it.name.to_lower() == t_lower {
+            found_item = it
+            is_found = true
+            break
+        }
+        i = i + 1
+    }
+
+    if !is_found {
+        eprintln("error: package '" + target + "' not found in community registry")
+        eprintln("  = hint: run 'arx pkg avail' to see all available packages")
+        return 1
+    }
+
+    let installed_ver = get_installed_pkg_version(found_item.name)
+    mut status = "available (not installed)"
+    if installed_ver != "" {
+        if installed_ver != "installed" && installed_ver != found_item.version {
+            status = "installed (update available: v" + installed_ver + " -> v" + found_item.version + ")"
+        } else {
+            status = "installed (up to date)"
+        }
+    }
+
+    println("Package Information: " + found_item.name)
+    println("==================================================================")
+    println("  Name:         " + found_item.name)
+    println("  Version:      " + found_item.version)
+    println("  Status:       " + status)
+    println("  Repository:   " + found_item.repo_url)
+    println("  Risk Rating:  " + found_item.risk)
+    println("  Description:  " + found_item.description)
+    println("==================================================================")
+    if status.starts_with("available") {
+        println("Run 'arx pkg install " + found_item.name + "' to install.")
+    } else if status.contains("update available") {
+        println("Run 'arx pkg update " + found_item.name + "' to update.")
     }
     return 0
 }
@@ -878,6 +995,14 @@ pub fn cmd_pkg(cli_args: List<str>, cli_argc: i64) -> i64 {
             query = cli_args.get(3)
         }
         return cmd_pkg_search(query)
+    }
+
+    if sub == "info" || sub == "show" || sub == "view" {
+        mut target = ""
+        if cli_argc >= 4 {
+            target = cli_args.get(3)
+        }
+        return cmd_pkg_info(target)
     }
 
     if sub == "list" || sub == "ls" {
