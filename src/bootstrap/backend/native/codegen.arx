@@ -976,30 +976,44 @@ pub class NativeCodegen {
             a.jcc_rel32(CC_NE(), l_catch)
 
             // Try block
+            let s_try = self.scope_names.len()
+            let d_try = self.defer_nodes.len()
             self.push_scope()
             self.emit_block_stmts(try_blk)
+            self.emit_scope_defers(d_try)
+            self.emit_scope_drops(s_try)
             self.pop_scope()
             a.call_rel32(self.rt.lbl("__rt_try_pop"))
             a.jmp_rel32(l_after_catch)
 
             // Catch block
             a.bind_label(l_catch)
+            let s_catch = self.scope_names.len()
+            let d_catch = self.defer_nodes.len()
             self.push_scope()
             if cvar != "" {
                 let cslot = self.alloc_slot(cvar, "str")
                 a.mov_rm64_rip_data(REG_RAX(), self.rt.exc_msg_off)
                 a.mov_mr64(REG_RBP(), -cslot, REG_RAX())
+                a.mov_rr(REG_RCX(), REG_RAX())
+                a.call_rel32(self.rt.lbl("__rt_arc_retain"))
             }
             if catch_blk >= 0 {
                 self.emit_block_stmts(catch_blk)
             }
+            self.emit_scope_defers(d_catch)
+            self.emit_scope_drops(s_catch)
             self.pop_scope()
 
             a.bind_label(l_after_catch)
             // Finally block
             if finally_blk >= 0 {
+                let s_fin = self.scope_names.len()
+                let d_fin = self.defer_nodes.len()
                 self.push_scope()
                 self.emit_block_stmts(finally_blk)
+                self.emit_scope_defers(d_fin)
+                self.emit_scope_drops(s_fin)
                 self.pop_scope()
             }
             return
@@ -1057,6 +1071,8 @@ pub class NativeCodegen {
         let l_step = a.new_label()
         let l_end = a.new_label()
 
+        let smark = self.scope_names.len()
+        let dmark = self.defer_nodes.len()
         self.push_scope()
         self.loop_cnt_lbls.push(l_step)
         self.loop_brk_lbls.push(l_end)
@@ -1149,9 +1165,19 @@ pub class NativeCodegen {
                 a.call_rel32(self.rt.lbl("__rt_list_get"))
             }
             a.mov_mr64(REG_RBP(), -item_off, REG_RAX())
+            if ncg_is_str(elem_t) {
+                a.mov_rr(REG_RCX(), REG_RAX())
+                a.call_rel32(self.rt.lbl("__rt_arc_retain"))
+            }
 
             self.emit_stmt(body_id)
             a.bind_label(l_step)
+            if ncg_is_str(elem_t) {
+                a.mov_rm64(REG_RCX(), REG_RBP(), -item_off)
+                a.call_rel32(self.rt.lbl("__rt_arc_release"))
+                a.mov_ri32_sext(REG_RAX(), 0)
+                a.mov_mr64(REG_RBP(), -item_off, REG_RAX())
+            }
             a.mov_rm64(REG_RAX(), REG_RBP(), -idx_off)
             a.add_ri32(REG_RAX(), 1)
             a.mov_mr64(REG_RBP(), -idx_off, REG_RAX())
@@ -1163,6 +1189,8 @@ pub class NativeCodegen {
         self.loop_brk_lbls.pop()
         self.loop_defer_marks.pop()
         self.loop_scope_marks.pop()
+        self.emit_scope_defers(dmark)
+        self.emit_scope_drops(smark)
         self.pop_scope()
     }
 
@@ -1170,6 +1198,7 @@ pub class NativeCodegen {
         let a = self.asmb
         let subj_id = self.la.get(nid)
         let subj_t = btype_norm(self.node_types.get(subj_id))
+        let tmark = self.temp_str_slots.len()
         self.emit_expr(subj_id)
         let s_off = self.alloc_slot("", subj_t)
         a.mov_mr64(REG_RBP(), -s_off, REG_RAX())
@@ -1185,6 +1214,8 @@ pub class NativeCodegen {
             let ext = self.node_ext.get(pat_id)
             let l_next = a.new_label()
 
+            let sm = self.scope_names.len()
+            let dm = self.defer_nodes.len()
             self.push_scope()
             let is_wild = (ext == "wildcard") || (self.nk.get(pat_id) == NK_IDENT() && self.sa.get(pat_id) == "_")
             let is_ident_var = self.nk.get(pat_id) == NK_IDENT() && !ext.starts_with("enum_")
@@ -1196,6 +1227,10 @@ pub class NativeCodegen {
                 let boff = self.alloc_slot(bnm, subj_t)
                 a.mov_rm64(REG_RAX(), REG_RBP(), -s_off)
                 a.mov_mr64(REG_RBP(), -boff, REG_RAX())
+                if ncg_is_str(subj_t) {
+                    a.mov_rr(REG_RCX(), REG_RAX())
+                    a.call_rel32(self.rt.lbl("__rt_arc_retain"))
+                }
             } else if ext.starts_with("enum_unit::") {
                 let rest = ext.slice(11, ext.len())
                 let tag = self.enum_var_tags.get(rest)
@@ -1225,6 +1260,10 @@ pub class NativeCodegen {
                         a.mov_rm64(REG_RAX(), REG_RBP(), -s_off)
                         a.mov_rm64(REG_RAX(), REG_RAX(), (ai + 1) * 8)
                         a.mov_mr64(REG_RBP(), -boff, REG_RAX())
+                        if ncg_is_str(ft) {
+                            a.mov_rr(REG_RCX(), REG_RAX())
+                            a.call_rel32(self.rt.lbl("__rt_arc_retain"))
+                        }
                     }
                     ai = ai + 1
                 }
@@ -1256,19 +1295,22 @@ pub class NativeCodegen {
                 a.jcc_rel32(CC_E(), l_next)
             }
 
-            let dm = self.defer_nodes.len()
             if self.nk.get(body_id) == NK_BLOCK() {
                 self.emit_block_stmts(body_id)
             } else {
                 self.emit_stmt(body_id)
             }
             self.emit_scope_defers(dm)
+            self.emit_scope_drops(sm)
             a.jmp_rel32(l_done)
             a.bind_label(l_next)
+            self.emit_scope_defers(dm)
+            self.emit_scope_drops(sm)
             self.pop_scope()
             ci = ci + 1
         }
         a.bind_label(l_done)
+        self.emit_temp_drops(tmark)
     }
 
     priv fn emit_assign(nid: i64) {
@@ -1373,6 +1415,16 @@ pub class NativeCodegen {
             a.mov_mr64(REG_RBP(), -l_tmp, REG_RAX())
             self.emit_bin_values(op_s.slice(0, op_s.len() - 1), lt, lt, l_tmp, r_tmp)
             if loff >= 0 {
+                if ncg_is_str(lt) {
+                    if self.temp_str_slots.len() > tmark {
+                        self.temp_str_slots.pop()
+                    }
+                    let new_str = self.alloc_slot("", "i64")
+                    a.mov_mr64(REG_RBP(), -new_str, REG_RAX())
+                    a.mov_rm64(REG_RCX(), REG_RBP(), -l_tmp)
+                    a.call_rel32(self.rt.lbl("__rt_arc_release"))
+                    a.mov_rm64(REG_RAX(), REG_RBP(), -new_str)
+                }
                 a.mov_mr64(REG_RBP(), -loff, REG_RAX())
             } else if self.global_offs.has_key(vname) {
                 a.mov_mr64_rip_data(self.global_offs.get(vname), REG_RAX())
@@ -1812,10 +1864,16 @@ pub class NativeCodegen {
             a.mov_mr64(REG_RBP(), -l_tmp, REG_RAX())
             mut i = 0
             while i < cnt {
-                self.emit_expr(self.child_at(nid, i))
+                let cid = self.child_at(nid, i)
+                let ct = btype_norm(self.node_types.get(cid))
+                self.emit_expr(cid)
                 a.mov_rr(REG_RDX(), REG_RAX())
                 a.mov_rm64(REG_RCX(), REG_RBP(), -l_tmp)
-                a.call_rel32(self.rt.lbl("__rt_list_push"))
+                if ncg_is_str(ct) {
+                    a.call_rel32(self.rt.lbl("__rt_list_push_str"))
+                } else {
+                    a.call_rel32(self.rt.lbl("__rt_list_push"))
+                }
                 i = i + 1
             }
             a.mov_rm64(REG_RAX(), REG_RBP(), -l_tmp)
@@ -1993,12 +2051,28 @@ pub class NativeCodegen {
         mut i = 0
         while i < cnt {
             let cid = self.child_at(nid, i)
-            let ct = btype_norm(self.node_types.get(cid))
+            mut ct = btype_norm(self.node_types.get(cid))
+            if self.nk.get(cid) == NK_STR_LIT() || self.nk.get(cid) == NK_STR_INTERP() {
+                ct = "str"
+            } else if (ct == "" || ct == "i64") && self.nk.get(cid) == NK_IDENT() {
+                let id_nm = self.sa.get(cid)
+                let lt = self.find_local_type(id_nm)
+                if lt != "" { ct = lt }
+            }
+            let tmark = self.temp_str_slots.len()
             self.emit_expr(cid)
             self.emit_val_to_str_in_rax(ct)
-            a.mov_rr(REG_RDX(), REG_RAX())
+            let piece_tmp = self.alloc_slot("", "i64")
+            a.mov_mr64(REG_RBP(), -piece_tmp, REG_RAX())
             a.mov_rm64(REG_RCX(), REG_RBP(), -acc_tmp)
+            a.mov_rm64(REG_RDX(), REG_RBP(), -piece_tmp)
             a.call_rel32(self.rt.lbl("__rt_str_concat"))
+            let next_tmp = self.alloc_slot("", "i64")
+            a.mov_mr64(REG_RBP(), -next_tmp, REG_RAX())
+            a.mov_rm64(REG_RCX(), REG_RBP(), -acc_tmp)
+            a.call_rel32(self.rt.lbl("__rt_arc_release"))
+            self.emit_temp_drops(tmark)
+            a.mov_rm64(REG_RAX(), REG_RBP(), -next_tmp)
             a.mov_mr64(REG_RBP(), -acc_tmp, REG_RAX())
             i = i + 1
         }
@@ -2522,7 +2596,14 @@ pub class NativeCodegen {
                 margs.push(rslot)
                 mut k = 0
                 while k < arg_temps.len() { margs.push(arg_temps.get(k)); k = k + 1 }
-                if mname == "push" { self.emit_call_with_temps(self.rt.lbl("__rt_list_push"), false, margs); return }
+                if mname == "push" {
+                    if ncg_is_str(et) {
+                        self.emit_call_with_temps(self.rt.lbl("__rt_list_push_str"), false, margs)
+                    } else {
+                        self.emit_call_with_temps(self.rt.lbl("__rt_list_push"), false, margs)
+                    }
+                    return
+                }
                 if mname == "pop" { self.emit_call_with_temps(self.rt.lbl("__rt_list_pop"), false, margs); return }
                 if mname == "get" { self.emit_call_with_temps(self.rt.lbl("__rt_list_get"), false, margs); return }
                 if mname == "set" {
@@ -2535,7 +2616,14 @@ pub class NativeCodegen {
                 }
                 if mname == "len" || mname == "length" { self.emit_call_with_temps(self.rt.lbl("__rt_list_len"), false, margs); return }
                 if mname == "is_empty" { self.emit_call_with_temps(self.rt.lbl("__rt_list_is_empty"), false, margs); return }
-                if mname == "clear" { self.emit_call_with_temps(self.rt.lbl("__rt_list_clear"), false, margs); return }
+                if mname == "clear" {
+                    if ncg_is_str(et) {
+                        self.emit_call_with_temps(self.rt.lbl("__rt_list_clear_str"), false, margs)
+                    } else {
+                        self.emit_call_with_temps(self.rt.lbl("__rt_list_clear"), false, margs)
+                    }
+                    return
+                }
                 if mname == "free" {
                     if ncg_is_str(et) {
                         self.emit_call_with_temps(self.rt.lbl("__rt_list_free_str"), false, margs)
