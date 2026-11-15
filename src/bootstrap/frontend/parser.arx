@@ -600,8 +600,8 @@ pub class Parser {
         }
         let mod_dir = find_module_dir(mod_name, self.entry_dir)
         if mod_dir == "" {
-            let msg = "built-in module '" + mod_name + "' not found"
-            let help_msg = "check module spelling (e.g. 'Math', 'Random', 'Json') or use a relative file path like import \"./mod.arx\""
+            let msg = "module '" + mod_name + "' not found"
+            let help_msg = "check module spelling, install via 'arx pkg install " + mod_name + "', or use a relative file path like import \"./mod.arx\""
             if self.recover_mode {
                 mut err_ln = self.cur_line()
                 mut err_cl = self.cur_col()

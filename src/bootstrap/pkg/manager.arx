@@ -21,6 +21,37 @@ fn get_pkg_temp_dir() -> str {
     return "/tmp"
 }
 
+fn get_aerix_global_modules_dir() -> str {
+    let env_home = Env.get("AERIX_HOME")
+    if env_home != "" {
+        let h_mod = bpath_join(env_home, "modules")
+        if Directory.exists(h_mod) { return h_mod }
+    }
+    let a0 = bpath_normalize(Env.arg(0))
+    if a0 != "" {
+        let exe_dir = bpath_dirname(a0)
+        let parent = bpath_dirname(exe_dir)
+        let cand1 = bpath_join(parent, "modules")
+        if Directory.exists(cand1) { return cand1 }
+        let cand2 = bpath_join(exe_dir, "modules")
+        if Directory.exists(cand2) { return cand2 }
+        if Directory.exists(parent) {
+            let m = bpath_join(parent, "modules")
+            Directory.create(m)
+            return m
+        }
+    }
+    if Directory.exists("C:/Aerix/modules") {
+        return "C:/Aerix/modules"
+    }
+    let local_app = Env.get("LOCALAPPDATA")
+    if local_app != "" {
+        let cand_la = bpath_join(local_app, "Programs/Aerix/modules")
+        if Directory.exists(cand_la) { return cand_la }
+    }
+    return "C:/Aerix/modules"
+}
+
 fn quote_pkg_arg(s: str) -> str {
     let q = "\""
     return q + s + q
@@ -90,23 +121,27 @@ pub fn print_pkg_usage() {
     println("Commands:")
     println("  available | avail         List all packages available in the official community registry")
     println("  search [query]            Search verified packages in the official community registry")
-    println("  install <name|url>        Audit, cryptographically verify, and install a package")
+    println("  install <name|url>        Audit, verify, and install a package globally (or locally)")
     println("  add <name|url>            Alias for 'install'")
-    println("  list | ls                 List packages installed in ./modules/")
-    println("  remove | rm <name>        Remove an installed package and update manifest")
+    println("  list | ls                 List installed packages (both global and local)")
+    println("  remove | rm <name>        Remove an installed package")
     println("  audit [path|name]         Run security capability & extern analysis on modules")
     println("  init                      Initialize an aerix.json package manifest in current directory")
     println("")
     println("Options:")
+    println("  --local                   Target local project ./modules/ instead of global Aerix modules folder")
+    println("  -g, --global              Target global Aerix modules directory (default)")
     println("  -f, --force               Force reinstall or overwrite existing module directory")
     println("  --allow-insecure          Bypass security blocks for packages with high-risk native APIs")
     println("  -h, --help                Show this help message")
     println("")
     println("Examples:")
     println("  " + bin + " pkg search json")
-    println("  " + bin + " pkg install AerixJson")
-    println("  " + bin + " pkg audit")
+    println("  " + bin + " pkg install ColorTerm")
+    println("  " + bin + " pkg install VecMath")
+    println("  " + bin + " pkg install AerixJson --local")
     println("  " + bin + " pkg list")
+    println("  " + bin + " pkg audit ColorTerm")
 }
 
 fn extract_registry_json_val(line: str) -> str {
@@ -397,35 +432,61 @@ fn cmd_pkg_available() -> i64 {
 }
 
 fn cmd_pkg_list() -> i64 {
+    let global_dir = get_aerix_global_modules_dir()
     let cwd = bpath_normalize(Env.cwd())
-    let mod_dir = bpath_join(cwd, "modules")
-    if !Directory.exists(mod_dir) {
-        println("No local packages installed in " + mod_dir)
-        println("Run 'arx pkg search' to discover verified community packages.")
-        return 0
+    let local_dir = bpath_join(cwd, "modules")
+
+    println("Aerix Installed Packages:")
+    println("==================================================================")
+    println("Global Modules Directory: " + global_dir)
+    if Directory.exists(global_dir) {
+        let g_subdirs = Directory.list_dirs(global_dir)
+        if g_subdirs.len() == 0 {
+            println("  (no packages installed)")
+        } else {
+            println("")
+            println("PACKAGE NAME     FILES     SECURITY AUDIT STATUS")
+            println("------------     -----     ---------------------")
+            mut i = 0
+            while i < g_subdirs.len() {
+                let pkg_name = g_subdirs.get(i)
+                let pkg_path = bpath_join(global_dir, pkg_name)
+                let audit_res = PkgAuditResult()
+                pkg_audit_directory_recursive(pkg_path, audit_res)
+                let name_p = pkg_name.pad_right(16, " ")
+                let files_p = (audit_get(audit_res, 0) as str).pad_right(9, " ")
+                println(name_p + " " + files_p + " " + audit_get_risk(audit_res))
+                i = i + 1
+            }
+        }
+    } else {
+        println("  (directory does not exist)")
     }
-    let subdirs = Directory.list_dirs(mod_dir)
-    if subdirs.len() == 0 {
-        println("No local packages found in " + mod_dir)
-        return 0
+
+    if Directory.exists(local_dir) {
+        println("")
+        println("Local Project Modules Directory: " + local_dir)
+        let l_subdirs = Directory.list_dirs(local_dir)
+        if l_subdirs.len() == 0 {
+            println("  (no local packages installed)")
+        } else {
+            println("")
+            println("PACKAGE NAME     FILES     SECURITY AUDIT STATUS")
+            println("------------     -----     ---------------------")
+            mut i = 0
+            while i < l_subdirs.len() {
+                let pkg_name = l_subdirs.get(i)
+                let pkg_path = bpath_join(local_dir, pkg_name)
+                let audit_res = PkgAuditResult()
+                pkg_audit_directory_recursive(pkg_path, audit_res)
+                let name_p = pkg_name.pad_right(16, " ")
+                let files_p = (audit_get(audit_res, 0) as str).pad_right(9, " ")
+                println(name_p + " " + files_p + " " + audit_get_risk(audit_res))
+                i = i + 1
+            }
+        }
     }
-    println("Installed Packages in " + mod_dir + ":")
-    println("")
-    println("PACKAGE NAME     FILES     SECURITY AUDIT STATUS")
-    println("------------     -----     ---------------------")
-    mut i = 0
-    let n = subdirs.len()
-    while i < n {
-        let pkg_name = subdirs.get(i)
-        let pkg_path = bpath_join(mod_dir, pkg_name)
-        let audit_res = PkgAuditResult()
-        pkg_audit_directory_recursive(pkg_path, audit_res)
-        let name_p = pkg_name.pad_right(16, " ")
-        let files_p = (audit_get(audit_res, 0) as str).pad_right(9, " ")
-        println(name_p + " " + files_p + " " + audit_get_risk(audit_res))
-        i = i + 1
-    }
-    println("")
+    println("==================================================================")
     return 0
 }
 
@@ -435,9 +496,13 @@ fn cmd_pkg_audit(target: str) -> i64 {
     mut title: str = "Current Workspace"
     if target != "" {
         let local_mod = bpath_join(bpath_join(cwd, "modules"), target)
-        if Directory.exists(local_mod) {
+        let global_mod = bpath_join(get_aerix_global_modules_dir(), target)
+        if Directory.exists(global_mod) {
+            scan_path = global_mod
+            title = "Global Package: " + target
+        } else if Directory.exists(local_mod) {
             scan_path = local_mod
-            title = "Package: " + target
+            title = "Local Package: " + target
         } else if Directory.exists(target) {
             scan_path = target
             title = "Path: " + target
@@ -451,10 +516,16 @@ fn cmd_pkg_audit(target: str) -> i64 {
             return 1
         }
     } else {
-        let mod_dir = bpath_join(cwd, "modules")
-        if Directory.exists(mod_dir) {
-            scan_path = mod_dir
-            title = "All Installed Modules"
+        let g_mod = get_aerix_global_modules_dir()
+        if Directory.exists(g_mod) {
+            scan_path = g_mod
+            title = "All Installed Global Modules"
+        } else {
+            let mod_dir = bpath_join(cwd, "modules")
+            if Directory.exists(mod_dir) {
+                scan_path = mod_dir
+                title = "All Installed Local Modules"
+            }
         }
     }
 
@@ -511,19 +582,30 @@ fn cmd_pkg_init() -> i64 {
     return 0
 }
 
-fn cmd_pkg_remove(pkg_name: str) -> i64 {
+fn cmd_pkg_remove(pkg_name: str, local_only: bool) -> i64 {
     if pkg_name == "" {
         eprintln("error: missing package name for 'arx pkg remove'")
         eprintln("  = help: run 'arx pkg remove <package_name>'")
         return 1
     }
-    let cwd = bpath_normalize(Env.cwd())
-    let target_dir = bpath_join(bpath_join(cwd, "modules"), pkg_name)
-    if !Directory.exists(target_dir) {
-        eprintln("error: package '" + pkg_name + "' is not installed in " + target_dir)
+    if pkg_name == "Math" || pkg_name == "Random" || pkg_name == "Socket" || pkg_name == "Time" || pkg_name == "Window" {
+        eprintln("error: cannot remove core standard module '" + pkg_name + "'")
         return 1
     }
-    println("Removing package '" + pkg_name + "' from ./modules/...")
+    let cwd = bpath_normalize(Env.cwd())
+    let local_target = bpath_join(bpath_join(cwd, "modules"), pkg_name)
+    let global_target = bpath_join(get_aerix_global_modules_dir(), pkg_name)
+
+    mut target_dir = global_target
+    if local_only || (Directory.exists(local_target) && !Directory.exists(global_target)) {
+        target_dir = local_target
+    }
+
+    if !Directory.exists(target_dir) {
+        eprintln("error: package '" + pkg_name + "' is not installed (checked " + target_dir + ")")
+        return 1
+    }
+    println("Removing package '" + pkg_name + "' from " + target_dir + "...")
     let clean_cmd = "powershell -Command \"Remove-Item -Path '" + target_dir.replace("/", "\\") + "' -Recurse -Force\""
     let code = Process.execute(clean_cmd)
     if code == 0 {
@@ -534,7 +616,7 @@ fn cmd_pkg_remove(pkg_name: str) -> i64 {
     return code
 }
 
-fn cmd_pkg_install(target: str, force: bool, allow_insecure: bool) -> i64 {
+fn cmd_pkg_install(target: str, force: bool, allow_insecure: bool, local_install: bool) -> i64 {
     if target == "" {
         eprintln("error: missing package name or Git URL for 'arx pkg install'")
         eprintln("  = help: run 'arx pkg install <name|git_url>' (e.g. 'arx pkg install AerixJson')")
@@ -542,7 +624,10 @@ fn cmd_pkg_install(target: str, force: bool, allow_insecure: bool) -> i64 {
     }
 
     let cwd = bpath_normalize(Env.cwd())
-    let mod_root = bpath_join(cwd, "modules")
+    mut mod_root = get_aerix_global_modules_dir()
+    if local_install {
+        mod_root = bpath_join(cwd, "modules")
+    }
     if !Directory.exists(mod_root) {
         Directory.create(mod_root)
     }
@@ -581,7 +666,7 @@ fn cmd_pkg_install(target: str, force: bool, allow_insecure: bool) -> i64 {
             pkg_name = target.slice(slash_idx + 1, target.len())
         } else {
             eprintln("error: package '" + target + "' was not found in the official registry.")
-            eprintln("  = hint: run 'arx pkg search' to see available packages")
+            eprintln("  = hint: run 'arx pkg available' to see verified packages")
             eprintln("  = hint: you can also install directly via git: 'arx pkg install https://github.com/user/repo.git'")
             return 1
         }
@@ -598,6 +683,11 @@ fn cmd_pkg_install(target: str, force: bool, allow_insecure: bool) -> i64 {
     println("  AERIX PACKAGE INSTALLER: " + pkg_name + " v" + pkg_ver)
     println("==================================================================")
     println("  Source Repository:  " + repo_url)
+    if local_install {
+        println("  Install Scope:      Local Project (./modules)")
+    } else {
+        println("  Install Scope:      Global System (" + mod_root + ")")
+    }
     println("  Destination:        " + dest_dir)
     println("------------------------------------------------------------------")
 
@@ -641,7 +731,7 @@ fn cmd_pkg_install(target: str, force: bool, allow_insecure: bool) -> i64 {
         return 1
     }
 
-    println("[3/4] Copying verified module files to ./modules/" + pkg_name + "...")
+    println("[3/4] Copying verified module files to " + dest_dir + "...")
     if Directory.exists(dest_dir) {
         let clean_cmd = "powershell -Command \"Remove-Item -Path '" + dest_dir.replace("/", "\\") + "' -Recurse -Force\""
         Process.execute(clean_cmd)
@@ -656,14 +746,19 @@ fn cmd_pkg_install(target: str, force: bool, allow_insecure: bool) -> i64 {
     let clean_stage = "powershell -Command \"Remove-Item -Path '" + stage_dir.replace("/", "\\") + "' -Recurse -Force -ErrorAction SilentlyContinue\""
     Process.execute(clean_stage)
 
-    println("[4/4] Updating package manifest...")
-    let manifest_p = bpath_join(cwd, "aerix.json")
-    if !File.exists(manifest_p) {
-        cmd_pkg_init()
+    if local_install {
+        println("[4/4] Updating package manifest...")
+        let manifest_p = bpath_join(cwd, "aerix.json")
+        if !File.exists(manifest_p) {
+            cmd_pkg_init()
+        }
+    } else {
+        println("[4/4] Package registered globally in " + mod_root)
     }
 
     println("==================================================================")
     println("  [SUCCESS] Package '" + pkg_name + "' (v" + pkg_ver + ") successfully installed!")
+    println("  Location: " + dest_dir)
     println("  Security Status: " + audit_get_risk(audit_res))
     println("  Import in your code with:")
     println("      import " + pkg_name)
@@ -713,16 +808,31 @@ pub fn cmd_pkg(cli_args: List<str>, cli_argc: i64) -> i64 {
 
     if sub == "remove" || sub == "rm" || sub == "uninstall" || sub == "delete" {
         mut target = ""
-        if cli_argc >= 4 {
-            target = cli_args.get(3)
+        mut local_remove = false
+        mut i = 3
+        while i < cli_argc {
+            let arg = cli_args.get(i)
+            if arg == "--local" {
+                local_remove = true
+            } else if arg == "-g" || arg == "--global" {
+                local_remove = false
+            } else if !arg.starts_with("-") && target == "" {
+                target = arg
+            } else {
+                eprintln("error: unknown option '" + arg + "' for 'arx pkg remove'")
+                eprintln("  = help: run 'arx pkg --help' for supported options")
+                return 1
+            }
+            i = i + 1
         }
-        return cmd_pkg_remove(target)
+        return cmd_pkg_remove(target, local_remove)
     }
 
     if sub == "install" || sub == "add" || sub == "get" {
         mut target = ""
         mut force = false
         mut allow_insecure = false
+        mut local_install = false
         mut i = 3
         while i < cli_argc {
             let arg = cli_args.get(i)
@@ -730,6 +840,10 @@ pub fn cmd_pkg(cli_args: List<str>, cli_argc: i64) -> i64 {
                 force = true
             } else if arg == "--allow-insecure" || arg == "--insecure" {
                 allow_insecure = true
+            } else if arg == "--local" {
+                local_install = true
+            } else if arg == "-g" || arg == "--global" {
+                local_install = false
             } else if !arg.starts_with("-") && target == "" {
                 target = arg
             } else {
@@ -739,7 +853,7 @@ pub fn cmd_pkg(cli_args: List<str>, cli_argc: i64) -> i64 {
             }
             i = i + 1
         }
-        return cmd_pkg_install(target, force, allow_insecure)
+        return cmd_pkg_install(target, force, allow_insecure, local_install)
     }
 
     eprintln("error: unknown package command '" + sub + "'")
