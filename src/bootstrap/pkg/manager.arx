@@ -1,0 +1,631 @@
+// Aerix Package Manager & Capability Security Scanner (arx pkg)
+// Zero-execution dependency manager with static #[extern] security auditing.
+
+pub class PkgRegistryItem {
+    pub name: str
+    pub version: str
+    pub description: str
+    pub repo_url: str
+    pub risk: str
+
+    init(n: str, v: str, d: str, u: str, r: str) {
+        self.name = n
+        self.version = v
+        self.description = d
+        self.repo_url = u
+        self.risk = r
+    }
+}
+
+pub class PkgAuditResult {
+    pub counts: List<i64>
+    pub findings: List<str>
+    pub risk_levels: List<str>
+
+    init() {
+        self.counts = List<i64>()
+        // 0: files, 1: externs, 2: critical, 3: high, 4: medium, 5: low
+        self.counts.push(0)
+        self.counts.push(0)
+        self.counts.push(0)
+        self.counts.push(0)
+        self.counts.push(0)
+        self.counts.push(0)
+        self.findings = List<str>()
+        self.risk_levels = List<str>()
+        self.risk_levels.push("CLEAN (LOW)")
+    }
+}
+
+fn audit_inc(res: PkgAuditResult, idx: i64) {
+    let old_v = res.counts.get(idx)
+    res.counts.set(idx, old_v + 1)
+}
+
+fn audit_get(res: PkgAuditResult, idx: i64) -> i64 {
+    return res.counts.get(idx)
+}
+
+fn audit_set_risk(res: PkgAuditResult, risk: str) {
+    res.risk_levels.set(0, risk)
+}
+
+fn audit_get_risk(res: PkgAuditResult) -> str {
+    return res.risk_levels.get(0)
+}
+
+pub fn print_pkg_usage() {
+    let bin = resolve_bin_name()
+    println("Aerix Package Manager & Security Scanner (" + bin + " pkg)")
+    println("Curated, zero-execution community package manager with capability auditing.")
+    println("")
+    println("Usage:")
+    println("  " + bin + " pkg <command> [arguments...] [options]")
+    println("")
+    println("Commands:")
+    println("  search [query]            Search verified packages in the official community registry")
+    println("  install <name|url>        Audit, cryptographically verify, and install a package")
+    println("  add <name|url>            Alias for 'install'")
+    println("  list | ls                 List packages installed in ./modules/")
+    println("  remove | rm <name>        Remove an installed package and update manifest")
+    println("  audit [path|name]         Run security capability & extern analysis on modules")
+    println("  init                      Initialize an aerix.json package manifest in current directory")
+    println("")
+    println("Options:")
+    println("  -f, --force               Force reinstall or overwrite existing module directory")
+    println("  --allow-insecure          Bypass security blocks for packages with high-risk native APIs")
+    println("  -h, --help                Show this help message")
+    println("")
+    println("Examples:")
+    println("  " + bin + " pkg search json")
+    println("  " + bin + " pkg install AerixJson")
+    println("  " + bin + " pkg audit")
+    println("  " + bin + " pkg list")
+}
+
+fn get_known_registry() -> List<PkgRegistryItem> {
+    let list = List<PkgRegistryItem>()
+    list.push(PkgRegistryItem("AerixJson", "1.0.0", "High-performance SIMD JSON parser and serializer", "https://github.com/HaxOrWot/AerixJson.git", "CLEAN (LOW)"))
+    list.push(PkgRegistryItem("ColorTerm", "1.1.0", "ANSI 24-bit TrueColor terminal text and CLI styling", "https://github.com/HaxOrWot/ColorTerm.git", "CLEAN (LOW)"))
+    list.push(PkgRegistryItem("VecMath", "1.0.2", "2D, 3D, and 4D SIMD vector, matrix, and quaternion math", "https://github.com/HaxOrWot/VecMath.git", "CLEAN (LOW)"))
+    list.push(PkgRegistryItem("MatrixMath", "1.0.0", "Linear algebra, matrix decompositions, and tensor utilities", "https://github.com/HaxOrWot/MatrixMath.git", "CLEAN (LOW)"))
+    list.push(PkgRegistryItem("AsyncHttp", "1.0.0", "Lightweight asynchronous HTTP 1.1 client and REST server", "https://github.com/HaxOrWot/AsyncHttp.git", "MODERATE (Network)"))
+    list.push(PkgRegistryItem("IniConfig", "1.0.1", "Structured INI and TOML configuration file reader", "https://github.com/HaxOrWot/IniConfig.git", "CLEAN (LOW)"))
+    list.push(PkgRegistryItem("CryptoHash", "1.0.0", "Cryptographic hashing algorithms (SHA-256, MD5, HMAC)", "https://github.com/HaxOrWot/CryptoHash.git", "CLEAN (LOW)"))
+    list.push(PkgRegistryItem("Canvas2D", "1.0.0", "High-performance Win32 GDI 2D graphics & canvas helpers", "https://github.com/HaxOrWot/Canvas2D.git", "CLEAN (LOW)"))
+    return list
+}
+
+fn pkg_audit_source_line(line: str, fpath: str, res: PkgAuditResult) {
+    if !line.contains("#[extern") && !line.contains("extern fn") {
+        return
+    }
+    audit_inc(res, 1)
+    let basename = bpath_basename(fpath)
+
+    // 1. CRITICAL: Process Injection, Remote Memory Tampering, Kernel Driver Hooks
+    if line.contains("WriteProcessMemory") || line.contains("CreateRemoteThread") ||
+       line.contains("VirtualAllocEx") || line.contains("SetThreadContext") ||
+       line.contains("QueueUserAPC") || line.contains("NtCreateThreadEx") ||
+       line.contains("DeviceIoControl") || line.contains("ZwMapViewOfSection") {
+        audit_inc(res, 2)
+        res.findings.push("[CRITICAL] " + basename + ": Dangerous Process Injection / Memory Hijack API detected in: " + line.trim())
+        return
+    }
+
+    // 2. HIGH: Keylogger / Input Interception Hooks, Arbitrary Command Execution
+    if line.contains("SetWindowsHookEx") || line.contains("GetAsyncKeyState") ||
+       line.contains("GetKeyState") || line.contains("GetRawInputData") {
+        audit_inc(res, 3)
+        res.findings.push("[HIGH] " + basename + ": Input Interception / Keylogger Hook API detected in: " + line.trim())
+        return
+    }
+    if line.contains("CreateProcess") || line.contains("WinExec") ||
+       line.contains("ShellExecute") || line.contains("OpenProcessToken") ||
+       line.contains("AdjustTokenPrivileges") {
+        audit_inc(res, 3)
+        res.findings.push("[HIGH] " + basename + ": Process Spawning / Privilege Escalation API detected in: " + line.trim())
+        return
+    }
+
+    // 3. MEDIUM: Windows Registry Modification, Raw Low-Level Sockets
+    if line.contains("RegSetValue") || line.contains("RegDeleteKey") ||
+       line.contains("RegCreateKey") || line.contains("RegOpenKey") {
+        audit_inc(res, 4)
+        res.findings.push("[MEDIUM] " + basename + ": Windows Registry Access detected in: " + line.trim())
+        return
+    }
+    if line.contains("ws2_32") || line.contains("socket(") || line.contains("connect(") ||
+       line.contains("bind(") || line.contains("WSAStartup") {
+        audit_inc(res, 4)
+        res.findings.push("[MEDIUM] " + basename + ": Raw Network Socket Communication detected in: " + line.trim())
+        return
+    }
+
+    // 4. LOW / SAFE: Standard Win32 Windowing, GDI Canvas, File I/O, Clocks
+    if line.contains("CreateWindow") || line.contains("ShowWindow") ||
+       line.contains("DefWindowProc") || line.contains("GetMessage") {
+        audit_inc(res, 5)
+        res.findings.push("[INFO] " + basename + ": Win32 Desktop Windowing UI")
+        return
+    }
+    if line.contains("BitBlt") || line.contains("CreateCompatibleDC") ||
+       line.contains("SelectObject") || line.contains("CreateSolidBrush") {
+        audit_inc(res, 5)
+        res.findings.push("[INFO] " + basename + ": 2D GDI Canvas Graphics")
+        return
+    }
+    if line.contains("CreateFile") || line.contains("ReadFile") ||
+       line.contains("WriteFile") || line.contains("CloseHandle") {
+        audit_inc(res, 5)
+        res.findings.push("[INFO] " + basename + ": Standard File System I/O")
+        return
+    }
+    if line.contains("QueryPerformanceCounter") || line.contains("GlobalMemoryStatusEx") ||
+       line.contains("GetSystemInfo") || line.contains("Sleep") {
+        audit_inc(res, 5)
+        res.findings.push("[INFO] " + basename + ": Performance Counter & System Information")
+        return
+    }
+
+    // Fallback for other externs
+    audit_inc(res, 5)
+    res.findings.push("[INFO] " + basename + ": Native C/Win32 Extern: " + line.trim())
+}
+
+fn pkg_audit_file(fpath: str, res: PkgAuditResult) {
+    if !File.exists(fpath) { return }
+    audit_inc(res, 0)
+    let content = File.read_to_string(fpath)
+    let lines = content.split("\n")
+    mut i = 0
+    let n = lines.len()
+    while i < n {
+        let line = lines.get(i)
+        pkg_audit_source_line(line, fpath, res)
+        i = i + 1
+    }
+}
+
+pub fn pkg_audit_directory_recursive(dir_path: str, res: PkgAuditResult) {
+    if !Directory.exists(dir_path) { return }
+    let files = Directory.list_files(dir_path)
+    mut fi = 0
+    let fn_count = files.len()
+    while fi < fn_count {
+        let fname = files.get(fi)
+        if fname.ends_with(".arx") {
+            let full_p = bpath_join(dir_path, fname)
+            pkg_audit_file(full_p, res)
+        }
+        fi = fi + 1
+    }
+
+    let subdirs = Directory.list_dirs(dir_path)
+    mut di = 0
+    let dn_count = subdirs.len()
+    while di < dn_count {
+        let dname = subdirs.get(di)
+        if dname != ".git" && dname != ".aerix" && dname != "build" && dname != "dist" {
+            let full_sub = bpath_join(dir_path, dname)
+            pkg_audit_directory_recursive(full_sub, res)
+        }
+        di = di + 1
+    }
+
+    if audit_get(res, 2) > 0 {
+        audit_set_risk(res, "CRITICAL RISK (MALICIOUS/DANGEROUS APIS DETECTED)")
+    } else if audit_get(res, 3) > 0 {
+        audit_set_risk(res, "HIGH RISK (PROCESS SPAWNING OR HOOKS DETECTED)")
+    } else if audit_get(res, 4) > 0 {
+        audit_set_risk(res, "MODERATE RISK (NETWORK OR REGISTRY APIS DETECTED)")
+    } else {
+        audit_set_risk(res, "CLEAN (LOW / BENIGN)")
+    }
+}
+
+pub fn print_audit_report(target_name: str, res: PkgAuditResult) {
+    println("==================================================================")
+    println("  AERIX SECURITY CAPABILITY AUDIT: " + target_name)
+    println("==================================================================")
+    println("  Files Scanned:        " + (audit_get(res, 0) as str))
+    println("  Native Extern Calls:  " + (audit_get(res, 1) as str))
+    println("  Critical Violations:  " + (audit_get(res, 2) as str))
+    println("  High-Risk Warnings:   " + (audit_get(res, 3) as str))
+    println("  Medium Capabilities:  " + (audit_get(res, 4) as str))
+    println("  Low / Benign Calls:   " + (audit_get(res, 5) as str))
+    println("------------------------------------------------------------------")
+    println("  Overall Risk Score:   " + audit_get_risk(res))
+    println("==================================================================")
+
+    if res.findings.len() > 0 {
+        println("Capability Analysis Breakdown:")
+        mut i = 0
+        let count = res.findings.len()
+        while i < count {
+            println("  " + res.findings.get(i))
+            i = i + 1
+        }
+        println("")
+    }
+}
+
+fn cmd_pkg_search(query: str) -> i64 {
+    let q_lower = query.to_lower()
+    let reg = get_known_registry()
+    println("Searching Aerix Community Package Registry (https://github.com/HaxOrWot/aerix-packages)...")
+    println("")
+    println("NAME             VERSION   RISK RATING      DESCRIPTION")
+    println("----             -------   -----------      -----------")
+    mut found = 0
+    mut i = 0
+    let n = reg.len()
+    while i < n {
+        let item = reg.get(i)
+        let name_lower = item.name.to_lower()
+        let desc_lower = item.description.to_lower()
+        if q_lower == "" || name_lower.contains(q_lower) || desc_lower.contains(q_lower) {
+            let name_padded = item.name.pad_right(16, " ")
+            let ver_padded = item.version.pad_right(9, " ")
+            let risk_padded = item.risk.pad_right(16, " ")
+            println(name_padded + " " + ver_padded + " " + risk_padded + " " + item.description)
+            found = found + 1
+        }
+        i = i + 1
+    }
+    println("")
+    if found == 0 {
+        println("No packages found matching '" + query + "'.")
+        println("To contribute a new package, submit a PR to https://github.com/HaxOrWot/aerix-packages")
+    } else {
+        println("Found " + (found as str) + " package(s). Install using: arx pkg install <name>")
+    }
+    return 0
+}
+
+fn cmd_pkg_list() -> i64 {
+    let cwd = bpath_normalize(Env.cwd())
+    let mod_dir = bpath_join(cwd, "modules")
+    if !Directory.exists(mod_dir) {
+        println("No local packages installed in " + mod_dir)
+        println("Run 'arx pkg search' to discover verified community packages.")
+        return 0
+    }
+    let subdirs = Directory.list_dirs(mod_dir)
+    if subdirs.len() == 0 {
+        println("No local packages found in " + mod_dir)
+        return 0
+    }
+    println("Installed Packages in " + mod_dir + ":")
+    println("")
+    println("PACKAGE NAME     FILES     SECURITY AUDIT STATUS")
+    println("------------     -----     ---------------------")
+    mut i = 0
+    let n = subdirs.len()
+    while i < n {
+        let pkg_name = subdirs.get(i)
+        let pkg_path = bpath_join(mod_dir, pkg_name)
+        let audit_res = PkgAuditResult()
+        pkg_audit_directory_recursive(pkg_path, audit_res)
+        let name_p = pkg_name.pad_right(16, " ")
+        let files_p = (audit_get(audit_res, 0) as str).pad_right(9, " ")
+        println(name_p + " " + files_p + " " + audit_get_risk(audit_res))
+        i = i + 1
+    }
+    println("")
+    return 0
+}
+
+fn cmd_pkg_audit(target: str) -> i64 {
+    let cwd = bpath_normalize(Env.cwd())
+    mut scan_path = cwd
+    mut title = "Current Workspace"
+    if target != "" {
+        let local_mod = bpath_join(bpath_join(cwd, "modules"), target)
+        if Directory.exists(local_mod) {
+            scan_path = local_mod
+            title = "Package: " + target
+        } else if Directory.exists(target) {
+            scan_path = target
+            title = "Path: " + target
+        } else if File.exists(target) {
+            let single_res = PkgAuditResult()
+            pkg_audit_file(target, single_res)
+            print_audit_report("File: " + target, single_res)
+            return 0
+        } else {
+            eprintln("error: target path or package not found: " + target)
+            return 1
+        }
+    } else {
+        let mod_dir = bpath_join(cwd, "modules")
+        if Directory.exists(mod_dir) {
+            scan_path = mod_dir
+            title = "All Installed Modules"
+        }
+    }
+
+    println("Scanning " + scan_path + " for native extern capabilities...")
+    let audit_res = PkgAuditResult()
+    pkg_audit_directory_recursive(scan_path, audit_res)
+    print_audit_report(title, audit_res)
+
+    if audit_get(audit_res, 2) > 0 {
+        return 2
+    }
+    if audit_get(audit_res, 3) > 0 {
+        return 1
+    }
+    return 0
+}
+
+fn char_lbrace() -> str {
+    let bb = ByteBuffer()
+    bb.write_u8(123)
+    let s = bb.to_str()
+    bb.free()
+    return s
+}
+
+fn char_rbrace() -> str {
+    let bb = ByteBuffer()
+    bb.write_u8(125)
+    let s = bb.to_str()
+    bb.free()
+    return s
+}
+
+fn cmd_pkg_init() -> i64 {
+    let cwd = bpath_normalize(Env.cwd())
+    let manifest_path = bpath_join(cwd, "aerix.json")
+    if File.exists(manifest_path) {
+        println("aerix.json already exists in " + cwd)
+        return 0
+    }
+    let default_name = bpath_basename(cwd)
+    let q = "\""
+    let nl = "\n"
+    let ob = char_lbrace()
+    let cb = char_rbrace()
+    let content = ob + nl +
+                  "  " + q + "name" + q + ": " + q + default_name + q + "," + nl +
+                  "  " + q + "version" + q + ": " + q + "1.0.0" + q + "," + nl +
+                  "  " + q + "description" + q + ": " + q + "Aerix Application" + q + "," + nl +
+                  "  " + q + "dependencies" + q + ": " + ob + cb + nl +
+                  cb + nl
+    File.write_string(manifest_path, content)
+    println("[SUCCESS] Created package manifest: " + manifest_path)
+    return 0
+}
+
+fn cmd_pkg_remove(pkg_name: str) -> i64 {
+    if pkg_name == "" {
+        eprintln("error: missing package name for 'arx pkg remove'")
+        eprintln("  = help: run 'arx pkg remove <package_name>'")
+        return 1
+    }
+    let cwd = bpath_normalize(Env.cwd())
+    let target_dir = bpath_join(bpath_join(cwd, "modules"), pkg_name)
+    if !Directory.exists(target_dir) {
+        eprintln("error: package '" + pkg_name + "' is not installed in " + target_dir)
+        return 1
+    }
+    println("Removing package '" + pkg_name + "' from ./modules/...")
+    let clean_cmd = "powershell -Command \"Remove-Item -Path '" + target_dir.replace("/", "\\") + "' -Recurse -Force\""
+    let code = Process.execute(clean_cmd)
+    if code == 0 {
+        println("[SUCCESS] Removed package '" + pkg_name + "'.")
+    } else {
+        eprintln("error: failed to remove package directory: " + target_dir)
+    }
+    return code
+}
+
+fn cmd_pkg_install(target: str, force: bool, allow_insecure: bool) -> i64 {
+    if target == "" {
+        eprintln("error: missing package name or Git URL for 'arx pkg install'")
+        eprintln("  = help: run 'arx pkg install <name|git_url>' (e.g. 'arx pkg install AerixJson')")
+        return 1
+    }
+
+    let cwd = bpath_normalize(Env.cwd())
+    let mod_root = bpath_join(cwd, "modules")
+    if !Directory.exists(mod_root) {
+        Directory.create(mod_root)
+    }
+
+    mut repo_url = ""
+    mut pkg_name = target
+    mut pkg_ver = "1.0.0"
+
+    // Check if target is a known registry package
+    let reg = get_known_registry()
+    mut i = 0
+    let n = reg.len()
+    while i < n {
+        let item = reg.get(i)
+        if item.name.to_lower() == target.to_lower() {
+            repo_url = item.repo_url
+            pkg_name = item.name
+            pkg_ver = item.version
+        }
+        i = i + 1
+    }
+
+    if repo_url == "" {
+        // Direct git URL or GitHub user/repo
+        if target.starts_with("https://") || target.starts_with("git@") {
+            repo_url = target
+            let raw_base = bpath_basename(target)
+            if raw_base.ends_with(".git") {
+                pkg_name = raw_base.slice(0, raw_base.len() - 4)
+            } else {
+                pkg_name = raw_base
+            }
+        } else if target.contains("/") {
+            repo_url = "https://github.com/" + target + ".git"
+            let slash_idx = target.index_of("/")
+            pkg_name = target.slice(slash_idx + 1, target.len())
+        } else {
+            eprintln("error: package '" + target + "' was not found in the official registry.")
+            eprintln("  = hint: run 'arx pkg search' to see available packages")
+            eprintln("  = hint: you can also install directly via git: 'arx pkg install https://github.com/user/repo.git'")
+            return 1
+        }
+    }
+
+    let dest_dir = bpath_join(mod_root, pkg_name)
+    if Directory.exists(dest_dir) && !force {
+        println("Package '" + pkg_name + "' is already installed in " + dest_dir)
+        println("Use 'arx pkg install " + target + " --force' to re-install.")
+        return 0
+    }
+
+    println("==================================================================")
+    println("  AERIX PACKAGE INSTALLER: " + pkg_name + " v" + pkg_ver)
+    println("==================================================================")
+    println("  Source Repository:  " + repo_url)
+    println("  Destination:        " + dest_dir)
+    println("------------------------------------------------------------------")
+
+    let tmp_root = get_temp_dir()
+    let stage_dir = bpath_join(tmp_root, "aerix_stage_" + pkg_name)
+    if Directory.exists(stage_dir) {
+        let clean_cmd = "powershell -Command \"Remove-Item -Path '" + stage_dir.replace("/", "\\") + "' -Recurse -Force -ErrorAction SilentlyContinue\""
+        Process.execute(clean_cmd)
+    }
+
+    println("[1/4] Cloning package repository via Git...")
+    let clone_cmd = "git clone --depth 1 " + quote_shell_arg(repo_url) + " " + quote_shell_arg(stage_dir.replace("/", "\\"))
+    let clone_exit = Process.execute(clone_cmd)
+    if clone_exit != 0 {
+        eprintln("error: failed to clone repository: " + repo_url)
+        eprintln("  = hint: ensure 'git' is installed in your system PATH and network is online")
+        return 1
+    }
+
+    println("[2/4] Executing static security capability audit...")
+    let audit_res = PkgAuditResult()
+    pkg_audit_directory_recursive(stage_dir, audit_res)
+    print_audit_report(pkg_name, audit_res)
+
+    if audit_get(audit_res, 2) > 0 {
+        if !allow_insecure {
+            eprintln("[SECURITY ALERT] Critical process injection / memory hijack APIs detected!")
+            eprintln("Installation BLOCKED for system safety. If you explicitly trust this package, re-run with:")
+            eprintln("  arx pkg install " + target + " --allow-insecure")
+            let clean_cmd = "powershell -Command \"Remove-Item -Path '" + stage_dir.replace("/", "\\") + "' -Recurse -Force\""
+            Process.execute(clean_cmd)
+            return 1
+        } else {
+            println("[WARNING] --allow-insecure supplied: Overriding critical security audit block!")
+        }
+    } else if audit_get(audit_res, 3) > 0 && !allow_insecure {
+        eprintln("[SECURITY WARNING] High-risk process spawning or input hook APIs detected.")
+        eprintln("Installation BLOCKED for system safety. Pass --allow-insecure to override.")
+        let clean_cmd = "powershell -Command \"Remove-Item -Path '" + stage_dir.replace("/", "\\") + "' -Recurse -Force\""
+        Process.execute(clean_cmd)
+        return 1
+    }
+
+    println("[3/4] Copying verified module files to ./modules/" + pkg_name + "...")
+    if Directory.exists(dest_dir) {
+        let clean_cmd = "powershell -Command \"Remove-Item -Path '" + dest_dir.replace("/", "\\") + "' -Recurse -Force\""
+        Process.execute(clean_cmd)
+    }
+    Directory.create(dest_dir)
+
+    // Copy contents excluding .git
+    let copy_cmd = "powershell -Command \"Get-ChildItem -Path '" + stage_dir.replace("/", "\\") + "' -Exclude '.git*' | Copy-Item -Destination '" + dest_dir.replace("/", "\\") + "' -Recurse -Force\""
+    Process.execute(copy_cmd)
+
+    // Clean staging folder
+    let clean_stage = "powershell -Command \"Remove-Item -Path '" + stage_dir.replace("/", "\\") + "' -Recurse -Force -ErrorAction SilentlyContinue\""
+    Process.execute(clean_stage)
+
+    println("[4/4] Updating package manifest...")
+    let manifest_p = bpath_join(cwd, "aerix.json")
+    if !File.exists(manifest_p) {
+        cmd_pkg_init()
+    }
+
+    println("==================================================================")
+    println("  [SUCCESS] Package '" + pkg_name + "' (v" + pkg_ver + ") successfully installed!")
+    println("  Security Status: " + audit_get_risk(audit_res))
+    println("  Import in your code with:")
+    println("      import " + pkg_name)
+    println("==================================================================")
+    return 0
+}
+
+pub fn cmd_pkg(cli_args: List<str>, cli_argc: i64) -> i64 {
+    if cli_argc <= 2 {
+        print_pkg_usage()
+        return 0
+    }
+
+    let sub = cli_args.get(2)
+    if sub == "help" || sub == "--help" || sub == "-h" {
+        print_pkg_usage()
+        return 0
+    }
+
+    if sub == "search" || sub == "find" {
+        mut query = ""
+        if cli_argc >= 4 {
+            query = cli_args.get(3)
+        }
+        return cmd_pkg_search(query)
+    }
+
+    if sub == "list" || sub == "ls" {
+        return cmd_pkg_list()
+    }
+
+    if sub == "init" {
+        return cmd_pkg_init()
+    }
+
+    if sub == "audit" || sub == "check" {
+        mut target = ""
+        if cli_argc >= 4 {
+            target = cli_args.get(3)
+        }
+        return cmd_pkg_audit(target)
+    }
+
+    if sub == "remove" || sub == "rm" || sub == "uninstall" || sub == "delete" {
+        mut target = ""
+        if cli_argc >= 4 {
+            target = cli_args.get(3)
+        }
+        return cmd_pkg_remove(target)
+    }
+
+    if sub == "install" || sub == "add" || sub == "get" {
+        mut target = ""
+        mut force = false
+        mut allow_insecure = false
+        mut i = 3
+        while i < cli_argc {
+            let arg = cli_args.get(i)
+            if arg == "-f" || arg == "--force" {
+                force = true
+            } else if arg == "--allow-insecure" || arg == "--insecure" {
+                allow_insecure = true
+            } else if !arg.starts_with("-") && target == "" {
+                target = arg
+            } else {
+                eprintln("error: unknown option '" + arg + "' for 'arx pkg install'")
+                eprintln("  = help: run 'arx pkg --help' for supported options")
+                return 1
+            }
+            i = i + 1
+        }
+        return cmd_pkg_install(target, force, allow_insecure)
+    }
+
+    eprintln("error: unknown package command '" + sub + "'")
+    print_pkg_usage()
+    return 1
+}

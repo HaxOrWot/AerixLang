@@ -178,6 +178,7 @@ gcc -O2 -mconsole -Istdlib src/bootstrap/seed/arxc.c -o arx.exe
   arx lsp                            Launch the Language Server Protocol (LSP) daemon
   arx repl                           Start the interactive Aerix REPL shell
   arx doc [module]                   Generate static HTML API documentation from doc-comments
+  arx pkg search|install|audit|list  Community package manager & capability security scanner
   arx vm <list|use|install>          Manage multiple installed compiler versions
   arx update                         Check for and install updates from GitHub
 ```
@@ -190,6 +191,7 @@ gcc -O2 -mconsole -Istdlib src/bootstrap/seed/arxc.c -o arx.exe
 
 | Resource | Scope | Description |
 | :--- | :---: | :--- |
+| 📦 **[aerix-packages](https://github.com/HaxOrWot/aerix-packages)** | **Registry** | Official community package registry & security-verified module index. |
 | 📖 **[GUIDE.md](GUIDE.md)** | **Handbook** | Comprehensive 42-chapter developer guide with code snippets, tutorials, and real-world architectures. |
 | ⚙️ **[USER.md](USER.md)** | **Internals** | Deep technical architecture of the AST arena, native AMD64 code generator, PE32+ emission, and Win64 ABI. |
 | 🤝 **[CONTRIBUTING.md](CONTRIBUTING.md)** | **Governance** | Contributing guidelines, compiler bootstrap workflow, coding standards, and branch policies. |
