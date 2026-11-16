@@ -1,0 +1,147 @@
+import "./mod.arx"
+
+// Aerix Package Manager & Capability Security Scanner (arx pkg)
+// Zero-execution dependency manager with static #[extern] security auditing.
+
+fn resolve_pkg_bin_name() -> str {
+    let a0 = bpath_normalize(Env.arg(0))
+    if a0.ends_with("arxc.exe") || a0.ends_with("arxc") {
+        return "arxc"
+    }
+    return "arx"
+}
+
+fn get_pkg_temp_dir() -> str {
+    let t1 = Env.get("TEMP")
+    if t1 != "" { return bpath_normalize(t1) }
+    let t2 = Env.get("TMP")
+    if t2 != "" { return bpath_normalize(t2) }
+    let t3 = Env.get("TMPDIR")
+    if t3 != "" { return bpath_normalize(t3) }
+    return "/tmp"
+}
+
+fn get_aerix_global_modules_dir() -> str {
+    let env_home = Env.get("AERIX_HOME")
+    if env_home != "" {
+        let h_mod = bpath_join(env_home, "modules")
+        if Directory.exists(h_mod) { return h_mod }
+    }
+    let a0 = bpath_normalize(Env.arg(0))
+    if a0 != "" {
+        let exe_dir = bpath_dirname(a0)
+        let parent = bpath_dirname(exe_dir)
+        let cand1 = bpath_join(parent, "modules")
+        if Directory.exists(cand1) { return cand1 }
+        let cand2 = bpath_join(exe_dir, "modules")
+        if Directory.exists(cand2) { return cand2 }
+        if Directory.exists(parent) {
+            let m = bpath_join(parent, "modules")
+            Directory.create(m)
+            return m
+        }
+    }
+    if Directory.exists("C:/Aerix/modules") {
+        return "C:/Aerix/modules"
+    }
+    let local_app = Env.get("LOCALAPPDATA")
+    if local_app != "" {
+        let cand_la = bpath_join(local_app, "Programs/Aerix/modules")
+        if Directory.exists(cand_la) { return cand_la }
+    }
+    return "C:/Aerix/modules"
+}
+
+fn quote_pkg_arg(s: str) -> str {
+    let q = "\""
+    return q + s + q
+}
+
+pub class PkgRegistryItem {
+    pub name: str
+    pub version: str
+    pub description: str
+    pub repo_url: str
+    pub risk: str
+
+    init(n: str, v: str, d: str, u: str, r: str) {
+        self.name = n
+        self.version = v
+        self.description = d
+        self.repo_url = u
+        self.risk = r
+    }
+}
+
+pub class PkgAuditResult {
+    pub counts: List<i64>
+    pub findings: List<str>
+    pub risk_levels: List<str>
+
+    init() {
+        self.counts = List<i64>()
+        // 0: files, 1: externs, 2: critical, 3: high, 4: medium, 5: low
+        self.counts.push(0)
+        self.counts.push(0)
+        self.counts.push(0)
+        self.counts.push(0)
+        self.counts.push(0)
+        self.counts.push(0)
+        self.findings = List<str>()
+        self.risk_levels = List<str>()
+        self.risk_levels.push("CLEAN (LOW)")
+    }
+}
+
+fn audit_inc(res: PkgAuditResult, idx: i64) {
+    let old_v = res.counts.get(idx)
+    res.counts.set(idx, old_v + 1)
+}
+
+fn audit_get(res: PkgAuditResult, idx: i64) -> i64 {
+    return res.counts.get(idx)
+}
+
+fn audit_set_risk(res: PkgAuditResult, risk: str) {
+    res.risk_levels.set(0, risk)
+}
+
+fn audit_get_risk(res: PkgAuditResult) -> str {
+    return res.risk_levels.get(0)
+}
+
+pub fn print_pkg_usage() {
+    let bin = resolve_pkg_bin_name()
+    println("Aerix Package Manager & Security Scanner (" + bin + " pkg)")
+    println("Curated, zero-execution community package manager with capability auditing.")
+    println("")
+    println("Usage:")
+    println("  " + bin + " pkg <command> [arguments...] [options]")
+    println("")
+    println("Commands:")
+    println("  available | avail         List all packages available in the official community registry")
+    println("  search [query]            Search verified packages in the official community registry")
+    println("  info | show <name>        Display detailed metadata, repository, and security rating for a package")
+    println("  install <name|url>        Audit, verify, and install a package globally (or locally)")
+    println("  add <name|url>            Alias for 'install'")
+    println("  update | upgrade [name]   Update an installed package (or all packages) to latest version")
+    println("  list | ls                 List installed packages (both global and local)")
+    println("  remove | rm <name>        Remove an installed package")
+    println("  audit [path|name]         Run security capability & extern analysis on modules")
+    println("  init                      Initialize an aerix.json package manifest in current directory")
+    println("")
+    println("Options:")
+    println("  --local                   Target local project ./modules/ instead of global Aerix modules folder")
+    println("  -g, --global              Target global Aerix modules directory (default)")
+    println("  -f, --force               Force reinstall or overwrite existing module directory")
+    println("  --allow-insecure          Bypass security blocks for packages with high-risk native APIs")
+    println("  -h, --help                Show this help message")
+    println("")
+    println("Examples:")
+    println("  " + bin + " pkg search json")
+    println("  " + bin + " pkg install ColorTerm")
+    println("  " + bin + " pkg install VecMath")
+    println("  " + bin + " pkg install AerixJson --local")
+    println("  " + bin + " pkg list")
+    println("  " + bin + " pkg audit ColorTerm")
+}

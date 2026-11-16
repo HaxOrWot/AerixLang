@@ -1,0 +1,212 @@
+import "./mod.arx"
+
+fn hl_str_has_brace(src: str, line_starts: List<i64>, ln1: i64, col1: i64, tlen: i64) -> bool {
+    if ln1 <= 0 || col1 <= 0 || tlen <= 2 { return false }
+    let lidx = ln1 - 1
+    if lidx >= line_starts.len() { return false }
+    let start_pos = line_starts.get(lidx) + (col1 - 1)
+    let total = src.len()
+    mut end_pos = start_pos + tlen
+    if start_pos < 0 || start_pos >= total { return false }
+    if end_pos > total { end_pos = total }
+    mut p = start_pos
+    while p < end_pos {
+        let b = src.byte_at(p)
+        if b == 92 && p + 1 < end_pos {
+            p = p + 2
+            continue
+        }
+        if b == 123 { return true }
+        p = p + 1
+    }
+    return false
+}
+
+fn split_str_interp_spans(src: str, line_starts: List<i64>, ln1: i64, col1: i64, tlen: i64,
+                          class_set: Map<str, i64>, enum_set: Map<str, i64>,
+                          enum_var_set: Map<str, i64>, fn_set: Map<str, i64>,
+                          cur_params: Map<str, i64>, cur_tparams: Map<str, i64>,
+                          ro_vars: Map<str, i64>, mut_vars: Map<str, i64>,
+                          var_types: Map<str, str>,
+                          lines: List<i64>, cols: List<i64>, lens: List<i64>,
+                          types: List<i64>, mods: List<i64>) {
+    let lidx = ln1 - 1
+    if ln1 <= 0 || col1 <= 0 || lidx >= line_starts.len() {
+        push_sem_span(lines, cols, lens, types, mods, ln1, col1, tlen, ST_STRING(), 0)
+        return
+    }
+    let off = line_starts.get(lidx)
+    let total = src.len()
+    mut line_end = off
+    while line_end < total && src.byte_at(line_end) != 10 && src.byte_at(line_end) != 13 {
+        line_end = line_end + 1
+    }
+    let start_pos = off + (col1 - 1)
+    mut end_pos = start_pos + tlen
+    if start_pos < 0 || start_pos >= total || end_pos > line_end + 1 {
+        push_sem_span(lines, cols, lens, types, mods, ln1, col1, tlen, ST_STRING(), 0)
+        return
+    }
+    if end_pos > total { end_pos = total }
+
+    mut seg_start = start_pos
+    mut p = start_pos
+    while p < end_pos {
+        let b = src.byte_at(p)
+        if b == 92 && p + 1 < end_pos {
+            p = p + 2
+            continue
+        }
+        if b == 123 {
+            if p > seg_start {
+                push_sem_span(lines, cols, lens, types, mods, ln1, col1 + (seg_start - start_pos), p - seg_start, ST_STRING(), 0)
+            }
+            push_sem_span(lines, cols, lens, types, mods, ln1, col1 + (p - start_pos), 1, ST_OPERATOR(), 0)
+            mut q = p + 1
+            mut depth = 1
+            while q < end_pos && depth > 0 {
+                let qb = src.byte_at(q)
+                if qb == 123 { depth = depth + 1 } else if qb == 125 { depth = depth - 1 }
+                if depth > 0 { q = q + 1 }
+            }
+            if q > p + 1 {
+                let inner = src.slice(p + 1, q)
+                let inner_col = col1 + (p + 1 - start_pos)
+                mut ilx = Lexer(inner, "<interp>")
+                ilx.recover_mode = true
+                let its = ilx.tokenize()
+                mut ii = 0
+                while ii < its.count {
+                    let ik = its.kinds.get(ii)
+                    let iv = its.vals.get(ii)
+                    let ic = its.cols.get(ii)
+                    let il = its.lens.get(ii)
+                    if ik == TK_EOF() || ik == TK_NEWLINE() {
+                        ii = ii + 1
+                        continue
+                    }
+                    let c_abs = inner_col + (ic - 1)
+                    if ik == TK_INT() || ik == TK_FLOAT() {
+                        push_sem_span(lines, cols, lens, types, mods, ln1, c_abs, il, ST_NUMBER(), 0)
+                    } else if ik == TK_STR() || ik == TK_CHAR() {
+                        push_sem_span(lines, cols, lens, types, mods, ln1, c_abs, il, ST_STRING(), 0)
+                    } else if is_keyword_token_kind(ik) {
+                        push_sem_span(lines, cols, lens, types, mods, ln1, c_abs, il, ST_KEYWORD(), hl_keyword_mod(ik))
+                    } else if is_operator_token_kind(ik) {
+                        push_sem_span(lines, cols, lens, types, mods, ln1, c_abs, il, ST_OPERATOR(), 0)
+                    } else if ik == TK_IDENT() {
+                        let inxt = next_sig_kind(its, ii)
+                        if ii > 0 && (its.kinds.get(ii - 1) == TK_DOT() || its.kinds.get(ii - 1) == TK_QDOT() || its.kinds.get(ii - 1) == TK_CASCADE()) {
+                            if ii >= 2 && enum_set.has_key(its.vals.get(ii - 2)) {
+                                push_sem_span(lines, cols, lens, types, mods, ln1, c_abs, il, ST_ENUM_MEMBER(), SM_STATIC())
+                            } else if inxt == TK_LPAREN() {
+                                mut mmod = 0
+                                if ii >= 2 {
+                                    let recv_v = its.vals.get(ii - 2)
+                                    if lsp_is_static_runtime(recv_v) {
+                                        mmod = SM_STATIC() + SM_DEFAULT_LIB()
+                                    } else if var_types.has_key(recv_v) && hl_is_builtin_receiver_type(var_types.get(recv_v)) {
+                                        mmod = SM_DEFAULT_LIB()
+                                    }
+                                }
+                                push_sem_span(lines, cols, lens, types, mods, ln1, c_abs, il, ST_METHOD(), mmod)
+                            } else {
+                                push_sem_span(lines, cols, lens, types, mods, ln1, c_abs, il, ST_PROPERTY(), 0)
+                            }
+                        } else if cur_params.has_key(iv) {
+                            push_sem_span(lines, cols, lens, types, mods, ln1, c_abs, il, ST_PARAMETER(), SM_READONLY())
+                        } else if cur_tparams.has_key(iv) {
+                            push_sem_span(lines, cols, lens, types, mods, ln1, c_abs, il, ST_TYPE_PARAM(), 0)
+                        } else if lsp_is_primitive_type(iv) || lsp_is_container_type(iv) {
+                            push_sem_span(lines, cols, lens, types, mods, ln1, c_abs, il, ST_TYPE(), SM_DEFAULT_LIB())
+                        } else if class_set.has_key(iv) {
+                            push_sem_span(lines, cols, lens, types, mods, ln1, c_abs, il, ST_CLASS(), 0)
+                        } else if enum_set.has_key(iv) {
+                            push_sem_span(lines, cols, lens, types, mods, ln1, c_abs, il, ST_ENUM(), 0)
+                        } else if lsp_is_static_runtime(iv) {
+                            push_sem_span(lines, cols, lens, types, mods, ln1, c_abs, il, ST_NAMESPACE(), SM_DEFAULT_LIB())
+                        } else if lsp_is_builtin_fn(iv) {
+                            push_sem_span(lines, cols, lens, types, mods, ln1, c_abs, il, ST_FUNCTION(), SM_DEFAULT_LIB())
+                        } else if inxt == TK_LPAREN() {
+                            if enum_var_set.has_key(iv) {
+                                push_sem_span(lines, cols, lens, types, mods, ln1, c_abs, il, ST_ENUM_MEMBER(), 0)
+                            } else {
+                                push_sem_span(lines, cols, lens, types, mods, ln1, c_abs, il, ST_FUNCTION(), 0)
+                            }
+                        } else if fn_set.has_key(iv) {
+                            push_sem_span(lines, cols, lens, types, mods, ln1, c_abs, il, ST_FUNCTION(), 0)
+                        } else if ro_vars.has_key(iv) && !mut_vars.has_key(iv) {
+                            push_sem_span(lines, cols, lens, types, mods, ln1, c_abs, il, ST_VARIABLE(), SM_READONLY())
+                        } else {
+                            push_sem_span(lines, cols, lens, types, mods, ln1, c_abs, il, ST_VARIABLE(), 0)
+                        }
+                    }
+                    ii = ii + 1
+                }
+            }
+            if q < end_pos && src.byte_at(q) == 125 {
+                push_sem_span(lines, cols, lens, types, mods, ln1, col1 + (q - start_pos), 1, ST_OPERATOR(), 0)
+                seg_start = q + 1
+                p = q + 1
+                continue
+            }
+            seg_start = q
+            p = q
+            continue
+        }
+        p = p + 1
+    }
+    if end_pos > seg_start {
+        push_sem_span(lines, cols, lens, types, mods, ln1, col1 + (seg_start - start_pos), end_pos - seg_start, ST_STRING(), 0)
+    }
+}
+
+fn hl_is_all_caps(s: str) -> bool {
+    let n = s.len()
+    if n == 0 { return false }
+    mut i = 0
+    mut has_letter = false
+    while i < n {
+        let b = s.byte_at(i)
+        if b >= 97 && b <= 122 { return false }
+        if b >= 65 && b <= 90 { has_letter = true }
+        i = i + 1
+    }
+    return has_letter
+}
+
+fn hl_is_pascal_case(s: str) -> bool {
+    let n = s.len()
+    if n == 0 { return false }
+    let b0 = s.byte_at(0)
+    if b0 < 65 || b0 > 90 { return false }
+    mut i = 1
+    while i < n {
+        let b = s.byte_at(i)
+        if b >= 97 && b <= 122 { return true }
+        i = i + 1
+    }
+    return false
+}
+
+fn hl_classify_import_item_type(name: str, env: HlSymEnv) -> i64 {
+    if env.class_set.has_key(name) { return ST_CLASS() }
+    if env.enum_set.has_key(name) { return ST_ENUM() }
+    if env.fn_set.has_key(name) { return ST_FUNCTION() }
+    if env.enum_var_set.has_key(name) { return ST_ENUM_MEMBER() }
+    if env.global_ro.has_key(name) || env.global_mut.has_key(name) { return ST_VARIABLE() }
+
+    if hl_is_all_caps(name) { return ST_VARIABLE() }
+    if hl_is_pascal_case(name) { return ST_CLASS() }
+    return ST_FUNCTION()
+}
+
+fn hl_classify_import_item_mod(name: str, itype: i64, env: HlSymEnv) -> i64 {
+    if itype == ST_VARIABLE() {
+        if env.global_ro.has_key(name) || hl_is_all_caps(name) {
+            return SM_READONLY() + SM_STATIC()
+        }
+        return SM_STATIC()
+    }
+    return 0
+}

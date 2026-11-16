@@ -1,0 +1,195 @@
+import "./mod.arx"
+
+fn pkg_audit_source_line(line: str, fpath: str, res: PkgAuditResult) {
+    if !line.contains("#[extern") && !line.contains("extern fn") {
+        return
+    }
+    audit_inc(res, 1)
+    let basename = bpath_basename(fpath)
+
+    // 1. CRITICAL: Process Injection, Remote Memory Tampering, Kernel Driver Hooks
+    if line.contains("WriteProcessMemory") || line.contains("CreateRemoteThread") ||
+       line.contains("VirtualAllocEx") || line.contains("SetThreadContext") ||
+       line.contains("QueueUserAPC") || line.contains("NtCreateThreadEx") ||
+       line.contains("DeviceIoControl") || line.contains("ZwMapViewOfSection") {
+        audit_inc(res, 2)
+        res.findings.push("[CRITICAL] " + basename + ": Dangerous Process Injection / Memory Hijack API detected in: " + line.trim())
+        return
+    }
+
+    // 2. HIGH: Keylogger / Input Interception Hooks, Arbitrary Command Execution
+    if line.contains("SetWindowsHookEx") || line.contains("GetAsyncKeyState") ||
+       line.contains("GetKeyState") || line.contains("GetRawInputData") {
+        audit_inc(res, 3)
+        res.findings.push("[HIGH] " + basename + ": Input Interception / Keylogger Hook API detected in: " + line.trim())
+        return
+    }
+    if line.contains("CreateProcess") || line.contains("WinExec") ||
+       line.contains("ShellExecute") || line.contains("OpenProcessToken") ||
+       line.contains("AdjustTokenPrivileges") {
+        audit_inc(res, 3)
+        res.findings.push("[HIGH] " + basename + ": Process Spawning / Privilege Escalation API detected in: " + line.trim())
+        return
+    }
+
+    // 3. MEDIUM: Windows Registry Modification, Raw Low-Level Sockets
+    if line.contains("RegSetValue") || line.contains("RegDeleteKey") ||
+       line.contains("RegCreateKey") || line.contains("RegOpenKey") {
+        audit_inc(res, 4)
+        res.findings.push("[MEDIUM] " + basename + ": Windows Registry Access detected in: " + line.trim())
+        return
+    }
+    if line.contains("ws2_32") || line.contains("socket(") || line.contains("connect(") ||
+       line.contains("bind(") || line.contains("WSAStartup") {
+        audit_inc(res, 4)
+        res.findings.push("[MEDIUM] " + basename + ": Raw Network Socket Communication detected in: " + line.trim())
+        return
+    }
+
+    // 4. LOW / SAFE: Standard Win32 Windowing, GDI Canvas, File I/O, Clocks
+    if line.contains("CreateWindow") || line.contains("ShowWindow") ||
+       line.contains("DefWindowProc") || line.contains("GetMessage") {
+        audit_inc(res, 5)
+        res.findings.push("[INFO] " + basename + ": Win32 Desktop Windowing UI")
+        return
+    }
+    if line.contains("BitBlt") || line.contains("CreateCompatibleDC") ||
+       line.contains("SelectObject") || line.contains("CreateSolidBrush") {
+        audit_inc(res, 5)
+        res.findings.push("[INFO] " + basename + ": 2D GDI Canvas Graphics")
+        return
+    }
+    if line.contains("CreateFile") || line.contains("ReadFile") ||
+       line.contains("WriteFile") || line.contains("CloseHandle") {
+        audit_inc(res, 5)
+        res.findings.push("[INFO] " + basename + ": Standard File System I/O")
+        return
+    }
+    if line.contains("QueryPerformanceCounter") || line.contains("GlobalMemoryStatusEx") ||
+       line.contains("GetSystemInfo") || line.contains("Sleep") {
+        audit_inc(res, 5)
+        res.findings.push("[INFO] " + basename + ": Performance Counter & System Information")
+        return
+    }
+
+    // Fallback for other externs
+    audit_inc(res, 5)
+    res.findings.push("[INFO] " + basename + ": Native C/Win32 Extern: " + line.trim())
+}
+
+fn pkg_audit_file(fpath: str, res: PkgAuditResult) {
+    if !File.exists(fpath) { return }
+    audit_inc(res, 0)
+    let content = File.read_to_string(fpath)
+    let lines = content.split("\n")
+    mut i = 0
+    let n = lines.len()
+    while i < n {
+        let line = lines.get(i)
+        pkg_audit_source_line(line, fpath, res)
+        i = i + 1
+    }
+}
+
+pub fn pkg_audit_directory_recursive(dir_path: str, res: PkgAuditResult) {
+    if !Directory.exists(dir_path) { return }
+    let files = Directory.list_files(dir_path)
+    mut fi = 0
+    let fn_count = files.len()
+    while fi < fn_count {
+        let fname = files.get(fi)
+        if fname.ends_with(".arx") {
+            let full_p = bpath_join(dir_path, fname)
+            pkg_audit_file(full_p, res)
+        }
+        fi = fi + 1
+    }
+
+    let subdirs = Directory.list_dirs(dir_path)
+    mut di = 0
+    let dn_count = subdirs.len()
+    while di < dn_count {
+        let dname = subdirs.get(di)
+        if dname != ".git" && dname != ".aerix" && dname != "build" && dname != "dist" {
+            let full_sub = bpath_join(dir_path, dname)
+            pkg_audit_directory_recursive(full_sub, res)
+        }
+        di = di + 1
+    }
+
+    if audit_get(res, 2) > 0 {
+        audit_set_risk(res, "CRITICAL RISK (MALICIOUS/DANGEROUS APIS DETECTED)")
+    } else if audit_get(res, 3) > 0 {
+        audit_set_risk(res, "HIGH RISK (PROCESS SPAWNING OR HOOKS DETECTED)")
+    } else if audit_get(res, 4) > 0 {
+        audit_set_risk(res, "MODERATE RISK (NETWORK OR REGISTRY APIS DETECTED)")
+    } else {
+        audit_set_risk(res, "CLEAN (LOW / BENIGN)")
+    }
+}
+
+pub fn print_audit_report(target_name: str, res: PkgAuditResult) {
+    println("==================================================================")
+    println("  AERIX SECURITY CAPABILITY AUDIT: " + target_name)
+    println("==================================================================")
+    println("  Files Scanned:        " + (audit_get(res, 0) as str))
+    println("  Native Extern Calls:  " + (audit_get(res, 1) as str))
+    println("  Critical Violations:  " + (audit_get(res, 2) as str))
+    println("  High-Risk Warnings:   " + (audit_get(res, 3) as str))
+    println("  Medium Capabilities:  " + (audit_get(res, 4) as str))
+    println("  Low / Benign Calls:   " + (audit_get(res, 5) as str))
+    println("------------------------------------------------------------------")
+    println("  Overall Risk Score:   " + audit_get_risk(res))
+    println("==================================================================")
+
+    if res.findings.len() > 0 {
+        println("Capability Analysis Breakdown:")
+        mut i = 0
+        let count = res.findings.len()
+        while i < count {
+            println("  " + res.findings.get(i))
+            i = i + 1
+        }
+        println("")
+    }
+}
+
+fn get_installed_pkg_version(pkg_name: str) -> str {
+    let global_dir = get_aerix_global_modules_dir()
+    let cwd = bpath_normalize(Env.cwd())
+    let local_dir = bpath_join(cwd, "modules")
+
+    mut manifest_path = bpath_join(global_dir, pkg_name + "/aerix.json")
+    if !File.exists(manifest_path) {
+        manifest_path = bpath_join(local_dir, pkg_name + "/aerix.json")
+    }
+    if !File.exists(manifest_path) {
+        if Directory.exists(bpath_join(global_dir, pkg_name)) || Directory.exists(bpath_join(local_dir, pkg_name)) {
+            return "installed"
+        }
+        return ""
+    }
+
+    let content = File.read_to_string(manifest_path)
+    let lines = content.split("\n")
+    mut i = 0
+    let n = lines.len()
+    while i < n {
+        let line = lines.get(i).trim()
+        if line.contains("\"version\":") {
+            let ver = extract_registry_json_val(line)
+            if ver != "" {
+                return ver
+            }
+        }
+        i = i + 1
+    }
+    return "installed"
+}
+
+fn format_desc_field(desc: str, max_len: i64) -> str {
+    if desc.len() <= max_len {
+        return desc
+    }
+    return desc.slice(0, max_len - 3) + "..."
+}

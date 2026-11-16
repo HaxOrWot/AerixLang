@@ -1,0 +1,175 @@
+import "./mod.arx"
+
+// Semantic Token Type indices (must match initialize legend and VS Code client)
+pub fn ST_COMMENT() -> i64 { return 0 }
+pub fn ST_KEYWORD() -> i64 { return 1 }
+pub fn ST_STRING() -> i64 { return 2 }
+pub fn ST_NUMBER() -> i64 { return 3 }
+pub fn ST_OPERATOR() -> i64 { return 4 }
+pub fn ST_TYPE() -> i64 { return 5 }
+pub fn ST_CLASS() -> i64 { return 6 }
+pub fn ST_ENUM() -> i64 { return 7 }
+pub fn ST_ENUM_MEMBER() -> i64 { return 8 }
+pub fn ST_FUNCTION() -> i64 { return 9 }
+pub fn ST_METHOD() -> i64 { return 10 }
+pub fn ST_PROPERTY() -> i64 { return 11 }
+pub fn ST_PARAMETER() -> i64 { return 12 }
+pub fn ST_VARIABLE() -> i64 { return 13 }
+pub fn ST_NAMESPACE() -> i64 { return 14 }
+pub fn ST_MACRO() -> i64 { return 15 }
+pub fn ST_TYPE_PARAM() -> i64 { return 16 }
+
+// Semantic Token Modifier bitmasks
+pub fn SM_DECL() -> i64 { return 1 }
+pub fn SM_DEF() -> i64 { return 2 }
+pub fn SM_READONLY() -> i64 { return 4 }
+pub fn SM_STATIC() -> i64 { return 8 }
+pub fn SM_DEFAULT_LIB() -> i64 { return 16 }
+pub fn SM_DOC() -> i64 { return 32 }
+pub fn SM_ABSTRACT() -> i64 { return 64 }
+pub fn SM_CONTROL_FLOW() -> i64 { return 128 }
+
+fn is_keyword_token_kind(k: i64) -> bool {
+    if k == TK_BOOL() || k == TK_NULL() { return true }
+    return k >= 20 && k <= 71
+}
+
+fn hl_keyword_mod(k: i64) -> i64 {
+    if k == TK_BOOL() || k == TK_NULL() { return SM_READONLY() }
+    if (k >= 31 && k <= 45) || k == TK_GUARD() || k == TK_DEFER() || k == TK_USE() || k == TK_IMPORT() || k == TK_FROM() || k == TK_AS() {
+        return SM_CONTROL_FLOW()
+    }
+    if (k >= 48 && k <= 54) || k == TK_UNSAFE() {
+        return SM_ABSTRACT()
+    }
+    return 0
+}
+
+fn is_operator_token_kind(k: i64) -> bool {
+    if k == TK_DOT() { return false }
+    return k >= 80 && k <= 115
+}
+
+fn hl_build_line_starts(src: str) -> List<i64> {
+    let starts = List<i64>()
+    starts.push(0)
+    let n = src.len()
+    mut i = 0
+    while i < n {
+        if src.byte_at(i) == 10 {
+            starts.push(i + 1)
+        }
+        i = i + 1
+    }
+    return starts
+}
+
+fn hl_comment_is_doc(src: str, line_starts: List<i64>, ln1: i64, col1: i64, tlen: i64) -> bool {
+    if ln1 <= 0 || col1 <= 0 || tlen < 3 { return false }
+    let lidx = ln1 - 1
+    if lidx >= line_starts.len() { return false }
+    let off = line_starts.get(lidx) + (col1 - 1)
+    if off < 0 || off + 2 >= src.len() { return false }
+    let b0 = src.byte_at(off)
+    let b1 = src.byte_at(off + 1)
+    let b2 = src.byte_at(off + 2)
+    // /// or //! or /**
+    if b0 == 47 && b1 == 47 && (b2 == 47 || b2 == 33) { return true }
+    if b0 == 47 && b1 == 42 && b2 == 42 && tlen > 4 { return true }
+    return false
+}
+
+fn hl_strip_container_base(t: str) -> str {
+    let lt = lsp_str_find(t, "<", 0)
+    if lt > 0 { return t.slice(0, lt) }
+    return t
+}
+
+fn hl_is_builtin_receiver_type(rt: str) -> bool {
+    let base = hl_strip_container_base(rt)
+    return rt == "str" || lsp_is_container_type(base)
+}
+
+// File-level symbol table cache extracted for low-latency incremental semantic highlighting.
+pub class HlFileHeader {
+    pub sig: str
+    pub classes: List<str>
+    pub enums: List<str>
+    pub enum_vars: List<str>
+    pub fns: List<str>
+    pub global_ro: List<str>
+    pub global_mut: List<str>
+    pub global_type_keys: List<str>
+    pub global_type_vals: List<str>
+    pub field_ro_keys: List<str>
+    pub field_all_keys: List<str>
+    pub method_static_keys: List<str>
+    pub method_all_keys: List<str>
+    pub import_files: List<str>
+    pub import_mods: List<str>
+
+    init(sig_str: str) {
+        self.sig = sig_str
+        self.classes = List<str>()
+        self.enums = List<str>()
+        self.enum_vars = List<str>()
+        self.fns = List<str>()
+        self.global_ro = List<str>()
+        self.global_mut = List<str>()
+        self.global_type_keys = List<str>()
+        self.global_type_vals = List<str>()
+        self.field_ro_keys = List<str>()
+        self.field_all_keys = List<str>()
+        self.method_static_keys = List<str>()
+        self.method_all_keys = List<str>()
+        self.import_files = List<str>()
+        self.import_mods = List<str>()
+    }
+}
+
+pub class HlHeaderCache {
+    pub headers: Map<str, HlFileHeader>
+    pub dir_arx_cache: Map<str, List<str> >
+
+    init() {
+        self.headers = Map<str, HlFileHeader>()
+        self.dir_arx_cache = Map<str, List<str> >()
+    }
+
+    pub fn invalidate(fpath: str) {
+        let norm = bpath_normalize(fpath)
+        if self.headers.has_key(norm) {
+            self.headers.remove(norm)
+        }
+    }
+}
+
+pub class HlSymEnv {
+    pub class_set: Map<str, i64>
+    pub enum_set: Map<str, i64>
+    pub fn_set: Map<str, i64>
+    pub enum_var_set: Map<str, i64>
+    pub global_ro: Map<str, i64>
+    pub global_mut: Map<str, i64>
+    pub global_var_types: Map<str, str>
+    pub ast_decl_types: Map<str, str>
+    pub field_ro: Map<str, i64>
+    pub method_static: Map<str, i64>
+    pub class_fields: Map<str, i64>
+    pub class_methods: Map<str, i64>
+
+    init() {
+        self.class_set = Map<str, i64>()
+        self.enum_set = Map<str, i64>()
+        self.fn_set = Map<str, i64>()
+        self.enum_var_set = Map<str, i64>()
+        self.global_ro = Map<str, i64>()
+        self.global_mut = Map<str, i64>()
+        self.global_var_types = Map<str, str>()
+        self.ast_decl_types = Map<str, str>()
+        self.field_ro = Map<str, i64>()
+        self.method_static = Map<str, i64>()
+        self.class_fields = Map<str, i64>()
+        self.class_methods = Map<str, i64>()
+    }
+}

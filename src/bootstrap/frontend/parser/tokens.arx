@@ -1,0 +1,176 @@
+import "./mod.arx"
+
+extend Parser {
+    // --- Token Helpers ---
+
+    priv fn peek_kind(offset: i64) -> i64 {
+        let idx = self.pos + offset
+        if idx < self.tok_count {
+            return self.tok_kinds.get(idx)
+        }
+        return TK_EOF()
+    }
+
+    priv fn cur_kind() -> i64 {
+        return self.peek_kind(0)
+    }
+
+    priv fn cur_val() -> str {
+        if self.pos < self.tok_count {
+            return self.tok_vals.get(self.pos)
+        }
+        return ""
+    }
+
+    priv fn cur_line() -> i64 {
+        if self.pos < self.tok_count {
+            return self.tok_lines.get(self.pos)
+        }
+        if self.tok_count > 0 {
+            return self.tok_lines.get(self.tok_count - 1)
+        }
+        return 1
+    }
+
+    priv fn cur_col() -> i64 {
+        if self.pos < self.tok_count {
+            return self.tok_cols.get(self.pos)
+        }
+        return 1
+    }
+
+    priv fn with_tok_col(nid: i64, tok_idx: i64) -> i64 {
+        if nid >= 0 && tok_idx >= 0 && tok_idx < self.tok_cols.len() {
+            self.nc.set(nid, self.tok_cols.get(tok_idx))
+        }
+        return nid
+    }
+
+    priv fn cur_len() -> i64 {
+        if self.pos < self.tok_lens.len() {
+            let l = self.tok_lens.get(self.pos)
+            if l > 0 { return l }
+        }
+        let v = self.cur_val()
+        if v.len() > 0 && v != "\n" { return v.len() }
+        return 1
+    }
+
+    priv fn cur_tok_desc() -> str {
+        let k = self.cur_kind()
+        if k == TK_EOF() { return "<end of file>" }
+        if k == TK_NEWLINE() { return "<end of line>" }
+        let v = self.cur_val()
+        if v == "" || v == "\n" { return "<end of line>" }
+        return "'" + v + "'"
+    }
+
+    priv fn adv() -> i64 {
+        if self.tok_count == 0 { return 0 }
+        let idx = self.pos
+        if idx < self.tok_count - 1 {
+            self.pos = idx + 1
+            return idx
+        }
+        self.pos = self.tok_count - 1
+        return self.tok_count - 1
+    }
+
+    priv fn match_k(k: i64) -> bool {
+        if self.cur_kind() == k {
+            self.adv()
+            return true
+        }
+        return false
+    }
+
+    priv fn record_err_full(ln: i64, cl: i64, tlen: i64, code: str, msg: str, help_msg: str, sev: i64) {
+        if self.err_count >= 64 { return }
+        mut sl = tlen
+        if sl < 1 { sl = 1 }
+        self.err_files.push(self.cur_file)
+        self.err_lines.push(ln)
+        self.err_cols.push(cl)
+        self.err_lens.push(sl)
+        self.err_codes.push(code)
+        self.err_msgs.push(msg)
+        self.err_helps.push(help_msg)
+        self.err_sevs.push(sev)
+        self.err_count = self.err_count + 1
+    }
+
+    priv fn record_err(ln: i64, cl: i64, msg: str) {
+        self.record_err_full(ln, cl, 1, "E0102", msg, "", 1)
+    }
+
+    priv fn parse_err_help(msg: str) -> str {
+        if msg.contains("'}'") || msg.contains("brace") {
+            return "check for an unclosed block or missing statement terminator above"
+        }
+        if msg.contains("')'") || msg.contains("']'") {
+            return "ensure delimiters are balanced in this expression or parameter list"
+        }
+        if msg.contains("type") {
+            return "provide a valid Aerix type such as 'i64', 'f64', 'str', 'bool', or a class/enum name"
+        }
+        if msg.contains("identifier") || msg.contains("variable name") || msg.contains("function name") {
+            return "a valid identifier starting with a letter or '_' is required here"
+        }
+        if msg.contains("'='") {
+            return "variable declarations and assignments require '=' followed by an expression"
+        }
+        return ""
+    }
+
+    priv fn parse_err_code(msg: str) -> str {
+        if msg.contains("'}'") || msg.contains("')'") || msg.contains("']'") || msg.contains("'('") || msg.contains("'") {
+            return "E0101"
+        }
+        if msg.contains("type") || msg.contains("identifier") || msg.contains("name") {
+            return "E0103"
+        }
+        if msg.contains("import") || msg.contains("module") {
+            return "E0104"
+        }
+        return "E0102"
+    }
+
+    priv fn fail(msg: str) {
+        let got_desc = self.cur_tok_desc()
+        let full_msg = msg + ", found " + got_desc
+        let code = self.parse_err_code(msg)
+        let help_msg = self.parse_err_help(msg)
+        if self.recover_mode {
+            if self.last_err_pos != self.pos {
+                self.last_err_pos = self.pos
+                self.record_err_full(self.cur_line(), self.cur_col(), self.cur_len(), code, full_msg, help_msg, 1)
+            }
+            return
+        }
+        eprintln("error[" + code + "]: " + full_msg + " at " + self.cur_file + ":" + self.cur_line() + ":" + self.cur_col())
+        if help_msg != "" { eprintln("  = help: " + help_msg) }
+        Env.exit(1)
+    }
+
+    priv fn expect_k(k: i64, msg: str) -> i64 {
+        if self.cur_kind() == k {
+            return self.adv()
+        }
+        self.fail(msg)
+        if self.tok_count == 0 { return 0 }
+        if self.pos < self.tok_count { return self.pos }
+        return self.tok_count - 1
+    }
+
+    priv fn skip_newlines() {
+        while self.cur_kind() == TK_NEWLINE() {
+            self.pos = self.pos + 1
+        }
+    }
+
+    priv fn skip_stmt_end() {
+        while self.cur_kind() == TK_SEMICOLON() || self.cur_kind() == TK_NEWLINE() {
+            self.pos = self.pos + 1
+        }
+    }
+}

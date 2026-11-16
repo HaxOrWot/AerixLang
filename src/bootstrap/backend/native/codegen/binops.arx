@@ -1,0 +1,218 @@
+import "./mod.arx"
+
+extend NativeCodegen {
+    priv fn emit_str_interp(nid: i64) {
+        let a = self.asmb
+        let cnt = self.child_count(nid)
+        if cnt == 0 {
+            a.lea_rip_rdata(REG_RAX(), self.rt.s_empty)
+            return
+        }
+        let acc_tmp = self.alloc_slot("", "str")
+        a.lea_rip_rdata(REG_RAX(), self.rt.s_empty)
+        a.mov_mr64(REG_RBP(), -acc_tmp, REG_RAX())
+        mut i = 0
+        while i < cnt {
+            let cid = self.child_at(nid, i)
+            mut ct = btype_norm(self.node_types.get(cid))
+            if self.nk.get(cid) == NK_STR_LIT() || self.nk.get(cid) == NK_STR_INTERP() {
+                ct = "str"
+            } else if (ct == "" || ct == "i64") && self.nk.get(cid) == NK_IDENT() {
+                let id_nm = self.sa.get(cid)
+                let lt = self.find_local_type(id_nm)
+                if lt != "" { ct = lt }
+            }
+            let tmark = self.temp_str_slots.len()
+            self.emit_expr(cid)
+            self.emit_val_to_str_in_rax(ct)
+            let piece_tmp = self.alloc_slot("", "i64")
+            a.mov_mr64(REG_RBP(), -piece_tmp, REG_RAX())
+            a.mov_rm64(REG_RCX(), REG_RBP(), -acc_tmp)
+            a.mov_rm64(REG_RDX(), REG_RBP(), -piece_tmp)
+            a.call_rel32(self.rt.lbl("__rt_str_concat"))
+            let next_tmp = self.alloc_slot("", "i64")
+            a.mov_mr64(REG_RBP(), -next_tmp, REG_RAX())
+            a.mov_rm64(REG_RCX(), REG_RBP(), -acc_tmp)
+            a.call_rel32(self.rt.lbl("__rt_arc_release"))
+            self.emit_temp_drops(tmark)
+            a.mov_rm64(REG_RAX(), REG_RBP(), -next_tmp)
+            a.mov_mr64(REG_RBP(), -acc_tmp, REG_RAX())
+            i = i + 1
+        }
+        self.track_temp_str()
+        a.mov_rm64(REG_RAX(), REG_RBP(), -acc_tmp)
+    }
+
+    priv fn emit_bin_op(nid: i64) {
+        let a = self.asmb
+        let op_s = self.sa.get(nid)
+        let lid = self.la.get(nid)
+        let rid = self.ra.get(nid)
+        let lt = btype_norm(self.node_types.get(lid))
+        let rt = btype_norm(self.node_types.get(rid))
+
+        // Short-circuit && / and
+        if op_s == "&&" || op_s == "and" {
+            let l_false = a.new_label()
+            let l_done = a.new_label()
+            self.emit_expr(lid)
+            a.test_rr(REG_RAX(), REG_RAX())
+            a.jcc_rel32(CC_E(), l_false)
+            self.emit_expr(rid)
+            a.test_rr(REG_RAX(), REG_RAX())
+            a.setcc_u8(CC_NE(), REG_RAX())
+            a.jmp_rel32(l_done)
+            a.bind_label(l_false)
+            a.mov_ri32_sext(REG_RAX(), 0)
+            a.bind_label(l_done)
+            return
+        }
+        // Short-circuit || / or
+        if op_s == "||" || op_s == "or" {
+            let l_true = a.new_label()
+            let l_done = a.new_label()
+            self.emit_expr(lid)
+            a.test_rr(REG_RAX(), REG_RAX())
+            a.jcc_rel32(CC_NE(), l_true)
+            self.emit_expr(rid)
+            a.test_rr(REG_RAX(), REG_RAX())
+            a.setcc_u8(CC_NE(), REG_RAX())
+            a.jmp_rel32(l_done)
+            a.bind_label(l_true)
+            a.mov_ri32_sext(REG_RAX(), 1)
+            a.bind_label(l_done)
+            return
+        }
+        if op_s == "??" {
+            let l_has_val = a.new_label()
+            let l_done = a.new_label()
+            self.emit_expr(lid)
+            a.test_rr(REG_RAX(), REG_RAX())
+            a.jcc_rel32(CC_NE(), l_has_val)
+            self.emit_expr(rid)
+            a.jmp_rel32(l_done)
+            a.bind_label(l_has_val)
+            a.bind_label(l_done)
+            return
+        }
+
+        self.emit_expr(lid)
+        let l_tmp = self.alloc_slot("", lt)
+        a.mov_mr64(REG_RBP(), -l_tmp, REG_RAX())
+        self.emit_expr(rid)
+        let r_tmp = self.alloc_slot("", rt)
+        a.mov_mr64(REG_RBP(), -r_tmp, REG_RAX())
+        self.emit_bin_values(op_s, lt, rt, l_tmp, r_tmp)
+    }
+
+    priv fn emit_bin_values(op_s: str, lt: str, rt: str, l_tmp: i64, r_tmp: i64) {
+        let a = self.asmb
+        if ncg_is_str(lt) || ncg_is_str(rt) {
+            if op_s == "+" {
+                a.mov_rm64(REG_RAX(), REG_RBP(), -l_tmp)
+                self.emit_val_to_str_in_rax(lt)
+                a.mov_mr64(REG_RBP(), -l_tmp, REG_RAX())
+                a.mov_rm64(REG_RAX(), REG_RBP(), -r_tmp)
+                self.emit_val_to_str_in_rax(rt)
+                a.mov_rr(REG_RDX(), REG_RAX())
+                a.mov_rm64(REG_RCX(), REG_RBP(), -l_tmp)
+                a.call_rel32(self.rt.lbl("__rt_str_concat"))
+                self.track_temp_str()
+                return
+            }
+            if op_s == "==" || op_s == "!=" {
+                a.mov_rm64(REG_RCX(), REG_RBP(), -l_tmp)
+                a.mov_rm64(REG_RDX(), REG_RBP(), -r_tmp)
+                a.call_rel32(self.rt.lbl("__rt_str_eq"))
+                if op_s == "!=" {
+                    a.test_rr(REG_RAX(), REG_RAX())
+                    a.setcc_u8(CC_E(), REG_RAX())
+                }
+                return
+            }
+            if op_s == "<" || op_s == "<=" || op_s == ">" || op_s == ">=" {
+                a.mov_rm64(REG_RCX(), REG_RBP(), -l_tmp)
+                a.mov_rm64(REG_RDX(), REG_RBP(), -r_tmp)
+                a.call_rel32(self.rt.lbl("__rt_str_cmp"))
+                a.cmp_ri32(REG_RAX(), 0)
+                if op_s == "<"  { a.setcc_u8(CC_L(), REG_RAX()); return }
+                if op_s == "<=" { a.setcc_u8(CC_LE(), REG_RAX()); return }
+                if op_s == ">"  { a.setcc_u8(CC_G(), REG_RAX()); return }
+                if op_s == ">=" { a.setcc_u8(CC_GE(), REG_RAX()); return }
+            }
+        }
+
+        if op_s == "**" {
+            a.mov_rm64(REG_RAX(), REG_RBP(), -l_tmp)
+            if ncg_is_float(lt) {
+                a.movq_xmm_r(0, REG_RAX())
+            } else {
+                a.cvtsi2sd(0, REG_RAX())
+            }
+            a.mov_rm64(REG_RCX(), REG_RBP(), -r_tmp)
+            if ncg_is_float(rt) {
+                a.movq_xmm_r(1, REG_RCX())
+            } else {
+                a.cvtsi2sd(1, REG_RCX())
+            }
+            a.call_rip_iat(self.rt.imp_pow)
+            if !ncg_is_float(lt) && !ncg_is_float(rt) {
+                a.cvttsd2si(REG_RAX(), 0)
+            } else {
+                a.movq_r_xmm(REG_RAX(), 0)
+            }
+            return
+        }
+
+        if ncg_is_float(lt) || ncg_is_float(rt) {
+            a.mov_rm64(REG_RAX(), REG_RBP(), -l_tmp)
+            if ncg_is_float(lt) {
+                a.movq_xmm_r(0, REG_RAX())
+            } else {
+                a.cvtsi2sd(0, REG_RAX())
+            }
+            a.mov_rm64(REG_RCX(), REG_RBP(), -r_tmp)
+            if ncg_is_float(rt) {
+                a.movq_xmm_r(1, REG_RCX())
+            } else {
+                a.cvtsi2sd(1, REG_RCX())
+            }
+            if op_s == "+" { a.addsd(0, 1); a.movq_r_xmm(REG_RAX(), 0); return }
+            if op_s == "-" { a.subsd(0, 1); a.movq_r_xmm(REG_RAX(), 0); return }
+            if op_s == "*" { a.mulsd(0, 1); a.movq_r_xmm(REG_RAX(), 0); return }
+            if op_s == "/" { a.divsd(0, 1); a.movq_r_xmm(REG_RAX(), 0); return }
+            a.ucomisd(0, 1)
+            if op_s == "==" { a.setcc_u8(CC_E(), REG_RAX()); return }
+            if op_s == "!=" { a.setcc_u8(CC_NE(), REG_RAX()); return }
+            if op_s == "<"  { a.setcc_u8(CC_B(), REG_RAX()); return }
+            if op_s == "<=" { a.setcc_u8(CC_BE(), REG_RAX()); return }
+            if op_s == ">"  { a.setcc_u8(CC_A(), REG_RAX()); return }
+            if op_s == ">=" { a.setcc_u8(CC_AE(), REG_RAX()); return }
+            a.movq_r_xmm(REG_RAX(), 0)
+            return
+        }
+
+        // Integer / pointer / bool operations
+        a.mov_rm64(REG_RAX(), REG_RBP(), -l_tmp)
+        a.mov_rm64(REG_RCX(), REG_RBP(), -r_tmp)
+        if op_s == "+" { a.add_rr(REG_RAX(), REG_RCX()); return }
+        if op_s == "-" { a.sub_rr(REG_RAX(), REG_RCX()); return }
+        if op_s == "*" { a.imul_rr(REG_RAX(), REG_RCX()); return }
+        if op_s == "/" { a.cqo(); a.idiv_r(REG_RCX()); return }
+        if op_s == "%" { a.cqo(); a.idiv_r(REG_RCX()); a.mov_rr(REG_RAX(), REG_RDX()); return }
+        if op_s == "&" { a.and_rr(REG_RAX(), REG_RCX()); return }
+        if op_s == "|" { a.or_rr(REG_RAX(), REG_RCX()); return }
+        if op_s == "^" { a.xor_rr(REG_RAX(), REG_RCX()); return }
+        if op_s == "<<" { a.shl_cl(REG_RAX()); return }
+        if op_s == ">>" { a.sar_cl(REG_RAX()); return }
+
+        a.cmp_rr(REG_RAX(), REG_RCX())
+        if op_s == "==" { a.setcc_u8(CC_E(), REG_RAX()); return }
+        if op_s == "!=" { a.setcc_u8(CC_NE(), REG_RAX()); return }
+        if op_s == "<"  { a.setcc_u8(CC_L(), REG_RAX()); return }
+        if op_s == "<=" { a.setcc_u8(CC_LE(), REG_RAX()); return }
+        if op_s == ">"  { a.setcc_u8(CC_G(), REG_RAX()); return }
+        if op_s == ">=" { a.setcc_u8(CC_GE(), REG_RAX()); return }
+    }
+
+}

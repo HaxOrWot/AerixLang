@@ -1,0 +1,176 @@
+import "./mod.arx"
+
+// --- 3. Hover ---
+
+fn lsp_subst_generic_sig(raw_sig: str, recv_t: str) -> str {
+    let colon_i = lsp_str_find(raw_sig, ":", 0)
+    mut mname = raw_sig
+    mut params_ret = ""
+    if colon_i >= 0 {
+        mname = raw_sig.slice(0, colon_i)
+        params_ret = raw_sig.slice(colon_i + 1, raw_sig.len())
+    }
+    if recv_t.starts_with("List<") || recv_t.starts_with("Set<") || recv_t.starts_with("Stack<") || recv_t.starts_with("Queue<") || recv_t.starts_with("Deque<") {
+        let elem = lsp_generic_inner_arg(recv_t, 0)
+        if elem != "" {
+            params_ret = params_ret.replace(": T)", ": " + elem + ")").replace(": T,", ": " + elem + ",").replace("-> T", "-> " + elem).replace("<T>", "<" + elem + ">")
+        }
+    } else if recv_t.starts_with("Map<") {
+        let k_elem = lsp_generic_inner_arg(recv_t, 0)
+        let v_elem = lsp_generic_inner_arg(recv_t, 1)
+        if k_elem != "" {
+            params_ret = params_ret.replace(": K)", ": " + k_elem + ")").replace(": K,", ": " + k_elem + ",").replace("<K>", "<" + k_elem + ">")
+        }
+        if v_elem != "" {
+            params_ret = params_ret.replace("-> V", "-> " + v_elem).replace(": V)", ": " + v_elem + ")").replace("<V>", "<" + v_elem + ">")
+        }
+    }
+    return "fn " + mname + params_ret
+}
+
+fn lsp_find_class_field_node(az: Analyzer, cls_name: str, field_name: str) -> i64 {
+    mut walk = cls_name
+    mut hops = 0
+    while walk != "" && hops < 8 {
+        let cid = lsp_find_class_node(az, walk)
+        if cid >= 0 {
+            let fg = az.la.get(cid)
+            if fg >= 0 {
+                mut fi = 0
+                while fi < az.ll.get(fg) {
+                    let fid = az.ch.get(az.ls.get(fg) + fi)
+                    if az.sa.get(fid) == field_name { return fid }
+                    fi = fi + 1
+                }
+            }
+        }
+        if az.cls_base_map.has_key(walk) { walk = az.cls_base_map.get(walk) } else { walk = "" }
+        hops = hops + 1
+    }
+    return -1
+}
+
+fn lsp_find_class_method_cls(az: Analyzer, cls_name: str, mname: str) -> str {
+    mut walk = cls_name
+    mut hops = 0
+    while walk != "" && hops < 8 {
+        let sig_k = "m::" + walk + "::" + mname
+        if az.sig_by_key.has_key(sig_k) {
+            return walk
+        }
+        if az.cls_base_map.has_key(walk) { walk = az.cls_base_map.get(walk) } else { walk = "" }
+        hops = hops + 1
+    }
+    return cls_name
+}
+
+fn lsp_find_class_method_sidx(az: Analyzer, cls_name: str, mname: str) -> i64 {
+    mut walk = cls_name
+    mut hops = 0
+    while walk != "" && hops < 8 {
+        let sig_k = "m::" + walk + "::" + mname
+        if az.sig_by_key.has_key(sig_k) {
+            return az.sig_by_key.get(sig_k).split(",").get(0).to_i64()
+        }
+        if az.cls_base_map.has_key(walk) { walk = az.cls_base_map.get(walk) } else { walk = "" }
+        hops = hops + 1
+    }
+    return -1
+}
+
+fn lsp_format_enum_variant(az: Analyzer, vid: i64) -> str {
+    let bb = ByteBuffer()
+    bb.write_str(az.sa.get(vid))
+    let fc = az.ll.get(vid)
+    if fc > 0 {
+        bb.write_str("(")
+        mut i = 0
+        while i < fc {
+            if i > 0 { bb.write_str(", ") }
+            let pid = az.ch.get(az.ls.get(vid) + i)
+            bb.write_str(az.sa.get(pid) + ": " + btype_norm(az.sb.get(pid)))
+            i = i + 1
+        }
+        bb.write_str(")")
+    }
+    let out = bb.to_str()
+    bb.free()
+    return out
+}
+
+fn lsp_resolve_import_at_cursor(source: str, doc_path: str, line0: i64, char0: i64) -> str {
+    let line = lsp_get_line_text(source, line0)
+    let trim_l = line.trim()
+    if !trim_l.starts_with("import ") && !trim_l.starts_with("use ") { return "" }
+    let n = line.len()
+    // Check quoted path containing cursor
+    mut q1 = -1
+    mut q2 = -1
+    mut i = 0
+    while i < n {
+        if line.byte_at(i) == 34 {
+            if q1 < 0 {
+                q1 = i
+            } else {
+                q2 = i
+                if char0 >= q1 && char0 <= q2 {
+                    let rel = line.slice(q1 + 1, q2)
+                    mut resolved = rel
+                    if !bpath_is_abs(resolved) {
+                        resolved = bpath_join(bpath_dirname(doc_path), rel)
+                    } else {
+                        resolved = bpath_normalize(resolved)
+                    }
+                    if !File.exists(resolved) && !str_ends_with_arx(resolved) {
+                        if File.exists(resolved + ".arx") { resolved = resolved + ".arx" }
+                    }
+                    if File.exists(resolved) { return resolved }
+                    return ""
+                }
+                q1 = -1
+                q2 = -1
+            }
+        }
+        i = i + 1
+    }
+    // Check module name import Mod
+    let w = lsp_word_at(source, line0, char0)
+    if w != "" && w != "import" && w != "use" && w != "from" {
+        let mdir = find_module_dir(w, bpath_dirname(doc_path))
+        if mdir != "" {
+            let c1 = bpath_join(mdir, w + ".arx")
+            if File.exists(c1) { return c1 }
+            let c2 = bpath_join(mdir, "mod.arx")
+            if File.exists(c2) { return c2 }
+            let c3 = bpath_join(mdir, "main.arx")
+            if File.exists(c3) { return c3 }
+        }
+    }
+    return ""
+}
+
+fn lsp_format_hover_block(code: str, doc: str, loc_file: str, loc_line: i64) -> str {
+    let bb = ByteBuffer()
+    bb.write_str("```aerix\n")
+    bb.write_str(code)
+    bb.write_str("\n```")
+    if doc != "" {
+        bb.write_str("\n---\n")
+        bb.write_str(doc)
+    }
+    if loc_file != "" && loc_line > 0 {
+        bb.write_str("\n\n*Defined at* [`")
+        bb.write_str(bpath_basename(loc_file))
+        bb.write_str(":")
+        bb.write_str("" + loc_line)
+        bb.write_str("`](")
+        bb.write_str(lsp_path_to_uri(loc_file))
+        bb.write_str("#L")
+        bb.write_str("" + loc_line)
+        bb.write_str(")")
+    }
+    let out = bb.to_str()
+    bb.free()
+    return out
+}
+

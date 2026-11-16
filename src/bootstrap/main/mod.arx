@@ -1,0 +1,331 @@
+// Aerix Bootstrap Compiler — Self-Hosting CLI Driver (arxc)
+// Supports: build, run, emit-c, check, version, help, and direct `<file.arx> [-o <out>]`.
+
+import "../frontend/ast.arx"
+import "../frontend/parser/mod.arx"
+import "../middle/paths.arx"
+import "../middle/types.arx"
+import "../middle/analyzer/mod.arx"
+import "../middle/docgen.arx"
+import "../backend/emitter/mod.arx"
+import "../backend/linker.arx"
+import "../backend/native/codegen/mod.arx"
+import "../lsp/features/mod.arx"
+import "../lsp/server.arx"
+import "../pkg/manager/mod.arx"
+
+import "./usage.arx"
+import "./misc.arx"
+import "./diag.arx"
+import "./build.arx"
+
+fn main() -> i64 {
+
+    let cli_args = Env.args()
+    let cli_argc = Env.arg_count()
+    if cli_argc <= 1 {
+        print_usage()
+        return 0
+    }
+
+    let first = cli_args.get(1)
+    if first == "version" || first == "--version" || first == "-v" {
+        if cli_argc >= 3 {
+            let a2 = cli_args.get(2)
+            if a2 == "--help" || a2 == "-h" {
+                print_version_usage()
+                return 0
+            }
+        }
+        println("Aerix Self-Hosting Bootstrap Compiler (arxc) v3.0.0-beta.2")
+        maybe_trigger_bg_update()
+        return 0
+    }
+    if first == "help" || first == "--help" || first == "-h" {
+        if cli_argc >= 3 {
+            let sub = cli_args.get(2)
+            if sub == "build" { print_build_usage(); return 0 }
+            if sub == "run" { print_run_usage(); return 0 }
+            if sub == "emit-c" { print_emit_c_usage(); return 0 }
+            if sub == "check" { print_check_usage(); return 0 }
+            if sub == "fmt" { print_fmt_usage(); return 0 }
+            if sub == "test" { print_test_usage(); return 0 }
+            if sub == "lsp" { print_lsp_usage(); return 0 }
+            if sub == "doc" { print_doc_usage(); return 0 }
+            if sub == "repl" { print_repl_usage(); return 0 }
+            if sub == "vm" || sub == "toolchain" { print_vm_usage(); return 0 }
+            if sub == "update" || sub == "upgrade" { print_update_usage(); return 0 }
+            if sub == "pkg" || sub == "package" || sub == "pm" { print_pkg_usage(); return 0 }
+            if sub == "version" { print_version_usage(); return 0 }
+        }
+        print_usage()
+        return 0
+    }
+    if first == "fmt" {
+        mut check_only = false
+        mut target = ""
+        mut fi = 2
+        while fi < cli_argc {
+            let fa = cli_args.get(fi)
+            if fa == "--help" || fa == "-h" {
+                print_fmt_usage()
+                return 0
+            } else if fa == "--check" || fa == "-c" {
+                check_only = true
+            } else if !fa.starts_with("-") && target == "" {
+                target = fa
+            } else {
+                eprintln("error: unknown option '" + fa + "' for 'arx fmt'")
+                eprintln("  = help: run 'arx fmt --help' for supported options")
+                return 1
+            }
+            fi = fi + 1
+        }
+        return cmd_fmt(target, check_only)
+    }
+    if first == "test" {
+        mut target = ""
+        mut test_opt = "-O0"
+        mut test_backend = "native"
+        mut test_verbose = false
+        mut ti = 2
+        while ti < cli_argc {
+            let ta = cli_args.get(ti)
+            if ta == "--help" || ta == "-h" {
+                print_test_usage()
+                return 0
+            } else if ta == "--debug" || ta == "-g" {
+                test_opt = "-O0 -g"
+            } else if ta == "--release" {
+                test_opt = "-O3 -flto"
+            } else if ta == "-O0" || ta == "-O1" || ta == "-O2" || ta == "-O3" {
+                test_opt = ta
+            } else if ta == "--backend=c" || ta == "--c" {
+                test_backend = "c"
+            } else if ta == "--backend=native" || ta == "--native" {
+                test_backend = "native"
+            } else if ta == "--backend" {
+                if ti + 1 < cli_argc {
+                    ti = ti + 1
+                    let next_ta = cli_args.get(ti)
+                    if next_ta == "native" {
+                        test_backend = "native"
+                    } else if next_ta == "c" {
+                        test_backend = "c"
+                    }
+                }
+            } else if ta == "-v" || ta == "--verbose" || ta == "--status" {
+                test_verbose = true
+            } else if !ta.starts_with("-") && target == "" {
+                target = ta
+            } else {
+                eprintln("error: unknown option '" + ta + "' for 'arx test'")
+                eprintln("  = help: run 'arx test --help' for supported options")
+                return 1
+            }
+            ti = ti + 1
+        }
+        return cmd_test(target, test_opt, test_backend, test_verbose)
+    }
+    if first == "lsp" {
+        if cli_argc >= 3 {
+            let a2 = cli_args.get(2)
+            if a2 == "--help" || a2 == "-h" {
+                print_lsp_usage()
+                return 0
+            }
+        }
+        return run_lsp_server()
+    }
+    if first == "doc" {
+        mut target = ""
+        mut out_dir = "docs"
+        mut di = 2
+        while di < cli_argc {
+            let da = cli_args.get(di)
+            if da == "--help" || da == "-h" {
+                print_doc_usage()
+                return 0
+            } else if da == "-o" || da == "--output" {
+                di = di + 1
+                if di < cli_argc {
+                    out_dir = cli_args.get(di)
+                }
+            } else if da.starts_with("-o=") || da.starts_with("--output=") {
+                let eq = da.index_of("=")
+                out_dir = da.slice(eq + 1, da.len())
+            } else if !da.starts_with("-") && target == "" {
+                target = da
+            } else {
+                eprintln("error: unknown option '" + da + "' for 'arx doc'")
+                eprintln("  = help: run 'arx doc --help' for supported options")
+                return 1
+            }
+            di = di + 1
+        }
+        return cmd_doc(target, out_dir)
+    }
+    if first == "repl" {
+        if cli_argc >= 3 {
+            let a2 = cli_args.get(2)
+            if a2 == "--help" || a2 == "-h" {
+                print_repl_usage()
+                return 0
+            }
+        }
+        return cmd_repl()
+    }
+    if first == "vm" || first == "toolchain" {
+        return cmd_vm(cli_args, cli_argc, 2, "")
+    }
+    if first == "install" {
+        return cmd_vm(cli_args, cli_argc, 2, "install")
+    }
+    if first == "use" || first == "switch" {
+        return cmd_vm(cli_args, cli_argc, 2, "use")
+    }
+    if first == "versions" || first == "toolchains" {
+        return cmd_vm(cli_args, cli_argc, 2, "list")
+    }
+    if first == "current" {
+        return cmd_vm(cli_args, cli_argc, 2, "status")
+    }
+    if first == "pkg" || first == "package" || first == "pm" {
+        return cmd_pkg(cli_args, cli_argc)
+    }
+    if first == "add" {
+        return cmd_pkg(cli_args, cli_argc)
+    }
+    if first == "update" || first == "upgrade" {
+        mut upd_check = false
+        mut upd_force = false
+        mut upd_verbose = false
+        mut upd_no_ide = false
+        mut ui = 2
+        while ui < cli_argc {
+            let ua = cli_args.get(ui)
+            if ua == "--help" || ua == "-h" {
+                print_update_usage()
+                return 0
+            } else if ua == "--check" || ua == "-c" || ua == "--status" {
+                upd_check = true
+            } else if ua == "--force" || ua == "-f" {
+                upd_force = true
+            } else if ua == "--verbose" || ua == "-v" || ua == "--notes" {
+                upd_verbose = true
+            } else if ua == "--no-ide" || ua == "--no-vscode" || ua == "--no-antigravity" {
+                upd_no_ide = true
+            } else {
+                eprintln("error: unknown option '" + ua + "' for 'arx " + first + "'")
+                eprintln("  = help: run 'arx " + first + " --help' to see supported options")
+                return 1
+            }
+            ui = ui + 1
+        }
+        return cmd_update(upd_check, upd_force, upd_verbose, upd_no_ide)
+    }
+
+    mut mode = ""
+    mut start_i = 2
+    if first == "build" || first == "run" || first == "emit-c" || first == "check" {
+        mode = first
+    } else {
+        mode = "auto"
+        start_i = 1
+    }
+
+    mut input_file = ""
+    mut out_file = ""
+    mut opt_flag = "-O2"
+    mut keep_c = false
+    mut backend = "auto"
+    mut verbose = false
+    let prog_args = List<str>()
+    mut prog_argc = 0
+    mut after_dashdash = false
+
+    mut i = start_i
+    while i < cli_argc {
+        let a = cli_args.get(i)
+        if after_dashdash {
+            prog_args.push(a)
+            prog_argc = prog_argc + 1
+        } else if a == "--" {
+            after_dashdash = true
+        } else if a == "-o" || a == "--output" {
+            if i + 1 < cli_argc {
+                i = i + 1
+                out_file = cli_args.get(i)
+            }
+        } else if a.starts_with("-o=") || a.starts_with("--output=") {
+            let eq = a.index_of("=")
+            out_file = a.slice(eq + 1, a.len())
+        } else if a == "--emit-c" {
+            keep_c = true
+        } else if a == "--backend=c" || a == "--c" {
+            backend = "c"
+        } else if a == "--backend=native" || a == "--native" {
+            backend = "native"
+        } else if a == "--backend" {
+            if i + 1 < cli_argc {
+                i = i + 1
+                let next_a = cli_args.get(i)
+                if next_a == "native" {
+                    backend = "native"
+                } else if next_a == "c" {
+                    backend = "c"
+                }
+            }
+        } else if a == "-O0" || a == "-O1" || a == "-O2" || a == "-O3" {
+            opt_flag = a
+        } else if a == "--debug" || a == "-g" {
+            opt_flag = "-O0 -g"
+        } else if a == "--release" {
+            opt_flag = "-O3 -flto -s"
+        } else if a == "-v" || a == "--verbose" || a == "--status" {
+            verbose = true
+        } else if a == "--gui" || a == "--windows" || a == "--no-console" || a == "-mwindows" {
+            // Flag accepted for windowed GUI subsystem mode
+        } else if a == "--help" || a == "-h" {
+            if mode == "build" { print_build_usage(); return 0 }
+            if mode == "run" { print_run_usage(); return 0 }
+            if mode == "emit-c" { print_emit_c_usage(); return 0 }
+            if mode == "check" { print_check_usage(); return 0 }
+            print_usage()
+            return 0
+        } else if input_file == "" {
+            input_file = a
+        } else {
+            prog_args.push(a)
+            prog_argc = prog_argc + 1
+        }
+        i = i + 1
+    }
+
+    if input_file == "" {
+        eprintln("ERROR: No input .arx file provided.")
+        print_usage()
+        return 1
+    }
+
+    maybe_trigger_bg_update()
+
+    if mode == "check" {
+        return cmd_check(input_file)
+    }
+    if mode == "emit-c" {
+        return cmd_emit_c(input_file, out_file)
+    }
+    if mode == "build" {
+        return cmd_build(input_file, out_file, opt_flag, keep_c, backend, verbose)
+    }
+    if mode == "run" {
+        return cmd_run(input_file, opt_flag, backend, prog_args, prog_argc, verbose)
+    }
+
+    // "auto" mode: if -o specified, build executable; otherwise compile & run
+    if out_file != "" {
+        return cmd_build(input_file, out_file, opt_flag, keep_c, backend, verbose)
+    }
+    return cmd_run(input_file, opt_flag, backend, prog_args, prog_argc, verbose)
+}

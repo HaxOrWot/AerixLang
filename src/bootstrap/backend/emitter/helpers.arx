@@ -1,0 +1,190 @@
+import "./mod.arx"
+
+extend Emitter {
+
+    // --- Low-level Output & Formatting Helpers ---
+
+    priv fn w(s: str) {
+        self.out.write_str(s)
+    }
+
+    priv fn w_byte(b: i64) {
+        self.out.write_u8(b)
+    }
+
+    priv fn w_nl() {
+        self.out.write_u8(10)
+    }
+
+    priv fn w_ind() {
+        mut i = 0
+        while i < self.indent {
+            self.out.write_str("    ")
+            i = i + 1
+        }
+    }
+
+    priv fn wl(s: str) {
+        self.w_ind()
+        self.out.write_str(s)
+        self.out.write_u8(10)
+    }
+
+    priv fn wc(s: str) {
+        let n = s.len()
+        mut i = 0
+        while i < n {
+            let b = s.byte_at(i)
+            if b == 64 {
+                self.out.write_u8(123)
+            } else if b == 96 {
+                self.out.write_u8(125)
+            } else {
+                self.out.write_u8(b)
+            }
+            i = i + 1
+        }
+    }
+
+    priv fn wcl(s: str) {
+        self.w_ind()
+        self.wc(s)
+        self.out.write_u8(10)
+    }
+
+    priv fn w_lbrace() { self.out.write_u8(123) }
+    priv fn w_rbrace() { self.out.write_u8(125) }
+    priv fn w_quote() { self.out.write_u8(34) }
+
+    priv fn open_blk() {
+        self.w_ind()
+        self.w_lbrace()
+        self.w_nl()
+        self.indent = self.indent + 1
+    }
+
+    priv fn close_blk() {
+        self.indent = self.indent - 1
+        self.w_ind()
+        self.w_rbrace()
+        self.w_nl()
+    }
+
+    priv fn next_tmp() -> str {
+        let nm = "__t" + (self.tmp_id as str)
+        self.tmp_id = self.tmp_id + 1
+        return nm
+    }
+
+    priv fn next_lbl() -> str {
+        let nm = "__lbl" + (self.lbl_id as str)
+        self.lbl_id = self.lbl_id + 1
+        return nm
+    }
+
+    priv fn child_at(nid: i64, idx: i64) -> i64 {
+        return self.ch.get(self.ls.get(nid) + idx)
+    }
+
+    priv fn child_count(nid: i64) -> i64 {
+        return self.ll.get(nid)
+    }
+
+    priv fn has_list_type(elem_t: str) -> bool {
+        return self.seen_generics.has_key("L::" + btype_norm(elem_t))
+    }
+
+    priv fn write_c_str_lit(raw: str) {
+        self.w_quote()
+        let n = raw.len()
+        mut i = 0
+        while i < n {
+            let b = raw.byte_at(i)
+            if b == 10 {
+                self.w_byte(92)
+                self.w_byte(110)
+            } else if b == 9 {
+                self.w_byte(92)
+                self.w_byte(116)
+            } else if b == 13 {
+                self.w_byte(92)
+                self.w_byte(114)
+            } else if b == 92 {
+                self.w_byte(92)
+                self.w_byte(92)
+            } else if b == 34 {
+                self.w_byte(92)
+                self.w_byte(34)
+            } else {
+                self.w_byte(b)
+            }
+            i = i + 1
+        }
+        self.w_quote()
+    }
+
+    priv fn emit_box_expr(raw_t: str, expr: str) -> str {
+        let t = btype_norm(raw_t)
+        if btype_is_str(t) || btype_is_ptr(t) || t == "null" {
+            return "((int64_t)(intptr_t)(" + expr + "))"
+        }
+        if btype_is_int(t) || t == "bool" || t == "char" {
+            return "((int64_t)(" + expr + "))"
+        }
+        if t == "f64" {
+            let tmp = self.next_tmp()
+            self.wcl("union @ double f; int64_t i; ` " + tmp + "; " + tmp + ".f = (double)(" + expr + ");")
+            return tmp + ".i"
+        }
+        if t == "f32" {
+            let tmp = self.next_tmp()
+            self.wcl("union @ double f; int64_t i; ` " + tmp + "; " + tmp + ".f = (double)(" + expr + ");")
+            return tmp + ".i"
+        }
+        // Struct or Enum by value: allocate copy on heap and store handle
+        let ct = btype_to_c(t)
+        let tmp = self.next_tmp()
+        self.wl(ct + "* " + tmp + " = (" + ct + "*)arx_alloc(sizeof(" + ct + ")); *" + tmp + " = (" + expr + ");")
+        return "((int64_t)(intptr_t)" + tmp + ")"
+    }
+
+    priv fn emit_unbox_expr(raw_t: str, raw_expr: str) -> str {
+        let t = btype_norm(raw_t)
+        if btype_is_str(t) {
+            return "((const char*)(intptr_t)(" + raw_expr + "))"
+        }
+        if btype_is_ptr(t) {
+            return "((" + btype_to_c(t) + ")(intptr_t)(" + raw_expr + "))"
+        }
+        if t == "bool" {
+            return "((" + raw_expr + ") != 0)"
+        }
+        if btype_is_int(t) || t == "char" {
+            return "((" + btype_to_c(t) + ")(" + raw_expr + "))"
+        }
+        if t == "f64" || t == "f32" {
+            let tmp = self.next_tmp()
+            self.wcl("union @ double f; int64_t i; ` " + tmp + "; " + tmp + ".i = (" + raw_expr + ");")
+            if t == "f32" { return "((float)" + tmp + ".f)" }
+            return tmp + ".f"
+        }
+        let ct = btype_to_c(t)
+        return "(*(" + ct + "*)(intptr_t)(" + raw_expr + "))"
+    }
+
+    priv fn emit_cast_to_str(raw_t: str, expr: str) -> str {
+        let t = btype_norm(raw_t)
+        if btype_is_str(t) { return expr }
+        if t == "bool" { return "arx_cast_bool_to_str(" + expr + ")" }
+        if t == "char" { return "arx_cast_char_to_str(" + expr + ")" }
+        if btype_is_float(t) { return "arx_cast_f64_to_str((double)(" + expr + "))" }
+        if t == "u64" || t == "u32" || t == "u16" || t == "u8" {
+            return "arx_cast_u64_to_str((uint64_t)(" + expr + "))"
+        }
+        if btype_is_int(t) {
+            return "arx_cast_i64_to_str((int64_t)(" + expr + "))"
+        }
+        return "arx_cast_i64_to_str((int64_t)(intptr_t)(" + expr + "))"
+    }
+
+}

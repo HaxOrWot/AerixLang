@@ -1,0 +1,373 @@
+import "./mod.arx"
+
+extend Emitter {
+    priv fn emit_resolved_args(call_nid: i64, fn_nid: i64) -> List<str> {
+        let out_args = List<str>()
+        let ac = self.child_count(call_nid)
+        if fn_nid < 0 {
+            mut i = 0
+            while i < ac {
+                out_args.push(self.gen_expr(self.child_at(call_nid, i)))
+                i = i + 1
+            }
+            return out_args
+        }
+        if self.nk.get(fn_nid) == NK_ENUM_VAR() {
+            mut i = 0
+            while i < ac {
+                out_args.push(self.gen_expr(self.child_at(call_nid, i)))
+                i = i + 1
+            }
+            return out_args
+        }
+        let pg = self.la.get(fn_nid)
+        if pg < 0 {
+            mut i = 0
+            while i < ac {
+                out_args.push(self.gen_expr(self.child_at(call_nid, i)))
+                i = i + 1
+            }
+            return out_args
+        }
+        let pcnt = self.child_count(pg)
+        if pcnt == 0 {
+            return out_args
+        }
+        let slots = List<str>()
+        let filled = List<i64>()
+        mut pi = 0
+        while pi < pcnt {
+            slots.push("")
+            filled.push(0)
+            pi = pi + 1
+        }
+        mut ai = 0
+        mut pos_idx = 0
+        while ai < ac {
+            let aid = self.child_at(call_nid, ai)
+            if self.nk.get(aid) == NK_NAMED_ARG() {
+                let pname = self.sa.get(aid)
+                let pval = self.gen_expr(self.la.get(aid))
+                mut j = 0
+                while j < pcnt {
+                    if self.sa.get(self.child_at(pg, j)) == pname {
+                        slots.set(j, pval)
+                        filled.set(j, 1)
+                        break
+                    }
+                    j = j + 1
+                }
+            } else if pos_idx < pcnt {
+                slots.set(pos_idx, self.gen_expr(aid))
+                filled.set(pos_idx, 1)
+                pos_idx = pos_idx + 1
+            }
+            ai = ai + 1
+        }
+        pi = 0
+        while pi < pcnt {
+            if filled.get(pi) == 0 {
+                let def_id = self.la.get(self.child_at(pg, pi))
+                if def_id >= 0 {
+                    slots.set(pi, self.gen_expr(def_id))
+                } else {
+                    slots.set(pi, btype_default_c_val(self.sb.get(self.child_at(pg, pi))))
+                }
+            }
+            out_args.push(slots.get(pi))
+            pi = pi + 1
+        }
+        return out_args
+    }
+
+    priv fn gen_call(nid: i64) -> str {
+        let ckind = self.call_kinds.get(nid)
+        let target = self.call_targets.get(nid)
+        let ret_t = btype_norm(self.node_types.get(nid))
+        let fn_nid = self.call_fn_nodes.get(nid)
+
+        if ckind == CK_BUILTIN() {
+            return self.gen_builtin_call(nid, target)
+        }
+
+        if ckind == CK_STR_METHOD() {
+            let callee = self.la.get(nid)
+            let recv_s = self.gen_expr(self.la.get(callee))
+            return self.gen_str_method_call(nid, target, recv_s, ret_t)
+        }
+
+        if ckind == CK_ARR_METHOD() {
+            let callee = self.la.get(nid)
+            let arr_t = btype_norm(self.node_types.get(self.la.get(callee)))
+            if target == "len" || target == "length" {
+                return "((int64_t)" + (btype_arr_len(arr_t) as str) + "LL)"
+            }
+            return "0"
+        }
+
+        let eval_args = self.emit_resolved_args(nid, fn_nid)
+        let argc = eval_args.len()
+
+        let call_bb = ByteBuffer()
+        call_bb.write_str(target)
+        call_bb.write_u8(40)
+        mut arg_started = 0
+        if ckind == CK_METHOD() {
+            let callee = self.la.get(nid)
+            let recv_id = self.la.get(callee)
+            let recv_t = btype_norm(self.node_types.get(recv_id))
+            let addr = self.emit_lvalue_addr(recv_id, recv_t)
+            call_bb.write_str(addr)
+            arg_started = 1
+        }
+        mut i = 0
+        while i < argc {
+            if arg_started > 0 { call_bb.write_str(", ") }
+            call_bb.write_str(eval_args.get(i))
+            arg_started = 1
+            i = i + 1
+        }
+        call_bb.write_u8(41)
+        let expr_s = call_bb.to_str()
+        call_bb.free()
+
+        if ret_t == "void" {
+            self.wl(expr_s + ";")
+            return "0"
+        }
+        let tmp = self.next_tmp()
+        self.wl(btype_to_c(ret_t) + " " + tmp + " = " + expr_s + ";")
+        return tmp
+    }
+
+    priv fn gen_builtin_call(nid: i64, name: str) -> str {
+        let ac = self.child_count(nid)
+        if name == "println" || name == "print" || name == "eprintln" {
+            if ac == 0 {
+                if name == "println" {
+                    self.wl("puts(\"\");")
+                } else if name == "eprintln" {
+                    self.wl("fprintf(stderr, \"\\n\");")
+                }
+                return "0"
+            }
+            let a0 = self.child_at(nid, 0)
+            let at = btype_norm(self.node_types.get(a0))
+            let av = self.gen_expr(a0)
+            if name == "eprintln" {
+                let sv = self.emit_cast_to_str(at, av)
+                self.wl("fprintf(stderr, \"%s\\n\", " + sv + ");")
+                return "0"
+            }
+            mut pfx = "arx_print_"
+            if name == "println" { pfx = "arx_println_" }
+            if btype_is_str(at) {
+                self.wl(pfx + "str(" + av + ");")
+            } else if at == "bool" {
+                self.wl(pfx + "bool(" + av + ");")
+            } else if btype_is_float(at) {
+                self.wl(pfx + "f64((double)(" + av + "));")
+            } else if at == "char" {
+                if name == "println" {
+                    self.wl("printf(\"%c\\n\", " + av + ");")
+                } else {
+                    self.wl("printf(\"%c\", " + av + ");")
+                }
+            } else {
+                self.wl(pfx + "i64((int64_t)(" + av + "));")
+            }
+            return "0"
+        }
+        if name == "panic" || name == "abort" {
+            if ac > 0 {
+                let a0 = self.child_at(nid, 0)
+                let av = self.emit_cast_to_str(self.node_types.get(a0), self.gen_expr(a0))
+                self.wl("fprintf(stderr, \"PANIC: %s\\n\", " + av + ");")
+            }
+            self.wl("exit(1);")
+            return "0"
+        }
+        if name == "exit" {
+            mut code = "0"
+            if ac > 0 { code = "(int)(" + self.gen_expr(self.child_at(nid, 0)) + ")" }
+            self.wl("exit(" + code + ");")
+            return "0"
+        }
+        if name == "assert" && ac >= 1 {
+            let cond = self.gen_expr(self.child_at(nid, 0))
+            mut loc_file = "unknown"
+            if nid < self.nf.len() && self.nf.get(nid) != "" { loc_file = self.nf.get(nid).replace("\\", "/") }
+            mut loc_line = 1
+            if nid < self.ln.len() && self.ln.get(nid) > 0 { loc_line = self.ln.get(nid) }
+            self.wcl("if (!(" + cond + ")) @ fprintf(stderr, \"AssertionError: assertion failed at " + loc_file + ":" + (loc_line as str) + "\\n\"); exit(1); `")
+            return "0"
+        }
+        if name == "assert_eq" && ac >= 2 {
+            let a0 = self.child_at(nid, 0)
+            let a1 = self.child_at(nid, 1)
+            let lval = self.gen_expr(a0)
+            let rval = self.gen_expr(a1)
+            let t0 = self.node_types.get(a0)
+            mut loc_file = "unknown"
+            if nid < self.nf.len() && self.nf.get(nid) != "" { loc_file = self.nf.get(nid).replace("\\", "/") }
+            mut loc_line = 1
+            if nid < self.ln.len() && self.ln.get(nid) > 0 { loc_line = self.ln.get(nid) }
+            let loc_str = loc_file + ":" + (loc_line as str)
+
+            if btype_is_str(t0) {
+                let tl = self.next_tmp()
+                let tr = self.next_tmp()
+                self.wl("const char* " + tl + " = " + lval + ";")
+                self.wl("const char* " + tr + " = " + rval + ";")
+                self.wcl("if (arx_str_compare(" + tl + ", " + tr + ") != 0) @ fprintf(stderr, \"AssertionError: assert_eq failed at " + loc_str + "\\n  left:  \\\"%s\\\"\\n  right: \\\"%s\\\"\\n\", " + tl + " ? " + tl + " : \"null\", " + tr + " ? " + tr + " : \"null\"); exit(1); `")
+            } else if btype_is_float(t0) {
+                let tl = self.next_tmp()
+                let tr = self.next_tmp()
+                self.wl("double " + tl + " = (double)(" + lval + ");")
+                self.wl("double " + tr + " = (double)(" + rval + ");")
+                self.wcl("if (" + tl + " != " + tr + ") @ fprintf(stderr, \"AssertionError: assert_eq failed at " + loc_str + "\\n  left:  %g\\n  right: %g\\n\", " + tl + ", " + tr + "); exit(1); `")
+            } else {
+                let tl = self.next_tmp()
+                let tr = self.next_tmp()
+                self.wl("int64_t " + tl + " = (int64_t)(intptr_t)(" + lval + ");")
+                self.wl("int64_t " + tr + " = (int64_t)(intptr_t)(" + rval + ");")
+                self.wcl("if (" + tl + " != " + tr + ") @ fprintf(stderr, \"AssertionError: assert_eq failed at " + loc_str + "\\n  left:  %lld\\n  right: %lld\\n\", (long long)" + tl + ", (long long)" + tr + "); exit(1); `")
+            }
+            return "0"
+        }
+        if name == "read_line" || name == "input" {
+            let tmp = self.next_tmp()
+            if ac > 0 {
+                let pv = self.gen_expr(self.child_at(nid, 0))
+                self.wl("const char* " + tmp + " = arx_input(" + pv + ");")
+            } else {
+                self.wl("const char* " + tmp + " = arx_readln();")
+            }
+            return tmp
+        }
+        if name == "to_string" && ac >= 1 {
+            let a0 = self.child_at(nid, 0)
+            return self.emit_cast_to_str(self.node_types.get(a0), self.gen_expr(a0))
+        }
+        if name == "parse_int" && ac >= 1 {
+            let av = self.gen_expr(self.child_at(nid, 0))
+            return "arx_str_to_i64(" + av + ")"
+        }
+        if name == "parse_float" && ac >= 1 {
+            let av = self.gen_expr(self.child_at(nid, 0))
+            return "arx_str_to_f64(" + av + ")"
+        }
+        if name == "chr" && ac >= 1 {
+            let av = self.gen_expr(self.child_at(nid, 0))
+            return "__arx_byte_chr(" + av + ")"
+        }
+        if name == "ord" && ac >= 1 {
+            let av = self.gen_expr(self.child_at(nid, 0))
+            return "((int64_t)(unsigned char)((" + av + ")[0]))"
+        }
+        if name == "len" && ac >= 1 {
+            let a0 = self.child_at(nid, 0)
+            let at = btype_norm(self.node_types.get(a0))
+            if btype_is_str(at) { return "arx_str_len(" + self.gen_expr(a0) + ")" }
+            if btype_is_fixed_arr(at) { return "((int64_t)" + (btype_arr_len(at) as str) + "LL)" }
+            if btype_is_slice(at) { return "((int64_t)(" + self.gen_expr(a0) + ").len)" }
+            let addr = self.emit_lvalue_addr(a0, at)
+            return "Arx_" + btype_mangle(at) + "_len(" + addr + ")"
+        }
+        if name == "arx_free" && ac >= 1 {
+            self.wl("arx_free((void*)(" + self.gen_expr(self.child_at(nid, 0)) + "));")
+            return "0"
+        }
+        if name == "abs" && ac >= 1 {
+            let a0 = self.child_at(nid, 0)
+            let av = self.gen_expr(a0)
+            if btype_is_float(self.node_types.get(a0)) { return "fabs((double)(" + av + "))" }
+            return "((int64_t)llabs((long long)(" + av + ")))"
+        }
+        if (name == "min" || name == "max") && ac >= 2 {
+            let t0 = self.next_tmp()
+            let t1 = self.next_tmp()
+            let a0 = self.child_at(nid, 0)
+            let vt = btype_norm(self.node_types.get(a0))
+            let ct = btype_to_c(vt)
+            let v0 = self.gen_expr(a0)
+            let v1 = self.gen_expr(self.child_at(nid, 1))
+            self.wl(ct + " " + t0 + " = " + v0 + "; " + ct + " " + t1 + " = " + v1 + ";")
+            if name == "min" { return "((" + t0 + " < " + t1 + ") ? " + t0 + " : " + t1 + ")" }
+            return "((" + t0 + " > " + t1 + ") ? " + t0 + " : " + t1 + ")"
+        }
+        if ac >= 1 {
+            // Math funcs: sqrt, sin, cos, tan, floor, ceil, round, log, exp, pow
+            let v0 = self.gen_expr(self.child_at(nid, 0))
+            if name == "pow" && ac >= 2 {
+                let v1 = self.gen_expr(self.child_at(nid, 1))
+                return "pow((double)(" + v0 + "), (double)(" + v1 + "))"
+            }
+            return name + "((double)(" + v0 + "))"
+        }
+        return "0"
+    }
+
+    priv fn gen_str_method_call(nid: i64, mname: str, recv: str, ret_t: str) -> str {
+        let ac = self.child_count(nid)
+        if mname == "len" || mname == "length" { return "arx_str_len(" + recv + ")" }
+        if mname == "is_empty" { return "(arx_str_len(" + recv + ") == 0)" }
+        if mname == "to_i64" { return "arx_str_to_i64(" + recv + ")" }
+        if mname == "to_f64" { return "arx_str_to_f64(" + recv + ")" }
+        if mname == "trim" { return "arx_str_trim(" + recv + ")" }
+        if mname == "trim_start" { return "arx_str_trim_start(" + recv + ")" }
+        if mname == "trim_end" { return "arx_str_trim_end(" + recv + ")" }
+        if mname == "char_len" { return "arx_str_char_len(" + recv + ")" }
+        if mname == "to_upper" { return "arx_str_to_upper(" + recv + ")" }
+        if mname == "to_lower" { return "arx_str_to_lower(" + recv + ")" }
+        if mname == "byte_at" && ac >= 1 {
+            return "arx_str_byte_at(" + recv + ", " + self.gen_expr(self.child_at(nid, 0)) + ")"
+        }
+        if (mname == "char_at" || mname == "get") && ac >= 1 {
+            return "((char)arx_str_byte_at(" + recv + ", " + self.gen_expr(self.child_at(nid, 0)) + "))"
+        }
+        if (mname == "slice" || mname == "substr") && ac >= 2 {
+            let a = self.gen_expr(self.child_at(nid, 0))
+            let b = self.gen_expr(self.child_at(nid, 1))
+            let tmp = self.next_tmp()
+            self.wl("const char* " + tmp + " = __arx_bstr_slice(" + recv + ", " + a + ", " + b + ");")
+            return tmp
+        }
+        if mname == "contains" { if ac >= 1 { return "arx_str_contains(" + recv + ", " + self.gen_expr(self.child_at(nid, 0)) + ")" } }
+        if mname == "starts_with" { if ac >= 1 { return "arx_str_starts_with(" + recv + ", " + self.gen_expr(self.child_at(nid, 0)) + ")" } }
+        if mname == "ends_with" { if ac >= 1 { return "arx_str_ends_with(" + recv + ", " + self.gen_expr(self.child_at(nid, 0)) + ")" } }
+        if mname == "index_of" || mname == "find" { if ac >= 1 { return "arx_str_find(" + recv + ", " + self.gen_expr(self.child_at(nid, 0)) + ")" } }
+        if mname == "replace" && ac >= 2 {
+            let o = self.gen_expr(self.child_at(nid, 0))
+            let n = self.gen_expr(self.child_at(nid, 1))
+            let tmp = self.next_tmp()
+            self.wl("const char* " + tmp + " = arx_str_replace(" + recv + ", " + o + ", " + n + ");")
+            return tmp
+        }
+        if mname == "repeat" && ac >= 1 {
+            return "arx_str_repeat(" + recv + ", " + self.gen_expr(self.child_at(nid, 0)) + ")"
+        }
+        if mname == "pad_left" && ac >= 2 {
+            let w = self.gen_expr(self.child_at(nid, 0))
+            let c = self.gen_expr(self.child_at(nid, 1))
+            return "arx_str_pad_left(" + recv + ", " + w + ", " + c + ")"
+        }
+        if mname == "pad_right" && ac >= 2 {
+            let w = self.gen_expr(self.child_at(nid, 0))
+            let c = self.gen_expr(self.child_at(nid, 1))
+            return "arx_str_pad_right(" + recv + ", " + w + ", " + c + ")"
+        }
+        if mname == "lines" {
+            let tmp = self.next_tmp()
+            self.wl("Arx_List_str " + tmp + "; " + tmp + ".data_handle = arx_str_lines(" + recv + "); " + tmp + ".length = arx_list_len(" + tmp + ".data_handle);")
+            return tmp
+        }
+        if mname == "split" && ac >= 1 {
+            let d = self.gen_expr(self.child_at(nid, 0))
+            let tmp = self.next_tmp()
+            self.wl("Arx_List_str " + tmp + " = __arx_bstr_split(" + recv + ", " + d + ");")
+            return tmp
+        }
+        return "0"
+    }
+}

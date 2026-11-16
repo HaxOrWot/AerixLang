@@ -1,0 +1,244 @@
+import "./mod.arx"
+
+// Parses and semantically analyzes an in-memory document with error recovery enabled.
+pub fn lsp_analyze_document(doc_path: str, source: str, docs_by_path: Map<str, str>) -> Analyzer {
+    let norm = bpath_normalize(doc_path)
+    mut p = Parser(norm)
+    p.recover_mode = true
+    p.virtual_docs = docs_by_path
+    p.load_source(source, norm)
+    mut az = Analyzer(p)
+    az.analyze()
+    return az
+}
+
+// Extracts a 0-indexed line of text from the source buffer.
+pub fn lsp_get_line_text(source: str, target_line0: i64) -> str {
+    let n = source.len()
+    mut ln = 0
+    mut i = 0
+    while ln < target_line0 && i < n {
+        if source.byte_at(i) == 10 { ln = ln + 1 }
+        i = i + 1
+    }
+    let st = i
+    while i < n && source.byte_at(i) != 10 && source.byte_at(i) != 13 {
+        i = i + 1
+    }
+    return source.slice(st, i)
+}
+
+pub fn lsp_count_lines(source: str) -> i64 {
+    let n = source.len()
+    mut cnt = 1
+    mut i = 0
+    while i < n {
+        if source.byte_at(i) == 10 { cnt = cnt + 1 }
+        i = i + 1
+    }
+    return cnt
+}
+
+pub fn lsp_word_start_at(source: str, line0: i64, char0: i64) -> i64 {
+    let line = lsp_get_line_text(source, line0)
+    let len = line.len()
+    if len == 0 { return -1 }
+    mut idx = char0
+    if idx >= len { idx = len - 1 }
+    if idx < 0 { return -1 }
+
+    if !lsp_is_ident_char(line.byte_at(idx)) && idx > 0 && lsp_is_ident_char(line.byte_at(idx - 1)) {
+        idx = idx - 1
+    }
+    if !lsp_is_ident_char(line.byte_at(idx)) {
+        return -1
+    }
+    mut st = idx
+    while st > 0 && lsp_is_ident_char(line.byte_at(st - 1)) {
+        st = st - 1
+    }
+    return st
+}
+
+fn lsp_lbrace() -> str {
+    let bb = ByteBuffer()
+    bb.write_u8(123)
+    let s = bb.to_str()
+    bb.free()
+    return s
+}
+
+pub fn lsp_word_at(source: str, line0: i64, char0: i64) -> str {
+    let line = lsp_get_line_text(source, line0)
+    let len = line.len()
+    let st = lsp_word_start_at(source, line0, char0)
+    if st < 0 { return "" }
+    mut ed = st + 1
+    while ed < len && lsp_is_ident_char(line.byte_at(ed)) {
+        ed = ed + 1
+    }
+    return line.slice(st, ed)
+}
+
+fn lsp_find_node_col0(source: str, ln1: i64, name: str) -> i64 {
+    if ln1 <= 0 || name == "" { return 0 }
+    let line = lsp_get_line_text(source, ln1 - 1)
+    let n = line.len()
+    let m = name.len()
+    mut start = 0
+    while start <= n - m {
+        let pos = lsp_str_find(line, name, start)
+        if pos < 0 { break }
+        let left_ok = pos == 0 || !lsp_is_ident_char(line.byte_at(pos - 1))
+        let right_idx = pos + m
+        let right_ok = right_idx >= n || !lsp_is_ident_char(line.byte_at(right_idx))
+        if left_ok && right_ok { return pos }
+        start = pos + 1
+    }
+    let fallback = lsp_str_find(line, name, 0)
+    if fallback >= 0 { return fallback }
+    return 0
+}
+
+fn lsp_read_target_source(source: str, doc_path: str, tfile: str) -> str {
+    if tfile == doc_path { return source }
+    if tfile != "" && File.exists(tfile) {
+        return File.read_to_string(tfile)
+    }
+    return ""
+}
+
+fn lsp_format_doc_line(line: str) -> str {
+    let t = line.trim()
+    if t.starts_with("@param ") {
+        let rest = t.slice(7, t.len()).trim()
+        let sp = lsp_str_find(rest, " ", 0)
+        if sp > 0 {
+            let pname = rest.slice(0, sp).trim()
+            let pdesc = rest.slice(sp + 1, rest.len()).trim()
+            return "- `" + pname + "` — " + pdesc
+        }
+        return "- `" + rest + "`"
+    }
+    if t.starts_with("@returns ") {
+        return "**Returns:** " + t.slice(9, t.len()).trim()
+    }
+    if t.starts_with("@return ") {
+        return "**Returns:** " + t.slice(8, t.len()).trim()
+    }
+    if t.starts_with("@note ") {
+        return "> **Note:** " + t.slice(6, t.len()).trim()
+    }
+    if t == "@example" || t.starts_with("@example ") {
+        let ex = t.slice(8, t.len()).trim()
+        if ex != "" { return "**Example:** `" + ex + "`" }
+        return "**Example:**"
+    }
+    return line
+}
+
+fn lsp_extract_doc_comments(source: str, doc_path: str, tfile: str, ln1: i64) -> str {
+    let fsrc = lsp_read_target_source(source, doc_path, tfile)
+    if fsrc == "" || ln1 <= 1 { return "" }
+    let collected = List<str>()
+    mut cur_ln0 = ln1 - 2
+    mut steps = 0
+    while cur_ln0 >= 0 && steps < 24 {
+        let raw = lsp_get_line_text(fsrc, cur_ln0).trim()
+        if raw.starts_with("///") {
+            mut c = raw.slice(3, raw.len())
+            if c.starts_with(" ") { c = c.slice(1, c.len()) }
+            collected.push(lsp_format_doc_line(c))
+        } else if raw.starts_with("//") {
+            mut c = raw.slice(2, raw.len())
+            if c.starts_with(" ") { c = c.slice(1, c.len()) }
+            collected.push(lsp_format_doc_line(c))
+        } else if raw.starts_with("#[") && collected.len() == 0 {
+            // Skip attribute lines right above declaration
+        } else {
+            break
+        }
+        cur_ln0 = cur_ln0 - 1
+        steps = steps + 1
+    }
+    if collected.len() == 0 { return "" }
+    let bb = ByteBuffer()
+    mut idx = collected.len() - 1
+    while idx >= 0 {
+        if idx < collected.len() - 1 { bb.write_str("\n") }
+        bb.write_str(collected.get(idx))
+        idx = idx - 1
+    }
+    let out = bb.to_str()
+    bb.free()
+    return out
+}
+
+fn lsp_block_end_line1(source: str, decl_ln1: i64) -> i64 {
+    if decl_ln1 <= 0 { return 1000000 }
+    let n = source.len()
+    mut cur_ln = 1
+    mut i = 0
+    while cur_ln < decl_ln1 && i < n {
+        if source.byte_at(i) == 10 { cur_ln = cur_ln + 1 }
+        i = i + 1
+    }
+    mut seen_brace = false
+    mut depth = 0
+    mut in_str = false
+    mut in_line_com = false
+    mut in_blk_com = false
+    while i < n {
+        let b = source.byte_at(i)
+        if b == 10 {
+            in_line_com = false
+            if !seen_brace && depth == 0 && i > 0 && source.byte_at(i - 1) != 123 {
+                // Single-line expression body `fn f() => x` without braces
+                mut j = i - 1
+                while j >= 0 && source.byte_at(j) != 10 {
+                    if j >= 1 && source.byte_at(j - 1) == 61 && source.byte_at(j) == 62 {
+                        return cur_ln
+                    }
+                    j = j - 1
+                }
+            }
+            cur_ln = cur_ln + 1
+            i = i + 1
+            continue
+        }
+        if in_line_com { i = i + 1; continue }
+        if in_blk_com {
+            if b == 42 && i + 1 < n && source.byte_at(i + 1) == 47 {
+                in_blk_com = false
+                i = i + 2
+                continue
+            }
+            i = i + 1
+            continue
+        }
+        if in_str {
+            if b == 92 && i + 1 < n { i = i + 2; continue }
+            if b == 34 { in_str = false }
+            i = i + 1
+            continue
+        }
+        if b == 47 && i + 1 < n {
+            let nb = source.byte_at(i + 1)
+            if nb == 47 { in_line_com = true; i = i + 2; continue }
+            if nb == 42 { in_blk_com = true; i = i + 2; continue }
+        }
+        if b == 34 { in_str = true; i = i + 1; continue }
+        if b == 123 {
+            seen_brace = true
+            depth = depth + 1
+        } else if b == 125 {
+            depth = depth - 1
+            if seen_brace && depth <= 0 {
+                return cur_ln
+            }
+        }
+        i = i + 1
+    }
+    return cur_ln
+}
+

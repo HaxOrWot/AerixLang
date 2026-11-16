@@ -1,0 +1,225 @@
+import "./mod.arx"
+
+extend Emitter {
+    // --- Function & Method Bodies ---
+
+    // Emits function and method definition bodies, default constructors, and extensions.
+    priv fn emit_all_functions() {
+        // Class constructors, dtors, methods
+        mut ci = 0
+        while ci < self.cls_order_count {
+            let cid = self.cls_nodes.get(self.cls_order.get(ci))
+            let cname = self.sa.get(cid)
+            let ct = "Arx_" + cname
+            let ctors_grp = self.ra.get(cid)
+            let ccnt = self.child_count(ctors_grp)
+            if ccnt == 0 {
+                self.w(ct + " " + ct + "_init(void) ")
+                self.w_lbrace()
+                self.w_nl()
+                self.indent = self.indent + 1
+                self.wl(ct + " self;")
+                self.wl("memset(&self, 0, sizeof(self));")
+                self.emit_class_field_defaults(cname)
+                self.wl("return self;")
+                self.close_blk()
+                self.w_nl()
+            } else {
+                mut j = 0
+                while j < ccnt {
+                    let ctor_id = self.child_at(ctors_grp, j)
+                    self.emit_ctor_body(cname, ctor_id)
+                    j = j + 1
+                }
+            }
+            let dtor_id = self.la.get(ctors_grp)
+            if dtor_id >= 0 {
+                self.emit_method_body(cname, dtor_id, true)
+            }
+            let methods_grp = self.ea.get(cid)
+            let mcnt = self.child_count(methods_grp)
+            mut m = 0
+            while m < mcnt {
+                self.emit_method_body(cname, self.child_at(methods_grp, m), false)
+                m = m + 1
+            }
+            ci = ci + 1
+        }
+
+        // Extend methods
+        mut ei = 0
+        while ei < self.ext_count {
+            let eid = self.ext_nodes.get(ei)
+            let tname = btype_norm(self.sa.get(eid))
+            let mcnt = self.child_count(eid)
+            mut m = 0
+            while m < mcnt {
+                self.emit_method_body(tname, self.child_at(eid, m), false)
+                m = m + 1
+            }
+            ei = ei + 1
+        }
+
+        // Top-level functions
+        mut fi = 0
+        while fi < self.fn_count {
+            let fid = self.fn_nodes.get(fi)
+            if self.nk.get(fid) == NK_FN_DEF() {
+                if self.ra.get(fid) >= 0 && !self.fn_externs.has_key(self.sa.get(fid)) {
+                    let cname = self.call_targets.get(fid)
+                let rt = btype_norm(self.sb.get(fid))
+                self.cur_class = ""
+                self.cur_ret_type = rt
+                self.w(btype_to_c(rt) + " " + cname)
+                self.emit_param_sig_c(self.la.get(fid), "", true)
+                self.w(" ")
+                self.w_lbrace()
+                self.w_nl()
+                self.indent = self.indent + 1
+                if self.sa.get(fid) == "main" {
+                    self.emit_nonconst_global_inits()
+                }
+                self.defer_push_scope()
+                self.emit_block_stmts(self.ra.get(fid))
+                self.defer_emit_unwind()
+                self.defer_pop_scope()
+                self.close_blk()
+                self.w_nl()
+                }
+            }
+            fi = fi + 1
+        }
+    }
+
+    priv fn emit_nonconst_global_inits() {
+        mut i = 0
+        while i < self.global_count {
+            let gid = self.global_nodes.get(i)
+            let init_id = self.la.get(gid)
+            if init_id >= 0 && !self.is_const_init(init_id) {
+                let nm = self.sa.get(gid)
+                let val = self.gen_expr(init_id)
+                self.wl(nm + " = " + val + ";")
+            }
+            i = i + 1
+        }
+    }
+
+    priv fn emit_class_field_defaults(cname: str) {
+        let lineage = self.collect_class_lineage(cname)
+        let lcnt = lineage.len()
+        mut li = 0
+        while li < lcnt {
+            let lc_nid = self.cls_nodes.get(self.cls_idx_map.get(lineage.get(li)))
+            let fgrp = self.la.get(lc_nid)
+            let fcnt = self.child_count(fgrp)
+            mut fi = 0
+            while fi < fcnt {
+                let fid = self.child_at(fgrp, fi)
+                let def_id = self.la.get(fid)
+                if def_id >= 0 {
+                    let val = self.gen_expr(def_id)
+                    self.wl("self." + self.sa.get(fid) + " = " + val + ";")
+                }
+                fi = fi + 1
+            }
+            li = li + 1
+        }
+    }
+
+    priv fn emit_ctor_body(cname: str, ctor_id: i64) {
+        let ct = "Arx_" + cname
+        let fnm = self.call_targets.get(ctor_id)
+        self.cur_class = cname
+        self.cur_ret_type = cname
+        self.is_in_ctor = true
+        self.w(ct + " " + fnm)
+        self.emit_param_sig_c(self.la.get(ctor_id), "", true)
+        self.w(" ")
+        self.w_lbrace()
+        self.w_nl()
+        self.indent = self.indent + 1
+        self.wl(ct + " _obj;")
+        self.wl("memset(&_obj, 0, sizeof(_obj));")
+        self.wl(ct + "* self = &_obj;")
+        // Initialize default field expressions onto *self
+        let lineage = self.collect_class_lineage(cname)
+        let lcnt = lineage.len()
+        mut li = 0
+        while li < lcnt {
+            let lc_nid = self.cls_nodes.get(self.cls_idx_map.get(lineage.get(li)))
+            let fgrp = self.la.get(lc_nid)
+            let fcnt = self.child_count(fgrp)
+            mut fi = 0
+            while fi < fcnt {
+                let fid = self.child_at(fgrp, fi)
+                let def_id = self.la.get(fid)
+                if def_id >= 0 {
+                    let val = self.gen_expr(def_id)
+                    self.wl("self->" + self.sa.get(fid) + " = " + val + ";")
+                }
+                fi = fi + 1
+            }
+            li = li + 1
+        }
+        self.defer_push_scope()
+        self.emit_block_stmts(self.ra.get(ctor_id))
+        self.defer_emit_unwind()
+        self.defer_pop_scope()
+        self.wl("return _obj;")
+        self.close_blk()
+        self.w_nl()
+        self.cur_class = ""
+        self.is_in_ctor = false
+    }
+
+    priv fn emit_method_body(cname: str, mid: i64, is_dtor: bool) {
+        let body = self.ra.get(mid)
+        if body < 0 { return }
+        let is_st = has_flag(self.ia.get(mid), FLAG_STATIC())
+        mut rt = "void"
+        if !is_dtor { rt = btype_norm(self.sb.get(mid)) }
+        let fnm = self.call_targets.get(mid)
+        self.cur_class = cname
+        self.cur_ret_type = rt
+        self.w(btype_to_c(rt) + " " + fnm)
+        if is_dtor {
+            self.w("(" + btype_to_c(cname) + "* self)")
+        } else {
+            self.emit_param_sig_c(self.la.get(mid), cname, is_st)
+        }
+        self.w(" ")
+        self.w_lbrace()
+        self.w_nl()
+        self.indent = self.indent + 1
+        self.defer_push_scope()
+        self.emit_block_stmts(body)
+        self.defer_emit_unwind()
+        self.defer_pop_scope()
+        self.close_blk()
+        self.w_nl()
+        self.cur_class = ""
+    }
+
+    // Emits the native C `int main(int argc, char** argv)` application entry point.
+    priv fn emit_entry_point() {
+        self.w("int main(int argc, char** argv) ")
+        self.w_lbrace()
+        self.w_nl()
+        self.indent = self.indent + 1
+        self.wl("arx_init_args(argc, argv);")
+        if self.has_main_fn {
+            if self.main_returns_i64 {
+                self.wl("return (int)arx_main();")
+            } else {
+                self.wl("arx_main();")
+                self.wl("return 0;")
+            }
+        } else {
+            self.emit_nonconst_global_inits()
+            self.wl("return 0;")
+        }
+        self.close_blk()
+    }
+
+}

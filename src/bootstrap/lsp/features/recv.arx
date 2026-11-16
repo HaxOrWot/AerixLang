@@ -1,0 +1,279 @@
+import "./mod.arx"
+
+fn lsp_extract_receiver_start_before_dot(line: str, dot_pos: i64) -> i64 {
+    if dot_pos <= 0 { return 0 }
+    mut p = dot_pos
+    // Handle cascade operator `~>` and optional chaining `?.`
+    if p > 0 && line.byte_at(p) == 62 && line.byte_at(p - 1) == 126 {
+        p = p - 1
+    } else if p > 0 && line.byte_at(p - 1) == 63 {
+        p = p - 1
+    }
+    mut i = p
+    mut paren_d = 0
+    mut brack_d = 0
+    mut in_str = false
+    while i > 0 {
+        let b = line.byte_at(i - 1)
+        if in_str {
+            if b == 34 {
+                if i < 2 || line.byte_at(i - 2) != 92 { in_str = false }
+            }
+            i = i - 1
+            continue
+        }
+        if b == 34 {
+            in_str = true
+            i = i - 1
+            continue
+        }
+        if b == 41 { paren_d = paren_d + 1; i = i - 1; continue }
+        if b == 40 {
+            if paren_d > 0 { paren_d = paren_d - 1; i = i - 1; continue }
+            break
+        }
+        if b == 93 { brack_d = brack_d + 1; i = i - 1; continue }
+        if b == 91 {
+            if brack_d > 0 { brack_d = brack_d - 1; i = i - 1; continue }
+            break
+        }
+        if paren_d > 0 || brack_d > 0 {
+            i = i - 1
+            continue
+        }
+        if lsp_is_ident_char(b) || b == 46 || b == 63 || b == 60 || b == 62 {
+            i = i - 1
+            continue
+        }
+        break
+    }
+    while i < p && (line.byte_at(i) == 32 || line.byte_at(i) == 9) {
+        i = i + 1
+    }
+    return i
+}
+
+fn lsp_extract_receiver_before_dot(line: str, dot_pos: i64) -> str {
+    if dot_pos <= 0 { return "" }
+    mut p = dot_pos
+    if p > 0 && line.byte_at(p) == 62 && line.byte_at(p - 1) == 126 {
+        p = p - 1
+    } else if p > 0 && line.byte_at(p - 1) == 63 {
+        p = p - 1
+    }
+    let st = lsp_extract_receiver_start_before_dot(line, dot_pos)
+    if st >= p { return "" }
+    return line.slice(st, p).trim()
+}
+
+fn lsp_split_dot_chain(expr: str) -> List<str> {
+    let parts = List<str>()
+    let n = expr.len()
+    mut p = 0
+    mut s = 0
+    mut pd = 0
+    mut bd = 0
+    mut ad = 0
+    mut in_str = false
+    while p < n {
+        let b = expr.byte_at(p)
+        if in_str {
+            if b == 92 && p + 1 < n { p = p + 2; continue }
+            if b == 34 { in_str = false }
+            p = p + 1
+            continue
+        }
+        if b == 34 { in_str = true; p = p + 1; continue }
+        if b == 40 { pd = pd + 1 }
+        else if b == 41 && pd > 0 { pd = pd - 1 }
+        else if b == 91 { bd = bd + 1 }
+        else if b == 93 && bd > 0 { bd = bd - 1 }
+        else if b == 60 { ad = ad + 1 }
+        else if b == 62 && ad > 0 { ad = ad - 1 }
+        else if b == 46 && pd == 0 && bd == 0 && ad == 0 {
+            mut seg_end = p
+            if seg_end > s && expr.byte_at(seg_end - 1) == 63 { seg_end = seg_end - 1 }
+            parts.push(expr.slice(s, seg_end).trim())
+            s = p + 1
+        }
+        p = p + 1
+    }
+    if s <= n {
+        parts.push(expr.slice(s, n).trim())
+    }
+    return parts
+}
+
+fn lsp_unwrap_indexed_type(container_t: str) -> str {
+    if container_t == "" { return "" }
+    if container_t == "str" { return "u8" }
+    if container_t.ends_with("[]") { return container_t.slice(0, container_t.len() - 2) }
+    mut base = container_t
+    let lt = lsp_str_find(container_t, "<", 0)
+    if lt > 0 { base = container_t.slice(0, lt).trim() }
+    if base == "Map" { return lsp_generic_inner_arg(container_t, 1) }
+    if base == "List" || base == "Array" || base == "ArenaList" || base == "Queue" || base == "Stack" || base == "Channel" || base == "Set" {
+        return lsp_generic_inner_arg(container_t, 0)
+    }
+    return ""
+}
+
+fn lsp_infer_array_lit_type(lit: str) -> str {
+    let inner = lit.slice(1, lit.len() - 1).trim()
+    if inner == "" { return "List<any>" }
+    mut first_el = inner
+    let cm = lsp_str_find(inner, ",", 0)
+    if cm >= 0 { first_el = inner.slice(0, cm).trim() }
+    if first_el.starts_with("\"") && first_el.ends_with("\"") { return "List<str>" }
+    if first_el == "true" || first_el == "false" { return "List<bool>" }
+    if lsp_str_find(first_el, ".", 0) >= 0 { return "List<f64>" }
+    let fb = first_el.byte_at(0)
+    if (fb >= 48 && fb <= 57) || fb == 45 { return "List<i64>" }
+    return "List<any>"
+}
+
+fn lsp_infer_expr_receiver_type(az: Analyzer, doc_path: str, line1: i64, expr: str, source: str = "") -> str {
+    mut trimmed = expr.trim()
+    if trimmed == "" { return "" }
+    if trimmed.starts_with("new ") { trimmed = trimmed.slice(4, trimmed.len()).trim() }
+    if trimmed.starts_with("\"") && trimmed.ends_with("\"") { return "str" }
+    if trimmed.starts_with("[") && trimmed.ends_with("]") && trimmed.len() >= 2 {
+        return lsp_infer_array_lit_type(trimmed)
+    }
+    if trimmed == "true" || trimmed == "false" { return "bool" }
+    if trimmed == "self" {
+        return lsp_enclosing_class_at(az, doc_path, line1)
+    }
+    if trimmed == "super" {
+        let ec = lsp_enclosing_class_at(az, doc_path, line1)
+        if ec != "" && az.cls_base_map.has_key(ec) { return az.cls_base_map.get(ec) }
+        return ""
+    }
+    if lsp_is_static_runtime(trimmed) || az.cls_idx_map.has_key(trimmed) || az.enum_idx_map.has_key(trimmed) {
+        return trimmed
+    }
+
+    // Handle top-level chain a.b().c or a[i].b
+    let parts = lsp_split_dot_chain(trimmed)
+    if parts.len() > 1 {
+        mut cur_t = lsp_unwrap_optional_type(lsp_infer_expr_receiver_type(az, doc_path, line1, parts.get(0), source))
+        mut pi = 1
+        while pi < parts.len() && cur_t != "" {
+            cur_t = lsp_unwrap_optional_type(cur_t)
+            mut mem = parts.get(pi).trim()
+            mut had_index = false
+            if mem.ends_with("]") {
+                mut bi = mem.len() - 1
+                mut bd = 0
+                while bi >= 0 {
+                    let cb = mem.byte_at(bi)
+                    if cb == 93 { bd = bd + 1 }
+                    else if cb == 91 {
+                        bd = bd - 1
+                        if bd == 0 {
+                            mem = mem.slice(0, bi).trim()
+                            had_index = true
+                            break
+                        }
+                    }
+                    bi = bi - 1
+                }
+            }
+            mut mname = mem
+            let p_idx = lsp_str_find(mname, "(", 0)
+            if p_idx > 0 { mname = mname.slice(0, p_idx).trim() }
+
+            // Builtin / container method return type first
+            let bi_ret = lsp_infer_builtin_member_ret(cur_t, mname)
+            if bi_ret != "" {
+                cur_t = bi_ret
+                if had_index { cur_t = lsp_unwrap_indexed_type(cur_t) }
+                pi = pi + 1
+                continue
+            }
+
+            // Walk user class inheritance chain
+            mut found_t = ""
+            mut walk = cur_t
+            mut hops = 0
+            while walk != "" && hops < 8 {
+                let fkey = walk + "::" + mname
+                if az.cls_field_types.has_key(fkey) {
+                    found_t = az.cls_field_types.get(fkey)
+                    break
+                }
+                let sig_k = "m::" + walk + "::" + mname
+                if az.sig_by_key.has_key(sig_k) {
+                    let sidx = az.sig_by_key.get(sig_k).split(",").get(0).to_i64()
+                    found_t = az.sig_rets.get(sidx)
+                    break
+                }
+                if az.cls_base_map.has_key(walk) {
+                    walk = az.cls_base_map.get(walk)
+                } else {
+                    walk = ""
+                }
+                hops = hops + 1
+            }
+            if had_index { found_t = lsp_unwrap_indexed_type(found_t) }
+            cur_t = found_t
+            pi = pi + 1
+        }
+        return lsp_unwrap_optional_type(cur_t)
+    }
+
+    // Handle trailing indexing: arr[idx] / map[key]
+    if trimmed.ends_with("]") {
+        mut bi2 = trimmed.len() - 1
+        mut bd2 = 0
+        while bi2 >= 0 {
+            let cb2 = trimmed.byte_at(bi2)
+            if cb2 == 93 { bd2 = bd2 + 1 }
+            else if cb2 == 91 {
+                bd2 = bd2 - 1
+                if bd2 == 0 {
+                    let base_expr = trimmed.slice(0, bi2).trim()
+                    if base_expr != "" {
+                        let bt = lsp_infer_expr_receiver_type(az, doc_path, line1, base_expr, source)
+                        let elem_t = lsp_unwrap_indexed_type(bt)
+                        if elem_t != "" { return lsp_unwrap_optional_type(elem_t) }
+                    }
+                    break
+                }
+            }
+            bi2 = bi2 - 1
+        }
+    }
+
+    // Check function / constructor call head e.g. Parser(p) or foo(x) or List<str>()
+    let p_idx2 = lsp_str_find(trimmed, "(", 0)
+    if p_idx2 > 0 {
+        let head = trimmed.slice(0, p_idx2).trim()
+        let lt2 = lsp_str_find(head, "<", 0)
+        mut base_head = head
+        if lt2 > 0 { base_head = head.slice(0, lt2).trim() }
+        if lsp_is_container_type(base_head) { return head }
+        if az.cls_idx_map.has_key(base_head) { return head }
+        mut fi = 0
+        while fi < az.fn_count {
+            let fid = az.fn_nodes.get(fi)
+            if az.sa.get(fid) == base_head {
+                return lsp_unwrap_optional_type(btype_norm(az.sb.get(fid)))
+            }
+            fi = fi + 1
+        }
+        // Enclosing class method call foo()
+        let ec3 = lsp_enclosing_class_at(az, doc_path, line1)
+        if ec3 != "" {
+            let sig_k2 = "m::" + ec3 + "::" + base_head
+            if az.sig_by_key.has_key(sig_k2) {
+                let sidx2 = az.sig_by_key.get(sig_k2).split(",").get(0).to_i64()
+                return lsp_unwrap_optional_type(az.sig_rets.get(sidx2))
+            }
+        }
+        return ""
+    }
+
+    return lsp_resolve_var_type(az, doc_path, line1, trimmed, source)
+}
+

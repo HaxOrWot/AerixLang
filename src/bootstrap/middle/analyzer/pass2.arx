@@ -1,0 +1,464 @@
+import "./mod.arx"
+
+extend Analyzer {
+    // --- Pass 2: Infer Types & Resolve All Statements / Expressions ---
+
+    pub fn analyze() {
+        self.count_decls()
+        self.build_sigs()
+        self.sort_classes_topo()
+
+        // Ensure List<str> is always emitted if needed for Env.args / Directory.list_* / str.split
+        self.ensure_generic_type("List<str>")
+
+        // Analyze globals first
+        mut gi = 0
+        while gi < self.global_count {
+            let gid = self.global_nodes.get(gi)
+            let vname = self.sa.get(gid)
+            let decl_t = self.sb.get(gid)
+            let init_id = self.la.get(gid)
+            mut res_t = "i64"
+            if decl_t != "" {
+                res_t = self.norm_type_name(decl_t)
+                if init_id >= 0 { self.analyze_expr(init_id) }
+            } else if init_id >= 0 {
+                res_t = self.analyze_expr(init_id)
+            }
+            self.ensure_generic_type(res_t)
+            self.node_types.set(gid, res_t)
+            self.global_types.insert(vname, res_t)
+            gi = gi + 1
+        }
+
+        // Analyze top-level functions
+        mut fi = 0
+        while fi < self.fn_count {
+            self.analyze_fn_body(self.fn_nodes.get(fi), "")
+            fi = fi + 1
+        }
+
+        // Analyze class default fields, constructors, dtor, methods
+        mut ci = 0
+        while ci < self.cls_count {
+            let cid = self.cls_nodes.get(ci)
+            let cname = self.sa.get(cid)
+            self.cur_class = cname
+
+            let fields_grp = self.la.get(cid)
+            let fcnt = self.child_count(fields_grp)
+            mut k = 0
+            while k < fcnt {
+                let fid = self.child_at(fields_grp, k)
+                let def_id = self.la.get(fid)
+                if def_id >= 0 { self.analyze_expr(def_id) }
+                k = k + 1
+            }
+
+            let ctors_grp = self.ra.get(cid)
+            let ccnt = self.child_count(ctors_grp)
+            mut j = 0
+            while j < ccnt {
+                self.analyze_fn_body(self.child_at(ctors_grp, j), cname)
+                j = j + 1
+            }
+
+            let dtor_id = self.la.get(ctors_grp)
+            if dtor_id >= 0 {
+                self.call_targets.set(dtor_id, "Arx_" + cname + "_drop")
+                self.analyze_fn_body(dtor_id, cname)
+            }
+
+            let methods_grp = self.ea.get(cid)
+            let mcnt = self.child_count(methods_grp)
+            mut m = 0
+            while m < mcnt {
+                self.analyze_fn_body(self.child_at(methods_grp, m), cname)
+                m = m + 1
+            }
+            self.cur_class = ""
+            ci = ci + 1
+        }
+
+        // Analyze extend blocks
+        mut ei = 0
+        while ei < self.ext_count {
+            let eid = self.ext_nodes.get(ei)
+            let tname = btype_norm(self.sa.get(eid))
+            let mcnt = self.child_count(eid)
+            mut m = 0
+            while m < mcnt {
+                self.analyze_fn_body(self.child_at(eid, m), tname)
+                m = m + 1
+            }
+            ei = ei + 1
+        }
+    }
+
+    priv fn analyze_fn_body(fn_nid: i64, owner_cls: str) {
+        let k = self.nk.get(fn_nid)
+        if k == NK_CEXTERN() { return }
+        let body = self.ra.get(fn_nid)
+        if body < 0 { return }
+
+        let old_cls = self.cur_class
+        let old_ret = self.cur_ret_type
+        let old_fnk = self.cur_fn_kind
+        self.cur_class = owner_cls
+        self.cur_fn_kind = k
+        if k == NK_INIT_DEF() || k == NK_DROP_DEF() {
+            self.cur_ret_type = owner_cls
+        } else {
+            self.cur_ret_type = btype_norm(self.sb.get(fn_nid))
+        }
+        self.node_types.set(fn_nid, self.cur_ret_type)
+
+        self.scope_push()
+        if owner_cls != "" && !has_flag(self.ia.get(fn_nid), FLAG_STATIC()) {
+            self.scope_def("self", owner_cls)
+        }
+        let pg = self.la.get(fn_nid)
+        if pg >= 0 {
+            let pcnt = self.child_count(pg)
+            mut pi = 0
+            while pi < pcnt {
+                let pid = self.child_at(pg, pi)
+                let pt = btype_norm(self.sb.get(pid))
+                self.node_types.set(pid, pt)
+                self.scope_def(self.sa.get(pid), pt)
+                let pdef = self.la.get(pid)
+                if pdef >= 0 { self.analyze_expr(pdef) }
+                pi = pi + 1
+            }
+        }
+        self.analyze_block(body)
+        self.scope_pop()
+
+        self.cur_class = old_cls
+        self.cur_ret_type = old_ret
+        self.cur_fn_kind = old_fnk
+    }
+
+    priv fn analyze_block(blk_id: i64) {
+        if blk_id < 0 { return }
+        self.scope_push()
+        let cnt = self.child_count(blk_id)
+        mut i = 0
+        mut ended = false
+        mut warned_dead = false
+        while i < cnt {
+            let sid = self.child_at(blk_id, i)
+            let sk = self.nk.get(sid)
+            if ended && !warned_dead {
+                warned_dead = true
+                self.add_diag(sid, self.expr_span(sid), "W0001", "unreachable statement after control-flow transfer", "remove or guard statements after 'return', 'break', 'continue', or 'throw'", 2)
+            }
+            self.analyze_stmt(sid)
+            if sk == NK_RETURN() || sk == NK_BREAK() || sk == NK_CONTINUE() || sk == NK_THROW() {
+                ended = true
+            }
+            i = i + 1
+        }
+        self.scope_pop()
+    }
+
+    priv fn analyze_stmt(nid: i64) {
+        if nid < 0 { return }
+        let k = self.nk.get(nid)
+        if k == NK_BLOCK() {
+            self.analyze_block(nid)
+            return
+        }
+        if k == NK_VAR_DECL() {
+            let vname = self.sa.get(nid)
+            let decl_t = self.sb.get(nid)
+            let init_id = self.la.get(nid)
+            mut res_t = "i64"
+            if decl_t != "" {
+                res_t = self.norm_type_name(decl_t)
+                if init_id >= 0 {
+                    let it = self.analyze_expr(init_id)
+                    if it == "null" && btype_is_ptr(res_t) {
+                        self.node_types.set(init_id, res_t)
+                    } else if !self.unresolved_nodes.has_key(init_id) && !self.types_compatible(res_t, it) {
+                        self.add_diag(init_id, self.expr_span(init_id), "E0205", "mismatched types for '" + vname + "': expected '" + res_t + "', found '" + it + "'", "convert the initializer to '" + res_t + "' or update the type annotation on '" + vname + "'", 1)
+                    }
+                }
+            } else if init_id >= 0 {
+                res_t = self.analyze_expr(init_id)
+            }
+            if res_t == "" || res_t == "void" { res_t = "i64" }
+            self.node_types.set(nid, res_t)
+            mut is_m = 0
+            if has_flag(self.ia.get(nid), FLAG_MUT()) { is_m = 1 }
+            self.scope_def_full(vname, res_t, is_m, self.ln.get(nid), nid, 0)
+            return
+        }
+        if k == NK_TUPLE_DESTR() {
+            let init_id = self.la.get(nid)
+            let init_t = btype_norm(self.analyze_expr(init_id))
+            let ncnt = self.child_count(nid)
+            mut ni = 0
+            while ni < ncnt {
+                let id_node = self.child_at(nid, ni)
+                let nm = self.sa.get(id_node)
+                mut vt = "i64"
+                if btype_is_tuple(init_t) && ni < btype_tuple_count(init_t) {
+                    vt = btype_norm(btype_tuple_elem(init_t, ni))
+                }
+                self.ensure_generic_type(vt)
+                self.node_types.set(id_node, vt)
+                self.scope_def(nm, vt)
+                ni = ni + 1
+            }
+            return
+        }
+        if k == NK_ASSIGN() {
+            let lhs_id = self.la.get(nid)
+            let rhs_id = self.ra.get(nid)
+            let lt = self.analyze_expr(lhs_id)
+            let rt = self.analyze_expr(rhs_id)
+            let root_name = self.get_root_ident(lhs_id)
+            if root_name != "" {
+                self.scope_mark_mutated(root_name)
+                if lhs_id >= 0 && self.nk.get(lhs_id) == NK_IDENT() {
+                    self.scope_unmark_used(root_name)
+                    if self.scope_lookup(root_name) != "" && self.scope_is_mut(root_name) == 0 {
+                        self.add_diag(lhs_id, root_name.len(), "E0204", "cannot assign twice to immutable variable '" + root_name + "'", "declare '" + root_name + "' with 'mut " + root_name + "' instead of 'let " + root_name + "'", 1)
+                    }
+                }
+            }
+            if !self.unresolved_nodes.has_key(lhs_id) && !self.unresolved_nodes.has_key(rhs_id) {
+                if !self.types_compatible(lt, rt) {
+                    mut assign_msg = "mismatched types in assignment: expected '" + lt + "', found '" + rt + "'"
+                    if root_name != "" {
+                        assign_msg = "mismatched types in assignment to '" + root_name + "': expected '" + lt + "', found '" + rt + "'"
+                    }
+                    self.add_diag(rhs_id, 1, "E0205", assign_msg, "ensure the assigned expression matches type '" + lt + "'", 1)
+                }
+            }
+            self.node_types.set(nid, lt)
+            return
+        }
+        if k == NK_IF() {
+            self.analyze_expr(self.la.get(nid))
+            self.analyze_block(self.ra.get(nid))
+            let eb = self.ea.get(nid)
+            if eb >= 0 { self.analyze_block(eb) }
+            return
+        }
+        if k == NK_WHILE() {
+            self.analyze_expr(self.la.get(nid))
+            self.analyze_block(self.ra.get(nid))
+            return
+        }
+        if k == NK_LOOP() {
+            self.analyze_block(self.la.get(nid))
+            return
+        }
+        if k == NK_FOR() {
+            let iter_id = self.la.get(nid)
+            mut elem_t = "i64"
+            mut iter_kind_tag = "__range__"
+            if iter_id >= 0 {
+                let ik = self.nk.get(iter_id)
+                if ik == NK_RANGE() {
+                    self.analyze_expr(self.la.get(iter_id))
+                    self.analyze_expr(self.ra.get(iter_id))
+                    self.node_types.set(iter_id, "__range__")
+                    elem_t = "i64"
+                    iter_kind_tag = "__range__"
+                } else {
+                    mut raw_it = iter_id
+                    if ik == NK_CALL() {
+                        let cal = self.la.get(iter_id)
+                        if cal >= 0 && self.nk.get(cal) == NK_IDENT() && self.sa.get(cal) == "enumerate" && self.child_count(iter_id) == 1 {
+                            raw_it = self.child_at(iter_id, 0)
+                        }
+                    }
+                    let it_t = self.analyze_expr(raw_it)
+                    if raw_it != iter_id {
+                        self.node_types.set(iter_id, it_t)
+                    }
+                    if btype_is_list(it_t) || btype_is_set(it_t) {
+                        elem_t = btype_list_elem(it_t)
+                        iter_kind_tag = it_t
+                    } else if btype_is_fixed_arr(it_t) {
+                        elem_t = btype_arr_elem(it_t)
+                        iter_kind_tag = it_t
+                    } else if btype_is_slice(it_t) {
+                        elem_t = btype_slice_elem(it_t)
+                        iter_kind_tag = it_t
+                    } else if btype_is_str(it_t) {
+                        elem_t = "char"
+                        iter_kind_tag = "str"
+                    } else {
+                        elem_t = "i64"
+                        iter_kind_tag = it_t
+                    }
+                }
+            }
+            self.node_ext.set(nid, elem_t + "|" + iter_kind_tag)
+            self.node_types.set(nid, elem_t)
+            self.scope_push()
+            let idx_var = self.sb.get(nid)
+            if idx_var != "" {
+                self.scope_def(idx_var, "i64")
+            }
+            self.scope_def(self.sa.get(nid), elem_t)
+            self.analyze_block(self.ra.get(nid))
+            self.scope_pop()
+            return
+        }
+        if k == NK_RETURN() {
+            let val_id = self.la.get(nid)
+            if val_id >= 0 {
+                let vt = self.analyze_expr(val_id)
+                self.node_types.set(nid, vt)
+                if self.cur_fn_kind != NK_INIT_DEF() && self.cur_fn_kind != NK_DROP_DEF() {
+                    if self.cur_ret_type == "void" {
+                        self.add_diag(nid, 6, "E0205", "cannot return a value from a 'void' function", "remove the return value or change the function signature to return '" + vt + "'", 1)
+                    } else if !self.unresolved_nodes.has_key(val_id) && !self.types_compatible(self.cur_ret_type, vt) {
+                        self.add_diag(val_id, self.expr_span(val_id), "E0205", "mismatched return type: expected '" + self.cur_ret_type + "', found '" + vt + "'", "return a value of type '" + self.cur_ret_type + "' or update the return type annotation", 1)
+                    }
+                }
+            } else {
+                self.node_types.set(nid, "void")
+                if self.cur_fn_kind != NK_INIT_DEF() && self.cur_fn_kind != NK_DROP_DEF() && self.cur_ret_type != "void" && self.cur_ret_type != "" {
+                    self.add_diag(nid, 6, "E0205", "missing return value: enclosing function expects '" + self.cur_ret_type + "'", "return an expression of type '" + self.cur_ret_type + "'", 1)
+                }
+            }
+            return
+        }
+        if k == NK_GUARD() {
+            self.analyze_expr(self.la.get(nid))
+            self.analyze_block(self.ra.get(nid))
+            return
+        }
+        if k == NK_DEFER() {
+            self.analyze_stmt(self.la.get(nid))
+            return
+        }
+        if k == NK_TRY_CATCH() {
+            self.analyze_block(self.la.get(nid))
+            let cb = self.ra.get(nid)
+            if cb >= 0 {
+                self.scope_push()
+                let cv = self.sa.get(nid)
+                if cv != "" { self.scope_def(cv, "str") }
+                self.analyze_block(cb)
+                self.scope_pop()
+            }
+            let fb = self.ea.get(nid)
+            if fb >= 0 { self.analyze_block(fb) }
+            return
+        }
+        if k == NK_THROW() {
+            self.analyze_expr(self.la.get(nid))
+            return
+        }
+        if k == NK_MATCH() {
+            let subj_id = self.la.get(nid)
+            let subj_t = btype_norm(self.analyze_expr(subj_id))
+            self.node_types.set(nid, subj_t)
+            let ccnt = self.child_count(nid)
+            mut ci = 0
+            while ci < ccnt {
+                let case_id = self.child_at(nid, ci)
+                let pat_id = self.la.get(case_id)
+                let guard_id = self.ea.get(case_id)
+                let body_id = self.ra.get(case_id)
+                self.scope_push()
+                self.analyze_match_pat(pat_id, subj_t)
+                if guard_id >= 0 { self.analyze_expr(guard_id) }
+                self.analyze_block(body_id)
+                self.scope_pop()
+                ci = ci + 1
+            }
+            return
+        }
+        if k == NK_EXPR_STMT() {
+            let ex = self.la.get(nid)
+            self.node_types.set(nid, self.analyze_expr(ex))
+            return
+        }
+    }
+
+    priv fn analyze_match_pat(pat_id: i64, subj_t: str) {
+        if pat_id < 0 { return }
+        let pk = self.nk.get(pat_id)
+        if pk == NK_IDENT() {
+            let name = self.sa.get(pat_id)
+            if name == "_" {
+                self.node_ext.set(pat_id, "wildcard")
+                return
+            }
+            if self.enum_idx_map.has_key(subj_t) {
+                let vkey = subj_t + "::" + name
+                if self.enum_var_tag.has_key(vkey) {
+                    self.node_ext.set(pat_id, "enum_unit::" + vkey)
+                    self.node_types.set(pat_id, subj_t)
+                    return
+                }
+            }
+            self.scope_def(name, subj_t)
+            self.node_types.set(pat_id, subj_t)
+            return
+        }
+        if pk == NK_MEMBER() {
+            let lhs = self.la.get(pat_id)
+            let mem = self.sa.get(pat_id)
+            if lhs >= 0 && self.nk.get(lhs) == NK_IDENT() {
+                let ename = self.sa.get(lhs)
+                let vkey = ename + "::" + mem
+                if self.enum_var_tag.has_key(vkey) {
+                    self.node_ext.set(pat_id, "enum_unit::" + vkey)
+                    self.node_types.set(pat_id, ename)
+                    return
+                }
+            }
+        }
+        if pk == NK_CALL() {
+            let cal = self.la.get(pat_id)
+            mut ename = subj_t
+            mut vname = ""
+            if cal >= 0 && self.nk.get(cal) == NK_IDENT() {
+                vname = self.sa.get(cal)
+            } else if cal >= 0 && self.nk.get(cal) == NK_MEMBER() {
+                let lhs = self.la.get(cal)
+                if lhs >= 0 && self.nk.get(lhs) == NK_IDENT() { ename = self.sa.get(lhs) }
+                vname = self.sa.get(cal)
+            }
+            let vkey = ename + "::" + vname
+            if self.enum_var_node.has_key(vkey) {
+                let vnode = self.enum_var_node.get(vkey)
+                self.node_ext.set(pat_id, "enum_payload::" + vkey)
+                self.node_types.set(pat_id, ename)
+                self.call_fn_nodes.set(pat_id, vnode)
+                let ac = self.child_count(pat_id)
+                let fc = self.child_count(vnode)
+                mut i = 0
+                while i < ac {
+                    let arg_id = self.child_at(pat_id, i)
+                    mut ft = "i64"
+                    if i < fc {
+                        ft = btype_norm(self.sb.get(self.child_at(vnode, i)))
+                    }
+                    if arg_id >= 0 {
+                        if self.nk.get(arg_id) == NK_IDENT() {
+                            let bind_name = self.sa.get(arg_id)
+                            if bind_name != "_" {
+                                self.scope_def(bind_name, ft)
+                            }
+                        }
+                        self.node_types.set(arg_id, ft)
+                    }
+                    i = i + 1
+                }
+                return
+            }
+        }
+        self.analyze_expr(pat_id)
+    }
+
+}

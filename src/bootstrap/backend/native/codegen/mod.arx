@@ -1,0 +1,13 @@
+// Auto-generated module entry — imports all parts of NativeCodegen
+import "./helpers.arx"
+import "./base.arx"
+import "./layouts.arx"
+import "./frame.arx"
+import "./pipe.arx"
+import "./funcs.arx"
+import "./stmts.arx"
+import "./flow.arx"
+import "./assign.arx"
+import "./exprs.arx"
+import "./binops.arx"
+import "./calls.arx"

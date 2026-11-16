@@ -1,0 +1,62 @@
+import "./mod.arx"
+
+extend Emitter {
+    // --- LValues & Address Resolution ---
+
+    priv fn emit_lvalue(nid: i64) -> str {
+        let k = self.nk.get(nid)
+        if k == NK_IDENT() {
+            return self.sa.get(nid)
+        }
+        if k == NK_MEMBER() {
+            let lhs = self.la.get(nid)
+            let mem = self.sa.get(nid)
+            if self.nk.get(lhs) == NK_IDENT() && self.sa.get(lhs) == "self" && self.cur_class != "" {
+                return "self->" + mem
+            }
+            let obj = self.emit_lvalue(lhs)
+            let lt = btype_norm(self.node_types.get(lhs))
+            if btype_is_ptr(lt) {
+                return obj + "->" + mem
+            }
+            return obj + "." + mem
+        }
+        if k == NK_INDEX() {
+            let col_id = self.la.get(nid)
+            let col_t = btype_norm(self.node_types.get(col_id))
+            let arr = self.gen_expr(col_id)
+            let idx = self.gen_expr(self.ra.get(nid))
+            if btype_is_slice(col_t) {
+                let elem_c = btype_to_c(btype_slice_elem(col_t))
+                return "((" + elem_c + "*)((" + arr + ").data))[" + idx + "]"
+            }
+            return arr + "[" + idx + "]"
+        }
+        return self.gen_expr(nid)
+    }
+
+    priv fn is_addressable(nid: i64) -> bool {
+        let k = self.nk.get(nid)
+        if k == NK_IDENT() || k == NK_INDEX() { return true }
+        if k == NK_MEMBER() { return self.is_addressable(self.la.get(nid)) }
+        return false
+    }
+
+    priv fn emit_lvalue_addr(nid: i64, recv_t: str) -> str {
+        if self.nk.get(nid) == NK_IDENT() && self.sa.get(nid) == "self" && self.cur_class != "" {
+            return "self"
+        }
+        if btype_is_ptr(recv_t) {
+            return self.gen_expr(nid)
+        }
+        if self.is_addressable(nid) {
+            let lv = self.emit_lvalue(nid)
+            return "(&(" + lv + "))"
+        }
+        let val = self.gen_expr(nid)
+        let tmp = self.next_tmp()
+        self.wl(btype_to_c(recv_t) + " " + tmp + " = " + val + ";")
+        return "(&" + tmp + ")"
+    }
+
+}

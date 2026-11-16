@@ -1,0 +1,248 @@
+import "./mod.arx"
+
+fn cmd_pkg_search(query: str) -> i64 {
+    let q_lower = query.to_lower()
+    let reg = get_known_registry()
+    println("Searching Aerix Community Packages:")
+    println("")
+    println("  NAME          VERSION   STATUS       DESCRIPTION")
+    println("  ----          -------   ------       -----------")
+    mut found = 0
+    mut i = 0
+    let n = reg.len()
+    while i < n {
+        let item = reg.get(i)
+        let name_lower = item.name.to_lower()
+        let desc_lower = item.description.to_lower()
+        if q_lower == "" || name_lower.contains(q_lower) || desc_lower.contains(q_lower) {
+            let installed_ver = get_installed_pkg_version(item.name)
+            mut status = "available"
+            if installed_ver != "" {
+                if installed_ver != "installed" && installed_ver != item.version {
+                    status = "updateable"
+                } else {
+                    status = "installed"
+                }
+            }
+
+            let name_padded = item.name.pad_right(14, " ")
+            let ver_padded = item.version.pad_right(10, " ")
+            let status_padded = status.pad_right(13, " ")
+            let desc_clean = format_desc_field(item.description, 65)
+            println("  " + name_padded + ver_padded + status_padded + desc_clean)
+            found = found + 1
+        }
+        i = i + 1
+    }
+    println("")
+    if found == 0 {
+        println("No packages found matching '" + query + "'.")
+    } else {
+        println("Found " + (found as str) + " package(s). Run 'arx pkg install <name>' to install.")
+    }
+    return 0
+}
+
+fn cmd_pkg_available() -> i64 {
+    let reg = get_known_registry()
+    let n = reg.len()
+
+    println("Aerix Community Packages:")
+    println("")
+    println("  NAME          VERSION   STATUS       DESCRIPTION")
+    println("  ----          -------   ------       -----------")
+    mut i = 0
+    while i < n {
+        let item = reg.get(i)
+        let installed_ver = get_installed_pkg_version(item.name)
+        mut status = "available"
+        if installed_ver != "" {
+            if installed_ver != "installed" && installed_ver != item.version {
+                status = "updateable"
+            } else {
+                status = "installed"
+            }
+        }
+
+        let name_padded = item.name.pad_right(14, " ")
+        let ver_padded = item.version.pad_right(10, " ")
+        let status_padded = status.pad_right(13, " ")
+        let desc_clean = format_desc_field(item.description, 65)
+        println("  " + name_padded + ver_padded + status_padded + desc_clean)
+        i = i + 1
+    }
+    println("")
+    if n == 0 {
+        println("No packages found in community registry.")
+    } else {
+        println("Total: " + (n as str) + " package(s) found. Run 'arx pkg install <name>' to install.")
+    }
+    return 0
+}
+
+fn cmd_pkg_info(target: str) -> i64 {
+    if target == "" {
+        eprintln("error: package name required for 'arx pkg info <name>'")
+        return 1
+    }
+
+    let reg = get_known_registry()
+    mut found_item = PkgRegistryItem("", "", "", "", "")
+    mut is_found = false
+    mut i = 0
+    let n = reg.len()
+    let t_lower = target.to_lower()
+    while i < n {
+        let it = reg.get(i)
+        if it.name.to_lower() == t_lower {
+            found_item = it
+            is_found = true
+            break
+        }
+        i = i + 1
+    }
+
+    if !is_found {
+        eprintln("error: package '" + target + "' not found in community registry")
+        eprintln("  = hint: run 'arx pkg avail' to see all available packages")
+        return 1
+    }
+
+    let installed_ver = get_installed_pkg_version(found_item.name)
+    mut status = "available (not installed)"
+    if installed_ver != "" {
+        if installed_ver != "installed" && installed_ver != found_item.version {
+            status = "installed (update available: v" + installed_ver + " -> v" + found_item.version + ")"
+        } else {
+            status = "installed (up to date)"
+        }
+    }
+
+    println("Package Information: " + found_item.name)
+    println("==================================================================")
+    println("  Name:         " + found_item.name)
+    println("  Version:      " + found_item.version)
+    println("  Status:       " + status)
+    println("  Repository:   " + found_item.repo_url)
+    println("  Risk Rating:  " + found_item.risk)
+    println("  Description:  " + found_item.description)
+    println("==================================================================")
+    if status.starts_with("available") {
+        println("Run 'arx pkg install " + found_item.name + "' to install.")
+    } else if status.contains("update available") {
+        println("Run 'arx pkg update " + found_item.name + "' to update.")
+    }
+    return 0
+}
+
+fn cmd_pkg_list() -> i64 {
+    let global_dir = get_aerix_global_modules_dir()
+    let cwd = bpath_normalize(Env.cwd())
+    let local_dir = bpath_join(cwd, "modules")
+
+    println("Aerix Installed Packages:")
+    println("==================================================================")
+    println("Global Modules Directory: " + global_dir)
+    if Directory.exists(global_dir) {
+        let g_subdirs = Directory.list_dirs(global_dir)
+        if g_subdirs.len() == 0 {
+            println("  (no packages installed)")
+        } else {
+            println("")
+            println("PACKAGE NAME     FILES     SECURITY AUDIT STATUS")
+            println("------------     -----     ---------------------")
+            mut i = 0
+            while i < g_subdirs.len() {
+                let pkg_name = g_subdirs.get(i)
+                let pkg_path = bpath_join(global_dir, pkg_name)
+                let audit_res = PkgAuditResult()
+                pkg_audit_directory_recursive(pkg_path, audit_res)
+                let name_p = pkg_name.pad_right(16, " ")
+                let files_p = (audit_get(audit_res, 0) as str).pad_right(9, " ")
+                println(name_p + " " + files_p + " " + audit_get_risk(audit_res))
+                i = i + 1
+            }
+        }
+    } else {
+        println("  (directory does not exist)")
+    }
+
+    if Directory.exists(local_dir) {
+        println("")
+        println("Local Project Modules Directory: " + local_dir)
+        let l_subdirs = Directory.list_dirs(local_dir)
+        if l_subdirs.len() == 0 {
+            println("  (no local packages installed)")
+        } else {
+            println("")
+            println("PACKAGE NAME     FILES     SECURITY AUDIT STATUS")
+            println("------------     -----     ---------------------")
+            mut i = 0
+            while i < l_subdirs.len() {
+                let pkg_name = l_subdirs.get(i)
+                let pkg_path = bpath_join(local_dir, pkg_name)
+                let audit_res = PkgAuditResult()
+                pkg_audit_directory_recursive(pkg_path, audit_res)
+                let name_p = pkg_name.pad_right(16, " ")
+                let files_p = (audit_get(audit_res, 0) as str).pad_right(9, " ")
+                println(name_p + " " + files_p + " " + audit_get_risk(audit_res))
+                i = i + 1
+            }
+        }
+    }
+    println("==================================================================")
+    return 0
+}
+
+fn cmd_pkg_audit(target: str) -> i64 {
+    let cwd: str = bpath_normalize(Env.cwd())
+    mut scan_path: str = cwd
+    mut title: str = "Current Workspace"
+    if target != "" {
+        let local_mod = bpath_join(bpath_join(cwd, "modules"), target)
+        let global_mod = bpath_join(get_aerix_global_modules_dir(), target)
+        if Directory.exists(global_mod) {
+            scan_path = global_mod
+            title = "Global Package: " + target
+        } else if Directory.exists(local_mod) {
+            scan_path = local_mod
+            title = "Local Package: " + target
+        } else if Directory.exists(target) {
+            scan_path = target
+            title = "Path: " + target
+        } else if File.exists(target) {
+            let single_res = PkgAuditResult()
+            pkg_audit_file(target, single_res)
+            print_audit_report("File: " + target, single_res)
+            return 0
+        } else {
+            eprintln("error: target path or package not found: " + target)
+            return 1
+        }
+    } else {
+        let g_mod = get_aerix_global_modules_dir()
+        if Directory.exists(g_mod) {
+            scan_path = g_mod
+            title = "All Installed Global Modules"
+        } else {
+            let mod_dir = bpath_join(cwd, "modules")
+            if Directory.exists(mod_dir) {
+                scan_path = mod_dir
+                title = "All Installed Local Modules"
+            }
+        }
+    }
+
+    println("Scanning " + scan_path + " for native extern capabilities...")
+    let audit_res = PkgAuditResult()
+    pkg_audit_directory_recursive(scan_path, audit_res)
+    print_audit_report(title, audit_res)
+
+    if audit_get(audit_res, 2) > 0 {
+        return 2
+    }
+    if audit_get(audit_res, 3) > 0 {
+        return 1
+    }
+    return 0
+}

@@ -1,0 +1,228 @@
+import "./mod.arx"
+
+extend Emitter {
+    priv fn emit_for_stmt(nid: i64) {
+        let item_v = self.sa.get(nid)
+        let idx_v = self.sb.get(nid)
+        let iter_id = self.la.get(nid)
+        let body_id = self.ra.get(nid)
+        let ik = self.nk.get(iter_id)
+
+        if ik == NK_RANGE() {
+            let sv = self.gen_expr(self.la.get(iter_id))
+            let ev = self.gen_expr(self.ra.get(iter_id))
+            let stmp = self.next_tmp()
+            let etmp = self.next_tmp()
+            self.wl("int64_t " + stmp + " = (int64_t)(" + sv + "); int64_t " + etmp + " = (int64_t)(" + ev + ");")
+            mut cmp_op = " < "
+            if has_flag(self.ia.get(iter_id), FLAG_INCLUSIVE()) { cmp_op = " <= " }
+            self.w_ind()
+            self.w("for (int64_t " + item_v + " = " + stmp + "; " + item_v + cmp_op + etmp + "; " + item_v + "++) ")
+            self.w_lbrace()
+            self.w_nl()
+            self.indent = self.indent + 1
+            self.defer_push_scope()
+            self.emit_block_stmts(body_id)
+            self.defer_emit_unwind()
+            self.defer_pop_scope()
+            self.close_blk()
+            return
+        }
+
+        mut raw_it = iter_id
+        if ik == NK_CALL() {
+            let cal = self.la.get(iter_id)
+            if self.nk.get(cal) == NK_IDENT() && self.sa.get(cal) == "enumerate" && self.child_count(iter_id) == 1 {
+                raw_it = self.child_at(iter_id, 0)
+            }
+        }
+        let it_t = btype_norm(self.node_types.get(raw_it))
+        let ivar = self.gen_expr(raw_it)
+        let ctmp = self.next_tmp()
+        let len_v = self.next_tmp()
+        mut iv_name = idx_v
+        if iv_name == "" { iv_name = self.next_tmp() }
+
+        if btype_is_fixed_arr(it_t) {
+            let et = btype_arr_elem(it_t)
+            let alen = btype_arr_len(it_t)
+            self.w_ind()
+            self.w("for (int64_t " + iv_name + " = 0; " + iv_name + " < " + (alen as str) + "; " + iv_name + "++) ")
+            self.w_lbrace()
+            self.w_nl()
+            self.indent = self.indent + 1
+            self.wl(btype_to_c(et) + " " + item_v + " = " + ivar + "[" + iv_name + "];")
+        } else if btype_is_slice(it_t) {
+            let et = btype_slice_elem(it_t)
+            let ec = btype_to_c(et)
+            self.wl("Arx_Slice " + ctmp + " = " + ivar + "; int64_t " + len_v + " = (int64_t)" + ctmp + ".len;")
+            self.w_ind()
+            self.w("for (int64_t " + iv_name + " = 0; " + iv_name + " < " + len_v + "; " + iv_name + "++) ")
+            self.w_lbrace()
+            self.w_nl()
+            self.indent = self.indent + 1
+            self.wl(ec + " " + item_v + " = ((" + ec + "*)(" + ctmp + ".data))[" + iv_name + "];")
+        } else if btype_is_list(it_t) {
+            let et = btype_list_elem(it_t)
+            let sn = "Arx_" + btype_mangle(it_t)
+            self.wl(sn + " " + ctmp + " = " + ivar + "; int64_t " + len_v + " = arx_list_len(" + ctmp + ".data_handle);")
+            self.w_ind()
+            self.w("for (int64_t " + iv_name + " = 0; " + iv_name + " < " + len_v + "; " + iv_name + "++) ")
+            self.w_lbrace()
+            self.w_nl()
+            self.indent = self.indent + 1
+            self.wl(btype_to_c(et) + " " + item_v + " = " + sn + "_get(&" + ctmp + ", " + iv_name + ");")
+        } else if btype_is_set(it_t) {
+            let et = btype_list_elem(it_t)
+            let sn = "Arx_" + btype_mangle(it_t)
+            self.wl(sn + " " + ctmp + " = " + ivar + "; int64_t " + len_v + " = arx_set_len(" + ctmp + ".set_handle);")
+            self.w_ind()
+            self.w("for (int64_t " + iv_name + " = 0; " + iv_name + " < " + len_v + "; " + iv_name + "++) ")
+            self.w_lbrace()
+            self.w_nl()
+            self.indent = self.indent + 1
+            self.wl(btype_to_c(et) + " " + item_v + " = " + sn + "_get(&" + ctmp + ", " + iv_name + ");")
+        } else {
+            self.wl("const char* " + ctmp + " = " + ivar + "; int64_t " + len_v + " = arx_str_len(" + ctmp + ");")
+            self.w_ind()
+            self.w("for (int64_t " + iv_name + " = 0; " + iv_name + " < " + len_v + "; " + iv_name + "++) ")
+            self.w_lbrace()
+            self.w_nl()
+            self.indent = self.indent + 1
+            self.wl("char " + item_v + " = " + ctmp + "[" + iv_name + "];")
+        }
+
+        self.defer_push_scope()
+        self.emit_block_stmts(body_id)
+        self.defer_emit_unwind()
+        self.defer_pop_scope()
+        self.close_blk()
+    }
+
+    priv fn emit_match_stmt(nid: i64) {
+        let subj_id = self.la.get(nid)
+        let subj_t = btype_norm(self.node_types.get(nid))
+        let sval = self.gen_expr(subj_id)
+        let stmp = self.next_tmp()
+        self.wl(btype_to_c(subj_t) + " " + stmp + " = " + sval + ";")
+
+        let ccnt = self.child_count(nid)
+        mut ci = 0
+        mut open_elses = 0
+        while ci < ccnt {
+            let case_id = self.child_at(nid, ci)
+            let pat_id = self.la.get(case_id)
+            let body_id = self.ra.get(case_id)
+            let guard_id = self.ea.get(case_id)
+            let ext = self.node_ext.get(pat_id)
+
+            if ci > 0 {
+                self.w_ind()
+                self.w_rbrace()
+                self.w(" else ")
+                self.w_lbrace()
+                self.w_nl()
+                self.indent = self.indent + 1
+                open_elses = open_elses + 1
+            }
+
+            if ext == "wildcard" {
+                self.w_ind()
+                self.w("if (1) ")
+                self.w_lbrace()
+                self.w_nl()
+                self.indent = self.indent + 1
+                self.defer_push_scope()
+                self.emit_block_stmts(body_id)
+                self.defer_emit_unwind()
+                self.defer_pop_scope()
+                self.indent = self.indent - 1
+            } else if ext.starts_with("enum_unit::") {
+                let rest = ext.slice(11, ext.len())
+                let ep = rest.split("::")
+                let ename = ep.get(0)
+                let vname = ep.get(1)
+                self.w_ind()
+                self.w("if (" + stmp + ".tag == Arx_" + ename + "_Tag_" + vname + ") ")
+                self.w_lbrace()
+                self.w_nl()
+                self.indent = self.indent + 1
+                self.emit_guarded_arm(guard_id, body_id)
+                self.indent = self.indent - 1
+            } else if ext.starts_with("enum_payload::") {
+                let rest = ext.slice(14, ext.len())
+                let ep = rest.split("::")
+                let ename = ep.get(0)
+                let vname = ep.get(1)
+                let vnode = self.call_fn_nodes.get(pat_id)
+                self.w_ind()
+                self.w("if (" + stmp + ".tag == Arx_" + ename + "_Tag_" + vname + ") ")
+                self.w_lbrace()
+                self.w_nl()
+                self.indent = self.indent + 1
+                let ac = self.child_count(pat_id)
+                mut ai = 0
+                while ai < ac {
+                    let arg_id = self.child_at(pat_id, ai)
+                    if self.nk.get(arg_id) == NK_IDENT() {
+                        let bnm = self.sa.get(arg_id)
+                        if bnm != "_" {
+                            let fid = self.child_at(vnode, ai)
+                            let fnm = self.sa.get(fid)
+                            let ft = btype_norm(self.sb.get(fid))
+                            self.wl(btype_to_c(ft) + " " + bnm + " = " + stmp + ".data." + vname + "." + fnm + ";")
+                        }
+                    }
+                    ai = ai + 1
+                }
+                self.emit_guarded_arm(guard_id, body_id)
+                self.indent = self.indent - 1
+            } else {
+                let pv = self.gen_expr(pat_id)
+                mut cond = stmp + " == (" + pv + ")"
+                if btype_is_str(subj_t) {
+                    cond = "(arx_str_compare(" + stmp + ", " + pv + ") == 0)"
+                }
+                self.w_ind()
+                self.w("if (" + cond + ") ")
+                self.w_lbrace()
+                self.w_nl()
+                self.indent = self.indent + 1
+                self.emit_guarded_arm(guard_id, body_id)
+                self.indent = self.indent - 1
+            }
+            ci = ci + 1
+        }
+        if ccnt > 0 {
+            self.w_ind()
+            self.w_rbrace()
+            self.w_nl()
+            while open_elses > 0 {
+                self.close_blk()
+                open_elses = open_elses - 1
+            }
+        }
+    }
+
+    priv fn emit_guarded_arm(guard_id: i64, body_id: i64) {
+        if guard_id >= 0 {
+            let gval = self.gen_expr(guard_id)
+            self.w_ind()
+            self.w("if (" + gval + ") ")
+            self.w_lbrace()
+            self.w_nl()
+            self.indent = self.indent + 1
+            self.defer_push_scope()
+            self.emit_block_stmts(body_id)
+            self.defer_emit_unwind()
+            self.defer_pop_scope()
+            self.close_blk()
+        } else {
+            self.defer_push_scope()
+            self.emit_block_stmts(body_id)
+            self.defer_emit_unwind()
+            self.defer_pop_scope()
+        }
+    }
+
+}

@@ -1,0 +1,119 @@
+import "./mod.arx"
+
+fn extract_registry_json_val(line: str) -> str {
+    let col = line.index_of(":")
+    if col < 0 { return "" }
+    let rest = line.slice(col + 1, line.len())
+    let v_q1 = rest.index_of("\"")
+    if v_q1 < 0 { return "" }
+    let v_rest = rest.slice(v_q1 + 1, rest.len())
+    let v_q2 = v_rest.index_of("\"")
+    if v_q2 < 0 { return "" }
+    return v_rest.slice(0, v_q2)
+}
+
+fn parse_registry_json_content(content: str) -> List<PkgRegistryItem> {
+    let list = List<PkgRegistryItem>()
+    let lines = content.split("\n")
+    mut i = 0
+    let n = lines.len()
+
+    mut cur_name = ""
+    mut cur_ver = ""
+    mut cur_desc = ""
+    mut cur_repo = ""
+    mut cur_risk = "CLEAN (LOW)"
+
+    while i < n {
+        let raw_line = lines.get(i)
+        let line = raw_line.trim()
+
+        if line.contains("\"name\":") {
+            cur_name = extract_registry_json_val(line)
+        } else if line.contains("\"version\":") {
+            cur_ver = extract_registry_json_val(line)
+        } else if line.contains("\"description\":") {
+            cur_desc = extract_registry_json_val(line)
+        } else if line.contains("\"repository\":") {
+            cur_repo = extract_registry_json_val(line)
+        } else if line.contains("\"risk_rating\":") {
+            cur_risk = extract_registry_json_val(line)
+        }
+
+        // Object closing (byte 125 is '}')
+        if line.len() > 0 && line.byte_at(0) == 125 {
+            if cur_name != "" && cur_repo != "" {
+                list.push(PkgRegistryItem(cur_name, cur_ver, cur_desc, cur_repo, cur_risk))
+            }
+            cur_name = ""
+            cur_ver = ""
+            cur_desc = ""
+            cur_repo = ""
+            cur_risk = "CLEAN (LOW)"
+        }
+
+        i = i + 1
+    }
+
+    return list
+}
+
+fn get_known_registry() -> List<PkgRegistryItem> {
+    // 1. Check explicit environment override
+    let env_reg = Env.get("AERIX_REGISTRY")
+    if env_reg != "" && File.exists(env_reg) {
+        let c = File.read_to_string(env_reg)
+        if c.contains("\"packages\"") {
+            return parse_registry_json_content(c)
+        }
+    }
+
+    // 2. Check local workspace paths (developer editing aerix-packages)
+    let cwd = bpath_normalize(Env.cwd())
+    let cand_local1 = bpath_join(cwd, "registry.json")
+    if File.exists(cand_local1) {
+        let c = File.read_to_string(cand_local1)
+        if c.contains("\"packages\"") {
+            return parse_registry_json_content(c)
+        }
+    }
+    let cand_local2 = bpath_join(cwd, "../aerix-packages/registry.json")
+    if File.exists(cand_local2) {
+        let c = File.read_to_string(cand_local2)
+        if c.contains("\"packages\"") {
+            return parse_registry_json_content(c)
+        }
+    }
+    let cand_local3 = "Z:/VSCode/aerix-packages/registry.json"
+    if File.exists(cand_local3) {
+        let c = File.read_to_string(cand_local3)
+        if c.contains("\"packages\"") {
+            return parse_registry_json_content(c)
+        }
+    }
+
+    let tmp_dir = get_pkg_temp_dir()
+    let cache_file = bpath_join(tmp_dir, "aerix_registry.json")
+
+    // 3. Real-time fetch via GitHub API (Accept: application/vnd.github.raw has ZERO CDN cache delay!)
+    let q = "\""
+    let api_url = "https://api.github.com/repos/HaxOrWot/aerix-packages/contents/registry.json"
+    let api_cmd = "curl -s -f -m 6 -H " + q + "Accept: application/vnd.github.raw" + q + " -H " + q + "User-Agent: aerix-pkg" + q + " " + quote_pkg_arg(api_url) + " -o " + quote_pkg_arg(cache_file.replace("/", "\\"))
+    let exit_code = Process.execute(api_cmd)
+
+    // 4. Fallback to raw.githubusercontent.com if API fails
+    if exit_code != 0 || !File.exists(cache_file) {
+        let raw_url = "https://raw.githubusercontent.com/HaxOrWot/aerix-packages/main/registry.json"
+        let raw_cmd = "curl -s -f -m 6 " + quote_pkg_arg(raw_url) + " -o " + quote_pkg_arg(cache_file.replace("/", "\\"))
+        Process.execute(raw_cmd)
+    }
+
+    if File.exists(cache_file) {
+        let content = File.read_to_string(cache_file)
+        if content.contains("\"packages\"") {
+            return parse_registry_json_content(content)
+        }
+    }
+
+    return List<PkgRegistryItem>()
+}

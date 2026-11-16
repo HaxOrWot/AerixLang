@@ -1,0 +1,112 @@
+import "./mod.arx"
+
+extend NativeRt {
+    priv fn emit_assert() {
+        let a = self.asmb
+        // __rt_assert(rcx = cond: i64)
+        self.begin_fn("__rt_assert", 48)
+        let l_ok = a.new_label()
+        a.test_rr(REG_RCX(), REG_RCX())
+        a.jcc_rel32(CC_NE(), l_ok)
+        a.lea_rip_rdata(REG_RCX(), self.s_assert_failed)
+        a.call_rel32(self.lbl("__rt_eprintln_str"))
+        a.mov_ri32_sext(REG_RCX(), 1)
+        a.call_rip_iat(self.imp_exit_process)
+        a.bind_label(l_ok)
+        self.end_fn()
+
+        // label alias
+        self.begin_fn("assert", 48)
+        a.jmp_rel32(self.lbl("__rt_assert"))
+        self.end_fn()
+    }
+
+    priv fn emit_exceptions() {
+        let a = self.asmb
+        // __rt_try_push() -> rax: 0 (initial) or 1 (on exception throw)
+        self.begin_fn("__rt_try_push", 32)
+        // RAX = exc_depth
+        a.mov_rm64_rip_data(REG_RAX(), self.exc_depth_off)
+        // RDX = depth * 64
+        a.mov_rr(REG_RDX(), REG_RAX())
+        a.add_rr(REG_RDX(), REG_RDX())
+        a.add_rr(REG_RDX(), REG_RDX())
+        a.add_rr(REG_RDX(), REG_RDX())
+        a.add_rr(REG_RDX(), REG_RDX())
+        a.add_rr(REG_RDX(), REG_RDX())
+        a.add_rr(REG_RDX(), REG_RDX())
+        // RCX = jmp_stack_off + RDX
+        a.lea_rip_data(REG_RCX(), self.jmp_stack_off)
+        a.add_rr(REG_RCX(), REG_RDX())
+        // Save caller RSP and RBP
+        a.mov_rm64(REG_RDX(), REG_RBP(), 0)
+        a.mov_mr64(REG_RCX(), 8, REG_RDX())
+        a.lea_rm(REG_RDX(), REG_RBP(), 16)
+        a.mov_mr64(REG_RCX(), 0, REG_RDX())
+        a.mov_mr64(REG_RCX(), 16, REG_RBX())
+        a.mov_mr64(REG_RCX(), 24, REG_R12())
+        a.mov_mr64(REG_RCX(), 32, REG_R13())
+        a.mov_mr64(REG_RCX(), 40, REG_R14())
+        a.mov_mr64(REG_RCX(), 48, REG_R15())
+        a.mov_rm64(REG_RDX(), REG_RBP(), 8)
+        a.mov_mr64(REG_RCX(), 56, REG_RDX())
+        // depth = depth + 1
+        a.add_ri32(REG_RAX(), 1)
+        a.mov_mr64_rip_data(self.exc_depth_off, REG_RAX())
+        a.mov_ri32_sext(REG_RAX(), 0)
+        self.end_fn()
+
+        // __rt_try_pop()
+        self.begin_fn("__rt_try_pop", 32)
+        a.mov_rm64_rip_data(REG_RAX(), self.exc_depth_off)
+        let l_pop_ret = a.new_label()
+        a.test_rr(REG_RAX(), REG_RAX())
+        a.jcc_rel32(CC_E(), l_pop_ret)
+        a.sub_ri32(REG_RAX(), 1)
+        a.mov_mr64_rip_data(self.exc_depth_off, REG_RAX())
+        a.bind_label(l_pop_ret)
+        self.end_fn()
+
+        // __rt_throw(rcx = msg_ptr: str)
+        self.begin_fn("__rt_throw", 48)
+        a.mov_mr64_rip_data(self.exc_msg_off, REG_RCX())
+        a.mov_rm64_rip_data(REG_RAX(), self.exc_depth_off)
+        let l_uncaught = a.new_label()
+        a.test_rr(REG_RAX(), REG_RAX())
+        a.jcc_rel32(CC_E(), l_uncaught)
+        // depth = depth - 1
+        a.sub_ri32(REG_RAX(), 1)
+        a.mov_mr64_rip_data(self.exc_depth_off, REG_RAX())
+        // RDX = depth * 64
+        a.mov_rr(REG_RDX(), REG_RAX())
+        a.add_rr(REG_RDX(), REG_RDX())
+        a.add_rr(REG_RDX(), REG_RDX())
+        a.add_rr(REG_RDX(), REG_RDX())
+        a.add_rr(REG_RDX(), REG_RDX())
+        a.add_rr(REG_RDX(), REG_RDX())
+        a.add_rr(REG_RDX(), REG_RDX())
+        a.lea_rip_data(REG_RCX(), self.jmp_stack_off)
+        a.add_rr(REG_RCX(), REG_RDX())
+        // Restore registers
+        a.mov_rm64(REG_RSP(), REG_RCX(), 0)
+        a.mov_rm64(REG_RBP(), REG_RCX(), 8)
+        a.mov_rm64(REG_RBX(), REG_RCX(), 16)
+        a.mov_rm64(REG_R12(), REG_RCX(), 24)
+        a.mov_rm64(REG_R13(), REG_RCX(), 32)
+        a.mov_rm64(REG_R14(), REG_RCX(), 40)
+        a.mov_rm64(REG_R15(), REG_RCX(), 48)
+        a.mov_rm64(REG_RDX(), REG_RCX(), 56)
+        a.mov_ri32_sext(REG_RAX(), 1)
+        a.push_r(REG_RDX())
+        a.ret()
+
+        a.bind_label(l_uncaught)
+        a.lea_rip_rdata(REG_RCX(), self.s_uncaught_err)
+        a.call_rel32(self.lbl("__rt_eprint_str"))
+        a.mov_rm64_rip_data(REG_RCX(), self.exc_msg_off)
+        a.call_rel32(self.lbl("__rt_eprintln_str"))
+        a.mov_ri32_sext(REG_RCX(), 1)
+        a.call_rip_iat(self.imp_exit_process)
+        self.end_fn()
+    }
+}

@@ -1,0 +1,300 @@
+import "./mod.arx"
+
+extend NativeRt {
+    priv fn emit_env_args() {
+        let a = self.asmb
+        // Parse GetCommandLineA() handling "..." quoted tokens and whitespace
+        self.begin_fn("__rt_env_args", 80)
+        let l_need_parse = a.new_label()
+        a.mov_rm64_rip_data(REG_RAX(), self.args_list_off)
+        a.test_rr(REG_RAX(), REG_RAX())
+        a.jcc_rel32(CC_E(), l_need_parse)
+        self.end_fn()
+
+        a.bind_label(l_need_parse)
+        a.call_rel32(self.lbl("__rt_list_new"))
+        a.mov_mr64(REG_RBP(), -8, REG_RAX()) // list
+        a.call_rip_iat(self.imp_get_cmd)
+        a.mov_mr64(REG_RBP(), -16, REG_RAX()) // p
+        let l_al = a.new_label()
+        let l_ad = a.new_label()
+        a.bind_label(l_al)
+        // Skip whitespace
+        a.mov_rm64(REG_RCX(), REG_RBP(), -16)
+        a.movzx_rm8(REG_RAX(), REG_RCX(), 0)
+        a.cmp_ri32(REG_RAX(), 0)
+        a.jcc_rel32(CC_E(), l_ad)
+        let l_skp = a.new_label()
+        a.cmp_ri32(REG_RAX(), 32)
+        a.jcc_rel32(CC_A(), l_skp)
+        a.add_ri32(REG_RCX(), 1)
+        a.mov_mr64(REG_RBP(), -16, REG_RCX())
+        a.jmp_rel32(l_al)
+        a.bind_label(l_skp)
+        // Check quote vs bare token
+        let l_bare = a.new_label()
+        a.cmp_ri32(REG_RAX(), 34) // '"'
+        a.jcc_rel32(CC_NE(), l_bare)
+        a.add_ri32(REG_RCX(), 1)
+        a.mov_mr64(REG_RBP(), -24, REG_RCX()) // start
+        let l_q2 = a.new_label()
+        let l_q2d = a.new_label()
+        a.bind_label(l_q2)
+        a.movzx_rm8(REG_RAX(), REG_RCX(), 0)
+        a.cmp_ri32(REG_RAX(), 0)
+        a.jcc_rel32(CC_E(), l_q2d)
+        a.cmp_ri32(REG_RAX(), 34)
+        a.jcc_rel32(CC_E(), l_q2d)
+        a.add_ri32(REG_RCX(), 1)
+        a.jmp_rel32(l_q2)
+        a.bind_label(l_q2d)
+        a.mov_mr64(REG_RBP(), -32, REG_RCX()) // end
+        let l_qa = a.new_label()
+        a.movzx_rm8(REG_RAX(), REG_RCX(), 0)
+        a.cmp_ri32(REG_RAX(), 34)
+        a.jcc_rel32(CC_NE(), l_qa)
+        a.add_ri32(REG_RCX(), 1)
+        a.bind_label(l_qa)
+        a.mov_mr64(REG_RBP(), -16, REG_RCX())
+        let l_push_tok = a.new_label()
+        a.jmp_rel32(l_push_tok)
+        a.bind_label(l_bare)
+        a.mov_mr64(REG_RBP(), -24, REG_RCX())
+        let l_b2 = a.new_label()
+        let l_b2d = a.new_label()
+        a.bind_label(l_b2)
+        a.movzx_rm8(REG_RAX(), REG_RCX(), 0)
+        a.cmp_ri32(REG_RAX(), 32)
+        a.jcc_rel32(CC_LE(), l_b2d)
+        a.add_ri32(REG_RCX(), 1)
+        a.jmp_rel32(l_b2)
+        a.bind_label(l_b2d)
+        a.mov_mr64(REG_RBP(), -32, REG_RCX())
+        a.mov_mr64(REG_RBP(), -16, REG_RCX())
+        a.bind_label(l_push_tok)
+        a.mov_rm64(REG_RCX(), REG_RBP(), -24)
+        a.mov_ri32_sext(REG_RDX(), 0)
+        a.mov_rm64(REG_R8(), REG_RBP(), -32)
+        a.sub_rr(REG_R8(), REG_RCX())
+        a.call_rel32(self.lbl("__rt_str_slice"))
+        a.mov_rm64(REG_RCX(), REG_RBP(), -8)
+        a.mov_rr(REG_RDX(), REG_RAX())
+        a.call_rel32(self.lbl("__rt_list_push"))
+        a.jmp_rel32(l_al)
+        a.bind_label(l_ad)
+        a.mov_rm64(REG_RAX(), REG_RBP(), -8)
+        a.mov_mr64_rip_data(self.args_list_off, REG_RAX())
+        self.end_fn()
+
+        // Env.arg_count() -> i64
+        self.begin_fn("__rt_env_arg_count", 32)
+        a.call_rel32(self.lbl("__rt_env_args"))
+        a.mov_rr(REG_RCX(), REG_RAX())
+        a.call_rel32(self.lbl("__rt_list_len"))
+        self.end_fn()
+
+        // Env.arg(rcx = index: i64) -> str
+        self.begin_fn("__rt_env_arg", 48)
+        a.mov_mr64(REG_RBP(), -8, REG_RCX())
+        a.call_rel32(self.lbl("__rt_env_args"))
+        a.mov_rr(REG_RCX(), REG_RAX())
+        a.mov_rm64(REG_RDX(), REG_RBP(), -8)
+        a.call_rel32(self.lbl("__rt_list_get"))
+        self.end_fn()
+
+        // Arx_Env_arg alias
+        self.begin_fn("Arx_Env_arg", 48)
+        a.jmp_rel32(self.lbl("__rt_env_arg"))
+        self.end_fn()
+
+        // PRNG runtime implementations
+        // arx_prng_seed(rcx = seed: i64)
+        self.begin_fn("arx_prng_seed", 48)
+        let l_seed_nonzero = a.new_label()
+        a.test_rr(REG_RCX(), REG_RCX())
+        a.jcc_rel32(CC_NE(), l_seed_nonzero)
+
+        // seed == 0: get seed from GetTickCount64
+        a.call_rip_iat(self.imp_tick) // RAX = GetTickCount64()
+        let l_nonz2 = a.new_label()
+        a.test_rr(REG_RAX(), REG_RAX())
+        a.jcc_rel32(CC_NE(), l_nonz2)
+        a.mov_ri64(REG_RAX(), 423259739)
+        a.bind_label(l_nonz2)
+        a.mov_mr64_rip_data(self.prng_state_off, REG_RAX())
+        self.end_fn()
+
+        a.bind_label(l_seed_nonzero)
+        a.mov_mr64_rip_data(self.prng_state_off, REG_RCX())
+        self.end_fn()
+
+        // arx_prng_get_state() -> i64
+        self.begin_fn("arx_prng_get_state", 48)
+        a.mov_rm64_rip_data(REG_RAX(), self.prng_state_off)
+        let l_gs_ok = a.new_label()
+        a.test_rr(REG_RAX(), REG_RAX())
+        a.jcc_rel32(CC_NE(), l_gs_ok)
+        a.mov_ri32_sext(REG_RCX(), 0)
+        a.call_rel32(self.lbl("arx_prng_seed"))
+        a.mov_rm64_rip_data(REG_RAX(), self.prng_state_off)
+        a.bind_label(l_gs_ok)
+        self.end_fn()
+
+        // arx_prng_set_state(rcx = state)
+        self.begin_fn("arx_prng_set_state", 48)
+        a.mov_mr64_rip_data(self.prng_state_off, REG_RCX())
+        self.end_fn()
+
+        // arx_prng_next_i64() -> i64 (xorshift64* generator)
+        self.begin_fn("arx_prng_next_i64", 48)
+        a.mov_rm64_rip_data(REG_RAX(), self.prng_state_off)
+        let l_prng_init = a.new_label()
+        a.test_rr(REG_RAX(), REG_RAX())
+        a.jcc_rel32(CC_NE(), l_prng_init)
+        a.mov_ri32_sext(REG_RCX(), 0)
+        a.call_rel32(self.lbl("arx_prng_seed"))
+        a.mov_rm64_rip_data(REG_RAX(), self.prng_state_off)
+        a.bind_label(l_prng_init)
+
+        // x ^= x >> 12
+        a.mov_rr(REG_RDX(), REG_RAX())
+        a.mov_ri32_sext(REG_RCX(), 12)
+        a.shr_cl(REG_RDX())
+        a.xor_rr(REG_RAX(), REG_RDX())
+
+        // x ^= x << 25
+        a.mov_rr(REG_RDX(), REG_RAX())
+        a.mov_ri32_sext(REG_RCX(), 25)
+        a.shl_cl(REG_RDX())
+        a.xor_rr(REG_RAX(), REG_RDX())
+
+        // x ^= x >> 27
+        a.mov_rr(REG_RDX(), REG_RAX())
+        a.mov_ri32_sext(REG_RCX(), 27)
+        a.shr_cl(REG_RDX())
+        a.xor_rr(REG_RAX(), REG_RDX())
+
+        // update state in memory
+        a.mov_mr64_rip_data(self.prng_state_off, REG_RAX())
+
+        // return x * 2685821657736338717
+        a.mov_ri64(REG_RDX(), 2685821657736338717)
+        a.imul_rr(REG_RAX(), REG_RDX())
+        self.end_fn()
+
+        // arx_prng_next_f64() -> f64
+        self.begin_fn("arx_prng_next_f64", 48)
+        a.call_rel32(self.lbl("arx_prng_next_i64"))
+        a.mov_ri32_sext(REG_RCX(), 11)
+        a.shr_cl(REG_RAX())
+        a.cvtsi2sd(0, REG_RAX())
+        a.mov_ri64(REG_RAX(), 9007199254740992)
+        a.cvtsi2sd(1, REG_RAX())
+        a.divsd(0, 1)
+        a.movq_r_xmm(REG_RAX(), 0)
+        self.end_fn()
+
+        // arx_time_now() -> f64
+        self.begin_fn("arx_time_now", 48)
+        a.call_rip_iat(self.imp_tick)
+        a.cvtsi2sd(0, REG_RAX())
+        a.mov_ri64(REG_RAX(), 1000)
+        a.cvtsi2sd(1, REG_RAX())
+        a.divsd(0, 1)
+        a.movq_r_xmm(REG_RAX(), 0)
+        self.end_fn()
+
+        // arx_sleep(rcx = ms: i64) -> void
+        self.begin_fn("arx_sleep", 48)
+        a.call_rip_iat(self.imp_sleep)
+        self.end_fn()
+
+        // arx_sleep_ms(rcx = ms: i64) -> void
+        self.begin_fn("arx_sleep_ms", 48)
+        a.call_rip_iat(self.imp_sleep)
+        self.end_fn()
+
+        // __rt_time_sleep_ms(rcx = ms: i64) -> void
+        self.begin_fn("__rt_time_sleep_ms", 48)
+        a.call_rip_iat(self.imp_sleep)
+        self.end_fn()
+
+        // ticks() -> i64 (GetTickCount64)
+        self.begin_fn("ticks", 48)
+        a.call_rip_iat(self.imp_tick)
+        self.end_fn()
+
+        // __rt_time_ticks() -> i64
+        self.begin_fn("__rt_time_ticks", 48)
+        a.call_rip_iat(self.imp_tick)
+        self.end_fn()
+
+        // Math builtin wrappers with safe Win64 shadow stack frames
+        // __rt_math_sqrt(rcx = x bitpattern) -> rax (result bitpattern)
+        self.begin_fn("__rt_math_sqrt", 48)
+        a.movq_xmm_r(0, REG_RCX())
+        a.call_rip_iat(self.imp_sqrt)
+        a.movq_r_xmm(REG_RAX(), 0)
+        self.end_fn()
+
+        // __rt_math_pow(rcx = base bitpattern, rdx = exp bitpattern) -> rax (result bitpattern)
+        self.begin_fn("__rt_math_pow", 48)
+        a.movq_xmm_r(0, REG_RCX())
+        a.movq_xmm_r(1, REG_RDX())
+        a.call_rip_iat(self.imp_pow)
+        a.movq_r_xmm(REG_RAX(), 0)
+        self.end_fn()
+
+        // __rt_math_sin(rcx = x bitpattern) -> rax
+        self.begin_fn("__rt_math_sin", 48)
+        a.movq_xmm_r(0, REG_RCX())
+        a.call_rip_iat(self.imp_sin)
+        a.movq_r_xmm(REG_RAX(), 0)
+        self.end_fn()
+
+        // __rt_math_cos(rcx = x bitpattern) -> rax
+        self.begin_fn("__rt_math_cos", 48)
+        a.movq_xmm_r(0, REG_RCX())
+        a.call_rip_iat(self.imp_cos)
+        a.movq_r_xmm(REG_RAX(), 0)
+        self.end_fn()
+
+        // __rt_math_tan(rcx = x bitpattern) -> rax
+        self.begin_fn("__rt_math_tan", 48)
+        a.movq_xmm_r(0, REG_RCX())
+        a.call_rip_iat(self.imp_tan)
+        a.movq_r_xmm(REG_RAX(), 0)
+        self.end_fn()
+
+        // __rt_math_floor(rcx = x bitpattern) -> rax
+        self.begin_fn("__rt_math_floor", 48)
+        a.movq_xmm_r(0, REG_RCX())
+        a.call_rip_iat(self.imp_floor)
+        a.movq_r_xmm(REG_RAX(), 0)
+        self.end_fn()
+
+        // __rt_math_ceil(rcx = x bitpattern) -> rax
+        self.begin_fn("__rt_math_ceil", 48)
+        a.movq_xmm_r(0, REG_RCX())
+        a.call_rip_iat(self.imp_ceil)
+        a.movq_r_xmm(REG_RAX(), 0)
+        self.end_fn()
+
+        // __rt_math_log(rcx = x bitpattern) -> rax
+        self.begin_fn("__rt_math_log", 48)
+        a.movq_xmm_r(0, REG_RCX())
+        a.call_rip_iat(self.imp_log)
+        a.movq_r_xmm(REG_RAX(), 0)
+        self.end_fn()
+
+        // __rt_math_exp(rcx = x bitpattern) -> rax
+        self.begin_fn("__rt_math_exp", 48)
+        a.movq_xmm_r(1, REG_RCX())
+        a.mov_ri64(REG_RDX(), 4613303445314885427)
+        a.movq_xmm_r(0, REG_RDX())
+        a.call_rip_iat(self.imp_pow)
+        a.movq_r_xmm(REG_RAX(), 0)
+        self.end_fn()
+    }
+
+}

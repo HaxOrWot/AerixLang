@@ -1,0 +1,12 @@
+// Call & dispatch conventions stored in call_kinds[node_id]
+pub fn CK_NONE() -> i64 { return 0 }
+pub fn CK_NORMAL() -> i64 { return 1 }
+pub fn CK_METHOD() -> i64 { return 2 }
+pub fn CK_STATIC() -> i64 { return 3 }
+pub fn CK_CTOR() -> i64 { return 4 }
+pub fn CK_ENUM_VAR() -> i64 { return 5 }
+pub fn CK_BUILTIN() -> i64 { return 6 }
+pub fn CK_STR_METHOD() -> i64 { return 7 }
+pub fn CK_ARR_METHOD() -> i64 { return 8 }
+pub fn CK_NEW() -> i64 { return 9 }
+

@@ -1,0 +1,48 @@
+import "./mod.arx"
+
+extend Analyzer {
+    // --- Signature & Overload Registration ---
+
+    priv fn inc_over(key: str) {
+        mut prev = 0
+        if self.over_counts.has_key(key) {
+            prev = self.over_counts.get(key)
+        }
+        self.over_counts.insert(key, prev + 1)
+    }
+
+    priv fn param_sig_str(params_grp: i64) -> str {
+        if params_grp < 0 { return "" }
+        let n = self.child_count(params_grp)
+        if n == 0 { return "" }
+        let bb = ByteBuffer()
+        mut i = 0
+        while i < n {
+            if i > 0 { bb.write_u8(95) }
+            let pid = self.child_at(params_grp, i)
+            let pt = btype_mangle(self.sb.get(pid))
+            bb.write_str(pt)
+            i = i + 1
+        }
+        let s = bb.to_str()
+        bb.free()
+        return s
+    }
+
+    priv fn reg_sig(key: str, fn_nid: i64, cname: str, ret_t: str, is_static: i64) {
+        let idx = self.sig_count
+        self.sig_keys.push(key)
+        self.sig_nodes.push(fn_nid)
+        self.sig_cnames.push(cname)
+        self.sig_rets.push(btype_norm(ret_t))
+        self.sig_is_static.push(is_static)
+        self.sig_count = self.sig_count + 1
+        if self.sig_by_key.has_key(key) {
+            self.sig_by_key.insert(key, self.sig_by_key.get(key) + "," + (idx as str))
+        } else {
+            self.sig_by_key.insert(key, idx as str)
+        }
+        self.call_targets.set(fn_nid, cname)
+    }
+
+}

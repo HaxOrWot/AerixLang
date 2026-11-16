@@ -1,11 +1,11 @@
 // Aerix Native LSP — JSON-RPC 2.0 Language Server Daemon (arx lsp)
 
 import "../middle/paths.arx"
-import "../middle/analyzer.arx"
+import "../middle/analyzer/mod.arx"
 import "./json.arx"
-import "./docs.arx"
-import "./highlight.arx"
-import "./features.arx"
+import "./docs/mod.arx"
+import "./highlight/mod.arx"
+import "./features/mod.arx"
 
 fn lsp_read_msg_str() -> str {
     let n = arx_lsp_read_start()

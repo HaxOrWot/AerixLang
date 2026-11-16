@@ -1,0 +1,116 @@
+// Aerix Direct Native x86-64 Code Generator (AST -> x86-64 Machine Code -> Windows PE32+)
+
+import "../../../frontend/ast.arx"
+import "../../../middle/types.arx"
+import "../../../middle/analyzer/mod.arx"
+import "../x64.arx"
+import "../pe.arx"
+import "../runtime/mod.arx"
+
+pub class NativeCodegen {
+    pub az: Analyzer
+    pub asmb: X64Asm
+    pub pe: PeBuilder
+    pub rt: NativeRt
+
+    // AST arrays cached
+    pub nk: List<i64>
+    pub sa: List<str>
+    pub sb: List<str>
+    pub ia: List<i64>
+    pub la: List<i64>
+    pub ra: List<i64>
+    pub ea: List<i64>
+    pub ls: List<i64>
+    pub ll: List<i64>
+    pub ch: List<i64>
+    pub node_types: List<str>
+    pub node_ext: List<str>
+    pub call_targets: List<str>
+    pub call_fn_nodes: List<i64>
+
+    // Layouts & symbols
+    pub cls_sizes: Map<str, i64>
+    pub cls_field_offs: Map<str, i64>
+    pub enum_unit_ptrs: Map<str, i64>    // "Enum::Var" -> .rdata offset (8-byte singleton { tag })
+    pub enum_var_tags: Map<str, i64>     // "Enum::Var" -> tag index
+    pub global_offs: Map<str, i64>       // global var -> .data offset
+    pub global_nodes: List<i64>
+    pub fn_externs: Map<str, str>
+    pub extern_iats: Map<str, i64>
+
+    // Per-function compilation state (lexical variable stack for shadowing/blocks)
+    pub scope_names: List<str>
+    pub scope_offs: List<i64>
+    pub scope_types: List<str>
+    pub scope_marks: List<i64>
+
+    pub cur_class: str
+    pub cur_ret_lbl: i64
+    pub cur_ret_type: str
+    pub next_local_off: i64
+    pub max_local_off: i64
+    pub max_call_args: i64
+
+    // Loop break/continue + defer stacks
+    pub loop_brk_lbls: List<i64>
+    pub loop_cnt_lbls: List<i64>
+    pub loop_defer_marks: List<i64>
+    pub loop_scope_marks: List<i64>
+    pub temp_str_slots: List<i64>
+    pub fn_param_mark: i64
+    pub defer_nodes: List<i64>
+    pub defer_marks: List<i64>
+
+    init(az: Analyzer) {
+        self.az = az
+        self.asmb = X64Asm()
+        self.pe = PeBuilder()
+        self.rt = NativeRt(self.asmb, self.pe)
+
+        self.nk = az.nk
+        self.sa = az.sa
+        self.sb = az.sb
+        self.ia = az.ia
+        self.la = az.la
+        self.ra = az.ra
+        self.ea = az.ea
+        self.ls = az.ls
+        self.ll = az.ll
+        self.ch = az.ch
+        self.node_types = az.node_types
+        self.node_ext = az.node_ext
+        self.call_targets = az.call_targets
+        self.call_fn_nodes = az.call_fn_nodes
+
+        self.cls_sizes = Map<str, i64>()
+        self.cls_field_offs = Map<str, i64>()
+        self.enum_unit_ptrs = Map<str, i64>()
+        self.enum_var_tags = Map<str, i64>()
+        self.global_offs = Map<str, i64>()
+        self.global_nodes = List<i64>()
+        self.fn_externs = az.fn_externs
+        self.extern_iats = Map<str, i64>()
+
+        self.scope_names = List<str>()
+        self.scope_offs = List<i64>()
+        self.scope_types = List<str>()
+        self.scope_marks = List<i64>()
+
+        self.cur_class = ""
+        self.cur_ret_lbl = -1
+        self.cur_ret_type = "void"
+        self.next_local_off = 8
+        self.max_local_off = 8
+        self.max_call_args = 4
+
+        self.loop_brk_lbls = List<i64>()
+        self.loop_cnt_lbls = List<i64>()
+        self.loop_defer_marks = List<i64>()
+        self.loop_scope_marks = List<i64>()
+        self.temp_str_slots = List<i64>()
+        self.fn_param_mark = 0
+        self.defer_nodes = List<i64>()
+        self.defer_marks = List<i64>()
+    }
+}

@@ -1,0 +1,332 @@
+import "./mod.arx"
+
+extend Emitter {
+    priv fn emit_list_inst(raw_elem: str) {
+        let et = btype_norm(raw_elem)
+        let em = btype_mangle(et)
+        let sn = "Arx_List_" + em
+        let ct = btype_to_c(et)
+
+        self.wcl("static inline " + sn + " " + sn + "_init(void) @ " + sn + " l; l.data_handle = arx_list_new(16); l.length = 0; return l; `")
+
+        // push
+        self.w_ind()
+        self.w("static inline void " + sn + "_push(" + sn + "* self, " + ct + " v) ")
+        self.w_lbrace()
+        self.w_nl()
+        self.indent = self.indent + 1
+        let bx = self.emit_box_expr(et, "v")
+        self.wl("arx_list_push(self->data_handle, " + bx + "); self->length = arx_list_len(self->data_handle);")
+        self.close_blk()
+
+        // pop
+        self.w_ind()
+        self.w("static inline " + ct + " " + sn + "_pop(" + sn + "* self) ")
+        self.w_lbrace()
+        self.w_nl()
+        self.indent = self.indent + 1
+        self.wl("int64_t _r = arx_list_pop(self->data_handle); self->length = arx_list_len(self->data_handle);")
+        let uPop = self.emit_unbox_expr(et, "_r")
+        self.wl("return " + uPop + ";")
+        self.close_blk()
+
+        // get
+        self.w_ind()
+        self.w("static inline " + ct + " " + sn + "_get(" + sn + "* self, int64_t idx) ")
+        self.w_lbrace()
+        self.w_nl()
+        self.indent = self.indent + 1
+        self.wl("int64_t _r = arx_list_get(self->data_handle, idx);")
+        let uGet = self.emit_unbox_expr(et, "_r")
+        self.wl("return " + uGet + ";")
+        self.close_blk()
+
+        // set
+        self.w_ind()
+        self.w("static inline void " + sn + "_set(" + sn + "* self, int64_t idx, " + ct + " v) ")
+        self.w_lbrace()
+        self.w_nl()
+        self.indent = self.indent + 1
+        let bx2 = self.emit_box_expr(et, "v")
+        self.wl("arx_list_set(self->data_handle, idx, " + bx2 + ");")
+        self.close_blk()
+
+        self.wcl("static inline int64_t " + sn + "_len(" + sn + "* self) @ return arx_list_len(self->data_handle); `")
+        self.wcl("static inline int64_t " + sn + "_length(" + sn + "* self) @ return arx_list_len(self->data_handle); `")
+        self.wcl("static inline bool " + sn + "_is_empty(" + sn + "* self) @ return arx_list_len(self->data_handle) == 0; `")
+        self.wcl("static inline void " + sn + "_clear(" + sn + "* self) @ arx_list_clear(self->data_handle); self->length = 0; `")
+        self.wcl("static inline " + sn + " " + sn + "_slice(" + sn + "* self, int64_t a, int64_t b) @ " + sn + " r; r.data_handle = arx_list_slice(self->data_handle, a, b); r.length = arx_list_len(r.data_handle); return r; `")
+        self.wcl("static inline void " + sn + "_reverse(" + sn + "* self) @ arx_list_reverse(self->data_handle); `")
+        self.wcl("static inline void " + sn + "_sort(" + sn + "* self) @ arx_list_sort(self->data_handle); `")
+        self.wcl("static inline void " + sn + "_free(" + sn + "* self) @ arx_list_free(self->data_handle); self->length = 0; `")
+
+        // contains & index_of
+        if btype_is_str(et) {
+            self.wcl("static inline bool " + sn + "_contains(" + sn + "* self, " + ct + " v) @ return arx_list_contains_str(self->data_handle, v); `")
+            self.wcl("static inline int64_t " + sn + "_index_of(" + sn + "* self, " + ct + " v) @ return arx_list_index_of_str(self->data_handle, v); `")
+        } else {
+            self.w_ind()
+            self.w("static inline bool " + sn + "_contains(" + sn + "* self, " + ct + " v) ")
+            self.w_lbrace()
+            self.w_nl()
+            self.indent = self.indent + 1
+            let bxc = self.emit_box_expr(et, "v")
+            self.wl("return arx_list_contains(self->data_handle, " + bxc + ");")
+            self.close_blk()
+            self.w_ind()
+            self.w("static inline int64_t " + sn + "_index_of(" + sn + "* self, " + ct + " v) ")
+            self.w_lbrace()
+            self.w_nl()
+            self.indent = self.indent + 1
+            let bxi = self.emit_box_expr(et, "v")
+            self.wl("return arx_list_index_of(self->data_handle, " + bxi + ");")
+            self.close_blk()
+        }
+
+        // insert, swap_remove, remove_at
+        self.w_ind()
+        self.w("static inline void " + sn + "_insert(" + sn + "* self, int64_t idx, " + ct + " v) ")
+        self.w_lbrace()
+        self.w_nl()
+        self.indent = self.indent + 1
+        let bxIns = self.emit_box_expr(et, "v")
+        self.wl("arx_list_insert(self->data_handle, idx, " + bxIns + "); self->length = arx_list_len(self->data_handle);")
+        self.close_blk()
+
+        self.w_ind()
+        self.w("static inline " + ct + " " + sn + "_swap_remove(" + sn + "* self, int64_t idx) ")
+        self.w_lbrace()
+        self.w_nl()
+        self.indent = self.indent + 1
+        self.wl("int64_t _r = arx_list_swap_remove(self->data_handle, idx); self->length = arx_list_len(self->data_handle);")
+        let uSr = self.emit_unbox_expr(et, "_r")
+        self.wl("return " + uSr + ";")
+        self.close_blk()
+
+        self.w_ind()
+        self.w("static inline " + ct + " " + sn + "_remove_at(" + sn + "* self, int64_t idx) ")
+        self.w_lbrace()
+        self.w_nl()
+        self.indent = self.indent + 1
+        self.wl("int64_t _r = arx_list_remove_at(self->data_handle, idx); self->length = arx_list_len(self->data_handle);")
+        let uRa = self.emit_unbox_expr(et, "_r")
+        self.wl("return " + uRa + ";")
+        self.close_blk()
+        self.w_nl()
+    }
+
+    priv fn emit_set_inst(raw_elem: str) {
+        let et = btype_norm(raw_elem)
+        let em = btype_mangle(et)
+        let sn = "Arx_Set_" + em
+        let ct = btype_to_c(et)
+        mut kstr = "0"
+        if btype_is_str(et) { kstr = "1" }
+
+        self.wcl("static inline " + sn + " " + sn + "_init(void) @ " + sn + " s; s.set_handle = arx_set_new(" + kstr + "); s.length = 0; return s; `")
+
+        self.w_ind()
+        self.w("static inline bool " + sn + "_add(" + sn + "* self, " + ct + " v) ")
+        self.w_lbrace()
+        self.w_nl()
+        self.indent = self.indent + 1
+        let bxa = self.emit_box_expr(et, "v")
+        self.wl("bool _ok = arx_set_add(self->set_handle, " + bxa + "); self->length = arx_set_len(self->set_handle); return _ok;")
+        self.close_blk()
+
+        self.w_ind()
+        self.w("static inline bool " + sn + "_has(" + sn + "* self, " + ct + " v) ")
+        self.w_lbrace()
+        self.w_nl()
+        self.indent = self.indent + 1
+        let bxh = self.emit_box_expr(et, "v")
+        self.wl("return arx_set_has(self->set_handle, " + bxh + ");")
+        self.close_blk()
+        self.wcl("static inline bool " + sn + "_contains(" + sn + "* self, " + ct + " v) @ return " + sn + "_has(self, v); `")
+
+        self.w_ind()
+        self.w("static inline bool " + sn + "_remove(" + sn + "* self, " + ct + " v) ")
+        self.w_lbrace()
+        self.w_nl()
+        self.indent = self.indent + 1
+        let bxr = self.emit_box_expr(et, "v")
+        self.wl("bool _ok = arx_set_remove(self->set_handle, " + bxr + "); self->length = arx_set_len(self->set_handle); return _ok;")
+        self.close_blk()
+
+        self.wcl("static inline int64_t " + sn + "_len(" + sn + "* self) @ return arx_set_len(self->set_handle); `")
+        self.wcl("static inline int64_t " + sn + "_length(" + sn + "* self) @ return arx_set_len(self->set_handle); `")
+        self.wcl("static inline bool " + sn + "_is_empty(" + sn + "* self) @ return arx_set_len(self->set_handle) == 0; `")
+        self.wcl("static inline void " + sn + "_clear(" + sn + "* self) @ arx_set_clear(self->set_handle); self->length = 0; `")
+        self.wcl("static inline void " + sn + "_free(" + sn + "* self) @ arx_set_free(self->set_handle); self->length = 0; `")
+
+        self.w_ind()
+        self.w("static inline " + ct + " " + sn + "_get(" + sn + "* self, int64_t idx) ")
+        self.w_lbrace()
+        self.w_nl()
+        self.indent = self.indent + 1
+        self.wl("int64_t _r = arx_set_get(self->set_handle, idx);")
+        let uSg = self.emit_unbox_expr(et, "_r")
+        self.wl("return " + uSg + ";")
+        self.close_blk()
+
+        if self.has_list_type(et) {
+            let ln = "Arx_List_" + em
+            self.wcl("static inline " + ln + " " + sn + "_to_list(" + sn + "* self) @ " + ln + " r; r.data_handle = arx_set_to_list(self->set_handle); r.length = arx_list_len(r.data_handle); return r; `")
+        }
+        self.wcl("static inline " + sn + " " + sn + "_union(" + sn + "* self, " + sn + " o) @ " + sn + " r; r.set_handle = arx_set_union(self->set_handle, o.set_handle); r.length = arx_set_len(r.set_handle); return r; `")
+        self.wcl("static inline " + sn + " " + sn + "_intersection(" + sn + "* self, " + sn + " o) @ " + sn + " r; r.set_handle = arx_set_intersection(self->set_handle, o.set_handle); r.length = arx_set_len(r.set_handle); return r; `")
+        self.wcl("static inline " + sn + " " + sn + "_difference(" + sn + "* self, " + sn + " o) @ " + sn + " r; r.set_handle = arx_set_difference(self->set_handle, o.set_handle); r.length = arx_set_len(r.set_handle); return r; `")
+        self.w_nl()
+    }
+
+    priv fn emit_map_inst(raw_k: str, raw_v: str) {
+        let kt = btype_norm(raw_k)
+        let vt = btype_norm(raw_v)
+        let km = btype_mangle(kt)
+        let vm = btype_mangle(vt)
+        let sn = "Arx_Map_" + km + "_" + vm
+        let ck = btype_to_c(kt)
+        let cv = btype_to_c(vt)
+        mut kstr = "0"
+        if btype_is_str(kt) { kstr = "1" }
+
+        self.wcl("static inline " + sn + " " + sn + "_init(void) @ " + sn + " m; m.map_handle = arx_map_new(" + kstr + "); m.length = 0; return m; `")
+
+        // insert & set
+        self.w_ind()
+        self.w("static inline void " + sn + "_insert(" + sn + "* self, " + ck + " k, " + cv + " v) ")
+        self.w_lbrace()
+        self.w_nl()
+        self.indent = self.indent + 1
+        let bk = self.emit_box_expr(kt, "k")
+        let bv = self.emit_box_expr(vt, "v")
+        self.wl("arx_map_insert(self->map_handle, " + bk + ", " + bv + "); self->length = arx_map_len(self->map_handle);")
+        self.close_blk()
+        self.wcl("static inline void " + sn + "_set(" + sn + "* self, " + ck + " k, " + cv + " v) @ " + sn + "_insert(self, k, v); `")
+
+        // get
+        self.w_ind()
+        self.w("static inline " + cv + " " + sn + "_get(" + sn + "* self, " + ck + " k) ")
+        self.w_lbrace()
+        self.w_nl()
+        self.indent = self.indent + 1
+        let bkg = self.emit_box_expr(kt, "k")
+        self.wl("int64_t _r = arx_map_get(self->map_handle, " + bkg + ");")
+        let uMg = self.emit_unbox_expr(vt, "_r")
+        self.wl("return " + uMg + ";")
+        self.close_blk()
+
+        // has_key, contains_key, remove
+        self.w_ind()
+        self.w("static inline bool " + sn + "_has_key(" + sn + "* self, " + ck + " k) ")
+        self.w_lbrace()
+        self.w_nl()
+        self.indent = self.indent + 1
+        let bkh = self.emit_box_expr(kt, "k")
+        self.wl("return arx_map_has(self->map_handle, " + bkh + ");")
+        self.close_blk()
+        self.wcl("static inline bool " + sn + "_contains_key(" + sn + "* self, " + ck + " k) @ return " + sn + "_has_key(self, k); `")
+
+        self.w_ind()
+        self.w("static inline bool " + sn + "_remove(" + sn + "* self, " + ck + " k) ")
+        self.w_lbrace()
+        self.w_nl()
+        self.indent = self.indent + 1
+        let bkr = self.emit_box_expr(kt, "k")
+        self.wl("int64_t _kh = " + bkr + "; bool _had = arx_map_has(self->map_handle, _kh); arx_map_remove(self->map_handle, _kh); self->length = arx_map_len(self->map_handle); return _had;")
+        self.close_blk()
+
+        self.wcl("static inline int64_t " + sn + "_len(" + sn + "* self) @ return arx_map_len(self->map_handle); `")
+        self.wcl("static inline int64_t " + sn + "_length(" + sn + "* self) @ return arx_map_len(self->map_handle); `")
+        self.wcl("static inline bool " + sn + "_is_empty(" + sn + "* self) @ return arx_map_len(self->map_handle) == 0; `")
+        self.wcl("static inline void " + sn + "_clear(" + sn + "* self) @ arx_map_clear(self->map_handle); self->length = 0; `")
+        self.wcl("static inline void " + sn + "_free(" + sn + "* self) @ arx_map_free(self->map_handle); self->length = 0; `")
+
+        if self.has_list_type(kt) {
+            let kl = "Arx_List_" + km
+            self.wcl("static inline " + kl + " " + sn + "_keys(" + sn + "* self) @ " + kl + " r; r.data_handle = arx_map_keys(self->map_handle); r.length = arx_list_len(r.data_handle); return r; `")
+        }
+        if self.has_list_type(vt) {
+            let vl = "Arx_List_" + vm
+            self.wcl("static inline " + vl + " " + sn + "_values(" + sn + "* self) @ " + vl + " r; r.data_handle = arx_map_values(self->map_handle); r.length = arx_list_len(r.data_handle); return r; `")
+        }
+        self.w_nl()
+    }
+
+    priv fn emit_prelude_post_list() {
+        // Requires Arx_List_str to already exist (guaranteed by Analyzer.analyze)
+        self.wcl("static inline Arx_List_str __arx_bstr_split(const char* s, const char* delim) @ Arx_List_str r; r.data_handle = arx_str_split(s, delim); r.length = arx_list_len(r.data_handle); return r; `")
+        self.w_nl()
+        self.wcl("typedef struct Arx_Directory @ int64_t _dummy; ` Arx_Directory;")
+        self.wcl("static inline bool Arx_Directory_exists(const char* p) @ return arx_dir_exists(p); `")
+        self.wcl("static inline bool Arx_Directory_create(const char* p) @ return arx_dir_create(p); `")
+        self.wcl("static inline Arx_List_str Arx_Directory_list_files(const char* p) @ Arx_List_str r; r.data_handle = arx_dir_list_files(p); r.length = arx_list_len(r.data_handle); return r; `")
+        self.wcl("static inline Arx_List_str Arx_Directory_list_dirs(const char* p) @ Arx_List_str r; r.data_handle = arx_dir_list_dirs(p); r.length = arx_list_len(r.data_handle); return r; `")
+        self.w_nl()
+        self.wcl("typedef struct Arx_Env @ int64_t _dummy; ` Arx_Env;")
+        self.wcl("static inline const char* Arx_Env_get(const char* k) @ return arx_env_get(k); `")
+        self.wcl("static inline bool Arx_Env_set(const char* k, const char* v) @ return arx_env_set(k, v); `")
+        self.wcl("static inline Arx_List_str Arx_Env_args(void) @ Arx_List_str r; r.data_handle = arx_args_list(); r.length = arx_list_len(r.data_handle); return r; `")
+        self.wcl("static inline int64_t Arx_Env_arg_count(void) @ return arx_args_count(); `")
+        self.wcl("static inline const char* Arx_Env_arg(int64_t i) @ return arx_args_get(i); `")
+        self.wcl("static inline const char* Arx_Env_cwd(void) @ return arx_env_cwd(); `")
+        self.wcl("static inline void Arx_Env_exit(int64_t c) @ arx_env_exit(c); `")
+        self.wcl("static inline const char* Arx_Env_os_name(void) @ return arx_os_name(); `")
+        self.w_nl()
+        self.wcl("typedef struct Arx_String @ const char* data; int64_t len; ` Arx_String;")
+        self.wcl("static inline Arx_String Arx_String_init(const char* s) @ Arx_String st; st.data = s ? s : \"\"; st.len = arx_str_len(st.data); return st; `")
+        self.wcl("static inline const char* Arx_String_as_str(Arx_String* self) @ return self->data; `")
+        self.wcl("static inline int64_t Arx_String_length(Arx_String* self) @ return arx_str_len(self->data); `")
+        self.wcl("static inline int64_t Arx_String_len(Arx_String* self) @ return arx_str_len(self->data); `")
+        self.wcl("static inline bool Arx_String_is_empty(Arx_String* self) @ return arx_str_len(self->data) == 0; `")
+        self.wcl("static inline Arx_String Arx_String_append(Arx_String* self, const char* s) @ return Arx_String_init(arx_str_concat(self->data, s)); `")
+        self.wcl("static inline int64_t Arx_String_byte_at(Arx_String* self, int64_t i) @ return arx_str_byte_at(self->data, i); `")
+        self.wcl("static inline const char* Arx_String_char_at(Arx_String* self, int64_t i) @ return __arx_byte_chr(arx_str_byte_at(self->data, i)); `")
+        self.wcl("static inline const char* Arx_String_get(Arx_String* self, int64_t i) @ return __arx_byte_chr(arx_str_byte_at(self->data, i)); `")
+        self.wcl("static inline bool Arx_String_contains(Arx_String* self, const char* s) @ return arx_str_contains(self->data, s); `")
+        self.wcl("static inline bool Arx_String_starts_with(Arx_String* self, const char* s) @ return arx_str_starts_with(self->data, s); `")
+        self.wcl("static inline bool Arx_String_ends_with(Arx_String* self, const char* s) @ return arx_str_ends_with(self->data, s); `")
+        self.wcl("static inline int64_t Arx_String_index_of(Arx_String* self, const char* s) @ return arx_str_find(self->data, s); `")
+        self.wcl("static inline Arx_String Arx_String_slice(Arx_String* self, int64_t a, int64_t b) @ return Arx_String_init(__arx_bstr_slice(self->data, a, b)); `")
+        self.wcl("static inline Arx_List_str Arx_String_split(Arx_String* self, const char* d) @ return __arx_bstr_split(self->data, d); `")
+        self.wcl("static inline Arx_String Arx_String_trim(Arx_String* self) @ return Arx_String_init(arx_str_trim(self->data)); `")
+        self.wcl("static inline Arx_String Arx_String_to_upper(Arx_String* self) @ return Arx_String_init(arx_str_to_upper(self->data)); `")
+        self.wcl("static inline Arx_String Arx_String_to_lower(Arx_String* self) @ return Arx_String_init(arx_str_to_lower(self->data)); `")
+        self.wcl("static inline Arx_String Arx_String_replace(Arx_String* self, const char* o, const char* n) @ return Arx_String_init(arx_str_replace(self->data, o, n)); `")
+        self.wcl("static inline Arx_String Arx_String_repeat(Arx_String* self, int64_t n) @ return Arx_String_init(arx_str_repeat(self->data, n)); `")
+        self.w_nl()
+    }
+
+    // Emits C static storage declarations for module-level global variables.
+    priv fn emit_globals() {
+        mut i = 0
+        while i < self.global_count {
+            let gid = self.global_nodes.get(i)
+            let nm = self.sa.get(gid)
+            let vt = btype_norm(self.node_types.get(gid))
+            let init_id = self.la.get(gid)
+            self.w_ind()
+            if btype_is_fixed_arr(vt) {
+                self.w("static " + btype_to_c(btype_arr_elem(vt)) + " " + nm + "[" + (btype_arr_len(vt) as str) + "]")
+            } else {
+                self.w("static " + btype_to_c(vt) + " " + nm)
+            }
+            if init_id >= 0 && self.is_const_init(init_id) {
+                self.w(" = ")
+                self.w(self.gen_expr(init_id))
+            } else {
+                self.w(" = " + btype_default_c_val(vt))
+            }
+            self.w(";")
+            self.w_nl()
+            i = i + 1
+        }
+        if self.global_count > 0 { self.w_nl() }
+    }
+
+    priv fn is_const_init(nid: i64) -> bool {
+        let k = self.nk.get(nid)
+        return k == NK_INT_LIT() || k == NK_FLOAT_LIT() || k == NK_STR_LIT() || k == NK_BOOL_LIT() || k == NK_NULL_LIT() || k == NK_CHAR_LIT()
+    }
+
+}

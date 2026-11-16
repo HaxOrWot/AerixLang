@@ -1,0 +1,454 @@
+import "./mod.arx"
+
+pub fn lsp_build_completion_json(source: str, az: Analyzer, doc_path: str, line0: i64, char0: i64) -> str {
+    let line = lsp_get_line_text(source, line0)
+    mut cpos = char0
+    if cpos > line.len() { cpos = line.len() }
+    if cpos < 0 { cpos = 0 }
+    let prefix = line.slice(0, cpos)
+    let insert_parens = (cpos >= line.len() || line.byte_at(cpos) != 40)
+
+    // Strip partial identifier being typed at cursor end
+    mut scan = prefix.len()
+    while scan > 0 && lsp_is_ident_char(prefix.byte_at(scan - 1)) {
+        scan = scan - 1
+    }
+    let before_word = prefix.slice(0, scan).trim()
+
+    let jb = JsonBuf()
+    jb.lbrace()
+    jb.kv_bool("isIncomplete", false, true)
+    jb.comma()
+    jb.key("items")
+    jb.lbrack()
+
+    let seen = Map<str, i64>()
+    let is_first = List<i64>()
+    is_first.push(1)
+
+    // Case 0: Import / Use file & stdlib path completion inside quotes
+    if lsp_emit_import_completions(az, doc_path, line0, prefix, cpos, jb, is_first) {
+        jb.rbrack()
+        jb.rbrace()
+        return jb.finish()
+    }
+
+    let expected_t = lsp_infer_expected_type(source, az, doc_path, line0, cpos, before_word)
+
+    // Case 1: Member / Cascade completion after '.' / '?.' / '~>' + Postfix transforms
+    mut is_member = false
+    mut is_plain_dot = false
+    if before_word.ends_with("?.") || before_word.ends_with("~>") {
+        is_member = true
+    } else if before_word.ends_with(".") {
+        is_member = true
+        is_plain_dot = true
+    }
+
+    if is_member {
+        // Compute dot position in un-trimmed `prefix` so `textEdit` ranges align identically
+        mut raw_dot_col = scan - 1
+        while raw_dot_col > 0 && (prefix.byte_at(raw_dot_col) == 32 || prefix.byte_at(raw_dot_col) == 9) {
+            raw_dot_col = raw_dot_col - 1
+        }
+        let clean_recv = lsp_extract_receiver_before_dot(before_word, before_word.len() - 1)
+        if collect_module_or_file_completions(az, source, doc_path, clean_recv, insert_parens, expected_t, jb, seen, is_first) {
+            jb.rbrack()
+            jb.rbrace()
+            return jb.finish()
+        }
+        let recv_t = lsp_infer_expr_receiver_type(az, doc_path, line0 + 1, clean_recv, source)
+
+        if recv_t != "" {
+            if az.enum_idx_map.has_key(recv_t) {
+                let eid = lsp_find_enum_node(az, recv_t)
+                if eid >= 0 {
+                    let vc = az.ll.get(eid)
+                    mut vi = 0
+                    while vi < vc {
+                        let vid = az.ch.get(az.ls.get(eid) + vi)
+                        let vnm = az.sa.get(vid)
+                        let vfmt = lsp_format_enum_variant(az, vid)
+                        let matched = lsp_type_matches(recv_t, expected_t)
+                        mut stxt = "0_" + vnm
+                        if matched { stxt = "00_" + vnm }
+                        let fst = is_first.get(0) == 1
+                        is_first.set(0, 0)
+                        emit_comp_item_ex(jb, vnm, "", recv_t, CKIND_ENUM_MEM(), recv_t + "." + vfmt,
+                                          "Enum variant of `" + recv_t + "`", "", stxt, "", -1, 0, 0, "", matched, fst)
+                        vi = vi + 1
+                    }
+                }
+            } else if az.cls_idx_map.has_key(recv_t) {
+                collect_class_member_completions(az, source, doc_path, recv_t, insert_parens, expected_t, jb, seen, is_first)
+            } else {
+                let bms = lsp_builtin_methods_for(recv_t)
+                mut bi = 0
+                while bi < bms.len() {
+                    let entry = bms.get(bi)
+                    let colon_i = lsp_str_find(entry, ":", 0)
+                    let mnm = entry.slice(0, colon_i)
+                    let msig = lsp_subst_generic_sig(entry, recv_t)
+                    let lparts = lsp_sig_to_label_parts(msig)
+                    let snip = lsp_build_call_snippet(mnm, lparts.get(0), insert_parens)
+                    let rt = lparts.get(1)
+                    mut mdoc = lsp_lookup_member_doc(recv_t, mnm)
+                    if mdoc == "" { mdoc = "Built-in `" + recv_t + "` method" }
+                    let matched = lsp_type_matches(rt, expected_t)
+                    mut stxt = "0_" + mnm
+                    if matched { stxt = "00_" + mnm }
+                    let fst = is_first.get(0) == 1
+                    is_first.set(0, 0)
+                    emit_comp_item_ex(jb, mnm, lparts.get(0), rt, CKIND_METHOD(), msig, mdoc,
+                                      snip, stxt, "", -1, 0, 0, "", matched, fst)
+                    bi = bi + 1
+                }
+            }
+        }
+
+        if is_plain_dot && raw_dot_col > 0 && !az.enum_idx_map.has_key(clean_recv) {
+            let recv_start0 = lsp_extract_receiver_start_before_dot(line, raw_dot_col)
+            lsp_emit_postfix_completions(line0, recv_start0, raw_dot_col, cpos, line, clean_recv, recv_t, jb, is_first)
+        }
+
+        jb.rbrack()
+        jb.rbrace()
+        return jb.finish()
+    }
+
+    // Case 2A: Type annotation context (after `:`, `->`, `extends`, `implements`, `as`, or inside `<...>`)
+    if lsp_is_type_position(before_word) {
+        lsp_emit_type_completions(az, source, doc_path, line0, before_word, jb, seen, is_first)
+        jb.rbrack()
+        jb.rbrace()
+        return jb.finish()
+    }
+
+    // Case 2B: Scope + Enclosing Class + Project Symbols + Builtins + Keywords
+    let line1 = line0 + 1
+    let fbounds = lsp_enclosing_fn_bounds(source, az, doc_path, line1)
+    let fn_start = fbounds.get(1)
+    let in_fn = (fn_start > 0)
+    let enc_cls = lsp_enclosing_class_at(az, doc_path, line1)
+
+    // Scoped local, parameter, for-loop variables & module globals in current file
+    mut ni = 0
+    while ni < az.ncount {
+        let k = az.nk.get(ni)
+        let nln = az.ln.get(ni)
+        if az.nf.get(ni) == doc_path && nln <= line1 {
+            mut is_in_scope = false
+            if k == NK_VAR_DECL_GLOBAL() {
+                is_in_scope = true
+            } else if k == NK_VAR_DECL() || k == NK_PARAM() || k == NK_FOR() {
+                if in_fn {
+                    is_in_scope = (nln >= fn_start)
+                } else {
+                    is_in_scope = false
+                }
+            }
+            if is_in_scope {
+                mut vnm = az.sa.get(ni)
+                if k == NK_FOR() && az.sb.get(ni) != "" && vnm == "" { vnm = az.sb.get(ni) }
+                if vnm != "" && !seen.has_key("v::" + vnm) {
+                    seen.insert("v::" + vnm, 1)
+                    mut vt = btype_norm(az.node_types.get(ni))
+                    if (vt == "" || vt == "void") && k != NK_FOR() { vt = btype_norm(az.sb.get(ni)) }
+                    if vt == "" || vt == "void" { vt = lsp_resolve_var_type(az, doc_path, line1, vnm, source) }
+                    let matched = lsp_type_matches(vt, expected_t)
+                    mut stxt = "0_" + vnm
+                    if matched { stxt = "00_" + vnm }
+                    let fst = is_first.get(0) == 1
+                    is_first.set(0, 0)
+                    emit_comp_item_ex(jb, vnm, "", vt, CKIND_VARIABLE(), vnm + ": " + vt, "",
+                                      "", stxt, "", -1, 0, 0, "", matched, fst)
+                }
+            }
+        }
+        ni = ni + 1
+    }
+
+    // Enclosing class implicit self members when inside a class
+    if enc_cls != "" {
+        collect_class_member_completions(az, source, doc_path, enc_cls, insert_parens, expected_t, jb, seen, is_first)
+    }
+
+    // Functions
+    mut fi = 0
+    while fi < az.fn_count {
+        let fid = az.fn_nodes.get(fi)
+        let fnm = az.sa.get(fid)
+        let fn_file = az.nf.get(fid)
+        let same_file = fn_file == doc_path
+        mut is_visible = same_file
+        if !is_visible {
+            let low_fnm = fnm.slice(0, 1).to_lower() + fnm.slice(1, fnm.len())
+            let cap_fnm = fnm.slice(0, 1).to_upper() + fnm.slice(1, fnm.len())
+            if az.file_imported_symbols.has_key(fnm) || az.file_imported_symbols.has_key(low_fnm) || az.file_imported_symbols.has_key(cap_fnm) || az.item_aliases.has_key(fnm) {
+                is_visible = true
+            } else {
+                let mod_lbl = lsp_source_module_label(az, fn_file, doc_path)
+                if mod_lbl != "" {
+                    if az.file_has_selective_imports.has_key(mod_lbl) {
+                        is_visible = false
+                    } else if az.file_explicit_modules.has_key(mod_lbl) {
+                        is_visible = true
+                    }
+                }
+            }
+        }
+        if !is_visible {
+            fi = fi + 1
+            continue
+        }
+        if fnm != "" && !seen.has_key("fn::" + fnm) {
+            seen.insert("fn::" + fnm, 1)
+            let sig = lsp_fn_signature_str(az, fid)
+            let lparts = lsp_sig_to_label_parts(sig)
+            let snip = lsp_build_call_snippet(fnm, lparts.get(0), insert_parens)
+            let rt = lparts.get(1)
+            mut fdoc = lsp_extract_doc_comments(source, doc_path, fn_file, az.ln.get(fid))
+            let mod_lbl = lsp_source_module_label(az, fn_file, doc_path)
+            mut src_note = "*Defined in* `" + bpath_basename(fn_file) + ":" + az.ln.get(fid) + "`"
+            if mod_lbl != "" {
+                src_note = "*Imported from module/file* `" + mod_lbl + "` (" + bpath_basename(fn_file) + ":" + az.ln.get(fid) + ")"
+            }
+            if fdoc != "" { fdoc = fdoc + "\n\n" + src_note } else { fdoc = src_note }
+            let matched = lsp_type_matches(rt, expected_t)
+            mut desc = rt
+            if mod_lbl != "" { desc = rt + " (" + mod_lbl + ")" }
+            mut stxt = "2_" + fnm
+            if same_file { stxt = "1_" + fnm }
+            else if mod_lbl != "" { stxt = "1a_" + fnm }
+            if matched { stxt = "00_" + fnm }
+            let fst = is_first.get(0) == 1
+            is_first.set(0, 0)
+            emit_comp_item_ex(jb, fnm, lparts.get(0), desc, CKIND_FUNCTION(), sig, fdoc,
+                              snip, stxt, "", -1, 0, 0, "", matched, fst)
+            let cap_fnm = fnm.slice(0, 1).to_upper() + fnm.slice(1, fnm.len())
+            if cap_fnm != fnm && (az.file_imported_symbols.has_key(cap_fnm) || az.item_aliases.has_key(cap_fnm)) && !seen.has_key("fn::" + cap_fnm) {
+                seen.insert("fn::" + cap_fnm, 1)
+                let fst2 = is_first.get(0) == 1
+                is_first.set(0, 0)
+                let cap_snip = lsp_build_call_snippet(cap_fnm, lparts.get(0), insert_parens)
+                emit_comp_item_ex(jb, cap_fnm, lparts.get(0), desc, CKIND_FUNCTION(), sig, fdoc,
+                                  cap_snip, stxt, "", -1, 0, 0, "", matched, fst2)
+            }
+        }
+        fi = fi + 1
+    }
+
+    // Classes (with ctor signature hint when available)
+    mut ci = 0
+    while ci < az.cls_count {
+        let cid = az.cls_nodes.get(ci)
+        let cnm = az.cls_names.get(ci)
+        let c_file = az.nf.get(cid)
+        let same_file = c_file == doc_path
+        mut is_visible = same_file
+        if !is_visible {
+            let low_cnm = cnm.slice(0, 1).to_lower() + cnm.slice(1, cnm.len())
+            let cap_cnm = cnm.slice(0, 1).to_upper() + cnm.slice(1, cnm.len())
+            if az.file_imported_symbols.has_key(cnm) || az.file_imported_symbols.has_key(low_cnm) || az.file_imported_symbols.has_key(cap_cnm) || az.item_aliases.has_key(cnm) {
+                is_visible = true
+            } else {
+                let mod_lbl = lsp_source_module_label(az, c_file, doc_path)
+                if mod_lbl != "" {
+                    if az.file_has_selective_imports.has_key(mod_lbl) {
+                        is_visible = false
+                    } else if az.file_explicit_modules.has_key(mod_lbl) {
+                        is_visible = true
+                    }
+                }
+            }
+        }
+        if !is_visible {
+            ci = ci + 1
+            continue
+        }
+        if !seen.has_key("c::" + cnm) {
+            seen.insert("c::" + cnm, 1)
+            mut cdetail = ""
+            mut csnip = ""
+            let ctor_k = "ctor::" + cnm
+            if az.sig_by_key.has_key(ctor_k) {
+                let sidx = az.sig_by_key.get(ctor_k).split(",").get(0).to_i64()
+                let csig = lsp_fn_signature_str(az, az.sig_nodes.get(sidx))
+                let cparts = lsp_sig_to_label_parts(csig)
+                cdetail = cparts.get(0)
+                csnip = lsp_build_call_snippet(cnm, cdetail, insert_parens && in_fn)
+            }
+            mut cdoc = lsp_extract_doc_comments(source, doc_path, c_file, az.ln.get(cid))
+            let mod_lbl = lsp_source_module_label(az, c_file, doc_path)
+            mut src_note = "*Defined in* `" + bpath_basename(c_file) + ":" + az.ln.get(cid) + "`"
+            if mod_lbl != "" {
+                src_note = "*Imported from module/file* `" + mod_lbl + "` (" + bpath_basename(c_file) + ":" + az.ln.get(cid) + ")"
+            }
+            if cdoc != "" { cdoc = cdoc + "\n\n" + src_note } else { cdoc = src_note }
+            let matched = lsp_type_matches(cnm, expected_t)
+            mut is_st = has_flag(az.ia.get(cid), FLAG_STRUCT())
+            if !is_st && c_file != "" && az.ln.get(cid) > 0 {
+                let cln_txt = lsp_get_line_text(source, az.ln.get(cid) - 1)
+                if cln_txt.contains("struct ") || cln_txt.contains("struct\t") { is_st = true }
+            }
+            mut cdesc = "class"
+            mut ckind = CKIND_CLASS()
+            mut dkw = "class "
+            if is_st {
+                cdesc = "struct"
+                ckind = CKIND_STRUCT()
+                dkw = "struct "
+            }
+            if mod_lbl != "" {
+                if is_st { cdesc = "struct (" + mod_lbl + ")" }
+                else { cdesc = "class (" + mod_lbl + ")" }
+            }
+            mut stxt = "2_" + cnm
+            if same_file { stxt = "1_" + cnm }
+            else if mod_lbl != "" { stxt = "1a_" + cnm }
+            if matched { stxt = "00_" + cnm }
+            let fst = is_first.get(0) == 1
+            is_first.set(0, 0)
+            emit_comp_item_ex(jb, cnm, cdetail, cdesc, ckind, dkw + cnm, cdoc,
+                              csnip, stxt, "", -1, 0, 0, "", matched, fst)
+        }
+        ci = ci + 1
+    }
+
+    // Enums
+    mut ei = 0
+    while ei < az.enum_count {
+        let eid = az.enum_nodes.get(ei)
+        let enm = az.enum_names.get(ei)
+        let e_file = az.nf.get(eid)
+        let same_file = e_file == doc_path
+        mut is_visible = same_file
+        if !is_visible {
+            let low_enm = enm.slice(0, 1).to_lower() + enm.slice(1, enm.len())
+            let cap_enm = enm.slice(0, 1).to_upper() + enm.slice(1, enm.len())
+            if az.file_imported_symbols.has_key(enm) || az.file_imported_symbols.has_key(low_enm) || az.file_imported_symbols.has_key(cap_enm) || az.item_aliases.has_key(enm) {
+                is_visible = true
+            } else {
+                let mod_lbl = lsp_source_module_label(az, e_file, doc_path)
+                if mod_lbl != "" {
+                    if az.file_has_selective_imports.has_key(mod_lbl) {
+                        is_visible = false
+                    } else if az.file_explicit_modules.has_key(mod_lbl) {
+                        is_visible = true
+                    }
+                }
+            }
+        }
+        if !is_visible {
+            ei = ei + 1
+            continue
+        }
+        if !seen.has_key("e::" + enm) {
+            seen.insert("e::" + enm, 1)
+            mut edoc = lsp_extract_doc_comments(source, doc_path, e_file, az.ln.get(eid))
+            let mod_lbl = lsp_source_module_label(az, e_file, doc_path)
+            mut src_note = "*Defined in* `" + bpath_basename(e_file) + ":" + az.ln.get(eid) + "`"
+            if mod_lbl != "" {
+                src_note = "*Imported from module/file* `" + mod_lbl + "` (" + bpath_basename(e_file) + ":" + az.ln.get(eid) + ")"
+            }
+            if edoc != "" { edoc = edoc + "\n\n" + src_note } else { edoc = src_note }
+            let matched = lsp_type_matches(enm, expected_t)
+            mut edesc = "enum"
+            if mod_lbl != "" { edesc = "enum (" + mod_lbl + ")" }
+            mut stxt = "2_" + enm
+            if same_file { stxt = "1_" + enm }
+            else if mod_lbl != "" { stxt = "1a_" + enm }
+            if matched { stxt = "00_" + enm }
+            let fst = is_first.get(0) == 1
+            is_first.set(0, 0)
+            emit_comp_item_ex(jb, enm, "", edesc, CKIND_ENUM(), "enum " + enm, edoc,
+                              "", stxt, "", -1, 0, 0, "", matched, fst)
+        }
+        ei = ei + 1
+    }
+
+    // Modules and imported file namespaces (e.g. Math, Random, Socket, Time, Window, helper)
+    mut mi = 0
+    while mi < az.explicit_mod_list.len() {
+        let mlbl = az.explicit_mod_list.get(mi)
+        if mlbl != "" && !seen.has_key("mod::" + mlbl) {
+            seen.insert("mod::" + mlbl, 1)
+            let fst = is_first.get(0) == 1
+            is_first.set(0, 0)
+            emit_comp_item_ex(jb, mlbl, "", "module", CKIND_MODULE(), "module " + mlbl,
+                              "Imported module or source file `" + mlbl + "`.\n\nType `" + mlbl + ".` to access all its functions and members.",
+                              "", "1b_" + mlbl, "", -1, 0, 0, "", false, fst)
+        }
+        mi = mi + 1
+    }
+
+    // Builtin Functions (only relevant inside function/expression bodies or untyped positions)
+    let bfns = lsp_builtin_fn_list()
+    mut bfi = 0
+    while bfi < bfns.len() {
+        let bnm = bfns.get(bfi)
+        if !seen.has_key("fn::" + bnm) {
+            seen.insert("fn::" + bnm, 1)
+            mut bsig = lsp_builtin_fn_sig(bnm)
+            if bsig == "" { bsig = "builtin " + bnm }
+            let lparts = lsp_sig_to_label_parts(bsig)
+            let snip = lsp_build_call_snippet(bnm, lparts.get(0), insert_parens)
+            let matched = lsp_type_matches(lparts.get(1), expected_t)
+            mut stxt = "3_" + bnm
+            if matched { stxt = "00_" + bnm }
+            let fst = is_first.get(0) == 1
+            is_first.set(0, 0)
+            emit_comp_item_ex(jb, bnm, lparts.get(0), lparts.get(1), CKIND_FUNCTION(), bsig, lsp_lookup_doc(bnm),
+                              snip, stxt, "", -1, 0, 0, "", matched, fst)
+        }
+        bfi = bfi + 1
+    }
+
+    // Primitive & Container Types & Static Stdlib Modules
+    let ts = lsp_type_list()
+    mut ti = 0
+    while ti < ts.len() {
+        let tnm = ts.get(ti)
+        if !seen.has_key("c::" + tnm) {
+            seen.insert("c::" + tnm, 1)
+            mut stxt = "4_" + tnm
+            mut desc = "type"
+            if lsp_is_static_runtime(tnm) {
+                stxt = "2_" + tnm
+                desc = "stdlib"
+            }
+            let fst = is_first.get(0) == 1
+            is_first.set(0, 0)
+            emit_comp_item_ex(jb, tnm, "", desc, CKIND_CLASS(), "type " + tnm, lsp_lookup_doc(tnm),
+                              "", stxt, "", -1, 0, 0, "", false, fst)
+        }
+        ti = ti + 1
+    }
+
+    // Context-ranked Keywords
+    let ks = lsp_keyword_list()
+    mut ki = 0
+    while ki < ks.len() {
+        let knm = ks.get(ki)
+        mut ksort = "5b_" + knm
+        if in_fn {
+            if knm == "let" || knm == "mut" || knm == "if" || knm == "else" || knm == "elif" || knm == "for" || knm == "while" || knm == "match" || knm == "return" || knm == "guard" || knm == "defer" || knm == "as" || knm == "true" || knm == "false" || knm == "null" {
+                ksort = "5a_" + knm
+            }
+        } else {
+            if knm == "fn" || knm == "pub" || knm == "class" || knm == "struct" || knm == "enum" || knm == "trait" || knm == "extend" || knm == "const" || knm == "import" || knm == "from" || knm == "as" || knm == "use" {
+                ksort = "5a_" + knm
+            }
+        }
+        let fst = is_first.get(0) == 1
+        is_first.set(0, 0)
+        emit_comp_item_ex(jb, knm, "", "keyword", CKIND_KEYWORD(), "keyword " + knm, lsp_lookup_doc(knm),
+                          "", ksort, "", -1, 0, 0, "", false, fst)
+        ki = ki + 1
+    }
+
+    jb.rbrack()
+    jb.rbrace()
+    return jb.finish()
+}
+

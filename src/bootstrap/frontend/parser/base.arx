@@ -1,0 +1,158 @@
+// Aerix Bootstrap Compiler — Recursive Descent + Pratt Parser & Module Loader
+// Builds a unified flat index-based AST across imported files and modules.
+
+import "../tokens.arx"
+import "../lexer.arx"
+import "../ast.arx"
+import "../../middle/paths.arx"
+import "../../middle/types.arx"
+
+pub class Parser {
+    // Current token stream window
+    pub tok_kinds: List<i64>
+    pub tok_vals: List<str>
+    pub tok_lines: List<i64>
+    pub tok_cols: List<i64>
+    pub tok_lens: List<i64>
+    pub tok_count: i64
+    pub pos: i64
+    pub cur_file: str
+    pub cur_dir: str
+    pub entry_dir: str
+
+    // Flat AST arena columns
+    pub nk: List<i64>
+    pub sa: List<str>
+    pub sb: List<str>
+    pub ia: List<i64>
+    pub la: List<i64>
+    pub ra: List<i64>
+    pub ea: List<i64>
+    pub ls: List<i64>
+    pub ll: List<i64>
+    pub ln: List<i64>
+    pub nc: List<i64>
+    pub nf: List<str>
+    pub ch: List<i64>
+    pub ncount: i64
+    pub chcount: i64
+
+    // LSP / Error recovery state
+    pub recover_mode: bool
+    pub err_files: List<str>
+    pub err_lines: List<i64>
+    pub err_cols: List<i64>
+    pub err_lens: List<i64>
+    pub err_codes: List<str>
+    pub err_msgs: List<str>
+    pub err_helps: List<str>
+    pub err_sevs: List<i64>
+    pub err_count: i64
+    pub virtual_docs: Map<str, str>
+    priv last_err_pos: i64
+
+    // Root program & module loader state
+    pub root_decls: List<i64>
+    pub root_count: i64
+    pub c_includes: List<str>
+    pub c_inc_count: i64
+    pub loaded_files: Map<str, i64>
+    pub loaded_mods: Map<str, i64>
+    pub fn_externs: Map<str, str>
+    pub mod_aliases: Map<str, str>
+    pub item_aliases: Map<str, str>
+    pub file_imported_symbols: Map<str, str>
+    pub file_has_selective_imports: Map<str, i64>
+    pub file_to_mod: Map<str, str>
+    pub file_explicit_modules: Map<str, i64>
+    pub explicit_mod_list: List<str>
+    pub gen_list_types: List<str>
+    pub gen_list_count: i64
+    pub gen_map_keys: List<str>
+    pub gen_map_vals: List<str>
+    pub gen_map_count: i64
+    pub gen_set_types: List<str>
+    pub gen_set_count: i64
+    pub gen_stack_types: List<str>
+    pub gen_stack_count: i64
+    pub gen_queue_types: List<str>
+    pub gen_queue_count: i64
+    pub gen_deque_types: List<str>
+    pub gen_deque_count: i64
+    pub gen_tuple_types: List<str>
+    pub gen_tuple_count: i64
+    pub seen_generics: Map<str, i64>
+
+    init(entry_file: str) {
+        self.tok_kinds = List<i64>()
+        self.tok_vals = List<str>()
+        self.tok_lines = List<i64>()
+        self.tok_cols = List<i64>()
+        self.tok_lens = List<i64>()
+        self.tok_count = 0
+        self.pos = 0
+        self.cur_file = bpath_normalize(entry_file)
+        self.entry_dir = bpath_dirname(self.cur_file)
+        self.cur_dir = "."
+
+        self.nk = List<i64>()
+        self.sa = List<str>()
+        self.sb = List<str>()
+        self.ia = List<i64>()
+        self.la = List<i64>()
+        self.ra = List<i64>()
+        self.ea = List<i64>()
+        self.ls = List<i64>()
+        self.ll = List<i64>()
+        self.ln = List<i64>()
+        self.nc = List<i64>()
+        self.nf = List<str>()
+        self.ch = List<i64>()
+        self.ncount = 0
+        self.chcount = 0
+
+        self.recover_mode = false
+        self.err_files = List<str>()
+        self.err_lines = List<i64>()
+        self.err_cols = List<i64>()
+        self.err_lens = List<i64>()
+        self.err_codes = List<str>()
+        self.err_msgs = List<str>()
+        self.err_helps = List<str>()
+        self.err_sevs = List<i64>()
+        self.err_count = 0
+        self.virtual_docs = Map<str, str>()
+        self.last_err_pos = -1
+
+        self.root_decls = List<i64>()
+        self.root_count = 0
+        self.c_includes = List<str>()
+        self.c_inc_count = 0
+        self.loaded_files = Map<str, i64>()
+        self.loaded_mods = Map<str, i64>()
+        self.fn_externs = Map<str, str>()
+        self.mod_aliases = Map<str, str>()
+        self.item_aliases = Map<str, str>()
+        self.file_imported_symbols = Map<str, str>()
+        self.file_has_selective_imports = Map<str, i64>()
+        self.file_to_mod = Map<str, str>()
+        self.file_explicit_modules = Map<str, i64>()
+        self.explicit_mod_list = List<str>()
+        self.gen_list_types = List<str>()
+        self.gen_list_count = 0
+        self.gen_map_keys = List<str>()
+        self.gen_map_vals = List<str>()
+        self.gen_map_count = 0
+        self.gen_set_types = List<str>()
+        self.gen_set_count = 0
+        self.gen_stack_types = List<str>()
+        self.gen_stack_count = 0
+        self.gen_queue_types = List<str>()
+        self.gen_queue_count = 0
+        self.gen_deque_types = List<str>()
+        self.gen_deque_count = 0
+        self.gen_tuple_types = List<str>()
+        self.gen_tuple_count = 0
+        self.seen_generics = Map<str, i64>()
+    }
+}

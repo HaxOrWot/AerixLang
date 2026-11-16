@@ -1,0 +1,270 @@
+import "./mod.arx"
+
+extend Parser {
+    // --- Program & Top-Level Declarations ---
+
+    priv fn parse_program_unit() {
+        self.skip_stmt_end()
+        while self.cur_kind() != TK_EOF() {
+            let lp = self.pos
+            if self.cur_kind() == TK_IMPORT() || self.cur_kind() == TK_USE() || self.cur_kind() == TK_FROM() {
+                self.parse_import_stmt()
+                self.skip_stmt_end()
+                if self.pos == lp { self.adv() }
+                continue
+            }
+            let decl = self.parse_top_decl()
+            if decl >= 0 {
+                self.root_decls.push(decl)
+                self.root_count = self.root_count + 1
+            }
+            self.skip_stmt_end()
+            if self.pos == lp { self.adv() }
+        }
+    }
+
+    priv fn parse_import_stmt() {
+        if self.cur_kind() == TK_FROM() {
+            self.adv()
+            mut mod_src = ""
+            mut from_dotted = ""
+            mut last_seg = ""
+            if self.cur_kind() == TK_STR() {
+                let t = self.adv()
+                mod_src = self.tok_vals.get(t)
+                self.load_file(mod_src)
+                from_dotted = mod_src
+                last_seg = bpath_basename(mod_src)
+                self.file_has_selective_imports.insert(from_dotted, 1)
+                self.file_has_selective_imports.insert(last_seg, 1)
+            } else if self.cur_kind() == TK_IDENT() {
+                let t = self.adv()
+                mut mpath = self.tok_vals.get(t)
+                from_dotted = mpath
+                last_seg = mpath
+                while self.match_k(TK_DOT()) {
+                    let sub_t = self.expect_k(TK_IDENT(), "Expected identifier after '.' in module path")
+                    let sub_nm = self.tok_vals.get(sub_t)
+                    mpath = mpath + "/" + sub_nm
+                    from_dotted = from_dotted + "." + sub_nm
+                    last_seg = sub_nm
+                }
+                mod_src = mpath
+                self.load_module(mod_src)
+                self.file_has_selective_imports.insert(from_dotted, 1)
+                self.file_has_selective_imports.insert(last_seg, 1)
+            } else {
+                self.fail("Expected path or module name after 'from'")
+                return
+            }
+            self.expect_k(TK_IMPORT(), "Expected 'import' after 'from <module>'")
+            if self.match_k(TK_LBRACE()) {
+                while self.cur_kind() != TK_RBRACE() && self.cur_kind() != TK_EOF() {
+                    if self.cur_kind() == TK_IDENT() {
+                        let orig_tok = self.adv()
+                        let orig_nm = self.tok_vals.get(orig_tok)
+                        mut alias_nm = ""
+                        if self.match_k(TK_AS()) {
+                            let atok = self.expect_k(TK_IDENT(), "Expected alias identifier after 'as'")
+                            alias_nm = self.tok_vals.get(atok)
+                        }
+                        self.register_imported_item(from_dotted, orig_nm, alias_nm)
+                        self.file_imported_symbols.insert(orig_nm, from_dotted)
+                        if alias_nm != "" {
+                            self.file_imported_symbols.insert(alias_nm, from_dotted)
+                        }
+                        let low_orig = orig_nm.slice(0, 1).to_lower() + orig_nm.slice(1, orig_nm.len())
+                        let cap_orig = orig_nm.slice(0, 1).to_upper() + orig_nm.slice(1, orig_nm.len())
+                        if orig_nm != low_orig {
+                            self.item_aliases.insert(orig_nm, low_orig)
+                            self.file_imported_symbols.insert(low_orig, from_dotted)
+                        }
+                        if orig_nm != cap_orig {
+                            self.item_aliases.insert(cap_orig, orig_nm)
+                            self.file_imported_symbols.insert(cap_orig, from_dotted)
+                        }
+                    } else {
+                        self.adv()
+                    }
+                    if !self.match_k(TK_COMMA()) { break }
+                }
+                self.expect_k(TK_RBRACE(), "Expected closing brace in from ... import")
+            } else if self.match_k(TK_STAR()) {
+                // from Mod import *
+                self.mod_aliases.insert(from_dotted, from_dotted)
+                self.mod_aliases.insert(last_seg, from_dotted)
+                self.loaded_mods.insert(from_dotted, 1)
+                self.loaded_mods.insert(last_seg, 1)
+                self.add_explicit_module(from_dotted)
+                self.add_explicit_module(last_seg)
+            } else {
+                while self.cur_kind() == TK_IDENT() {
+                    let orig_tok = self.adv()
+                    let orig_nm = self.tok_vals.get(orig_tok)
+                    mut alias_nm = ""
+                    if self.match_k(TK_AS()) {
+                        let atok = self.expect_k(TK_IDENT(), "Expected alias identifier after 'as'")
+                        alias_nm = self.tok_vals.get(atok)
+                    }
+                    self.register_imported_item(from_dotted, orig_nm, alias_nm)
+                    self.file_imported_symbols.insert(orig_nm, from_dotted)
+                    if alias_nm != "" {
+                        self.file_imported_symbols.insert(alias_nm, from_dotted)
+                    }
+                    let low_orig = orig_nm.slice(0, 1).to_lower() + orig_nm.slice(1, orig_nm.len())
+                    let cap_orig = orig_nm.slice(0, 1).to_upper() + orig_nm.slice(1, orig_nm.len())
+                    if orig_nm != low_orig {
+                        self.item_aliases.insert(orig_nm, low_orig)
+                        self.file_imported_symbols.insert(low_orig, from_dotted)
+                    }
+                    if orig_nm != cap_orig {
+                        self.item_aliases.insert(cap_orig, orig_nm)
+                        self.file_imported_symbols.insert(cap_orig, from_dotted)
+                    }
+                    if !self.match_k(TK_COMMA()) { break }
+                }
+            }
+            return
+        }
+
+        self.adv()
+        // Selective: import { a, b as c } from "path" / Mod / Mod.Sub
+        if self.match_k(TK_LBRACE()) {
+            let names = List<str>()
+            let aliases = List<str>()
+            while self.cur_kind() != TK_RBRACE() && self.cur_kind() != TK_EOF() {
+                if self.cur_kind() == TK_IDENT() {
+                    let orig_tok = self.adv()
+                    let orig_nm = self.tok_vals.get(orig_tok)
+                    names.push(orig_nm)
+                    if self.match_k(TK_AS()) {
+                        let atok = self.expect_k(TK_IDENT(), "Expected alias identifier after 'as'")
+                        aliases.push(self.tok_vals.get(atok))
+                    } else {
+                        aliases.push("")
+                    }
+                } else {
+                    self.adv()
+                }
+                if !self.match_k(TK_COMMA()) { break }
+            }
+            self.expect_k(TK_RBRACE(), "Expected closing brace in selective import")
+            self.expect_k(TK_FROM(), "Expected 'from' in selective import")
+            mut sel_dotted = ""
+            if self.cur_kind() == TK_STR() {
+                let t = self.adv()
+                sel_dotted = self.tok_vals.get(t)
+                self.load_file(sel_dotted)
+            } else if self.cur_kind() == TK_IDENT() {
+                let t = self.adv()
+                mut mpath = self.tok_vals.get(t)
+                sel_dotted = mpath
+                mut last_seg = mpath
+                while self.match_k(TK_DOT()) {
+                    let sub_t = self.expect_k(TK_IDENT(), "Expected identifier after '.' in module path")
+                    let sub_nm = self.tok_vals.get(sub_t)
+                    mpath = mpath + "/" + sub_nm
+                    sel_dotted = sel_dotted + "." + sub_nm
+                    last_seg = sub_nm
+                }
+                self.load_module(mpath)
+                self.file_has_selective_imports.insert(sel_dotted, 1)
+                self.file_has_selective_imports.insert(last_seg, 1)
+            } else {
+                self.fail("Expected path or module name after 'from'")
+            }
+            mut ni = 0
+            while ni < names.len() {
+                let onm = names.get(ni)
+                let anm = aliases.get(ni)
+                self.register_imported_item(sel_dotted, onm, anm)
+                self.file_imported_symbols.insert(onm, sel_dotted)
+                if anm != "" {
+                    self.file_imported_symbols.insert(anm, sel_dotted)
+                }
+                let low_onm = onm.slice(0, 1).to_lower() + onm.slice(1, onm.len())
+                let cap_onm = onm.slice(0, 1).to_upper() + onm.slice(1, onm.len())
+                if onm != low_onm {
+                    self.item_aliases.insert(onm, low_onm)
+                    self.file_imported_symbols.insert(low_onm, sel_dotted)
+                }
+                if onm != cap_onm {
+                    self.item_aliases.insert(cap_onm, onm)
+                    self.file_imported_symbols.insert(cap_onm, sel_dotted)
+                }
+                ni = ni + 1
+            }
+            return
+        }
+        // File path: import "./foo.arx" (optionally with 'as Alias')
+        if self.cur_kind() == TK_STR() {
+            let t = self.adv()
+            let pth = self.tok_vals.get(t)
+            self.load_file(pth)
+            let base = bpath_basename(pth)
+            mut stem = base
+            if stem.ends_with(".arx") && stem.len() > 4 { stem = stem.slice(0, stem.len() - 4) }
+            self.mod_aliases.insert(stem, stem)
+            self.loaded_mods.insert(stem, 1)
+            self.add_explicit_module(stem)
+            if self.match_k(TK_AS()) {
+                let atok = self.expect_k(TK_IDENT(), "Expected alias identifier after 'as'")
+                let alias_nm = self.tok_vals.get(atok)
+                self.mod_aliases.insert(alias_nm, stem)
+                self.mod_aliases.insert(alias_nm, pth)
+                self.loaded_mods.insert(alias_nm, 1)
+                self.add_explicit_module(alias_nm)
+            }
+            return
+        }
+        // Module list: import Math as M, Random as Rnd, Window.Gui as G
+        while self.cur_kind() == TK_IDENT() {
+            let t = self.adv()
+            mut mod_name = self.tok_vals.get(t)
+            mut dotted_id = mod_name
+            mut last_seg = mod_name
+            while self.match_k(TK_DOT()) {
+                let sub_t = self.expect_k(TK_IDENT(), "Expected identifier after '.' in module path")
+                let sub_nm = self.tok_vals.get(sub_t)
+                dotted_id = dotted_id + "." + sub_nm
+                mod_name = mod_name + "/" + sub_nm
+                last_seg = sub_nm
+            }
+            self.load_module(mod_name)
+            self.mod_aliases.insert(dotted_id, dotted_id)
+            self.mod_aliases.insert(last_seg, dotted_id)
+            self.loaded_mods.insert(dotted_id, 1)
+            self.loaded_mods.insert(last_seg, 1)
+            self.add_explicit_module(dotted_id)
+            self.add_explicit_module(last_seg)
+            if dotted_id.len() > 0 {
+                let cap_mod = dotted_id.slice(0, 1).to_upper() + dotted_id.slice(1, dotted_id.len())
+                self.mod_aliases.insert(cap_mod, dotted_id)
+                let low_mod = dotted_id.slice(0, 1).to_lower() + dotted_id.slice(1, dotted_id.len())
+                self.mod_aliases.insert(low_mod, dotted_id)
+            }
+            if last_seg.len() > 0 {
+                let cap_last = last_seg.slice(0, 1).to_upper() + last_seg.slice(1, last_seg.len())
+                let low_last = last_seg.slice(0, 1).to_lower() + last_seg.slice(1, last_seg.len())
+                self.mod_aliases.insert(cap_last, dotted_id)
+                self.mod_aliases.insert(low_last, dotted_id)
+            }
+            if self.match_k(TK_AS()) {
+                let atok = self.expect_k(TK_IDENT(), "Expected alias identifier after 'as'")
+                let alias_nm = self.tok_vals.get(atok)
+                self.mod_aliases.insert(alias_nm, dotted_id)
+                self.loaded_mods.insert(alias_nm, 1)
+                self.add_explicit_module(alias_nm)
+                // Also insert capitalized and lowercase forms for robustness
+                if alias_nm.len() > 0 {
+                    let cap_mod = alias_nm.slice(0, 1).to_upper() + alias_nm.slice(1, alias_nm.len())
+                    self.mod_aliases.insert(cap_mod, dotted_id)
+                    let low_mod = alias_nm.slice(0, 1).to_lower() + alias_nm.slice(1, alias_nm.len())
+                    self.mod_aliases.insert(low_mod, dotted_id)
+                }
+            }
+            if !self.match_k(TK_COMMA()) { break }
+        }
+    }
+
+}

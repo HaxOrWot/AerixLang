@@ -1,0 +1,39 @@
+import "./mod.arx"
+
+extend Emitter {
+    // --- Defer Scope Stack ---
+
+    priv fn defer_push_scope() {
+        self.defer_marks.push(self.defer_count)
+        self.defer_depth = self.defer_depth + 1
+    }
+
+    priv fn defer_emit_unwind() {
+        if self.defer_depth <= 0 { return }
+        let mark = self.defer_marks.get(self.defer_depth - 1)
+        mut i = self.defer_count - 1
+        while i >= mark {
+            self.gen_stmt(self.defer_nodes.get(i))
+            i = i - 1
+        }
+    }
+
+    priv fn defer_emit_unwind_all() {
+        mut i = self.defer_count - 1
+        while i >= 0 {
+            self.gen_stmt(self.defer_nodes.get(i))
+            i = i - 1
+        }
+    }
+
+    priv fn defer_pop_scope() {
+        if self.defer_depth <= 0 { return }
+        self.defer_depth = self.defer_depth - 1
+        let mark = self.defer_marks.pop()
+        while self.defer_count > mark {
+            self.defer_nodes.pop()
+            self.defer_count = self.defer_count - 1
+        }
+    }
+
+}

@@ -1,0 +1,473 @@
+// Aerix Bootstrap Compiler — Semantic Analyzer & Type Resolver
+// Resolves symbols, overloads, generics, inheritance, enums, and expression/statement types.
+
+import "../../frontend/ast.arx"
+import "../../frontend/parser/mod.arx"
+import "../types.arx"
+
+// Semantic analysis pass that performs symbol resolution, type checking,
+// generic instantiation tracking, and validation diagnostics on the AST.
+pub class Analyzer {
+    // Frozen AST arena copied from Parser
+    pub nk: List<i64>
+    pub sa: List<str>
+    pub sb: List<str>
+    pub ia: List<i64>
+    pub la: List<i64>
+    pub ra: List<i64>
+    pub ea: List<i64>
+    pub ls: List<i64>
+    pub ll: List<i64>
+    pub ln: List<i64>
+    pub nc: List<i64>
+    pub nf: List<str>
+    pub ch: List<i64>
+    pub ncount: i64
+    pub err_files: List<str>
+    pub err_lines: List<i64>
+    pub err_cols: List<i64>
+    pub err_lens: List<i64>
+    pub err_codes: List<str>
+    pub err_msgs: List<str>
+    pub err_helps: List<str>
+    pub err_sevs: List<i64>
+    pub err_count: i64
+    pub warn_count: i64
+    pub root_decls: List<i64>
+    pub root_count: i64
+    pub c_includes: List<str>
+    pub c_inc_count: i64
+    pub mod_aliases: Map<str, str>
+    pub item_aliases: Map<str, str>
+    pub loaded_mods: Map<str, i64>
+    pub file_imported_symbols: Map<str, str>
+    pub file_has_selective_imports: Map<str, i64>
+    pub file_to_mod: Map<str, str>
+    pub file_explicit_modules: Map<str, i64>
+    pub explicit_mod_list: List<str>
+
+    // Monomorphized generic registries
+    pub gen_list_types: List<str>
+    pub gen_list_count: i64
+    pub gen_map_keys: List<str>
+    pub gen_map_vals: List<str>
+    pub gen_map_count: i64
+    pub gen_set_types: List<str>
+    pub gen_set_count: i64
+    pub gen_stack_types: List<str>
+    pub gen_stack_count: i64
+    pub gen_queue_types: List<str>
+    pub gen_queue_count: i64
+    pub gen_deque_types: List<str>
+    pub gen_deque_count: i64
+    pub gen_tuple_types: List<str>
+    pub gen_tuple_count: i64
+    pub seen_generics: Map<str, i64>
+
+    // Top-level ordered declarations
+    pub cls_names: List<str>
+    pub cls_nodes: List<i64>
+    pub cls_count: i64
+    pub cls_idx_map: Map<str, i64>
+    pub cls_order: List<i64>
+    pub cls_order_count: i64
+    pub cls_base_map: Map<str, str>
+    pub cls_field_types: Map<str, str>
+
+    pub enum_names: List<str>
+    pub enum_nodes: List<i64>
+    pub enum_count: i64
+    pub enum_idx_map: Map<str, i64>
+    pub enum_var_tag: Map<str, i64>
+    pub enum_var_node: Map<str, i64>
+
+    pub global_nodes: List<i64>
+    pub global_count: i64
+    pub global_types: Map<str, str>
+    pub fn_externs: Map<str, str>
+
+    pub fn_nodes: List<i64>
+    pub fn_count: i64
+    pub ext_nodes: List<i64>
+    pub ext_count: i64
+
+    // Callable signature registry
+    pub over_counts: Map<str, i64>
+    pub sig_keys: List<str>
+    pub sig_nodes: List<i64>
+    pub sig_cnames: List<str>
+    pub sig_rets: List<str>
+    pub sig_is_static: List<i64>
+    pub sig_count: i64
+    pub sig_by_key: Map<str, str>
+
+    // Per-node resolved outputs (size = ncount)
+    pub node_types: List<str>
+    pub call_targets: List<str>
+    pub call_kinds: List<i64>
+    pub call_fn_nodes: List<i64>
+    pub node_ext: List<str>
+
+    // Lexical scope stack
+    pub scope_names: List<str>
+    pub scope_types: List<str>
+    pub scope_mut: List<i64>
+    pub scope_lines: List<i64>
+    pub scope_nids: List<i64>
+    pub scope_reads: List<i64>
+    pub scope_writes: List<i64>
+    pub scope_is_param: List<i64>
+    pub scope_count: i64
+    pub scope_marks: List<i64>
+    pub scope_depth: i64
+
+    pub cur_class: str
+    pub cur_ret_type: str
+    pub cur_fn_kind: i64
+    pub has_errors: i64
+    priv unresolved_nodes: Map<i64, i64>
+
+    init(p: Parser) {
+        self.nk = p.nk
+        self.sa = p.sa
+        self.sb = p.sb
+        self.ia = p.ia
+        self.la = p.la
+        self.ra = p.ra
+        self.ea = p.ea
+        self.ls = p.ls
+        self.ll = p.ll
+        self.ln = p.ln
+        self.nc = p.nc
+        self.nf = p.nf
+        self.ch = p.ch
+        self.ncount = p.ncount
+        self.err_files = p.err_files
+        self.err_lines = p.err_lines
+        self.err_cols = p.err_cols
+        self.err_lens = p.err_lens
+        self.err_codes = p.err_codes
+        self.err_msgs = p.err_msgs
+        self.err_helps = p.err_helps
+        self.err_sevs = p.err_sevs
+        self.err_count = p.err_count
+        self.warn_count = 0
+        self.root_decls = p.root_decls
+        self.root_count = p.root_count
+        self.c_includes = p.c_includes
+        self.c_inc_count = p.c_inc_count
+        self.mod_aliases = p.mod_aliases
+        self.item_aliases = p.item_aliases
+        self.loaded_mods = p.loaded_mods
+        self.fn_externs = p.fn_externs
+        self.file_imported_symbols = p.file_imported_symbols
+        self.file_has_selective_imports = p.file_has_selective_imports
+        self.file_to_mod = p.file_to_mod
+        self.file_explicit_modules = p.file_explicit_modules
+        self.explicit_mod_list = p.explicit_mod_list
+
+        self.gen_list_types = List<str>()
+        self.gen_list_count = 0
+        self.gen_map_keys = List<str>()
+        self.gen_map_vals = List<str>()
+        self.gen_map_count = 0
+        self.gen_set_types = List<str>()
+        self.gen_set_count = 0
+        self.gen_stack_types = List<str>()
+        self.gen_stack_count = 0
+        self.gen_queue_types = List<str>()
+        self.gen_queue_count = 0
+        self.gen_deque_types = List<str>()
+        self.gen_deque_count = 0
+        self.gen_tuple_types = List<str>()
+        self.gen_tuple_count = 0
+        self.seen_generics = Map<str, i64>()
+
+        self.cls_names = List<str>()
+        self.cls_nodes = List<i64>()
+        self.cls_count = 0
+        self.cls_idx_map = Map<str, i64>()
+        self.cls_order = List<i64>()
+        self.cls_order_count = 0
+        self.cls_base_map = Map<str, str>()
+        self.cls_field_types = Map<str, str>()
+
+        self.enum_names = List<str>()
+        self.enum_nodes = List<i64>()
+        self.enum_count = 0
+        self.enum_idx_map = Map<str, i64>()
+        self.enum_var_tag = Map<str, i64>()
+        self.enum_var_node = Map<str, i64>()
+
+        self.global_nodes = List<i64>()
+        self.global_count = 0
+        self.global_types = Map<str, str>()
+
+        self.fn_nodes = List<i64>()
+        self.fn_count = 0
+        self.ext_nodes = List<i64>()
+        self.ext_count = 0
+
+        self.over_counts = Map<str, i64>()
+        self.sig_keys = List<str>()
+        self.sig_nodes = List<i64>()
+        self.sig_cnames = List<str>()
+        self.sig_rets = List<str>()
+        self.sig_is_static = List<i64>()
+        self.sig_count = 0
+        self.sig_by_key = Map<str, str>()
+
+        self.node_types = List<str>()
+        self.call_targets = List<str>()
+        self.call_kinds = List<i64>()
+        self.call_fn_nodes = List<i64>()
+        self.node_ext = List<str>()
+
+        self.scope_names = List<str>()
+        self.scope_types = List<str>()
+        self.scope_mut = List<i64>()
+        self.scope_lines = List<i64>()
+        self.scope_nids = List<i64>()
+        self.scope_reads = List<i64>()
+        self.scope_writes = List<i64>()
+        self.scope_is_param = List<i64>()
+        self.scope_count = 0
+        self.scope_marks = List<i64>()
+        self.scope_depth = 0
+        self.cur_class = ""
+        self.cur_ret_type = "void"
+        self.cur_fn_kind = 0
+        self.unresolved_nodes = Map<i64, i64>()
+        mut init_errs = 0
+        mut ei0 = 0
+        while ei0 < self.err_count {
+            mut sv0 = 1
+            if ei0 < self.err_sevs.len() { sv0 = self.err_sevs.get(ei0) }
+            if sv0 == 2 {
+                self.warn_count = self.warn_count + 1
+            } else {
+                init_errs = init_errs + 1
+            }
+            ei0 = ei0 + 1
+        }
+        self.has_errors = init_errs
+
+        // Copy generic instantiations recorded during parsing
+        mut gi = 0
+        while gi < p.gen_list_count {
+            self.ensure_generic_type("List<" + p.gen_list_types.get(gi) + ">")
+            gi = gi + 1
+        }
+        mut mi = 0
+        while mi < p.gen_map_count {
+            self.ensure_generic_type("Map<" + p.gen_map_keys.get(mi) + "," + p.gen_map_vals.get(mi) + ">")
+            mi = mi + 1
+        }
+        mut si = 0
+        while si < p.gen_set_count {
+            self.ensure_generic_type("Set<" + p.gen_set_types.get(si) + ">")
+            si = si + 1
+        }
+        mut stki = 0
+        while stki < p.gen_stack_count {
+            self.ensure_generic_type("Stack<" + p.gen_stack_types.get(stki) + ">")
+            stki = stki + 1
+        }
+        mut quei = 0
+        while quei < p.gen_queue_count {
+            self.ensure_generic_type("Queue<" + p.gen_queue_types.get(quei) + ">")
+            quei = quei + 1
+        }
+        mut deqi = 0
+        while deqi < p.gen_deque_count {
+            self.ensure_generic_type("Deque<" + p.gen_deque_types.get(deqi) + ">")
+            deqi = deqi + 1
+        }
+        mut tupi = 0
+        while tupi < p.gen_tuple_count {
+            self.ensure_generic_type(p.gen_tuple_types.get(tupi))
+            tupi = tupi + 1
+        }
+
+        // Pre-size per-node resolution arrays
+        mut i = 0
+        while i < self.ncount {
+            self.node_types.push("")
+            self.call_targets.push("")
+            self.call_kinds.push(0)
+            self.call_fn_nodes.push(-1)
+            self.node_ext.push("")
+            i = i + 1
+        }
+    }
+
+    priv fn child_at(nid: i64, idx: i64) -> i64 {
+        return self.ch.get(self.ls.get(nid) + idx)
+    }
+
+    priv fn child_count(nid: i64) -> i64 {
+        return self.ll.get(nid)
+    }
+
+    priv fn get_member_path(nid: i64) -> str {
+        if nid < 0 { return "" }
+        let k = self.nk.get(nid)
+        if k == NK_IDENT() { return self.sa.get(nid) }
+        if k == NK_MEMBER() {
+            let p = self.get_member_path(self.la.get(nid))
+            if p != "" { return p + "." + self.sa.get(nid) }
+            return self.sa.get(nid)
+        }
+        return ""
+    }
+
+    priv fn get_root_ident(nid: i64) -> str {
+        if nid < 0 { return "" }
+        let k = self.nk.get(nid)
+        if k == NK_IDENT() { return self.sa.get(nid) }
+        if k == NK_MEMBER() { return self.get_root_ident(self.la.get(nid)) }
+        if k == NK_INDEX() { return self.get_root_ident(self.la.get(nid)) }
+        return ""
+    }
+
+    priv fn resolve_mod_path(raw_path: str) -> str {
+        if raw_path == "" { return "" }
+        if self.mod_aliases.has_key(raw_path) {
+            return self.mod_aliases.get(raw_path)
+        }
+        if self.loaded_mods.has_key(raw_path) {
+            return raw_path
+        }
+        let parts = raw_path.split(".")
+        if parts.len() > 1 {
+            let p0 = parts.get(0)
+            if self.mod_aliases.has_key(p0) {
+                let resolved_p0 = self.mod_aliases.get(p0)
+                mut rest = ""
+                mut pi = 1
+                while pi < parts.len() {
+                    if pi > 1 { rest = rest + "." + parts.get(pi) }
+                    else { rest = parts.get(pi) }
+                    pi = pi + 1
+                }
+                let full = resolved_p0 + "." + rest
+                if self.mod_aliases.has_key(full) { return self.mod_aliases.get(full) }
+                if self.loaded_mods.has_key(full) { return full }
+                return full
+            }
+        }
+        return raw_path
+    }
+
+    priv fn is_module_path(path: str) -> bool {
+        if path == "" { return false }
+        let resolved = self.resolve_mod_path(path)
+        return self.mod_aliases.has_key(resolved) || self.loaded_mods.has_key(resolved) || self.mod_aliases.has_key(path) || self.loaded_mods.has_key(path)
+    }
+
+    priv fn str_last_dot_seg(s: str) -> str {
+        let n = s.len()
+        mut i = n
+        while i > 0 {
+            if s.byte_at(i - 1) == 46 {
+                return s.slice(i, n)
+            }
+            i = i - 1
+        }
+        return s
+    }
+
+    priv fn norm_type_name(t: str) -> str {
+        let nt = btype_norm(t)
+        if self.item_aliases.has_key(nt) {
+            return self.item_aliases.get(nt)
+        }
+        if nt.contains(".") {
+            let last = self.str_last_dot_seg(nt)
+            if self.item_aliases.has_key(last) {
+                return self.item_aliases.get(last)
+            }
+            return last
+        }
+        return nt
+    }
+
+    pub fn ensure_generic_type(raw_t: str) {
+        let nt = btype_norm(raw_t)
+        if btype_is_ptr(nt) {
+            self.ensure_generic_type(btype_ptr_inner(nt))
+            return
+        }
+        if btype_is_list(nt) {
+            let elem = btype_list_elem(nt)
+            self.ensure_generic_type(elem)
+            let key = "L::" + elem
+            if !self.seen_generics.has_key(key) {
+                self.seen_generics.insert(key, 1)
+                self.gen_list_types.push(elem)
+                self.gen_list_count = self.gen_list_count + 1
+            }
+        } else if btype_is_set(nt) {
+            let elem = btype_list_elem(nt)
+            self.ensure_generic_type(elem)
+            let key = "S::" + elem
+            if !self.seen_generics.has_key(key) {
+                self.seen_generics.insert(key, 1)
+                self.gen_set_types.push(elem)
+                self.gen_set_count = self.gen_set_count + 1
+            }
+        } else if btype_is_map(nt) {
+            let kt = btype_map_key(nt)
+            let vt = btype_map_val(nt)
+            self.ensure_generic_type(kt)
+            self.ensure_generic_type(vt)
+            let key = "M::" + kt + "::" + vt
+            if !self.seen_generics.has_key(key) {
+                self.seen_generics.insert(key, 1)
+                self.gen_map_keys.push(kt)
+                self.gen_map_vals.push(vt)
+                self.gen_map_count = self.gen_map_count + 1
+            }
+        } else if btype_is_stack(nt) {
+            let elem = btype_sqd_elem(nt)
+            self.ensure_generic_type(elem)
+            let key = "STK::" + elem
+            if !self.seen_generics.has_key(key) {
+                self.seen_generics.insert(key, 1)
+                self.gen_stack_types.push(elem)
+                self.gen_stack_count = self.gen_stack_count + 1
+            }
+        } else if btype_is_queue(nt) {
+            let elem = btype_sqd_elem(nt)
+            self.ensure_generic_type(elem)
+            let key = "QUE::" + elem
+            if !self.seen_generics.has_key(key) {
+                self.seen_generics.insert(key, 1)
+                self.gen_queue_types.push(elem)
+                self.gen_queue_count = self.gen_queue_count + 1
+            }
+        } else if btype_is_deque(nt) {
+            let elem = btype_sqd_elem(nt)
+            self.ensure_generic_type(elem)
+            let key = "DEQ::" + elem
+            if !self.seen_generics.has_key(key) {
+                self.seen_generics.insert(key, 1)
+                self.gen_deque_types.push(elem)
+                self.gen_deque_count = self.gen_deque_count + 1
+            }
+        } else if btype_is_tuple(nt) {
+            let tc = btype_tuple_count(nt)
+            mut ti = 0
+            while ti < tc {
+                self.ensure_generic_type(btype_tuple_elem(nt, ti))
+                ti = ti + 1
+            }
+            let key = "TUP::" + nt
+            if !self.seen_generics.has_key(key) {
+                self.seen_generics.insert(key, 1)
+                self.gen_tuple_types.push(nt)
+                self.gen_tuple_count = self.gen_tuple_count + 1
+            }
+        }
+    }
+}

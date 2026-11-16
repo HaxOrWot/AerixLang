@@ -1,0 +1,12 @@
+// Auto-generated module entry — imports all parts of Analyzer
+import "./consts.arx"
+import "./base.arx"
+import "./scope.arx"
+import "./diag.arx"
+import "./sigs.arx"
+import "./pass1.arx"
+import "./class.arx"
+import "./pass2.arx"
+import "./exprs.arx"
+import "./calls.arx"
+import "./prelude.arx"

@@ -1,0 +1,323 @@
+import "./mod.arx"
+
+extend Emitter {
+    // --- Statements ---
+
+    priv fn emit_block(blk_id: i64) {
+        self.open_blk()
+        self.defer_push_scope()
+        self.emit_block_stmts(blk_id)
+        self.defer_emit_unwind()
+        self.defer_pop_scope()
+        self.close_blk()
+    }
+
+    priv fn emit_block_stmts(blk_id: i64) {
+        if blk_id < 0 { return }
+        let cnt = self.child_count(blk_id)
+        mut i = 0
+        while i < cnt {
+            self.gen_stmt(self.child_at(blk_id, i))
+            i = i + 1
+        }
+    }
+
+    priv fn gen_stmt(nid: i64) {
+        if nid < 0 { return }
+        let k = self.nk.get(nid)
+
+        if k == NK_BLOCK() {
+            self.emit_block(nid)
+            return
+        }
+
+        if k == NK_VAR_DECL() {
+            let nm = self.sa.get(nid)
+            let vt = btype_norm(self.node_types.get(nid))
+            let init_id = self.la.get(nid)
+            if btype_is_fixed_arr(vt) {
+                let et = btype_arr_elem(vt)
+                let alen = btype_arr_len(vt)
+                let cet = btype_to_c(et)
+                if init_id >= 0 && self.nk.get(init_id) == NK_FIXED_ARR() {
+                    let ecnt = self.child_count(init_id)
+                    let vals = List<str>()
+                    mut i = 0
+                    while i < ecnt {
+                        vals.push(self.gen_expr(self.child_at(init_id, i)))
+                        i = i + 1
+                    }
+                    self.w_ind()
+                    self.w(cet + " " + nm + "[" + (alen as str) + "] = ")
+                    self.w_lbrace()
+                    i = 0
+                    while i < ecnt {
+                        if i > 0 { self.w(", ") }
+                        self.w(vals.get(i))
+                        i = i + 1
+                    }
+                    if ecnt == 0 { self.w("0") }
+                    self.w_rbrace()
+                    self.w(";")
+                    self.w_nl()
+                } else if init_id >= 0 && self.nk.get(init_id) == NK_FIXED_REPEAT() {
+                    let vexpr = self.gen_expr(self.la.get(init_id))
+                    let idx_n = self.next_tmp()
+                    self.wl(cet + " " + nm + "[" + (alen as str) + "];")
+                    self.wcl("for (int64_t " + idx_n + " = 0; " + idx_n + " < " + (alen as str) + "; " + idx_n + "++) @ " + nm + "[" + idx_n + "] = " + vexpr + "; `")
+                } else if init_id >= 0 {
+                    let rhs = self.gen_expr(init_id)
+                    self.wl(cet + " " + nm + "[" + (alen as str) + "]; memcpy(" + nm + ", " + rhs + ", sizeof(" + nm + "));")
+                } else {
+                    self.wcl(cet + " " + nm + "[" + (alen as str) + "] = @0`;")
+                }
+                return
+            }
+            mut rhs = btype_default_c_val(vt)
+            if init_id >= 0 {
+                rhs = self.gen_expr(init_id)
+            }
+            self.wl(btype_to_c(vt) + " " + nm + " = " + rhs + ";")
+            return
+        }
+
+        if k == NK_TUPLE_DESTR() {
+            let init_id = self.la.get(nid)
+            let rhs = self.gen_expr(init_id)
+            let init_t = btype_norm(self.node_types.get(init_id))
+            let init_ct = btype_to_c(init_t)
+            let tmp = self.next_tmp()
+            self.wl(init_ct + " " + tmp + " = " + rhs + ";")
+            let ncnt = self.child_count(nid)
+            mut ni = 0
+            while ni < ncnt {
+                let cid = self.child_at(nid, ni)
+                let vname = self.sa.get(cid)
+                let vt = btype_norm(self.node_types.get(cid))
+                let vct = btype_to_c(vt)
+                if vname != "_" {
+                    self.wl(vct + " " + vname + " = " + tmp + ".f" + (ni as str) + ";")
+                }
+                ni = ni + 1
+            }
+            return
+        }
+        if k == NK_ASSIGN() {
+            let op_s = self.sa.get(nid)
+            let lhs_id = self.la.get(nid)
+            let rhs_id = self.ra.get(nid)
+            if self.nk.get(lhs_id) == NK_INDEX() {
+                let col_id = self.la.get(lhs_id)
+                let col_t = btype_norm(self.node_types.get(col_id))
+                if btype_is_list(col_t) || btype_is_map(col_t) {
+                    let addr = self.emit_lvalue_addr(col_id, col_t)
+                    let idx_v = self.gen_expr(self.ra.get(lhs_id))
+                    let rval = self.gen_expr(rhs_id)
+                    let sn = "Arx_" + btype_mangle(col_t)
+                    if op_s == "=" {
+                        self.wl(sn + "_set(" + addr + ", " + idx_v + ", " + rval + ");")
+                    } else {
+                        let base_op = op_s.slice(0, op_s.len() - 1)
+                        let cur_v = self.next_tmp()
+                        let elem_c = btype_to_c(btype_norm(self.node_types.get(lhs_id)))
+                        self.wl(elem_c + " " + cur_v + " = " + sn + "_get(" + addr + ", " + idx_v + ");")
+                        self.wl(sn + "_set(" + addr + ", " + idx_v + ", (" + cur_v + ") " + base_op + " (" + rval + "));")
+                    }
+                    return
+                }
+            }
+            let lval = self.emit_lvalue(lhs_id)
+            let rval = self.gen_expr(rhs_id)
+            if op_s == "+=" && btype_is_str(self.node_types.get(lhs_id)) {
+                self.wl(lval + " = arx_str_concat(" + lval + ", " + self.emit_cast_to_str(self.node_types.get(rhs_id), rval) + ");")
+            } else {
+                self.wl(lval + " " + op_s + " " + rval + ";")
+            }
+            return
+        }
+
+        if k == NK_IF() {
+            let cond = self.gen_expr(self.la.get(nid))
+            self.w_ind()
+            self.w("if (" + cond + ") ")
+            self.w_lbrace()
+            self.w_nl()
+            self.indent = self.indent + 1
+            self.defer_push_scope()
+            self.emit_block_stmts(self.ra.get(nid))
+            self.defer_emit_unwind()
+            self.defer_pop_scope()
+            self.indent = self.indent - 1
+            let eb = self.ea.get(nid)
+            if eb >= 0 {
+                self.w_ind()
+                self.w_rbrace()
+                self.w(" else ")
+                self.w_lbrace()
+                self.w_nl()
+                self.indent = self.indent + 1
+                self.defer_push_scope()
+                self.emit_block_stmts(eb)
+                self.defer_emit_unwind()
+                self.defer_pop_scope()
+                self.close_blk()
+            } else {
+                self.w_ind()
+                self.w_rbrace()
+                self.w_nl()
+            }
+            return
+        }
+
+        if k == NK_WHILE() {
+            self.w_ind()
+            self.w("while (1) ")
+            self.w_lbrace()
+            self.w_nl()
+            self.indent = self.indent + 1
+            let cond = self.gen_expr(self.la.get(nid))
+            self.wl("if (!(" + cond + ")) break;")
+            self.defer_push_scope()
+            self.emit_block_stmts(self.ra.get(nid))
+            self.defer_emit_unwind()
+            self.defer_pop_scope()
+            self.close_blk()
+            return
+        }
+
+        if k == NK_LOOP() {
+            self.w_ind()
+            self.w("while (1) ")
+            self.w_lbrace()
+            self.w_nl()
+            self.indent = self.indent + 1
+            self.defer_push_scope()
+            self.emit_block_stmts(self.la.get(nid))
+            self.defer_emit_unwind()
+            self.defer_pop_scope()
+            self.close_blk()
+            return
+        }
+
+        if k == NK_FOR() {
+            self.emit_for_stmt(nid)
+            return
+        }
+
+        if k == NK_BREAK() {
+            self.wl("break;")
+            return
+        }
+
+        if k == NK_CONTINUE() {
+            self.wl("continue;")
+            return
+        }
+
+        if k == NK_RETURN() {
+            let val_id = self.la.get(nid)
+            if self.is_in_ctor {
+                // Inside constructor (`init`) returning `_obj` early!
+                self.defer_emit_unwind_all()
+                self.wl("return _obj;")
+                return
+            }
+            if val_id >= 0 && self.cur_ret_type != "void" {
+                let rv = self.gen_expr(val_id)
+                let rtmp = self.next_tmp()
+                self.wl(btype_to_c(self.cur_ret_type) + " " + rtmp + " = " + rv + ";")
+                self.defer_emit_unwind_all()
+                self.wl("return " + rtmp + ";")
+            } else {
+                self.defer_emit_unwind_all()
+                self.wl("return;")
+            }
+            return
+        }
+
+        if k == NK_GUARD() {
+            let cond = self.gen_expr(self.la.get(nid))
+            self.w_ind()
+            self.w("if (!(" + cond + ")) ")
+            self.w_lbrace()
+            self.w_nl()
+            self.indent = self.indent + 1
+            self.defer_push_scope()
+            self.emit_block_stmts(self.ra.get(nid))
+            self.defer_emit_unwind()
+            self.defer_pop_scope()
+            self.close_blk()
+            return
+        }
+
+        if k == NK_DEFER() {
+            self.defer_nodes.push(self.la.get(nid))
+            self.defer_count = self.defer_count + 1
+            return
+        }
+
+        if k == NK_TRY_CATCH() {
+            let try_blk = self.la.get(nid)
+            let catch_blk = self.ra.get(nid)
+            let finally_blk = self.ea.get(nid)
+            let cvar = self.sa.get(nid)
+            let exc_v = self.next_tmp()
+            self.open_blk()
+            self.wl("int " + exc_v + " = setjmp(__arx_jmp_stack[__arx_jmp_depth++]);")
+            self.w_ind()
+            self.w("if (" + exc_v + " == 0) ")
+            self.w_lbrace()
+            self.w_nl()
+            self.indent = self.indent + 1
+            self.emit_block_stmts(try_blk)
+            self.wl("__arx_jmp_depth--;")
+            self.indent = self.indent - 1
+            self.w_ind()
+            self.w_rbrace()
+            self.w(" else ")
+            self.w_lbrace()
+            self.w_nl()
+            self.indent = self.indent + 1
+            if cvar != "" {
+                self.wl("const char* " + cvar + " = __arx_exc_msg;")
+            }
+            if catch_blk >= 0 {
+                self.emit_block_stmts(catch_blk)
+            }
+            self.close_blk()
+            if finally_blk >= 0 {
+                self.emit_block_stmts(finally_blk)
+            }
+            self.close_blk()
+            return
+        }
+
+        if k == NK_THROW() {
+            let ex = self.la.get(nid)
+            let msg = self.emit_cast_to_str(self.node_types.get(ex), self.gen_expr(ex))
+            self.wl("__arx_exc_msg = " + msg + ";")
+            self.wcl("if (__arx_jmp_depth > 0) @ longjmp(__arx_jmp_stack[--__arx_jmp_depth], 1); ` else @ fprintf(stderr, \"Uncaught error: %s\\n\", __arx_exc_msg); exit(1); `")
+            return
+        }
+
+        if k == NK_MATCH() {
+            self.emit_match_stmt(nid)
+            return
+        }
+
+        if k == NK_EXPR_STMT() {
+            let ex = self.la.get(nid)
+            let ek = self.nk.get(ex)
+            let val = self.gen_expr(ex)
+            // Void builtins & void calls already emit their statement; skip emitting bare dummy "0;"
+            if ek == NK_CALL() && self.node_types.get(ex) == "void" {
+                return
+            }
+            if val != "0" {
+                self.wl("(void)(" + val + ");")
+            }
+            return
+        }
+    }
+
+}

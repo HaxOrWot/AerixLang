@@ -1,0 +1,217 @@
+import "./mod.arx"
+
+extend Emitter {
+    priv fn emit_generic_structs() {
+        mut gi = 0
+        while gi < self.gen_list_count {
+            let et = btype_norm(self.gen_list_types.get(gi))
+            let sn = "Arx_List_" + btype_mangle(et)
+            self.wcl("typedef struct " + sn + " @ int64_t data_handle; int64_t length; ` " + sn + ";")
+            gi = gi + 1
+        }
+        mut si = 0
+        while si < self.gen_set_count {
+            let et = btype_norm(self.gen_set_types.get(si))
+            let sn = "Arx_Set_" + btype_mangle(et)
+            self.wcl("typedef struct " + sn + " @ int64_t set_handle; int64_t length; ` " + sn + ";")
+            si = si + 1
+        }
+        mut mi = 0
+        while mi < self.gen_map_count {
+            let kt = btype_norm(self.gen_map_keys.get(mi))
+            let vt = btype_norm(self.gen_map_vals.get(mi))
+            let sn = "Arx_Map_" + btype_mangle(kt) + "_" + btype_mangle(vt)
+            self.wcl("typedef struct " + sn + " @ int64_t map_handle; int64_t length; ` " + sn + ";")
+            mi = mi + 1
+        }
+        self.emit_sqd_structs("Stack", "stack_handle", self.gen_stack_types, self.gen_stack_count)
+        self.emit_sqd_structs("Queue", "queue_handle", self.gen_queue_types, self.gen_queue_count)
+        self.emit_sqd_structs("Deque", "deque_handle", self.gen_deque_types, self.gen_deque_count)
+    }
+
+    priv fn emit_sqd_structs(pfx: str, hfield: str, types: List<str>, count: i64) {
+        mut i = 0
+        while i < count {
+            let et = btype_norm(types.get(i))
+            let sn = "Arx_" + pfx + "_" + btype_mangle(et)
+            self.wcl("typedef struct " + sn + " @ int64_t " + hfield + "; int64_t length; ` " + sn + ";")
+            i = i + 1
+        }
+    }
+
+    priv fn tuple_tier(raw_t: str) -> i64 {
+        let nt = btype_norm(raw_t)
+        if btype_is_ptr(nt) { return 0 }
+        if self.cls_idx_map.has_key(nt) { return 2 }
+        if self.enum_idx_map.has_key(nt) { return 1 }
+        if btype_is_tuple(nt) {
+            mut mx: i64 = 0
+            let cnt = btype_tuple_count(nt)
+            mut i = 0
+            while i < cnt {
+                let st = self.tuple_tier(btype_tuple_elem(nt, i))
+                if st > mx { mx = st }
+                i = i + 1
+            }
+            return mx
+        }
+        return 0
+    }
+
+    priv fn emit_tuple_structs(target_tier: i64) {
+        mut ti = 0
+        while ti < self.gen_tuple_count {
+            let tt = btype_norm(self.gen_tuple_types.get(ti))
+            if self.tuple_tier(tt) == target_tier {
+                let sn = "Arx_" + btype_mangle(tt)
+                self.wcl("typedef struct " + sn + " @")
+                self.indent = self.indent + 1
+                let cnt = btype_tuple_count(tt)
+                mut i = 0
+                while i < cnt {
+                    let et = btype_tuple_elem(tt, i)
+                    self.wl(btype_to_c(et) + " f" + (i as str) + ";")
+                    i = i + 1
+                }
+                self.indent = self.indent - 1
+                self.wcl("` " + sn + ";")
+            }
+            ti = ti + 1
+        }
+    }
+
+    // Emits method implementations (push, pop, get, set, contains) for all monomorphized generic types.
+    priv fn emit_generics() {
+        // List<T>
+        mut gi = 0
+        while gi < self.gen_list_count {
+            let elem_t = self.gen_list_types.get(gi)
+            self.emit_list_inst(elem_t)
+            gi = gi + 1
+        }
+        // Set<T>
+        mut si = 0
+        while si < self.gen_set_count {
+            let elem_t = self.gen_set_types.get(si)
+            self.emit_set_inst(elem_t)
+            si = si + 1
+        }
+        // Map<K, V>
+        mut mi = 0
+        while mi < self.gen_map_count {
+            let kt = self.gen_map_keys.get(mi)
+            let vt = self.gen_map_vals.get(mi)
+            self.emit_map_inst(kt, vt)
+            mi = mi + 1
+        }
+        // Stack<T>, Queue<T>, Deque<T>
+        mut stki = 0
+        while stki < self.gen_stack_count {
+            self.emit_stack_inst(self.gen_stack_types.get(stki))
+            stki = stki + 1
+        }
+        mut quei = 0
+        while quei < self.gen_queue_count {
+            self.emit_queue_inst(self.gen_queue_types.get(quei))
+            quei = quei + 1
+        }
+        mut deqi = 0
+        while deqi < self.gen_deque_count {
+            self.emit_deque_inst(self.gen_deque_types.get(deqi))
+            deqi = deqi + 1
+        }
+        // Tuple<...>
+        mut tupi = 0
+        while tupi < self.gen_tuple_count {
+            self.emit_tuple_helper(self.gen_tuple_types.get(tupi))
+            tupi = tupi + 1
+        }
+    }
+
+    priv fn emit_tuple_helper(raw_t: str) {
+        let tt = btype_norm(raw_t)
+        let tm = btype_mangle(tt)
+        let sn = "Arx_" + tm
+        let cnt = btype_tuple_count(tt)
+        mut ps = ""
+        mut i = 0
+        while i < cnt {
+            if i > 0 { ps = ps + ", " }
+            ps = ps + btype_to_c(btype_tuple_elem(tt, i)) + " f" + (i as str)
+            i = i + 1
+        }
+        if cnt == 0 { ps = "void" }
+        self.wcl("static inline " + sn + " arx_make_" + tm + "(" + ps + ") @")
+        self.indent = self.indent + 1
+        self.wl(sn + " t;")
+        self.wl("memset(&t, 0, sizeof(" + sn + "));")
+        mut fi = 0
+        while fi < cnt {
+            let fnm = "f" + (fi as str)
+            self.wl("t." + fnm + " = " + fnm + ";")
+            fi = fi + 1
+        }
+        self.wl("return t;")
+        self.indent = self.indent - 1
+        self.wcl("`")
+    }
+
+    priv fn emit_sqd_common(sn: str, hfield: str, rtpfx: str) {
+        self.wcl("static inline " + sn + " " + sn + "_init(void) @ " + sn + " s; s." + hfield + " = " + rtpfx + "_new(); s.length = 0; return s; `")
+        self.wcl("static inline int64_t " + sn + "_len(" + sn + "* s) @ return " + rtpfx + "_len(s->" + hfield + "); `")
+        self.wcl("static inline int64_t " + sn + "_length(" + sn + "* s) @ return " + rtpfx + "_len(s->" + hfield + "); `")
+        self.wcl("static inline bool " + sn + "_is_empty(" + sn + "* s) @ return " + rtpfx + "_is_empty(s->" + hfield + ") != 0; `")
+        self.wcl("static inline void " + sn + "_clear(" + sn + "* s) @ " + rtpfx + "_clear(s->" + hfield + "); s->length = 0; `")
+        self.wcl("static inline void " + sn + "_free(" + sn + "* s) @ " + rtpfx + "_free(s->" + hfield + "); s->" + hfield + " = 0; s->length = 0; `")
+    }
+
+    priv fn emit_sqd_push_fn(sn: str, mname: str, hfield: str, rtfn: str, rtlen: str, ct: str, box_e: str) {
+        self.wcl("static inline void " + sn + "_" + mname + "(" + sn + "* s, " + ct + " v) @ " + rtfn + "(s->" + hfield + ", " + box_e + "); s->length = " + rtlen + "(s->" + hfield + "); `")
+    }
+
+    priv fn emit_sqd_pop_fn(sn: str, mname: str, hfield: str, rtfn: str, rtlen: str, upd_len: bool, ct: str, unbox_e: str) {
+        mut upd = ""
+        if upd_len { upd = " s->length = " + rtlen + "(s->" + hfield + ");" }
+        self.wcl("static inline " + ct + " " + sn + "_" + mname + "(" + sn + "* s) @ int64_t r = " + rtfn + "(s->" + hfield + ");" + upd + " return " + unbox_e + "; `")
+    }
+
+    priv fn emit_stack_inst(raw_elem: str) {
+        let et = btype_norm(raw_elem)
+        let sn = "Arx_Stack_" + btype_mangle(et)
+        let ct = btype_to_c(et)
+        let bx = self.emit_box_expr(et, "v")
+        let ub = self.emit_unbox_expr(et, "r")
+        self.emit_sqd_common(sn, "stack_handle", "arx_stack")
+        self.emit_sqd_push_fn(sn, "push", "stack_handle", "arx_stack_push", "arx_stack_len", ct, bx)
+        self.emit_sqd_pop_fn(sn, "pop", "stack_handle", "arx_stack_pop", "arx_stack_len", true, ct, ub)
+        self.emit_sqd_pop_fn(sn, "peek", "stack_handle", "arx_stack_peek", "arx_stack_len", false, ct, ub)
+    }
+
+    priv fn emit_queue_inst(raw_elem: str) {
+        let et = btype_norm(raw_elem)
+        let sn = "Arx_Queue_" + btype_mangle(et)
+        let ct = btype_to_c(et)
+        let bx = self.emit_box_expr(et, "v")
+        let ub = self.emit_unbox_expr(et, "r")
+        self.emit_sqd_common(sn, "queue_handle", "arx_queue")
+        self.emit_sqd_push_fn(sn, "enqueue", "queue_handle", "arx_queue_enqueue", "arx_queue_len", ct, bx)
+        self.emit_sqd_pop_fn(sn, "dequeue", "queue_handle", "arx_queue_dequeue", "arx_queue_len", true, ct, ub)
+        self.emit_sqd_pop_fn(sn, "peek", "queue_handle", "arx_queue_peek_front", "arx_queue_len", false, ct, ub)
+    }
+
+    priv fn emit_deque_inst(raw_elem: str) {
+        let et = btype_norm(raw_elem)
+        let sn = "Arx_Deque_" + btype_mangle(et)
+        let ct = btype_to_c(et)
+        let bx = self.emit_box_expr(et, "v")
+        let ub = self.emit_unbox_expr(et, "r")
+        self.emit_sqd_common(sn, "deque_handle", "arx_deque")
+        self.emit_sqd_push_fn(sn, "push_back", "deque_handle", "arx_deque_push_back", "arx_deque_len", ct, bx)
+        self.emit_sqd_push_fn(sn, "push_front", "deque_handle", "arx_deque_push_front", "arx_deque_len", ct, bx)
+        self.emit_sqd_pop_fn(sn, "pop_back", "deque_handle", "arx_deque_pop_back", "arx_deque_len", true, ct, ub)
+        self.emit_sqd_pop_fn(sn, "pop_front", "deque_handle", "arx_deque_pop_front", "arx_deque_len", true, ct, ub)
+        self.emit_sqd_pop_fn(sn, "peek_front", "deque_handle", "arx_deque_peek_front", "arx_deque_len", false, ct, ub)
+        self.emit_sqd_pop_fn(sn, "peek_back", "deque_handle", "arx_deque_peek_back", "arx_deque_len", false, ct, ub)
+    }
+
+}

@@ -1,0 +1,235 @@
+import "./mod.arx"
+
+// --- 6. Document Symbols ---
+
+fn emit_symbol_range(jb: JsonBuf, ln1: i64) {
+    mut ln0 = ln1 - 1
+    if ln0 < 0 { ln0 = 0 }
+    jb.lbrace()
+    jb.key("start"); jb.lbrace(); jb.kv_int("line", ln0, true); jb.kv_int("character", 0, false); jb.rbrace()
+    jb.comma()
+    jb.key("end"); jb.lbrace(); jb.kv_int("line", ln0, true); jb.kv_int("character", 80, false); jb.rbrace()
+    jb.rbrace()
+}
+
+pub fn lsp_build_document_symbols_json(az: Analyzer, doc_path: str) -> str {
+    let jb = JsonBuf()
+    jb.lbrack()
+    mut first = true
+
+    mut ri = 0
+    while ri < az.root_count {
+        let nid = az.root_decls.get(ri)
+        if az.nf.get(nid) != doc_path {
+            ri = ri + 1
+            continue
+        }
+        let k = az.nk.get(nid)
+        let nm = az.sa.get(nid)
+        let ln1 = az.ln.get(nid)
+
+        if k == NK_FN_DEF() || k == NK_CEXTERN() {
+            if !first { jb.comma() }
+            first = false
+            jb.lbrace()
+            jb.kv_str("name", nm, true)
+            jb.kv_str("detail", lsp_fn_signature_str(az, nid), false)
+            jb.kv_int("kind", SKIND_FUNCTION(), false)
+            jb.comma(); jb.key("range"); emit_symbol_range(jb, ln1)
+            jb.comma(); jb.key("selectionRange"); emit_symbol_range(jb, ln1)
+            jb.rbrace()
+        } else if k == NK_CLASS_DEF() {
+            if !first { jb.comma() }
+            first = false
+            jb.lbrace()
+            jb.kv_str("name", nm, true)
+            mut cdetail = "class"
+            mut sk = SKIND_CLASS()
+            if has_flag(az.ia.get(nid), FLAG_STRUCT()) {
+                cdetail = "struct"
+                sk = SKIND_STRUCT()
+            }
+            jb.kv_str("detail", cdetail, false)
+            jb.kv_int("kind", sk, false)
+            jb.comma(); jb.key("range"); emit_symbol_range(jb, ln1)
+            jb.comma(); jb.key("selectionRange"); emit_symbol_range(jb, ln1)
+            jb.comma(); jb.key("children"); jb.lbrack()
+            mut cfirst = true
+            let fg = az.la.get(nid)
+            mut fi = 0
+            while fi < az.ll.get(fg) {
+                let fid = az.ch.get(az.ls.get(fg) + fi)
+                if !cfirst { jb.comma() }
+                cfirst = false
+                jb.lbrace()
+                jb.kv_str("name", az.sa.get(fid), true)
+                jb.kv_str("detail", btype_norm(az.sb.get(fid)), false)
+                jb.kv_int("kind", SKIND_FIELD(), false)
+                jb.comma(); jb.key("range"); emit_symbol_range(jb, az.ln.get(fid))
+                jb.comma(); jb.key("selectionRange"); emit_symbol_range(jb, az.ln.get(fid))
+                jb.rbrace()
+                fi = fi + 1
+            }
+            let cg = az.ra.get(nid)
+            mut ci = 0
+            while ci < az.ll.get(cg) {
+                let cid = az.ch.get(az.ls.get(cg) + ci)
+                if !cfirst { jb.comma() }
+                cfirst = false
+                jb.lbrace()
+                jb.kv_str("name", "init", true)
+                jb.kv_str("detail", lsp_fn_signature_str(az, cid), false)
+                jb.kv_int("kind", SKIND_CTOR(), false)
+                jb.comma(); jb.key("range"); emit_symbol_range(jb, az.ln.get(cid))
+                jb.comma(); jb.key("selectionRange"); emit_symbol_range(jb, az.ln.get(cid))
+                jb.rbrace()
+                ci = ci + 1
+            }
+            let mg = az.ea.get(nid)
+            mut mi = 0
+            while mi < az.ll.get(mg) {
+                let mid = az.ch.get(az.ls.get(mg) + mi)
+                if !cfirst { jb.comma() }
+                cfirst = false
+                jb.lbrace()
+                jb.kv_str("name", az.sa.get(mid), true)
+                jb.kv_str("detail", lsp_fn_signature_str(az, mid), false)
+                jb.kv_int("kind", SKIND_METHOD(), false)
+                jb.comma(); jb.key("range"); emit_symbol_range(jb, az.ln.get(mid))
+                jb.comma(); jb.key("selectionRange"); emit_symbol_range(jb, az.ln.get(mid))
+                jb.rbrace()
+                mi = mi + 1
+            }
+            jb.rbrack()
+            jb.rbrace()
+        } else if k == NK_ENUM_DEF() {
+            if !first { jb.comma() }
+            first = false
+            jb.lbrace()
+            jb.kv_str("name", nm, true)
+            jb.kv_str("detail", "enum", false)
+            jb.kv_int("kind", SKIND_ENUM(), false)
+            jb.comma(); jb.key("range"); emit_symbol_range(jb, ln1)
+            jb.comma(); jb.key("selectionRange"); emit_symbol_range(jb, ln1)
+            jb.comma(); jb.key("children"); jb.lbrack()
+            mut vfirst = true
+            let vc = az.ll.get(nid)
+            mut vi = 0
+            while vi < vc {
+                let vid = az.ch.get(az.ls.get(nid) + vi)
+                if !vfirst { jb.comma() }
+                vfirst = false
+                jb.lbrace()
+                jb.kv_str("name", az.sa.get(vid), true)
+                jb.kv_int("kind", SKIND_ENUM_MEM(), false)
+                jb.comma(); jb.key("range"); emit_symbol_range(jb, az.ln.get(vid))
+                jb.comma(); jb.key("selectionRange"); emit_symbol_range(jb, az.ln.get(vid))
+                jb.rbrace()
+                vi = vi + 1
+            }
+            jb.rbrack()
+            jb.rbrace()
+        } else if k == NK_VAR_DECL_GLOBAL() {
+            if !first { jb.comma() }
+            first = false
+            jb.lbrace()
+            jb.kv_str("name", nm, true)
+            jb.kv_str("detail", btype_norm(az.node_types.get(nid)), false)
+            jb.kv_int("kind", SKIND_VAR(), false)
+            jb.comma(); jb.key("range"); emit_symbol_range(jb, ln1)
+            jb.comma(); jb.key("selectionRange"); emit_symbol_range(jb, ln1)
+            jb.rbrace()
+        }
+
+        ri = ri + 1
+    }
+
+    jb.rbrack()
+    return jb.finish()
+}
+
+// --- 7. Inlay Hints ---
+
+pub fn lsp_build_inlay_hints_json(source: str, az: Analyzer, doc_path: str) -> str {
+    let jb = JsonBuf()
+    jb.lbrack()
+    mut first = true
+
+    mut i = 0
+    while i < az.ncount {
+        let k = az.nk.get(i)
+        if (k == NK_VAR_DECL() || k == NK_VAR_DECL_GLOBAL()) && az.nf.get(i) == doc_path {
+            // Only emit inferred type hint when explicit `: Type` was omitted
+            if az.sb.get(i) == "" {
+                let vnm = az.sa.get(i)
+                let vt = btype_norm(az.node_types.get(i))
+                let ln1 = az.ln.get(i)
+                if vnm != "" && vnm != "_" && vt != "" && vt != "void" && ln1 > 0 {
+                    let col0 = lsp_find_node_col0(source, ln1, vnm)
+                    if col0 >= 0 {
+                        if !first { jb.comma() }
+                        first = false
+                        jb.lbrace()
+                        jb.key("position"); jb.lbrace(); jb.kv_int("line", ln1 - 1, true); jb.kv_int("character", col0 + vnm.len(), false); jb.rbrace()
+                        jb.kv_str("label", ": " + vt, false)
+                        jb.kv_int("kind", 1, false)
+                        jb.kv_bool("paddingLeft", false, false)
+                        jb.kv_bool("paddingRight", true, false)
+                        jb.rbrace()
+                    }
+                }
+            }
+        }
+        i = i + 1
+    }
+
+    jb.rbrack()
+    return jb.finish()
+}
+
+// --- 8. CodeLens ---
+
+pub fn lsp_build_code_lens_json(az: Analyzer, doc_path: str) -> str {
+    let jb = JsonBuf()
+    jb.lbrack()
+    mut first = true
+    mut fi = 0
+    while fi < az.fn_count {
+        let fid = az.fn_nodes.get(fi)
+        if az.nf.get(fid) == doc_path && az.sa.get(fid) == "main" {
+            mut ln0 = az.ln.get(fid) - 1
+            if ln0 < 0 { ln0 = 0 }
+            if !first { jb.comma() }
+            first = false
+            jb.lbrace()
+            jb.key("range"); jb.lbrace()
+            jb.key("start"); jb.lbrace(); jb.kv_int("line", ln0, true); jb.kv_int("character", 0, false); jb.rbrace()
+            jb.comma()
+            jb.key("end"); jb.lbrace(); jb.kv_int("line", ln0, true); jb.kv_int("character", 0, false); jb.rbrace()
+            jb.rbrace()
+            jb.comma()
+            jb.key("command"); jb.lbrace()
+            jb.kv_str("title", "▶ Run", true)
+            jb.kv_str("command", "aerix.runFile", false)
+            jb.rbrace()
+            jb.rbrace()
+            jb.comma()
+            jb.lbrace()
+            jb.key("range"); jb.lbrace()
+            jb.key("start"); jb.lbrace(); jb.kv_int("line", ln0, true); jb.kv_int("character", 0, false); jb.rbrace()
+            jb.comma()
+            jb.key("end"); jb.lbrace(); jb.kv_int("line", ln0, true); jb.kv_int("character", 0, false); jb.rbrace()
+            jb.rbrace()
+            jb.comma()
+            jb.key("command"); jb.lbrace()
+            jb.kv_str("title", "✓ Check", true)
+            jb.kv_str("command", "aerix.checkFile", false)
+            jb.rbrace()
+            jb.rbrace()
+        }
+        fi = fi + 1
+    }
+    jb.rbrack()
+    return jb.finish()
+}
+

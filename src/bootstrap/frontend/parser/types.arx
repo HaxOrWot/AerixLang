@@ -1,0 +1,125 @@
+import "./mod.arx"
+
+extend Parser {
+    // --- Type Parsing ---
+
+    priv fn parse_type_str() -> str {
+        if self.match_k(TK_AMP()) {
+            mut mut_pfx = ""
+            if self.match_k(TK_MUT()) {
+                mut_pfx = "mut_"
+            }
+            self.expect_k(TK_LBRACKET(), "Expected '[' in slice type '&[T]'")
+            let elem_t = self.parse_type_str()
+            self.expect_k(TK_RBRACKET(), "Expected ']' in slice type '&[T]'")
+            return "Slice_" + mut_pfx + elem_t
+        }
+        if self.cur_kind() == TK_LBRACKET() {
+            self.adv()
+            let elem_t = self.parse_type_str()
+            if self.match_k(TK_RBRACKET()) {
+                return "Slice_" + elem_t
+            }
+            self.expect_k(TK_SEMICOLON(), "Expected ';' in fixed array type [T; N]")
+            let sz_tok = self.expect_k(TK_INT(), "Expected integer size in fixed array type")
+            let sz_str = self.tok_vals.get(sz_tok)
+            self.expect_k(TK_RBRACKET(), "Expected ']' in fixed array type")
+            return "[" + elem_t + ";" + sz_str + "]"
+        }
+        if self.cur_kind() == TK_FN() {
+            self.adv()
+            self.expect_k(TK_LPAREN(), "Expected '(' in function type")
+            mut f_str = "Fn_"
+            mut first = true
+            while self.cur_kind() != TK_RPAREN() && self.cur_kind() != TK_EOF() {
+                let pt = self.parse_type_str()
+                if !first { f_str = f_str + "_" }
+                f_str = f_str + pt
+                first = false
+                if !self.match_k(TK_COMMA()) { break }
+            }
+            self.expect_k(TK_RPAREN(), "Expected ')' in function type")
+            mut ret_t = "void"
+            if self.match_k(TK_ARROW()) {
+                ret_t = self.parse_type_str()
+            }
+            return f_str + "_to_" + ret_t
+        }
+
+        if self.cur_kind() == TK_LPAREN() {
+            self.adv()
+            let t_elems = List<str>()
+            mut tec: i64 = 0
+            if self.cur_kind() != TK_RPAREN() {
+                while self.pos < self.tok_count {
+                    t_elems.push(self.parse_type_str())
+                    tec = tec + 1
+                    if !self.match_k(TK_COMMA()) { break }
+                }
+            }
+            self.expect_k(TK_RPAREN(), "Expected ')' after tuple type annotation")
+            if tec == 0 { return "void" }
+            if tec == 1 { return t_elems.get(0) }
+            mut tup_s = "Tuple<" + t_elems.get(0)
+            mut ti: i64 = 1
+            while ti < tec {
+                tup_s = tup_s + "," + t_elems.get(ti)
+                ti = ti + 1
+            }
+            tup_s = tup_s + ">"
+            self.register_tuple(tup_s)
+            return tup_s
+        }
+        let name_idx = self.expect_k(TK_IDENT(), "Expected type name")
+        mut base = self.tok_vals.get(name_idx)
+        while self.match_k(TK_DOT()) {
+            let sub_idx = self.expect_k(TK_IDENT(), "Expected identifier after '.' in type path")
+            let sub_name = self.tok_vals.get(sub_idx)
+            base = base + "." + sub_name
+        }
+        if self.str_has_dot(base) {
+            base = self.str_last_dot_seg(base)
+        }
+        if self.item_aliases.has_key(base) {
+            base = self.item_aliases.get(base)
+        }
+        if self.match_k(TK_LT()) {
+            let targs = List<str>()
+            mut acount = 0
+            while true {
+                let targ = self.parse_type_str()
+                targs.push(targ)
+                acount = acount + 1
+                if !self.match_k(TK_COMMA()) { break }
+            }
+            self.expect_k(TK_GT(), "Expected '>' after generic type arguments")
+            let mangled = self.register_generic(base, targs, acount)
+            if base == "List" && acount == 1 {
+                base = "List<" + targs.get(0) + ">"
+            } else if base == "Map" && acount == 2 {
+                base = "Map<" + targs.get(0) + "," + targs.get(1) + ">"
+            } else if base == "Set" && acount == 1 {
+                base = "Set<" + targs.get(0) + ">"
+            } else if base == "Stack" && acount == 1 {
+                base = "Stack<" + targs.get(0) + ">"
+            } else if base == "Queue" && acount == 1 {
+                base = "Queue<" + targs.get(0) + ">"
+            } else if base == "Deque" && acount == 1 {
+                base = "Deque<" + targs.get(0) + ">"
+            } else {
+                base = mangled
+            }
+        }
+        while true {
+            if self.match_k(TK_QUESTION()) {
+                base = base + "?"
+            } else if self.match_k(TK_STAR()) {
+                base = base + "*"
+            } else {
+                break
+            }
+        }
+        return base
+    }
+
+}

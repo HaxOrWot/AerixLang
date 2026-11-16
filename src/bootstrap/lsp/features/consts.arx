@@ -1,0 +1,29 @@
+import "./mod.arx"
+
+// LSP CompletionItemKind constants
+pub fn CKIND_METHOD() -> i64 { return 2 }
+pub fn CKIND_FUNCTION() -> i64 { return 3 }
+pub fn CKIND_FIELD() -> i64 { return 5 }
+pub fn CKIND_VARIABLE() -> i64 { return 6 }
+pub fn CKIND_CLASS() -> i64 { return 7 }
+pub fn CKIND_MODULE() -> i64 { return 9 }
+pub fn CKIND_ENUM() -> i64 { return 13 }
+pub fn CKIND_KEYWORD() -> i64 { return 14 }
+pub fn CKIND_SNIPPET() -> i64 { return 15 }
+pub fn CKIND_FILE() -> i64 { return 17 }
+pub fn CKIND_FOLDER() -> i64 { return 19 }
+pub fn CKIND_ENUM_MEM() -> i64 { return 20 }
+pub fn CKIND_CONSTANT() -> i64 { return 21 }
+pub fn CKIND_STRUCT() -> i64 { return 22 }
+
+// LSP SymbolKind constants
+pub fn SKIND_CLASS() -> i64 { return 5 }
+pub fn SKIND_METHOD() -> i64 { return 6 }
+pub fn SKIND_FIELD() -> i64 { return 8 }
+pub fn SKIND_CTOR() -> i64 { return 9 }
+pub fn SKIND_ENUM() -> i64 { return 10 }
+pub fn SKIND_FUNCTION() -> i64 { return 12 }
+pub fn SKIND_VAR() -> i64 { return 13 }
+pub fn SKIND_ENUM_MEM() -> i64 { return 22 }
+pub fn SKIND_STRUCT() -> i64 { return 23 }
+

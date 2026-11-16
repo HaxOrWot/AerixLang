@@ -45,6 +45,7 @@ test_*
 
 # Local documentation notes
 docs/
+!src/bootstrap/lsp/docs/
 
 # OS generated files
 .DS_Store

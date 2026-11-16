@@ -1,0 +1,397 @@
+import "./mod.arx"
+
+fn char_lbrace() -> str {
+    let bb = ByteBuffer()
+    bb.write_u8(123)
+    let s = bb.to_str()
+    bb.free()
+    return s
+}
+
+fn char_rbrace() -> str {
+    let bb = ByteBuffer()
+    bb.write_u8(125)
+    let s = bb.to_str()
+    bb.free()
+    return s
+}
+
+fn cmd_pkg_init() -> i64 {
+    let cwd = bpath_normalize(Env.cwd())
+    let manifest_path = bpath_join(cwd, "aerix.json")
+    if File.exists(manifest_path) {
+        println("aerix.json already exists in " + cwd)
+        return 0
+    }
+    let default_name = bpath_basename(cwd)
+    let q = "\""
+    let nl = "\n"
+    let ob = char_lbrace()
+    let cb = char_rbrace()
+    let content = ob + nl +
+                  "  " + q + "name" + q + ": " + q + default_name + q + "," + nl +
+                  "  " + q + "version" + q + ": " + q + "1.0.0" + q + "," + nl +
+                  "  " + q + "description" + q + ": " + q + "Aerix Application" + q + "," + nl +
+                  "  " + q + "dependencies" + q + ": " + ob + cb + nl +
+                  cb + nl
+    File.write_string(manifest_path, content)
+    println("[SUCCESS] Created package manifest: " + manifest_path)
+    return 0
+}
+
+fn cmd_pkg_remove(pkg_name: str, local_only: bool) -> i64 {
+    if pkg_name == "" {
+        eprintln("error: missing package name for 'arx pkg remove'")
+        eprintln("  = help: run 'arx pkg remove <package_name>'")
+        return 1
+    }
+    if pkg_name == "Math" || pkg_name == "Random" || pkg_name == "Socket" || pkg_name == "Time" || pkg_name == "Window" {
+        eprintln("error: cannot remove core standard module '" + pkg_name + "'")
+        return 1
+    }
+    let cwd = bpath_normalize(Env.cwd())
+    let local_target = bpath_join(bpath_join(cwd, "modules"), pkg_name)
+    let global_target = bpath_join(get_aerix_global_modules_dir(), pkg_name)
+
+    mut target_dir = global_target
+    if local_only || (Directory.exists(local_target) && !Directory.exists(global_target)) {
+        target_dir = local_target
+    }
+
+    if !Directory.exists(target_dir) {
+        eprintln("error: package '" + pkg_name + "' is not installed (checked " + target_dir + ")")
+        return 1
+    }
+    println("Removing package '" + pkg_name + "' from " + target_dir + "...")
+    let clean_cmd = "powershell -Command \"Remove-Item -Path '" + target_dir.replace("/", "\\") + "' -Recurse -Force\""
+    let code = Process.execute(clean_cmd)
+    if code == 0 {
+        println("[SUCCESS] Removed package '" + pkg_name + "'.")
+    } else {
+        eprintln("error: failed to remove package directory: " + target_dir)
+    }
+    return code
+}
+
+fn cmd_pkg_install(target: str, force: bool, allow_insecure: bool, local_install: bool) -> i64 {
+    if target == "" {
+        eprintln("error: missing package name or Git URL for 'arx pkg install'")
+        eprintln("  = help: run 'arx pkg install <name|git_url>' (e.g. 'arx pkg install AerixJson')")
+        return 1
+    }
+
+    let cwd = bpath_normalize(Env.cwd())
+    mut mod_root = get_aerix_global_modules_dir()
+    if local_install {
+        mod_root = bpath_join(cwd, "modules")
+    }
+    if !Directory.exists(mod_root) {
+        Directory.create(mod_root)
+    }
+
+    mut repo_url = ""
+    mut pkg_name = target
+    mut pkg_ver = "1.0.0"
+
+    // Check if target is a known registry package
+    let reg = get_known_registry()
+    mut i = 0
+    let n = reg.len()
+    while i < n {
+        let item = reg.get(i)
+        if item.name.to_lower() == target.to_lower() {
+            repo_url = item.repo_url
+            pkg_name = item.name
+            pkg_ver = item.version
+        }
+        i = i + 1
+    }
+
+    if repo_url == "" {
+        // Direct git URL or GitHub user/repo
+        if target.starts_with("https://") || target.starts_with("git@") {
+            repo_url = target
+            let raw_base = bpath_basename(target)
+            if raw_base.ends_with(".git") {
+                pkg_name = raw_base.slice(0, raw_base.len() - 4)
+            } else {
+                pkg_name = raw_base
+            }
+        } else if target.contains("/") {
+            repo_url = "https://github.com/" + target + ".git"
+            let slash_idx = target.index_of("/")
+            pkg_name = target.slice(slash_idx + 1, target.len())
+        } else {
+            eprintln("error: package '" + target + "' was not found in the official registry.")
+            eprintln("  = hint: run 'arx pkg available' to see verified packages")
+            eprintln("  = hint: you can also install directly via git: 'arx pkg install https://github.com/user/repo.git'")
+            return 1
+        }
+    }
+
+    let dest_dir = bpath_join(mod_root, pkg_name)
+    if Directory.exists(dest_dir) && !force {
+        println("Package '" + pkg_name + "' is already installed in " + dest_dir)
+        println("Use 'arx pkg install " + target + " --force' to re-install.")
+        return 0
+    }
+
+    println("==================================================================")
+    println("  AERIX PACKAGE INSTALLER: " + pkg_name + " v" + pkg_ver)
+    println("==================================================================")
+    println("  Source Repository:  " + repo_url)
+    if local_install {
+        println("  Install Scope:      Local Project (./modules)")
+    } else {
+        println("  Install Scope:      Global System (" + mod_root + ")")
+    }
+    println("  Destination:        " + dest_dir)
+    println("------------------------------------------------------------------")
+
+    let tmp_root = get_pkg_temp_dir()
+    let stage_dir = bpath_join(tmp_root, "aerix_stage_" + pkg_name)
+    if Directory.exists(stage_dir) {
+        let clean_cmd = "powershell -Command \"Remove-Item -Path '" + stage_dir.replace("/", "\\") + "' -Recurse -Force -ErrorAction SilentlyContinue\""
+        Process.execute(clean_cmd)
+    }
+
+    println("[1/4] Cloning package repository via Git...")
+    let clone_cmd = "git clone --depth 1 " + quote_pkg_arg(repo_url) + " " + quote_pkg_arg(stage_dir.replace("/", "\\"))
+    let clone_exit = Process.execute(clone_cmd)
+    if clone_exit != 0 {
+        eprintln("error: failed to clone repository: " + repo_url)
+        eprintln("  = hint: ensure 'git' is installed in your system PATH and network is online")
+        return 1
+    }
+
+    println("[2/4] Executing static security capability audit...")
+    let audit_res = PkgAuditResult()
+    pkg_audit_directory_recursive(stage_dir, audit_res)
+    print_audit_report(pkg_name, audit_res)
+
+    if audit_get(audit_res, 2) > 0 {
+        if !allow_insecure {
+            eprintln("[SECURITY ALERT] Critical process injection / memory hijack APIs detected!")
+            eprintln("Installation BLOCKED for system safety. If you explicitly trust this package, re-run with:")
+            eprintln("  arx pkg install " + target + " --allow-insecure")
+            let clean_cmd = "powershell -Command \"Remove-Item -Path '" + stage_dir.replace("/", "\\") + "' -Recurse -Force\""
+            Process.execute(clean_cmd)
+            return 1
+        } else {
+            println("[WARNING] --allow-insecure supplied: Overriding critical security audit block!")
+        }
+    } else if audit_get(audit_res, 3) > 0 && !allow_insecure {
+        eprintln("[SECURITY WARNING] High-risk process spawning or input hook APIs detected.")
+        eprintln("Installation BLOCKED for system safety. Pass --allow-insecure to override.")
+        let clean_cmd = "powershell -Command \"Remove-Item -Path '" + stage_dir.replace("/", "\\") + "' -Recurse -Force\""
+        Process.execute(clean_cmd)
+        return 1
+    }
+
+    println("[3/4] Copying verified module files to " + dest_dir + "...")
+    if Directory.exists(dest_dir) {
+        let clean_cmd = "powershell -Command \"Remove-Item -Path '" + dest_dir.replace("/", "\\") + "' -Recurse -Force\""
+        Process.execute(clean_cmd)
+    }
+
+    let s_path = stage_dir.replace("/", "\\")
+    let d_path = dest_dir.replace("/", "\\")
+    let copy_cmd = "powershell -Command \"New-Item -ItemType Directory -Path '" + d_path + "' -Force | Out-Null; Copy-Item -Path '" + s_path + "\\*' -Destination '" + d_path + "' -Recurse -Force; Remove-Item -Path '" + d_path + "\\.git' -Recurse -Force -ErrorAction SilentlyContinue\""
+    Process.execute(copy_cmd)
+
+    // Clean staging folder
+    let clean_stage = "powershell -Command \"Remove-Item -Path '" + stage_dir.replace("/", "\\") + "' -Recurse -Force -ErrorAction SilentlyContinue\""
+    Process.execute(clean_stage)
+
+    if local_install {
+        println("[4/4] Updating package manifest...")
+        let manifest_p = bpath_join(cwd, "aerix.json")
+        if !File.exists(manifest_p) {
+            cmd_pkg_init()
+        }
+    } else {
+        println("[4/4] Package registered globally in " + mod_root)
+    }
+
+    println("==================================================================")
+    println("  [SUCCESS] Package '" + pkg_name + "' (v" + pkg_ver + ") successfully installed!")
+    println("  Location: " + dest_dir)
+    println("  Security Status: " + audit_get_risk(audit_res))
+    println("  Import in your code with:")
+    println("      import " + pkg_name)
+    println("==================================================================")
+    return 0
+}
+
+fn cmd_pkg_update(target: str, allow_insecure: bool, local_scope: bool) -> i64 {
+    if target != "" {
+        println("Updating package '" + target + "' to latest version...")
+        return cmd_pkg_install(target, true, allow_insecure, local_scope)
+    }
+
+    // Update all installed community packages
+    mut target_dir = get_aerix_global_modules_dir()
+    if local_scope {
+        let cwd = bpath_normalize(Env.cwd())
+        target_dir = bpath_join(cwd, "modules")
+    }
+
+    if !Directory.exists(target_dir) {
+        println("No modules directory found at " + target_dir)
+        return 0
+    }
+
+    let subdirs = Directory.list_dirs(target_dir)
+    mut updated_count = 0
+    mut i = 0
+    while i < subdirs.len() {
+        let name = subdirs.get(i)
+        // Skip standard library modules
+        if name != "Math" && name != "Random" && name != "Socket" && name != "Time" && name != "Window" {
+            println("------------------------------------------------------------------")
+            println("Checking and updating package '" + name + "'...")
+            let code = cmd_pkg_install(name, true, allow_insecure, local_scope)
+            if code == 0 {
+                updated_count = updated_count + 1
+            }
+        }
+        i = i + 1
+    }
+
+    if updated_count == 0 {
+        println("No third-party packages installed to update.")
+    } else {
+        println("==================================================================")
+        println("  [SUCCESS] Updated " + (updated_count as str) + " package(s) to latest version!")
+        println("==================================================================")
+    }
+    return 0
+}
+
+pub fn cmd_pkg(cli_args: List<str>, cli_argc: i64) -> i64 {
+    if cli_argc <= 2 {
+        print_pkg_usage()
+        return 0
+    }
+
+    let sub = cli_args.get(2)
+    if sub == "help" || sub == "--help" || sub == "-h" {
+        print_pkg_usage()
+        return 0
+    }
+
+    if sub == "available" || sub == "avail" || sub == "remote" {
+        return cmd_pkg_available()
+    }
+
+    if sub == "search" || sub == "find" {
+        mut query = ""
+        if cli_argc >= 4 {
+            query = cli_args.get(3)
+        }
+        return cmd_pkg_search(query)
+    }
+
+    if sub == "info" || sub == "show" || sub == "view" {
+        mut target = ""
+        if cli_argc >= 4 {
+            target = cli_args.get(3)
+        }
+        return cmd_pkg_info(target)
+    }
+
+    if sub == "list" || sub == "ls" {
+        return cmd_pkg_list()
+    }
+
+    if sub == "init" {
+        return cmd_pkg_init()
+    }
+
+    if sub == "audit" || sub == "check" {
+        mut target = ""
+        if cli_argc >= 4 {
+            target = cli_args.get(3)
+        }
+        return cmd_pkg_audit(target)
+    }
+
+    if sub == "update" || sub == "upgrade" || sub == "up" {
+        mut target = ""
+        mut allow_insecure = false
+        mut local_scope = false
+        mut i = 3
+        while i < cli_argc {
+            let arg = cli_args.get(i)
+            if arg == "--allow-insecure" || arg == "--insecure" {
+                allow_insecure = true
+            } else if arg == "--local" {
+                local_scope = true
+            } else if arg == "-g" || arg == "--global" {
+                local_scope = false
+            } else if !arg.starts_with("-") && target == "" {
+                target = arg
+            } else {
+                eprintln("error: unknown option '" + arg + "' for 'arx pkg update'")
+                eprintln("  = help: run 'arx pkg --help' for supported options")
+                return 1
+            }
+            i = i + 1
+        }
+        return cmd_pkg_update(target, allow_insecure, local_scope)
+    }
+
+    if sub == "remove" || sub == "rm" || sub == "uninstall" || sub == "delete" {
+        mut target = ""
+        mut local_remove = false
+        mut i = 3
+        while i < cli_argc {
+            let arg = cli_args.get(i)
+            if arg == "--local" {
+                local_remove = true
+            } else if arg == "-g" || arg == "--global" {
+                local_remove = false
+            } else if !arg.starts_with("-") && target == "" {
+                target = arg
+            } else {
+                eprintln("error: unknown option '" + arg + "' for 'arx pkg remove'")
+                eprintln("  = help: run 'arx pkg --help' for supported options")
+                return 1
+            }
+            i = i + 1
+        }
+        return cmd_pkg_remove(target, local_remove)
+    }
+
+    if sub == "install" || sub == "add" || sub == "get" {
+        mut target = ""
+        mut force = false
+        mut allow_insecure = false
+        mut local_install = false
+        mut i = 3
+        while i < cli_argc {
+            let arg = cli_args.get(i)
+            if arg == "-f" || arg == "--force" {
+                force = true
+            } else if arg == "--allow-insecure" || arg == "--insecure" {
+                allow_insecure = true
+            } else if arg == "--local" {
+                local_install = true
+            } else if arg == "-g" || arg == "--global" {
+                local_install = false
+            } else if !arg.starts_with("-") && target == "" {
+                target = arg
+            } else {
+                eprintln("error: unknown option '" + arg + "' for 'arx pkg install'")
+                eprintln("  = help: run 'arx pkg --help' for supported options")
+                return 1
+            }
+            i = i + 1
+        }
+        return cmd_pkg_install(target, force, allow_insecure, local_install)
+    }
+
+    eprintln("error: unknown package command '" + sub + "'")
+    print_pkg_usage()
+    return 1
+}

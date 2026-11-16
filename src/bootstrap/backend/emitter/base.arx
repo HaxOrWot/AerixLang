@@ -1,0 +1,171 @@
+// Aerix Bootstrap Compiler — Deterministic ANSI C99 Code Generator
+// Emits self-contained C99 targeting stdlib/aerix_rt.h in fixed topological order.
+
+import "../../frontend/ast.arx"
+import "../../middle/types.arx"
+import "../../middle/analyzer/mod.arx"
+
+pub class Emitter {
+    // Frozen AST & semantic info from Analyzer
+    pub nk: List<i64>
+    pub sa: List<str>
+    pub sb: List<str>
+    pub ia: List<i64>
+    pub la: List<i64>
+    pub ra: List<i64>
+    pub ea: List<i64>
+    pub ls: List<i64>
+    pub ll: List<i64>
+    pub ln: List<i64>
+    pub nc: List<i64>
+    pub nf: List<str>
+    pub ch: List<i64>
+    pub ncount: i64
+    pub c_includes: List<str>
+    pub c_inc_count: i64
+
+    pub gen_list_types: List<str>
+    pub gen_list_count: i64
+    pub gen_map_keys: List<str>
+    pub gen_map_vals: List<str>
+    pub gen_map_count: i64
+    pub gen_set_types: List<str>
+    pub gen_set_count: i64
+    pub gen_stack_types: List<str>
+    pub gen_stack_count: i64
+    pub gen_queue_types: List<str>
+    pub gen_queue_count: i64
+    pub gen_deque_types: List<str>
+    pub gen_deque_count: i64
+    pub gen_tuple_types: List<str>
+    pub gen_tuple_count: i64
+    pub seen_generics: Map<str, i64>
+
+    pub cls_names: List<str>
+    pub cls_nodes: List<i64>
+    pub cls_count: i64
+    pub cls_idx_map: Map<str, i64>
+    pub cls_order: List<i64>
+    pub cls_order_count: i64
+    pub cls_base_map: Map<str, str>
+    pub cls_field_types: Map<str, str>
+
+    pub enum_names: List<str>
+    pub enum_nodes: List<i64>
+    pub enum_count: i64
+    pub enum_idx_map: Map<str, i64>
+    pub enum_var_tag: Map<str, i64>
+    pub enum_var_node: Map<str, i64>
+
+    pub global_nodes: List<i64>
+    pub global_count: i64
+    pub fn_nodes: List<i64>
+    pub fn_count: i64
+    pub ext_nodes: List<i64>
+    pub ext_count: i64
+
+    pub node_types: List<str>
+    pub call_targets: List<str>
+    pub call_kinds: List<i64>
+    pub call_fn_nodes: List<i64>
+    pub node_ext: List<str>
+    pub fn_externs: Map<str, str>
+
+    // Output stream & generation state
+    pub out: ByteBuffer
+    pub indent: i64
+    pub tmp_id: i64
+    pub lbl_id: i64
+    pub cur_class: str
+    pub cur_ret_type: str
+    pub is_in_ctor: bool
+    pub has_main_fn: bool
+    pub main_returns_i64: bool
+
+    // Defer statement stack per lexical block
+    pub defer_nodes: List<i64>
+    pub defer_count: i64
+    pub defer_marks: List<i64>
+    pub defer_depth: i64
+
+    init(az: Analyzer) {
+        self.nk = az.nk
+        self.sa = az.sa
+        self.sb = az.sb
+        self.ia = az.ia
+        self.la = az.la
+        self.ra = az.ra
+        self.ea = az.ea
+        self.ls = az.ls
+        self.ll = az.ll
+        self.ln = az.ln
+        self.nc = az.nc
+        self.nf = az.nf
+        self.ch = az.ch
+        self.ncount = az.ncount
+        self.c_includes = az.c_includes
+        self.c_inc_count = az.c_inc_count
+
+        self.gen_list_types = az.gen_list_types
+        self.gen_list_count = az.gen_list_count
+        self.gen_map_keys = az.gen_map_keys
+        self.gen_map_vals = az.gen_map_vals
+        self.gen_map_count = az.gen_map_count
+        self.gen_set_types = az.gen_set_types
+        self.gen_set_count = az.gen_set_count
+        self.gen_stack_types = az.gen_stack_types
+        self.gen_stack_count = az.gen_stack_count
+        self.gen_queue_types = az.gen_queue_types
+        self.gen_queue_count = az.gen_queue_count
+        self.gen_deque_types = az.gen_deque_types
+        self.gen_deque_count = az.gen_deque_count
+        self.gen_tuple_types = az.gen_tuple_types
+        self.gen_tuple_count = az.gen_tuple_count
+        self.seen_generics = az.seen_generics
+
+        self.cls_names = az.cls_names
+        self.cls_nodes = az.cls_nodes
+        self.cls_count = az.cls_count
+        self.cls_idx_map = az.cls_idx_map
+        self.cls_order = az.cls_order
+        self.cls_order_count = az.cls_order_count
+        self.cls_base_map = az.cls_base_map
+        self.cls_field_types = az.cls_field_types
+
+        self.enum_names = az.enum_names
+        self.enum_nodes = az.enum_nodes
+        self.enum_count = az.enum_count
+        self.enum_idx_map = az.enum_idx_map
+        self.enum_var_tag = az.enum_var_tag
+        self.enum_var_node = az.enum_var_node
+
+        self.global_nodes = az.global_nodes
+        self.global_count = az.global_count
+        self.fn_nodes = az.fn_nodes
+        self.fn_count = az.fn_count
+        self.ext_nodes = az.ext_nodes
+        self.ext_count = az.ext_count
+
+        self.node_types = az.node_types
+        self.call_targets = az.call_targets
+        self.call_kinds = az.call_kinds
+        self.call_fn_nodes = az.call_fn_nodes
+        self.node_ext = az.node_ext
+        self.fn_externs = az.fn_externs
+
+        self.out = ByteBuffer()
+        self.indent = 0
+        self.tmp_id = 0
+        self.lbl_id = 0
+        self.cur_class = ""
+        self.cur_ret_type = "void"
+        self.is_in_ctor = false
+        self.has_main_fn = false
+        self.main_returns_i64 = false
+
+        self.defer_nodes = List<i64>()
+        self.defer_count = 0
+        self.defer_marks = List<i64>()
+        self.defer_depth = 0
+    }
+}

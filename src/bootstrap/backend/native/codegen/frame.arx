@@ -1,0 +1,144 @@
+import "./mod.arx"
+
+extend NativeCodegen {
+    // Scope & Frame Helpers
+    priv fn push_scope() {
+        self.scope_marks.push(self.scope_names.len())
+        self.defer_marks.push(self.defer_nodes.len())
+    }
+
+    priv fn pop_scope() {
+        let dmark = self.defer_marks.pop()
+        while self.defer_nodes.len() > dmark {
+            self.defer_nodes.pop()
+        }
+        let mark = self.scope_marks.pop()
+        while self.scope_names.len() > mark {
+            self.scope_names.pop()
+            self.scope_offs.pop()
+            self.scope_types.pop()
+        }
+    }
+
+    priv fn emit_scope_defers(mark: i64) {
+        mut i = self.defer_nodes.len() - 1
+        while i >= mark {
+            self.emit_stmt(self.defer_nodes.get(i))
+            i = i - 1
+        }
+    }
+
+    priv fn emit_scope_drops(mark: i64) {
+        let a = self.asmb
+        mut i = self.scope_names.len() - 1
+        while i >= mark {
+            let st = self.scope_types.get(i)
+            if ncg_is_str(st) {
+                let off = self.scope_offs.get(i)
+                a.mov_rm64(REG_RCX(), REG_RBP(), -off)
+                a.call_rel32(self.rt.lbl("__rt_arc_release"))
+            }
+            i = i - 1
+        }
+    }
+
+    priv fn emit_temp_drops(mark: i64) {
+        let a = self.asmb
+        mut i = self.temp_str_slots.len() - 1
+        while i >= mark {
+            let slot = self.temp_str_slots.get(i)
+            a.mov_rm64(REG_RCX(), REG_RBP(), -slot)
+            a.call_rel32(self.rt.lbl("__rt_arc_release"))
+            i = i - 1
+        }
+        while self.temp_str_slots.len() > mark {
+            self.temp_str_slots.pop()
+        }
+    }
+
+    priv fn track_temp_str() {
+        let a = self.asmb
+        let slot = self.alloc_slot("", "str")
+        a.mov_mr64(REG_RBP(), -slot, REG_RAX())
+        self.temp_str_slots.push(slot)
+    }
+
+    priv fn alloc_slot(vname: str, vtype: str) -> i64 {
+        let off = self.next_local_off
+        self.next_local_off = self.next_local_off + 8
+        if self.next_local_off > self.max_local_off {
+            self.max_local_off = self.next_local_off
+        }
+        if vname != "" {
+            self.scope_names.push(vname)
+            self.scope_offs.push(off)
+            self.scope_types.push(btype_norm(vtype))
+        }
+        return off
+    }
+
+    priv fn find_local(vname: str) -> i64 {
+        mut i = self.scope_names.len() - 1
+        while i >= 0 {
+            if self.scope_names.get(i) == vname {
+                return self.scope_offs.get(i)
+            }
+            i = i - 1
+        }
+        return -1
+    }
+
+    priv fn find_local_type(vname: str) -> str {
+        mut i = self.scope_names.len() - 1
+        while i >= 0 {
+            if self.scope_names.get(i) == vname {
+                return self.scope_types.get(i)
+            }
+            i = i - 1
+        }
+        return ""
+    }
+
+    // Call helper respecting Win64 ABI (preallocated bottom stack frame with shadow space)
+    priv fn emit_call_with_temps(lbl: i64, is_iat: bool, arg_temps: List<i64>) {
+        let a = self.asmb
+        let n = arg_temps.len()
+        if n > self.max_call_args { self.max_call_args = n }
+        mut i = n - 1
+        while i >= 4 {
+            a.mov_rm64(REG_RAX(), REG_RBP(), -arg_temps.get(i))
+            a.mov_mr64(REG_RSP(), 32 + (i - 4) * 8, REG_RAX())
+            i = i - 1
+        }
+        if n >= 4 {
+            a.mov_rm64(REG_R9(), REG_RBP(), -arg_temps.get(3))
+            a.movq_xmm_r(3, REG_R9())
+        }
+        if n >= 3 {
+            a.mov_rm64(REG_R8(), REG_RBP(), -arg_temps.get(2))
+            a.movq_xmm_r(2, REG_R8())
+        }
+        if n >= 2 {
+            a.mov_rm64(REG_RDX(), REG_RBP(), -arg_temps.get(1))
+            a.movq_xmm_r(1, REG_RDX())
+        }
+        if n >= 1 {
+            a.mov_rm64(REG_RCX(), REG_RBP(), -arg_temps.get(0))
+            a.movq_xmm_r(0, REG_RCX())
+        }
+        if is_iat {
+            a.call_rip_iat(lbl)
+        } else {
+            a.call_rel32(lbl)
+        }
+    }
+
+    priv fn fn_symbol_name(nid: i64) -> str {
+        let t = self.call_targets.get(nid)
+        if t != "" { return t }
+        let nm = self.sa.get(nid)
+        if nm == "main" { return "__arx_main_fn" }
+        return "arx_" + nm
+    }
+
+}

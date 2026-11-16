@@ -1,0 +1,259 @@
+import "./mod.arx"
+
+extend Analyzer {
+    // --- Pass 1: Collect Declarations & Signatures ---
+
+    priv fn count_decls() {
+        mut ri = 0
+        while ri < self.root_count {
+            let nid = self.root_decls.get(ri)
+            let k = self.nk.get(nid)
+            if k == NK_FN_DEF() {
+                let fname = self.sa.get(nid)
+                self.inc_over("fn::" + fname)
+                self.fn_nodes.push(nid)
+                self.fn_count = self.fn_count + 1
+            } else if k == NK_CEXTERN() {
+                self.fn_nodes.push(nid)
+                self.fn_count = self.fn_count + 1
+            } else if k == NK_CLASS_DEF() {
+                let cname = self.sa.get(nid)
+                let base_cls = self.sb.get(nid)
+                self.cls_idx_map.insert(cname, self.cls_count)
+                self.cls_names.push(cname)
+                self.cls_nodes.push(nid)
+                self.cls_count = self.cls_count + 1
+                self.cls_base_map.insert(cname, base_cls)
+
+                let ctors_grp = self.ra.get(nid)
+                let ccnt = self.child_count(ctors_grp)
+                mut ci = 0
+                while ci < ccnt {
+                    self.inc_over("ctor::" + cname)
+                    ci = ci + 1
+                }
+                let methods_grp = self.ea.get(nid)
+                let mcnt = self.child_count(methods_grp)
+                mut mi = 0
+                while mi < mcnt {
+                    let mid = self.child_at(methods_grp, mi)
+                    self.inc_over("m::" + cname + "::" + self.sa.get(mid))
+                    mi = mi + 1
+                }
+            } else if k == NK_ENUM_DEF() {
+                let ename = self.sa.get(nid)
+                self.enum_idx_map.insert(ename, self.enum_count)
+                self.enum_names.push(ename)
+                self.enum_nodes.push(nid)
+                self.enum_count = self.enum_count + 1
+            } else if k == NK_EXTEND_DEF() {
+                let tname = btype_norm(self.sa.get(nid))
+                self.ext_nodes.push(nid)
+                self.ext_count = self.ext_count + 1
+                let mcnt = self.child_count(nid)
+                mut mi = 0
+                while mi < mcnt {
+                    let mid = self.child_at(nid, mi)
+                    self.inc_over("m::" + tname + "::" + self.sa.get(mid))
+                    mi = mi + 1
+                }
+            } else if k == NK_VAR_DECL_GLOBAL() {
+                self.global_nodes.push(nid)
+                self.global_count = self.global_count + 1
+            }
+            ri = ri + 1
+        }
+    }
+
+    priv fn build_sigs() {
+        mut ri = 0
+        while ri < self.root_count {
+            let nid = self.root_decls.get(ri)
+            let k = self.nk.get(nid)
+            if k == NK_FN_DEF() {
+                let fname = self.sa.get(nid)
+                let ret_t = btype_norm(self.sb.get(nid))
+                self.ensure_generic_type(ret_t)
+                let pg = self.la.get(nid)
+                self.scan_params_generics(pg)
+                let okey = "fn::" + fname
+                mut ocnt = 1
+                if self.over_counts.has_key(okey) { ocnt = self.over_counts.get(okey) }
+                mut cname = "arx_" + fname
+                if fname == "main" {
+                    cname = "arx_main"
+                } else if ocnt > 1 {
+                    cname = "arx_" + fname + "__" + self.param_sig_str(pg)
+                }
+                self.reg_sig(okey, nid, cname, ret_t, 0)
+            } else if k == NK_CEXTERN() {
+                let fname = self.sa.get(nid)
+                let ret_t = btype_norm(self.sb.get(nid))
+                self.ensure_generic_type(ret_t)
+                self.scan_params_generics(self.la.get(nid))
+                self.reg_sig("fn::" + fname, nid, fname, ret_t, 0)
+            } else if k == NK_CLASS_DEF() {
+                let cname = self.sa.get(nid)
+                let fields_grp = self.la.get(nid)
+                let fcnt = self.child_count(fields_grp)
+                mut fi = 0
+                while fi < fcnt {
+                    let fid = self.child_at(fields_grp, fi)
+                    let ft = btype_norm(self.sb.get(fid))
+                    self.ensure_generic_type(ft)
+                    self.cls_field_types.insert(cname + "::" + self.sa.get(fid), ft)
+                    self.node_types.set(fid, ft)
+                    fi = fi + 1
+                }
+                let ctors_grp = self.ra.get(nid)
+                let ccnt = self.child_count(ctors_grp)
+                mut ck_cnt = 1
+                if self.over_counts.has_key("ctor::" + cname) {
+                    ck_cnt = self.over_counts.get("ctor::" + cname)
+                }
+                mut ci = 0
+                while ci < ccnt {
+                    let cid = self.child_at(ctors_grp, ci)
+                    let pg = self.la.get(cid)
+                    self.scan_params_generics(pg)
+                    mut fnm = "Arx_" + cname + "_init"
+                    if ck_cnt > 1 {
+                        fnm = fnm + "__" + self.param_sig_str(pg)
+                    }
+                    self.reg_sig("ctor::" + cname, cid, fnm, cname, 0)
+                    ci = ci + 1
+                }
+                let methods_grp = self.ea.get(nid)
+                let mcnt = self.child_count(methods_grp)
+                mut mi = 0
+                while mi < mcnt {
+                    let mid = self.child_at(methods_grp, mi)
+                    let mname = self.sa.get(mid)
+                    let mret = btype_norm(self.sb.get(mid))
+                    self.ensure_generic_type(mret)
+                    let mpg = self.la.get(mid)
+                    self.scan_params_generics(mpg)
+                    let mkey = "m::" + cname + "::" + mname
+                    mut m_oc = 1
+                    if self.over_counts.has_key(mkey) { m_oc = self.over_counts.get(mkey) }
+                    mut cm = "Arx_" + cname + "_" + mname
+                    if m_oc > 1 {
+                        cm = cm + "__" + self.param_sig_str(mpg)
+                    }
+                    mut is_st = 0
+                    if has_flag(self.ia.get(mid), FLAG_STATIC()) { is_st = 1 }
+                    self.reg_sig(mkey, mid, cm, mret, is_st)
+                    mi = mi + 1
+                }
+            } else if k == NK_ENUM_DEF() {
+                let ename = self.sa.get(nid)
+                let vcnt = self.child_count(nid)
+                mut vi = 0
+                while vi < vcnt {
+                    let vid = self.child_at(nid, vi)
+                    let vname = self.sa.get(vid)
+                    let vkey = ename + "::" + vname
+                    self.enum_var_tag.insert(vkey, vi)
+                    self.enum_var_node.insert(vkey, vid)
+                    let fcnt = self.child_count(vid)
+                    mut fi = 0
+                    while fi < fcnt {
+                        let pid = self.child_at(vid, fi)
+                        self.ensure_generic_type(btype_norm(self.sb.get(pid)))
+                        fi = fi + 1
+                    }
+                    vi = vi + 1
+                }
+            } else if k == NK_EXTEND_DEF() {
+                let tname = btype_norm(self.sa.get(nid))
+                self.ensure_generic_type(tname)
+                let mcnt = self.child_count(nid)
+                mut mi = 0
+                while mi < mcnt {
+                    let mid = self.child_at(nid, mi)
+                    let mname = self.sa.get(mid)
+                    let mret = btype_norm(self.sb.get(mid))
+                    self.ensure_generic_type(mret)
+                    let mpg = self.la.get(mid)
+                    self.scan_params_generics(mpg)
+                    let mkey = "m::" + tname + "::" + mname
+                    mut m_oc = 1
+                    if self.over_counts.has_key(mkey) { m_oc = self.over_counts.get(mkey) }
+                    mut cm = "Arx_ext_" + btype_mangle(tname) + "_" + mname
+                    if m_oc > 1 {
+                        cm = cm + "__" + self.param_sig_str(mpg)
+                    }
+                    mut is_st = 0
+                    if has_flag(self.ia.get(mid), FLAG_STATIC()) { is_st = 1 }
+                    self.reg_sig(mkey, mid, cm, mret, is_st)
+                    mi = mi + 1
+                }
+            }
+            ri = ri + 1
+        }
+    }
+
+    priv fn scan_params_generics(params_grp: i64) {
+        if params_grp < 0 { return }
+        let n = self.child_count(params_grp)
+        mut i = 0
+        while i < n {
+            let pid = self.child_at(params_grp, i)
+            let pt = btype_norm(self.sb.get(pid))
+            self.ensure_generic_type(pt)
+            i = i + 1
+        }
+    }
+
+    priv fn sort_classes_topo() {
+        let visited = List<i64>()
+        mut i = 0
+        while i < self.cls_count {
+            visited.push(0)
+            i = i + 1
+        }
+        mut idx = 0
+        while idx < self.cls_count {
+            self.visit_cls_topo(idx, visited)
+            idx = idx + 1
+        }
+    }
+
+    priv fn visit_cls_topo(ci: i64, visited: List<i64>) {
+        if ci < 0 || ci >= self.cls_count { return }
+        if visited.get(ci) == 2 { return }
+        if visited.get(ci) == 1 { return }
+        visited.set(ci, 1)
+        let nid = self.cls_nodes.get(ci)
+        let base_cls = self.sb.get(nid)
+        if base_cls != "" && self.cls_idx_map.has_key(base_cls) {
+            self.visit_cls_topo(self.cls_idx_map.get(base_cls), visited)
+        }
+        // Also visit class-typed value fields so embedded structs come first!
+        let fields_grp = self.la.get(nid)
+        let fcnt = self.child_count(fields_grp)
+        mut fi = 0
+        while fi < fcnt {
+            let fid = self.child_at(fields_grp, fi)
+            let ft = btype_norm(self.sb.get(fid))
+            if self.cls_idx_map.has_key(ft) {
+                self.visit_cls_topo(self.cls_idx_map.get(ft), visited)
+            } else if btype_is_tuple(ft) {
+                let tcnt = btype_tuple_count(ft)
+                mut ti = 0
+                while ti < tcnt {
+                    let te = btype_norm(btype_tuple_elem(ft, ti))
+                    if self.cls_idx_map.has_key(te) {
+                        self.visit_cls_topo(self.cls_idx_map.get(te), visited)
+                    }
+                    ti = ti + 1
+                }
+            }
+            fi = fi + 1
+        }
+        visited.set(ci, 2)
+        self.cls_order.push(ci)
+        self.cls_order_count = self.cls_order_count + 1
+    }
+
+}
