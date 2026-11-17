@@ -104,6 +104,20 @@ namespace AerixSetup
             }
         }
 
+        protected override void OnFormClosing(FormClosingEventArgs e)
+        {
+            if (_isBusy)
+            {
+                e.Cancel = true;
+                return;
+            }
+            if (_uninstallMode && _uninstDone)
+            {
+                InstallerEngine.ScheduleSelfDeleteIfRunningFrom(_opts.InstallDir);
+            }
+            base.OnFormClosing(e);
+        }
+
         protected override CreateParams CreateParams
         {
             get
