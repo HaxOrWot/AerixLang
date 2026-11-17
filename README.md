@@ -1,13 +1,8 @@
-# Aerix (`.arx`)
-
 <div align="center">
 
-```text
-       ___         _      
-      / _ \___ ___(_)_ __ 
-     / __ / -_) __/ /\ \ /
-    /_/ |_\__/_/ /_//_\_\ 
-```
+<img src="editors/vscode-aerix/icons/aerix-icon.png" width="128" height="128" alt="Aerix Logo" />
+
+# Aerix (`.arx`)
 
 ### **The Expressive Native Systems Programming Language**
 *The developer ergonomics of modern scripting &bull; The bare-metal velocity of native x86-64 machine code*
