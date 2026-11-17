@@ -63,9 +63,9 @@ namespace AerixSetup
         private Button _btnVerifyTerminal;
 
         // Uninstall controls
-        private Label _lblUninstInfo;
         private AerixProgressBar _uninstProgress;
         private Label _lblUninstStatus;
+        private Label _lblUninstNote;
         private Button _btnUninstRun;
         private Button _btnUninstClose;
         private bool _uninstDone = false;

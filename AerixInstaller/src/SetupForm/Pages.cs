@@ -344,28 +344,79 @@ namespace AerixSetup
             }
             _opts.InstallDir = detected;
 
-            var title = MakeHeaderLabel("Uninstall Aerix " + _version, 0, 6);
-            _lblUninstInfo = new Label();
-            _lblUninstInfo.Text = "This wizard will completely remove Aerix binaries, standard library, environment variables, PATH records, and .arx file associations from:\r\n\r\n" + _opts.InstallDir;
-            _lblUninstInfo.ForeColor = TextPrimary;
-            _lblUninstInfo.Font = new Font("Segoe UI", 9.6F);
-            _lblUninstInfo.Location = new Point(0, 50);
-            _lblUninstInfo.Size = new Size(740, 90);
+            var title = MakeHeaderLabel("Uninstall Aerix " + _version, 0, 0);
+            var sub = MakeSubLabel(
+                "Completely remove Aerix compiler, standard library, and system integrations.",
+                0, 32, 528, 22);
 
+            // Warning / Impact Scope Card (122px)
+            var cardScope = MakeCard(0, 58, 528, 122);
+
+            var lblWarn = new Label();
+            lblWarn.UseMnemonic = false;
+            lblWarn.Text = "⚠️  The following components will be removed from your PC:";
+            lblWarn.ForeColor = Color.FromArgb(252, 211, 77); // Amber-300
+            lblWarn.Font = new Font("Segoe UI Semibold", 8.8F);
+            lblWarn.Location = new Point(14, 10);
+            lblWarn.AutoSize = true;
+            cardScope.Controls.Add(lblWarn);
+
+            var row1 = MakeFeatureRow("🗑️", "Compiler Toolchain", "Executables (arx.exe, arxc.exe), tools, and C99 seeds.", 14, 34);
+            var row2 = MakeFeatureRow("⚙️", "Environment & PATH", "System AERIX_HOME, AERIX_STDLIB, and %PATH% entries.", 14, 62);
+            var row3 = MakeFeatureRow("📄", "File Associations", ".arx source file types, context menus, and registry keys.", 14, 90);
+
+            cardScope.Controls.Add(row1);
+            cardScope.Controls.Add(row2);
+            cardScope.Controls.Add(row3);
+
+            // Install Directory Card (64px)
+            var cardDir = MakeCard(0, 190, 528, 64);
+            var lblDirHdr = new Label();
+            lblDirHdr.UseMnemonic = false;
+            lblDirHdr.Text = "Installation Directory to Remove:";
+            lblDirHdr.ForeColor = TextMuted;
+            lblDirHdr.Font = new Font("Segoe UI Semibold", 8.6F);
+            lblDirHdr.Location = new Point(14, 9);
+            lblDirHdr.AutoSize = true;
+            cardDir.Controls.Add(lblDirHdr);
+
+            var lblPath = new Label();
+            lblPath.UseMnemonic = false;
+            lblPath.Text = "📁  " + _opts.InstallDir;
+            lblPath.ForeColor = AccentCyan;
+            lblPath.Font = new Font("Segoe UI Semibold", 9.8F);
+            lblPath.Location = new Point(14, 31);
+            lblPath.Size = new Size(500, 24);
+            cardDir.Controls.Add(lblPath);
+
+            // Progress & Status Section
             _lblUninstStatus = new Label();
-            _lblUninstStatus.Text = "Click Uninstall to proceed.";
-            _lblUninstStatus.ForeColor = TextMuted;
-            _lblUninstStatus.Location = new Point(0, 160);
-            _lblUninstStatus.Size = new Size(740, 24);
+            _lblUninstStatus.UseMnemonic = false;
+            _lblUninstStatus.Text = "Ready. Click 'Uninstall' to proceed.";
+            _lblUninstStatus.ForeColor = TextPrimary;
+            _lblUninstStatus.Font = new Font("Segoe UI Semibold", 9.2F);
+            _lblUninstStatus.Location = new Point(0, 266);
+            _lblUninstStatus.Size = new Size(528, 22);
 
             _uninstProgress = new AerixProgressBar();
-            _uninstProgress.Location = new Point(0, 192);
-            _uninstProgress.Size = new Size(740, 16);
+            _uninstProgress.Location = new Point(0, 292);
+            _uninstProgress.Size = new Size(528, 18);
+
+            _lblUninstNote = new Label();
+            _lblUninstNote.UseMnemonic = false;
+            _lblUninstNote.Text = "💡 Tip: Any user projects or custom .arx files outside " + _opts.InstallDir + " will remain untouched.";
+            _lblUninstNote.ForeColor = TextMuted;
+            _lblUninstNote.Font = new Font("Segoe UI", 8.6F);
+            _lblUninstNote.Location = new Point(0, 320);
+            _lblUninstNote.Size = new Size(528, 36);
 
             _contentHost.Controls.Add(title);
-            _contentHost.Controls.Add(_lblUninstInfo);
+            _contentHost.Controls.Add(sub);
+            _contentHost.Controls.Add(cardScope);
+            _contentHost.Controls.Add(cardDir);
             _contentHost.Controls.Add(_lblUninstStatus);
             _contentHost.Controls.Add(_uninstProgress);
+            _contentHost.Controls.Add(_lblUninstNote);
 
             _btnUninstRun = MakeButton("Uninstall", true);
             _btnUninstRun.BackColor = AccentDanger;

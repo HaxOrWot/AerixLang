@@ -96,7 +96,7 @@ namespace AerixSetup
 
             Controls.Add(_contentHost);
             Controls.Add(_footer);
-            if (!_uninstallMode) Controls.Add(_sidebar);
+            Controls.Add(_sidebar);
             Controls.Add(titleBar);
             Controls.Add(topAccent);
         }
@@ -190,12 +190,14 @@ namespace AerixSetup
             }
 
             // Step Indicator Navigation
-            string[] steps = { "Welcome & License", "Options & IDEs", "Installing", "Ready to Code" };
+            string[] steps = _uninstallMode
+                ? new string[] { "Confirm Removal", "Uninstalling", "Complete" }
+                : new string[] { "Welcome & License", "Options & IDEs", "Installing", "Ready to Code" };
             int y = 106;
             for (int i = 0; i < steps.Length; i++)
             {
                 bool active = (i == _pageIndex);
-                bool done = (i < _pageIndex);
+                bool done = (i < _pageIndex) || (i == _pageIndex && _uninstallMode && _uninstDone);
 
                 // Connecting vertical step lines
                 if (i < steps.Length - 1)

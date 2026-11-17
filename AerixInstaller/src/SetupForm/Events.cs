@@ -16,6 +16,8 @@ namespace AerixSetup
         {
             if (_isBusy) return;
             _isBusy = true;
+            _pageIndex = 1;
+            if (_sidebar != null) _sidebar.Invalidate();
             _btnUninstRun.Enabled = false;
             _btnUninstClose.Enabled = false;
 
@@ -35,7 +37,16 @@ namespace AerixSetup
                 {
                     _isBusy = false;
                     _uninstDone = ok;
-                    _btnUninstClose.Text = "Close";
+                    _pageIndex = ok ? 2 : 1;
+                    if (_sidebar != null) _sidebar.Invalidate();
+                    _btnUninstRun.Visible = false;
+                    _btnUninstClose.Text = ok ? "Finish" : "Close";
+                    if (ok)
+                    {
+                        _btnUninstClose.BackColor = AccentCyan;
+                        _btnUninstClose.ForeColor = BgHeader;
+                        _btnUninstClose.FlatAppearance.MouseOverBackColor = Color.FromArgb(100, 240, 255);
+                    }
                     _btnUninstClose.Enabled = true;
                     if (!ok)
                     {
@@ -45,7 +56,12 @@ namespace AerixSetup
                     else
                     {
                         _lblUninstStatus.ForeColor = AccentGreen;
-                        _lblUninstStatus.Text = "Aerix has been cleanly uninstalled.";
+                        _lblUninstStatus.Text = "✓ Aerix has been cleanly uninstalled.";
+                        if (_lblUninstNote != null)
+                        {
+                            _lblUninstNote.Text = "All binaries, registry entries, and PATH variables were successfully removed.";
+                            _lblUninstNote.ForeColor = TextPrimary;
+                        }
                     }
                 });
             });
