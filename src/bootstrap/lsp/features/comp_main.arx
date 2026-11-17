@@ -132,40 +132,50 @@ pub fn lsp_build_completion_json(source: str, az: Analyzer, doc_path: str, line0
     let enc_cls = lsp_enclosing_class_at(az, doc_path, line1)
 
     // Scoped local, parameter, for-loop variables & module globals in current file
-    mut ni = 0
-    while ni < az.ncount {
-        let k = az.nk.get(ni)
-        let nln = az.ln.get(ni)
-        if az.nf.get(ni) == doc_path && nln <= line1 {
-            mut is_in_scope = false
-            if k == NK_VAR_DECL_GLOBAL() {
-                is_in_scope = true
-            } else if k == NK_VAR_DECL() || k == NK_PARAM() || k == NK_FOR() {
-                if in_fn {
-                    is_in_scope = (nln >= fn_start)
-                } else {
-                    is_in_scope = false
-                }
-            }
-            if is_in_scope {
-                mut vnm = az.sa.get(ni)
-                if k == NK_FOR() && az.sb.get(ni) != "" && vnm == "" { vnm = az.sb.get(ni) }
-                if vnm != "" && !seen.has_key("v::" + vnm) {
-                    seen.insert("v::" + vnm, 1)
-                    mut vt = btype_norm(az.node_types.get(ni))
-                    if (vt == "" || vt == "void") && k != NK_FOR() { vt = btype_norm(az.sb.get(ni)) }
-                    if vt == "" || vt == "void" { vt = lsp_resolve_var_type(az, doc_path, line1, vnm, source) }
-                    let matched = lsp_type_matches(vt, expected_t)
-                    mut stxt = "0_" + vnm
-                    if matched { stxt = "00_" + vnm }
-                    let fst = is_first.get(0) == 1
-                    is_first.set(0, 0)
-                    emit_comp_item_ex(jb, vnm, "", vt, CKIND_VARIABLE(), vnm + ": " + vt, "",
-                                      "", stxt, "", -1, 0, 0, "", matched, fst)
-                }
+    lsp_ensure_doc_index(az, doc_path, source)
+    mut vi = 0
+    let vcnt = az.doc_idx_var_nodes.len()
+    while vi < vcnt {
+        let nln = az.doc_idx_var_lines.get(vi)
+        let fst = az.doc_idx_var_fn_starts.get(vi)
+        mut is_in_scope = false
+        if in_fn {
+            is_in_scope = (fst == fn_start && nln <= line1)
+        }
+        if is_in_scope {
+            let vnm = az.doc_idx_var_names.get(vi)
+            if vnm != "" && !seen.has_key("v::" + vnm) {
+                seen.insert("v::" + vnm, 1)
+                mut vt = az.doc_idx_var_types.get(vi)
+                if vt == "" || vt == "void" { vt = lsp_resolve_var_type(az, doc_path, line1, vnm, source) }
+                let matched = lsp_type_matches(vt, expected_t)
+                mut stxt = "0_" + vnm
+                if matched { stxt = "00_" + vnm }
+                let fst_flag = is_first.get(0) == 1
+                is_first.set(0, 0)
+                emit_comp_item_ex(jb, vnm, "", vt, CKIND_VARIABLE(), vnm + ": " + vt, "",
+                                  "", stxt, "", -1, 0, 0, "", matched, fst_flag)
             }
         }
-        ni = ni + 1
+        vi = vi + 1
+    }
+
+    mut gi = 0
+    let gcnt = az.doc_idx_global_nodes.len()
+    while gi < gcnt {
+        let gnm = az.doc_idx_global_names.get(gi)
+        if gnm != "" && !seen.has_key("v::" + gnm) {
+            seen.insert("v::" + gnm, 1)
+            let gt = az.doc_idx_global_types.get(gi)
+            let matched = lsp_type_matches(gt, expected_t)
+            mut stxt = "0_" + gnm
+            if matched { stxt = "00_" + gnm }
+            let fst_flag = is_first.get(0) == 1
+            is_first.set(0, 0)
+            emit_comp_item_ex(jb, gnm, "", gt, CKIND_VARIABLE(), gnm + ": " + gt, "",
+                              "", stxt, "", -1, 0, 0, "", matched, fst_flag)
+        }
+        gi = gi + 1
     }
 
     // Enclosing class implicit self members when inside a class

@@ -1,6 +1,6 @@
 {
   "name": "Aerix",
-  "version": "3.0.0-beta.2",
+  "version": "3.0.0-beta.3",
   "publisher": "HaxOrWot",
   "default_install_dir": "%LOCALAPPDATA%\\Programs\\Aerix",
   "binaries": [
@@ -19,7 +19,7 @@
     { "source": "src\\bootstrap\\seed\\arxc.c (compiled)", "dest": "bin\\arxc.exe" },
     { "source": "stdlib\\aerix_rt.h", "dest": "stdlib\\aerix_rt.h" },
     { "source": "modules\\*", "dest": "modules\\*" },
-    { "source": "editors\\vscode-aerix\\aerix-3.0.0-beta.2.vsix", "dest": "editors\\aerix-3.0.0-beta.2.vsix" },
+    { "source": "editors\\vscode-aerix\\aerix-3.0.0-beta.3.vsix", "dest": "editors\\aerix-3.0.0-beta.3.vsix" },
     { "source": "editors\\vscode-aerix\\*", "dest": "editors\\extension\\*" },
     { "source": "AerixInstaller\\assets\\aerix.ico", "dest": "assets\\aerix.ico" },
     { "source": "AerixInstaller\\assets\\aerix_file.ico", "dest": "assets\\aerix_file.ico" },

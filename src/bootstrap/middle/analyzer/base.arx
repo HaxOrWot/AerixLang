@@ -127,6 +127,22 @@ pub class Analyzer {
     pub has_errors: i64
     priv unresolved_nodes: Map<i64, i64>
 
+    // Document-level spatial / scoped index for fast LSP lookups
+    pub doc_idx_ready: bool
+    pub doc_idx_file: str
+    pub doc_idx_fn_nodes: List<i64>
+    pub doc_idx_fn_starts: List<i64>
+    pub doc_idx_fn_ends: List<i64>
+    pub doc_idx_var_nodes: List<i64>
+    pub doc_idx_var_lines: List<i64>
+    pub doc_idx_var_names: List<str>
+    pub doc_idx_var_types: List<str>
+    pub doc_idx_var_fn_starts: List<i64>
+    pub doc_idx_global_nodes: List<i64>
+    pub doc_idx_global_lines: List<i64>
+    pub doc_idx_global_names: List<str>
+    pub doc_idx_global_types: List<str>
+
     init(p: Parser) {
         self.nk = p.nk
         self.sa = p.sa
@@ -238,6 +254,21 @@ pub class Analyzer {
         self.cur_ret_type = "void"
         self.cur_fn_kind = 0
         self.unresolved_nodes = Map<i64, i64>()
+
+        self.doc_idx_ready = false
+        self.doc_idx_file = ""
+        self.doc_idx_fn_nodes = List<i64>()
+        self.doc_idx_fn_starts = List<i64>()
+        self.doc_idx_fn_ends = List<i64>()
+        self.doc_idx_var_nodes = List<i64>()
+        self.doc_idx_var_lines = List<i64>()
+        self.doc_idx_var_names = List<str>()
+        self.doc_idx_var_types = List<str>()
+        self.doc_idx_var_fn_starts = List<i64>()
+        self.doc_idx_global_nodes = List<i64>()
+        self.doc_idx_global_lines = List<i64>()
+        self.doc_idx_global_names = List<str>()
+        self.doc_idx_global_types = List<str>()
         mut init_errs = 0
         mut ei0 = 0
         while ei0 < self.err_count {

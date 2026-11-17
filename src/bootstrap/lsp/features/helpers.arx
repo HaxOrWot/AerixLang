@@ -242,3 +242,109 @@ fn lsp_block_end_line1(source: str, decl_ln1: i64) -> i64 {
     return cur_ln
 }
 
+pub fn lsp_pos_to_byte_offset(source: str, line0: i64, char0: i64) -> i64 {
+    let n = source.len()
+    mut cur_line = 0
+    mut i = 0
+    while cur_line < line0 && i < n {
+        if source.byte_at(i) == 10 {
+            cur_line = cur_line + 1
+        }
+        i = i + 1
+    }
+    mut col = 0
+    while col < char0 && i < n {
+        let b = source.byte_at(i)
+        if b == 10 || b == 13 { break }
+        col = col + 1
+        i = i + 1
+    }
+    return i
+}
+
+pub fn lsp_splice_text(source: str, sl: i64, sc: i64, el: i64, ec: i64, replacement: str) -> str {
+    let start_off = lsp_pos_to_byte_offset(source, sl, sc)
+    let end_off = lsp_pos_to_byte_offset(source, el, ec)
+    let n = source.len()
+    mut s_off = start_off
+    if s_off < 0 { s_off = 0 }
+    if s_off > n { s_off = n }
+    mut e_off = end_off
+    if e_off < s_off { e_off = s_off }
+    if e_off > n { e_off = n }
+    let prefix = source.slice(0, s_off)
+    let suffix = source.slice(e_off, n)
+    return prefix + replacement + suffix
+}
+
+pub fn lsp_ensure_doc_index(az: Analyzer, doc_path: str, source: str) {
+    if az.doc_idx_ready && az.doc_idx_file == doc_path { return }
+    az.doc_idx_file = doc_path
+    az.doc_idx_fn_nodes.clear()
+    az.doc_idx_fn_starts.clear()
+    az.doc_idx_fn_ends.clear()
+    az.doc_idx_var_nodes.clear()
+    az.doc_idx_var_lines.clear()
+    az.doc_idx_var_names.clear()
+    az.doc_idx_var_types.clear()
+    az.doc_idx_var_fn_starts.clear()
+    az.doc_idx_global_nodes.clear()
+    az.doc_idx_global_lines.clear()
+    az.doc_idx_global_names.clear()
+    az.doc_idx_global_types.clear()
+
+    // 1. Index all functions and globals in doc_path
+    mut i = 0
+    while i < az.ncount {
+        let k = az.nk.get(i)
+        if (k == NK_FN_DEF() || k == NK_INIT_DEF() || k == NK_DROP_DEF()) && az.nf.get(i) == doc_path {
+            let st = az.ln.get(i)
+            mut ed = 1000000
+            if source != "" { ed = lsp_block_end_line1(source, st) }
+            az.doc_idx_fn_nodes.push(i)
+            az.doc_idx_fn_starts.push(st)
+            az.doc_idx_fn_ends.push(ed)
+        } else if k == NK_VAR_DECL_GLOBAL() && az.nf.get(i) == doc_path {
+            az.doc_idx_global_nodes.push(i)
+            az.doc_idx_global_lines.push(az.ln.get(i))
+            az.doc_idx_global_names.push(az.sa.get(i))
+            mut gt = btype_norm(az.node_types.get(i))
+            if gt == "" || gt == "void" { gt = btype_norm(az.sb.get(i)) }
+            az.doc_idx_global_types.push(gt)
+        }
+        i = i + 1
+    }
+
+    // 2. Index all local/param/for variables in doc_path
+    i = 0
+    while i < az.ncount {
+        let k = az.nk.get(i)
+        if (k == NK_VAR_DECL() || k == NK_PARAM() || k == NK_FOR()) && az.nf.get(i) == doc_path {
+            let nln = az.ln.get(i)
+            mut vnm = az.sa.get(i)
+            if k == NK_FOR() && az.sb.get(i) != "" && vnm == "" { vnm = az.sb.get(i) }
+            if vnm != "" {
+                mut cur_fn_st = -1
+                mut fi = 0
+                while fi < az.doc_idx_fn_starts.len() {
+                    let fst = az.doc_idx_fn_starts.get(fi)
+                    let fed = az.doc_idx_fn_ends.get(fi)
+                    if nln >= fst && nln <= fed {
+                        if fst > cur_fn_st { cur_fn_st = fst }
+                    }
+                    fi = fi + 1
+                }
+                mut vt = btype_norm(az.node_types.get(i))
+                if (vt == "" || vt == "void") && k != NK_FOR() { vt = btype_norm(az.sb.get(i)) }
+                az.doc_idx_var_nodes.push(i)
+                az.doc_idx_var_lines.push(nln)
+                az.doc_idx_var_names.push(vnm)
+                az.doc_idx_var_types.push(vt)
+                az.doc_idx_var_fn_starts.push(cur_fn_st)
+            }
+        }
+        i = i + 1
+    }
+    az.doc_idx_ready = true
+}
+

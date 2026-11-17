@@ -155,32 +155,57 @@ pub fn lsp_build_inlay_hints_json(source: str, az: Analyzer, doc_path: str) -> s
     jb.lbrack()
     mut first = true
 
-    mut i = 0
-    while i < az.ncount {
-        let k = az.nk.get(i)
-        if (k == NK_VAR_DECL() || k == NK_VAR_DECL_GLOBAL()) && az.nf.get(i) == doc_path {
-            // Only emit inferred type hint when explicit `: Type` was omitted
-            if az.sb.get(i) == "" {
-                let vnm = az.sa.get(i)
-                let vt = btype_norm(az.node_types.get(i))
-                let ln1 = az.ln.get(i)
-                if vnm != "" && vnm != "_" && vt != "" && vt != "void" && ln1 > 0 {
-                    let col0 = lsp_find_node_col0(source, ln1, vnm)
-                    if col0 >= 0 {
-                        if !first { jb.comma() }
-                        first = false
-                        jb.lbrace()
-                        jb.key("position"); jb.lbrace(); jb.kv_int("line", ln1 - 1, true); jb.kv_int("character", col0 + vnm.len(), false); jb.rbrace()
-                        jb.kv_str("label", ": " + vt, false)
-                        jb.kv_int("kind", 1, false)
-                        jb.kv_bool("paddingLeft", false, false)
-                        jb.kv_bool("paddingRight", true, false)
-                        jb.rbrace()
-                    }
+    lsp_ensure_doc_index(az, doc_path, source)
+    mut vi = 0
+    let vcnt = az.doc_idx_var_nodes.len()
+    while vi < vcnt {
+        let i = az.doc_idx_var_nodes.get(vi)
+        if az.sb.get(i) == "" {
+            let vnm = az.doc_idx_var_names.get(vi)
+            let vt = az.doc_idx_var_types.get(vi)
+            let ln1 = az.doc_idx_var_lines.get(vi)
+            if vnm != "" && vnm != "_" && vt != "" && vt != "void" && ln1 > 0 {
+                let col0 = lsp_find_node_col0(source, ln1, vnm)
+                if col0 >= 0 {
+                    if !first { jb.comma() }
+                    first = false
+                    jb.lbrace()
+                    jb.key("position"); jb.lbrace(); jb.kv_int("line", ln1 - 1, true); jb.kv_int("character", col0 + vnm.len(), false); jb.rbrace()
+                    jb.kv_str("label", ": " + vt, false)
+                    jb.kv_int("kind", 1, false)
+                    jb.kv_bool("paddingLeft", false, false)
+                    jb.kv_bool("paddingRight", true, false)
+                    jb.rbrace()
                 }
             }
         }
-        i = i + 1
+        vi = vi + 1
+    }
+
+    mut gi = 0
+    let gcnt = az.doc_idx_global_nodes.len()
+    while gi < gcnt {
+        let i = az.doc_idx_global_nodes.get(gi)
+        if az.sb.get(i) == "" {
+            let vnm = az.doc_idx_global_names.get(gi)
+            let vt = az.doc_idx_global_types.get(gi)
+            let ln1 = az.doc_idx_global_lines.get(gi)
+            if vnm != "" && vnm != "_" && vt != "" && vt != "void" && ln1 > 0 {
+                let col0 = lsp_find_node_col0(source, ln1, vnm)
+                if col0 >= 0 {
+                    if !first { jb.comma() }
+                    first = false
+                    jb.lbrace()
+                    jb.key("position"); jb.lbrace(); jb.kv_int("line", ln1 - 1, true); jb.kv_int("character", col0 + vnm.len(), false); jb.rbrace()
+                    jb.kv_str("label", ": " + vt, false)
+                    jb.kv_int("kind", 1, false)
+                    jb.kv_bool("paddingLeft", false, false)
+                    jb.kv_bool("paddingRight", true, false)
+                    jb.rbrace()
+                }
+            }
+        }
+        gi = gi + 1
     }
 
     jb.rbrack()

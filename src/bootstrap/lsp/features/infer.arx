@@ -95,30 +95,25 @@ fn lsp_enclosing_class_at(az: Analyzer, doc_path: str, line1: i64) -> str {
 }
 
 fn lsp_enclosing_fn_bounds(source: str, az: Analyzer, doc_path: str, line1: i64) -> List<i64> {
+    lsp_ensure_doc_index(az, doc_path, source)
     let res = List<i64>()
     mut best_nid = -1
     mut best_start = -1
     mut best_end = 1000000
-    mut i = 0
-    while i < az.ncount {
-        let k = az.nk.get(i)
-        if (k == NK_FN_DEF() || k == NK_INIT_DEF() || k == NK_DROP_DEF()) && az.nf.get(i) == doc_path {
-            let st = az.ln.get(i)
-            if st <= line1 && st > best_start {
-                best_start = st
-                best_nid = i
-            }
+
+    mut fi = 0
+    let fcnt = az.doc_idx_fn_starts.len()
+    while fi < fcnt {
+        let st = az.doc_idx_fn_starts.get(fi)
+        let ed = az.doc_idx_fn_ends.get(fi)
+        if st <= line1 && line1 <= ed && st > best_start {
+            best_start = st
+            best_nid = az.doc_idx_fn_nodes.get(fi)
+            best_end = ed
         }
-        i = i + 1
+        fi = fi + 1
     }
-    if best_nid >= 0 && source != "" {
-        best_end = lsp_block_end_line1(source, best_start)
-        if line1 > best_end {
-            best_nid = -1
-            best_start = -1
-            best_end = -1
-        }
-    }
+
     res.push(best_nid)
     res.push(best_start)
     res.push(best_end)
@@ -126,23 +121,24 @@ fn lsp_enclosing_fn_bounds(source: str, az: Analyzer, doc_path: str, line1: i64)
 }
 
 fn lsp_resolve_scoped_var_node(az: Analyzer, doc_path: str, line1: i64, fn_start: i64, name: str) -> i64 {
+    lsp_ensure_doc_index(az, doc_path, "")
     mut best_nid = -1
     mut best_ln = -1
     mut min_ln = 1
     if fn_start > 0 { min_ln = fn_start }
-    mut i = 0
-    while i < az.ncount {
-        let k = az.nk.get(i)
-        if (k == NK_VAR_DECL() || k == NK_PARAM() || k == NK_FOR()) && az.nf.get(i) == doc_path {
-            let nln = az.ln.get(i)
-            if nln >= min_ln && nln <= line1 && nln >= best_ln {
-                if az.sa.get(i) == name || (k == NK_FOR() && az.sb.get(i) == name) {
-                    best_ln = nln
-                    best_nid = i
-                }
+
+    mut vi = 0
+    let vcnt = az.doc_idx_var_nodes.len()
+    while vi < vcnt {
+        if az.doc_idx_var_names.get(vi) == name {
+            let nln = az.doc_idx_var_lines.get(vi)
+            let fst = az.doc_idx_var_fn_starts.get(vi)
+            if (fn_start <= 0 || fst == fn_start) && nln >= min_ln && nln <= line1 && nln >= best_ln {
+                best_ln = nln
+                best_nid = az.doc_idx_var_nodes.get(vi)
             }
         }
-        i = i + 1
+        vi = vi + 1
     }
     return best_nid
 }
@@ -191,26 +187,24 @@ fn lsp_resolve_var_type(az: Analyzer, doc_path: str, line1: i64, name: str, sour
     mut best_type = ""
     mut best_ln = -1
     mut best_nid = -1
-    mut i = 0
-    while i < az.ncount {
-        let k = az.nk.get(i)
-        if (k == NK_VAR_DECL() || k == NK_PARAM() || k == NK_FOR()) && az.nf.get(i) == doc_path {
-            if az.sa.get(i) == name || (k == NK_FOR() && az.sb.get(i) == name) {
-                let nln = az.ln.get(i)
-                if nln >= min_ln && nln <= line1 && nln >= best_ln {
-                    best_ln = nln
-                    best_nid = i
-                    mut t = btype_norm(az.node_types.get(i))
-                    if (t == "" || t == "void") && k != NK_FOR() {
-                        t = btype_norm(az.sb.get(i))
-                    }
-                    if t != "" && t != "void" {
-                        best_type = t
-                    }
+
+    lsp_ensure_doc_index(az, doc_path, source)
+    mut vi = 0
+    let vcnt = az.doc_idx_var_nodes.len()
+    while vi < vcnt {
+        if az.doc_idx_var_names.get(vi) == name {
+            let nln = az.doc_idx_var_lines.get(vi)
+            let fst = az.doc_idx_var_fn_starts.get(vi)
+            if (min_ln <= 1 || fst == min_ln) && nln >= min_ln && nln <= line1 && nln >= best_ln {
+                best_ln = nln
+                best_nid = az.doc_idx_var_nodes.get(vi)
+                let t = az.doc_idx_var_types.get(vi)
+                if t != "" && t != "void" {
+                    best_type = t
                 }
             }
         }
-        i = i + 1
+        vi = vi + 1
     }
     if best_type != "" && (best_nid < 0 || az.nk.get(best_nid) != NK_FOR() || best_type != "i64") {
         return lsp_unwrap_optional_type(best_type)

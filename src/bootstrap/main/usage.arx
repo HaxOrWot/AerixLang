@@ -11,7 +11,7 @@ fn resolve_bin_name() -> str {
 fn print_usage() {
     let bin = resolve_bin_name()
     println("Aerix Native Systems Programming Language Toolchain (" + bin + ")")
-    println("Version: 3.0.0-beta.2 (Beta Channel) - x86_64-windows")
+    println("Version: 3.0.0-beta.3 (Beta Channel) - x86_64-windows")
     println("")
     println("Usage:")
     println("  " + bin + " <command> [arguments...] [options]")

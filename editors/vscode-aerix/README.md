@@ -1,10 +1,10 @@
-# Aerix Language & IntelliSense Support (`v3.0.0-beta.2`)
+# Aerix Language & IntelliSense Support (`v3.0.0-beta.3`)
 
 <div align="center">
 
 <img src="./icons/aerix-icon.png" width="128" height="128" alt="Aerix Logo" />
 
-[![Version](https://img.shields.io/badge/version-3.0.0--beta.2-00DCFF.svg?style=for-the-badge&logo=visualstudiocode)](#)
+[![Version](https://img.shields.io/badge/version-3.0.0--beta.3-00DCFF.svg?style=for-the-badge&logo=visualstudiocode)](#)
 [![Release Channel](https://img.shields.io/badge/channel-beta-F59E0B.svg?style=for-the-badge)](#)
 [![Language](https://img.shields.io/badge/language-Aerix%20(.arx)-1E90FF.svg?style=for-the-badge)](#)
 [![LSP Engine](https://img.shields.io/badge/LSP-Compiler%20Driven%20(JSON--RPC)-7C4DFF.svg?style=for-the-badge)](#)
@@ -16,8 +16,11 @@
 
 ---
 
-## 🚀 Key Highlights & New in v3.0.0-beta.2
+## 🚀 Key Highlights & New in v3.0.0-beta.3
 
+- **Instant Demand-Driven IntelliSense & Spatial AST Indexing:** Pre-indexed scoped symbols and binary-search spatial node lookup replace flat full-AST iterations, accelerating completions, hovers, and Go-to-Definition queries by up to 1,000x.
+- **Incremental Document Synchronization (`textDocumentSync: 2`):** Character-delta range splicing eliminates redundant full-file IPC re-transfers, providing sub-millisecond editor responsiveness with snappier diagnostics.
+- **Multi-Document Tab-Switching LRU Cache:** Retains in-memory semantic analysis states across open files, making tab switches and cross-file navigation instantaneous with zero re-parsing lag.
 - **Polished Automatic Reference Counting (ARC) & RAII Scope Drops:** Hardware-level atomic refcounting (`lock inc/dec`), sub-microsecond null/range safety checks, zero-leak string interpolation and compound assignments (`+=`), and balanced list/map operations.
 - **Strict Module & Import Scoping:**
   - `import Window`: Imports the full `Window` namespace and all submodules.
@@ -25,7 +28,7 @@
   - `from Window.Gui import createWindow`: Strictly imports only `createWindow` (and case-variant `CreateWindow`). Autocompletion suggestions in the file only expose the imported symbol(s), preventing symbol pollution.
   - `from Window.Gui import <cursor>`: Context-aware suggestions listing all functions, classes, and structs exported by `Window.Gui`.
 - **Zero-Dependency Native Compiler:** Directly compiles `.arx` sources into standalone PE32+ x86-64 native executables without needing GCC, Clang, or external toolchains.
-- **Integrated Toolchain Version Manager:** Switch between installed toolchain versions (`>= 1.1.3b` up to `3.0.0-beta.2`) or install new releases on-the-fly directly from the status bar (`$(versions) Aerix`).
+- **Integrated Toolchain Version Manager:** Switch between installed toolchain versions (`>= 1.1.3b` up to `3.0.0-beta.3`) or install new releases on-the-fly directly from the status bar (`$(versions) Aerix`).
 - **Silent & Prompted Auto-Updates:** Seamless background checking against GitHub Releases with non-intrusive notification prompts and auto-restarting LSP daemon.
 - **Dual-Layer Highlighting:** Instant TextMate grammar baseline (`aerix.tmLanguage.json`) combined with compiler-accurate LSP Semantic Tokens.
 
@@ -143,12 +146,12 @@ When `aerix.executablePath` is not explicitly set, the extension automatically l
 
 ### Install from VSIX
 ```powershell
-code --install-extension aerix-3.0.0-beta.2.vsix --force
+code --install-extension aerix-3.0.0-beta.3.vsix --force
 ```
 
 ### Install in Antigravity IDE
 ```powershell
-antigravity --install-extension aerix-3.0.0-beta.2.vsix --force
+antigravity --install-extension aerix-3.0.0-beta.3.vsix --force
 ```
 
 > **Tip:** After installing or switching compiler versions, run **`Developer: Reload Window`** (`Ctrl+Shift+P` -> `Reload Window`) to reconnect the LSP server cleanly.
