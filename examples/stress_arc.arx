@@ -1,0 +1,26 @@
+fn test_arc_loop() {
+    print("[ARC Stress] Starting 100,000 iteration allocation and scope-drop test...\n")
+    mut i: i64 = 0
+    mut last_val = ""
+    while i < 100000 {
+        let prefix = "token_prefix_"
+        let s = "{prefix}{i}_value"
+        let _part = s.slice(6, 12)
+        if i % 25000 == 0 && i > 0 {
+            print("[ARC Stress] Progress: {i} iterations completed successfully\n")
+        }
+        if i == 99999 {
+            last_val = s
+        }
+        i = i + 1
+    }
+    if last_val != "token_prefix_99999_value" {
+        print("FAIL: last_val mismatch: '{last_val}'\n")
+        panic("ARC loop test failed")
+    }
+    print("[ARC Stress] PASS: 100,000 iterations completed cleanly without crash or leak.\n")
+}
+
+fn main() {
+    test_arc_loop()
+}

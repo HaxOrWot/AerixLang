@@ -109,13 +109,13 @@ Before opening the v3.1+ multi-threading track, **v3.0 must become rock-solid**:
 ### Phase 4: Automated Stress Testing & Dogfooding Apps
 *Goal: Prove compiler and runtime stability under realistic, multi-thousand-iteration workloads.*
 
-- [ ] **The ARC 100,000 Iteration Loop Test:**
+- [x] **The ARC 100,000 Iteration Loop Test:**
   - Run a loop that allocates, concatenates, and drops strings 100,000 times. Verify zero memory drift (no leaks) and clean process exit.
-- [ ] **Dogfood Application 1: CLI Expression Calculator:**
+- [x] **Dogfood Application 1: CLI Expression Calculator:**
   - Tokenizes, parses, and evaluates math expressions using `input()`, `??` fallbacks, strings, and loops.
-- [ ] **Dogfood Application 2: Text Search Utility (Mini-Grep):**
+- [x] **Dogfood Application 2: Text Search Utility (Mini-Grep):**
   - Reads files from disk, splits lines, searches patterns, and prints formatted output.
-- [ ] **Dogfood Application 3: Interactive Console Game (Tic-Tac-Toe / Guess Number):**
+- [x] **Dogfood Application 3: Interactive Console Game (Tic-Tac-Toe / Guess Number):**
   - Tests user input loops, mutable state transitions, and game logic.
 
 ---

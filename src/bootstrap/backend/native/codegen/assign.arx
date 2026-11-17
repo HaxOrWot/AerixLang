@@ -44,8 +44,20 @@ extend NativeCodegen {
                     }
                     return
                 } else if self.global_offs.has_key(vname) {
+                    let r_val = self.alloc_slot("", "i64")
+                    a.mov_mr64(REG_RBP(), -r_val, REG_RAX())
+                    if ncg_is_str(lt) {
+                        if self.temp_str_slots.len() > tmark {
+                            self.temp_str_slots.pop()
+                        } else {
+                            a.mov_rr(REG_RCX(), REG_RAX())
+                            a.call_rel32(self.rt.lbl("__rt_arc_retain"))
+                        }
+                    }
                     self.emit_temp_drops(tmark)
+                    a.mov_rm64(REG_RAX(), REG_RBP(), -r_val)
                     a.mov_mr64_rip_data(self.global_offs.get(vname), REG_RAX())
+                    return
                 } else if self.cur_class != "" {
                     mut cur_c = self.cur_class
                     mut guard_c = 0
@@ -54,8 +66,19 @@ extend NativeCodegen {
                         if self.cls_field_offs.has_key(fk) {
                             let soff = self.find_local("self")
                             if soff >= 0 {
+                                let r_val = self.alloc_slot("", "i64")
+                                a.mov_mr64(REG_RBP(), -r_val, REG_RAX())
+                                if ncg_is_str(lt) {
+                                    if self.temp_str_slots.len() > tmark {
+                                        self.temp_str_slots.pop()
+                                    } else {
+                                        a.mov_rr(REG_RCX(), REG_RAX())
+                                        a.call_rel32(self.rt.lbl("__rt_arc_retain"))
+                                    }
+                                }
                                 self.emit_temp_drops(tmark)
                                 a.mov_rm64(REG_RCX(), REG_RBP(), -soff)
+                                a.mov_rm64(REG_RAX(), REG_RBP(), -r_val)
                                 a.mov_mr64(REG_RCX(), self.cls_field_offs.get(fk), REG_RAX())
                                 return
                             }
@@ -170,8 +193,19 @@ extend NativeCodegen {
             a.mov_mr64(REG_RBP(), -o_tmp, REG_RAX())
             self.emit_expr(rhs)
             if op_s == "=" {
+                let r_val = self.alloc_slot("", "i64")
+                a.mov_mr64(REG_RBP(), -r_val, REG_RAX())
+                if ncg_is_str(lt) {
+                    if self.temp_str_slots.len() > tmark {
+                        self.temp_str_slots.pop()
+                    } else {
+                        a.mov_rr(REG_RCX(), REG_RAX())
+                        a.call_rel32(self.rt.lbl("__rt_arc_retain"))
+                    }
+                }
                 self.emit_temp_drops(tmark)
                 a.mov_rm64(REG_RCX(), REG_RBP(), -o_tmp)
+                a.mov_rm64(REG_RAX(), REG_RBP(), -r_val)
                 a.mov_mr64(REG_RCX(), foff, REG_RAX())
                 return
             }
