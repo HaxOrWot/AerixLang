@@ -33,17 +33,7 @@ extend NativeCodegen {
             } else {
                 a.mov_ri32_sext(REG_RAX(), 0)
             }
-            if ncg_is_str(vt) || self.temp_str_slots.len() > tmark {
-                if !ncg_is_str(vt) {
-                    mut si = self.scope_names.len() - 1
-                    while si >= 0 {
-                        if self.scope_names.get(si) == vname {
-                            self.scope_types.set(si, "str")
-                            break
-                        }
-                        si = si - 1
-                    }
-                }
+            if ncg_is_str(vt) {
                 let r_val = self.alloc_slot("", "str")
                 a.mov_mr64(REG_RBP(), -r_val, REG_RAX())
                 if self.temp_str_slots.len() > tmark {
@@ -55,7 +45,10 @@ extend NativeCodegen {
                 self.emit_temp_drops(tmark)
                 a.mov_rm64(REG_RAX(), REG_RBP(), -r_val)
             } else {
+                let r_val = self.alloc_slot("", "i64")
+                a.mov_mr64(REG_RBP(), -r_val, REG_RAX())
                 self.emit_temp_drops(tmark)
+                a.mov_rm64(REG_RAX(), REG_RBP(), -r_val)
             }
             a.mov_mr64(REG_RBP(), -off, REG_RAX())
             return
