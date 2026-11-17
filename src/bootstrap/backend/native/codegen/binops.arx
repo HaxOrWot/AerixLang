@@ -48,8 +48,18 @@ extend NativeCodegen {
         let op_s = self.sa.get(nid)
         let lid = self.la.get(nid)
         let rid = self.ra.get(nid)
-        let lt = btype_norm(self.node_types.get(lid))
-        let rt = btype_norm(self.node_types.get(rid))
+        mut lt = btype_norm(self.node_types.get(lid))
+        if (lt == "" || lt == "void" || lt == "i64") && self.nk.get(lid) == NK_IDENT() {
+            let id_nm = self.sa.get(lid)
+            let llt = self.find_local_type(id_nm)
+            if llt != "" && llt != "void" { lt = llt }
+        }
+        mut rt = btype_norm(self.node_types.get(rid))
+        if (rt == "" || rt == "void" || rt == "i64") && self.nk.get(rid) == NK_IDENT() {
+            let id_nm = self.sa.get(rid)
+            let rlt = self.find_local_type(id_nm)
+            if rlt != "" && rlt != "void" { rt = rlt }
+        }
 
         // Short-circuit && / and
         if op_s == "&&" || op_s == "and" {

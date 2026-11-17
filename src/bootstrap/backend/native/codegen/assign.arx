@@ -14,9 +14,9 @@ extend NativeCodegen {
             let vname = self.sa.get(lhs)
             let loff = self.find_local(vname)
             mut lt = btype_norm(self.node_types.get(lhs))
-            if lt == "" || lt == "i64" {
+            if lt == "" || lt == "void" || lt == "i64" {
                 let llt = self.find_local_type(vname)
-                if ncg_is_str(llt) { lt = llt }
+                if llt != "" && llt != "void" { lt = llt }
             }
             self.emit_expr(rhs)
             if op_s == "=" {

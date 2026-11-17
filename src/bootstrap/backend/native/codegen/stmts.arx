@@ -20,12 +20,17 @@ extend NativeCodegen {
         if k == NK_VAR_DECL() {
             let vname = self.sa.get(nid)
             let val_id = self.la.get(nid)
-            mut vt = btype_norm(self.sb.get(nid))
-            if vt == "" { vt = btype_norm(self.node_types.get(nid)) }
-            if (vt == "" || vt == "i64") && val_id >= 0 {
-                let inferred = btype_norm(self.node_types.get(val_id))
-                if ncg_is_str(inferred) { vt = inferred }
+            mut vt = self.sb.get(nid)
+            if vt != "" {
+                vt = btype_norm(vt)
+            } else {
+                vt = btype_norm(self.node_types.get(nid))
             }
+            if (vt == "" || vt == "void" || vt == "i64") && val_id >= 0 {
+                let inferred = btype_norm(self.node_types.get(val_id))
+                if inferred != "" && inferred != "void" { vt = inferred }
+            }
+            if vt == "" || vt == "void" { vt = "i64" }
             let off = self.alloc_slot(vname, vt)
             let tmark = self.temp_str_slots.len()
             if val_id >= 0 {
