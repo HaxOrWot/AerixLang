@@ -1,11 +1,11 @@
-# Aerix Language & IntelliSense Support (`v3.0.0-beta.4`)
+# Aerix Language & IntelliSense Support (`v3.0.0-rc.1`)
 
 <div align="center">
 
 <img src="./icons/aerix-icon.png" width="128" height="128" alt="Aerix Logo" />
 
-[![Version](https://img.shields.io/badge/version-3.0.0--beta.3-00DCFF.svg?style=for-the-badge&logo=visualstudiocode)](#)
-[![Release Channel](https://img.shields.io/badge/channel-beta-F59E0B.svg?style=for-the-badge)](#)
+[![Version](https://img.shields.io/badge/version-3.0.0--rc.1-00DCFF.svg?style=for-the-badge&logo=visualstudiocode)](#)
+[![Release Channel](https://img.shields.io/badge/channel-rc-F59E0B.svg?style=for-the-badge)](#)
 [![Language](https://img.shields.io/badge/language-Aerix%20(.arx)-1E90FF.svg?style=for-the-badge)](#)
 [![LSP Engine](https://img.shields.io/badge/LSP-Compiler%20Driven%20(JSON--RPC)-7C4DFF.svg?style=for-the-badge)](#)
 [![Architecture](https://img.shields.io/badge/arch-x86__64--windows-orange.svg?style=for-the-badge)](#)
@@ -150,12 +150,12 @@ When `aerix.executablePath` is not explicitly set, the extension automatically l
 
 ### Install from VSIX
 ```powershell
-code --install-extension aerix-3.0.0-beta.4.vsix --force
+code --install-extension aerix-3.0.0-rc.1.vsix --force
 ```
 
 ### Install in Antigravity IDE
 ```powershell
-antigravity --install-extension aerix-3.0.0-beta.4.vsix --force
+antigravity --install-extension aerix-3.0.0-rc.1.vsix --force
 ```
 
 > **Tip:** After installing or switching compiler versions, run **`Developer: Reload Window`** (`Ctrl+Shift+P` -> `Reload Window`) to reconnect the LSP server cleanly.

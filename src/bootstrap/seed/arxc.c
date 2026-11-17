@@ -62149,7 +62149,7 @@ const char* arx_lsp_build_initialize_result(void) {
     const char* __t25644 = "aerix-lsp";
     Arx_JsonBuf_kv_str((&(jb)), __t25643, __t25644, true);
     const char* __t25645 = "version";
-    const char* __t25646 = "3.0.0-beta.4";
+    const char* __t25646 = "3.0.0-rc.1";
     Arx_JsonBuf_kv_str((&(jb)), __t25645, __t25646, false);
     Arx_JsonBuf_rbrace((&(jb)));
     Arx_JsonBuf_rbrace((&(jb)));
@@ -65451,7 +65451,7 @@ void arx_print_usage(void) {
     const char* __t27130 = ")";
     const char* __t27131 = arx_str_concat(__t27129, __t27130);
     arx_println_str(__t27131);
-    const char* __t27132 = "Version: 3.0.0-beta.4 (Beta Channel) - x86_64-windows";
+    const char* __t27132 = "Version: 3.0.0-rc.1 (Release Candidate 1) - x86_64-windows";
     arx_println_str(__t27132);
     const char* __t27133 = "";
     arx_println_str(__t27133);
@@ -66591,7 +66591,7 @@ int64_t arx_cmd_vm(Arx_List_str cli_args, int64_t cli_argc, int64_t start_idx, c
                     if (__t27755) {
                         const char* __t27757 = "";
                         if ((arx_str_compare(target, __t27757) == 0)) {
-                            const char* __t27758 = "error: missing version for 'arx vm install' (e.g. 'arx vm install 3.0.0-beta.4')";
+                            const char* __t27758 = "error: missing version for 'arx vm install' (e.g. 'arx vm install 3.0.0-rc.1')";
                             fprintf(stderr, "%s\n", __t27758);
                             int64_t __t27759 = ((int64_t)1LL);
                             return __t27759;
@@ -67847,7 +67847,7 @@ int64_t arx_cmd_repl(void) {
     const char* bin = __t28337;
     const char* __t28338 = "==================================================================";
     arx_println_str(__t28338);
-    const char* __t28339 = "  Aerix Interactive REPL v3.0.0-beta.4 (x86_64-windows)";
+    const char* __t28339 = "  Aerix Interactive REPL v3.0.0-rc.1 (x86_64-windows)";
     arx_println_str(__t28339);
     const char* __t28340 = "  Type :help for commands, :exit or :quit to quit.";
     arx_println_str(__t28340);
@@ -67918,7 +67918,7 @@ int64_t arx_cmd_repl(void) {
         if (__t28369) {
             const char* __t28371 = "Aerix Self-Hosting Bootstrap Compiler (";
             const char* __t28372 = arx_str_concat(__t28371, bin);
-            const char* __t28373 = ") v3.0.0-beta.4";
+            const char* __t28373 = ") v3.0.0-rc.1";
             const char* __t28374 = arx_str_concat(__t28372, __t28373);
             arx_println_str(__t28374);
             continue;
@@ -68061,7 +68061,7 @@ int64_t arx_main(void) {
                 return __t28432;
             }
         }
-        const char* __t28433 = "Aerix Self-Hosting Bootstrap Compiler (arxc) v3.0.0-beta.4";
+        const char* __t28433 = "Aerix Self-Hosting Bootstrap Compiler (arxc) v3.0.0-rc.1";
         arx_println_str(__t28433);
         arx_maybe_trigger_bg_update();
         int64_t __t28434 = ((int64_t)0LL);
