@@ -80,7 +80,7 @@ arx version
 
 Expected output:
 ```text
-Aerix Self-Hosting Bootstrap Compiler (arx) v3.0.0-beta.3
+Aerix Self-Hosting Bootstrap Compiler (arx) v3.0.0-beta.4
 ```
 
 ---
@@ -1030,7 +1030,7 @@ fn handle_http_request(client_fd: i64) {
     let req = Socket.recv(client_fd, 2048)
     if req.len() == 0 { return }
     
-    let body = "{\"status\":\"ok\",\"service\":\"Aerix Micro-Server\",\"version\":\"3.0.0-beta.3\"}"
+    let body = "{\"status\":\"ok\",\"service\":\"Aerix Micro-Server\",\"version\":\"3.0.0-beta.4\"}"
     let body_len = body.len()
     
     let http_response = "HTTP/1.1 200 OK\r\n" +

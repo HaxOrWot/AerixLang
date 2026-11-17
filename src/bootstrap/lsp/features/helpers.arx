@@ -60,9 +60,17 @@ pub fn lsp_word_start_at(source: str, line0: i64, char0: i64) -> i64 {
     return st
 }
 
-fn lsp_lbrace() -> str {
+pub fn lsp_lbrace() -> str {
     let bb = ByteBuffer()
     bb.write_u8(123)
+    let s = bb.to_str()
+    bb.free()
+    return s
+}
+
+pub fn lsp_rbrace() -> str {
+    let bb = ByteBuffer()
+    bb.write_u8(125)
     let s = bb.to_str()
     bb.free()
     return s
@@ -174,7 +182,7 @@ fn lsp_extract_doc_comments(source: str, doc_path: str, tfile: str, ln1: i64) ->
     return out
 }
 
-fn lsp_block_end_line1(source: str, decl_ln1: i64) -> i64 {
+pub fn lsp_block_end_line1(source: str, decl_ln1: i64) -> i64 {
     if decl_ln1 <= 0 { return 1000000 }
     let n = source.len()
     mut cur_ln = 1

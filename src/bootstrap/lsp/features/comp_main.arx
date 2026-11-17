@@ -14,6 +14,7 @@ pub fn lsp_build_completion_json(source: str, az: Analyzer, doc_path: str, line0
         scan = scan - 1
     }
     let before_word = prefix.slice(0, scan).trim()
+    let typed_word = prefix.slice(scan, prefix.len())
 
     let jb = JsonBuf()
     jb.lbrace()
@@ -149,12 +150,13 @@ pub fn lsp_build_completion_json(source: str, az: Analyzer, doc_path: str, line0
                 mut vt = az.doc_idx_var_types.get(vi)
                 if vt == "" || vt == "void" { vt = lsp_resolve_var_type(az, doc_path, line1, vnm, source) }
                 let matched = lsp_type_matches(vt, expected_t)
-                mut stxt = "0_" + vnm
-                if matched { stxt = "00_" + vnm }
-                let fst_flag = is_first.get(0) == 1
-                is_first.set(0, 0)
-                emit_comp_item_ex(jb, vnm, "", vt, CKIND_VARIABLE(), vnm + ": " + vt, "",
-                                  "", stxt, "", -1, 0, 0, "", matched, fst_flag)
+                let stxt = lsp_item_sort_text(vnm, typed_word, matched, "0")
+                if typed_word == "" || stxt != "" {
+                    let fst_flag = is_first.get(0) == 1
+                    is_first.set(0, 0)
+                    emit_comp_item_ex(jb, vnm, "", vt, CKIND_VARIABLE(), vnm + ": " + vt, "",
+                                      "", stxt, "", -1, 0, 0, "", matched, fst_flag)
+                }
             }
         }
         vi = vi + 1
@@ -168,12 +170,13 @@ pub fn lsp_build_completion_json(source: str, az: Analyzer, doc_path: str, line0
             seen.insert("v::" + gnm, 1)
             let gt = az.doc_idx_global_types.get(gi)
             let matched = lsp_type_matches(gt, expected_t)
-            mut stxt = "0_" + gnm
-            if matched { stxt = "00_" + gnm }
-            let fst_flag = is_first.get(0) == 1
-            is_first.set(0, 0)
-            emit_comp_item_ex(jb, gnm, "", gt, CKIND_VARIABLE(), gnm + ": " + gt, "",
-                              "", stxt, "", -1, 0, 0, "", matched, fst_flag)
+            let stxt = lsp_item_sort_text(gnm, typed_word, matched, "0")
+            if typed_word == "" || stxt != "" {
+                let fst_flag = is_first.get(0) == 1
+                is_first.set(0, 0)
+                emit_comp_item_ex(jb, gnm, "", gt, CKIND_VARIABLE(), gnm + ": " + gt, "",
+                                  "", stxt, "", -1, 0, 0, "", matched, fst_flag)
+            }
         }
         gi = gi + 1
     }
@@ -227,22 +230,27 @@ pub fn lsp_build_completion_json(source: str, az: Analyzer, doc_path: str, line0
             let matched = lsp_type_matches(rt, expected_t)
             mut desc = rt
             if mod_lbl != "" { desc = rt + " (" + mod_lbl + ")" }
-            mut stxt = "2_" + fnm
-            if same_file { stxt = "1_" + fnm }
-            else if mod_lbl != "" { stxt = "1a_" + fnm }
-            if matched { stxt = "00_" + fnm }
-            let fst = is_first.get(0) == 1
-            is_first.set(0, 0)
-            emit_comp_item_ex(jb, fnm, lparts.get(0), desc, CKIND_FUNCTION(), sig, fdoc,
-                              snip, stxt, "", -1, 0, 0, "", matched, fst)
+            mut base_tier = "2"
+            if same_file { base_tier = "1" }
+            else if mod_lbl != "" { base_tier = "1a" }
+            let stxt = lsp_item_sort_text(fnm, typed_word, matched, base_tier)
+            if typed_word == "" || stxt != "" {
+                let fst = is_first.get(0) == 1
+                is_first.set(0, 0)
+                emit_comp_item_ex(jb, fnm, lparts.get(0), desc, CKIND_FUNCTION(), sig, fdoc,
+                                  snip, stxt, "", -1, 0, 0, "", matched, fst)
+            }
             let cap_fnm = fnm.slice(0, 1).to_upper() + fnm.slice(1, fnm.len())
             if cap_fnm != fnm && (az.file_imported_symbols.has_key(cap_fnm) || az.item_aliases.has_key(cap_fnm)) && !seen.has_key("fn::" + cap_fnm) {
                 seen.insert("fn::" + cap_fnm, 1)
-                let fst2 = is_first.get(0) == 1
-                is_first.set(0, 0)
-                let cap_snip = lsp_build_call_snippet(cap_fnm, lparts.get(0), insert_parens)
-                emit_comp_item_ex(jb, cap_fnm, lparts.get(0), desc, CKIND_FUNCTION(), sig, fdoc,
-                                  cap_snip, stxt, "", -1, 0, 0, "", matched, fst2)
+                let cap_stxt = lsp_item_sort_text(cap_fnm, typed_word, matched, base_tier)
+                if typed_word == "" || cap_stxt != "" {
+                    let fst2 = is_first.get(0) == 1
+                    is_first.set(0, 0)
+                    let cap_snip = lsp_build_call_snippet(cap_fnm, lparts.get(0), insert_parens)
+                    emit_comp_item_ex(jb, cap_fnm, lparts.get(0), desc, CKIND_FUNCTION(), sig, fdoc,
+                                      cap_snip, cap_stxt, "", -1, 0, 0, "", matched, fst2)
+                }
             }
         }
         fi = fi + 1
@@ -313,14 +321,16 @@ pub fn lsp_build_completion_json(source: str, az: Analyzer, doc_path: str, line0
                 if is_st { cdesc = "struct (" + mod_lbl + ")" }
                 else { cdesc = "class (" + mod_lbl + ")" }
             }
-            mut stxt = "2_" + cnm
-            if same_file { stxt = "1_" + cnm }
-            else if mod_lbl != "" { stxt = "1a_" + cnm }
-            if matched { stxt = "00_" + cnm }
-            let fst = is_first.get(0) == 1
-            is_first.set(0, 0)
-            emit_comp_item_ex(jb, cnm, cdetail, cdesc, ckind, dkw + cnm, cdoc,
-                              csnip, stxt, "", -1, 0, 0, "", matched, fst)
+            mut base_tier = "2"
+            if same_file { base_tier = "1" }
+            else if mod_lbl != "" { base_tier = "1a" }
+            let stxt = lsp_item_sort_text(cnm, typed_word, matched, base_tier)
+            if typed_word == "" || stxt != "" {
+                let fst = is_first.get(0) == 1
+                is_first.set(0, 0)
+                emit_comp_item_ex(jb, cnm, cdetail, cdesc, ckind, dkw + cnm, cdoc,
+                                  csnip, stxt, "", -1, 0, 0, "", matched, fst)
+            }
         }
         ci = ci + 1
     }
@@ -365,14 +375,16 @@ pub fn lsp_build_completion_json(source: str, az: Analyzer, doc_path: str, line0
             let matched = lsp_type_matches(enm, expected_t)
             mut edesc = "enum"
             if mod_lbl != "" { edesc = "enum (" + mod_lbl + ")" }
-            mut stxt = "2_" + enm
-            if same_file { stxt = "1_" + enm }
-            else if mod_lbl != "" { stxt = "1a_" + enm }
-            if matched { stxt = "00_" + enm }
-            let fst = is_first.get(0) == 1
-            is_first.set(0, 0)
-            emit_comp_item_ex(jb, enm, "", edesc, CKIND_ENUM(), "enum " + enm, edoc,
-                              "", stxt, "", -1, 0, 0, "", matched, fst)
+            mut base_tier = "2"
+            if same_file { base_tier = "1" }
+            else if mod_lbl != "" { base_tier = "1a" }
+            let stxt = lsp_item_sort_text(enm, typed_word, matched, base_tier)
+            if typed_word == "" || stxt != "" {
+                let fst = is_first.get(0) == 1
+                is_first.set(0, 0)
+                emit_comp_item_ex(jb, enm, "", edesc, CKIND_ENUM(), "enum " + enm, edoc,
+                                  "", stxt, "", -1, 0, 0, "", matched, fst)
+            }
         }
         ei = ei + 1
     }
@@ -383,11 +395,14 @@ pub fn lsp_build_completion_json(source: str, az: Analyzer, doc_path: str, line0
         let mlbl = az.explicit_mod_list.get(mi)
         if mlbl != "" && !seen.has_key("mod::" + mlbl) {
             seen.insert("mod::" + mlbl, 1)
-            let fst = is_first.get(0) == 1
-            is_first.set(0, 0)
-            emit_comp_item_ex(jb, mlbl, "", "module", CKIND_MODULE(), "module " + mlbl,
-                              "Imported module or source file `" + mlbl + "`.\n\nType `" + mlbl + ".` to access all its functions and members.",
-                              "", "1b_" + mlbl, "", -1, 0, 0, "", false, fst)
+            let stxt = lsp_item_sort_text(mlbl, typed_word, false, "1b")
+            if typed_word == "" || stxt != "" {
+                let fst = is_first.get(0) == 1
+                is_first.set(0, 0)
+                emit_comp_item_ex(jb, mlbl, "", "module", CKIND_MODULE(), "module " + mlbl,
+                                  "Imported module or source file `" + mlbl + "`.\n\nType `" + mlbl + ".` to access all its functions and members.",
+                                  "", stxt, "", -1, 0, 0, "", false, fst)
+            }
         }
         mi = mi + 1
     }
@@ -404,12 +419,13 @@ pub fn lsp_build_completion_json(source: str, az: Analyzer, doc_path: str, line0
             let lparts = lsp_sig_to_label_parts(bsig)
             let snip = lsp_build_call_snippet(bnm, lparts.get(0), insert_parens)
             let matched = lsp_type_matches(lparts.get(1), expected_t)
-            mut stxt = "3_" + bnm
-            if matched { stxt = "00_" + bnm }
-            let fst = is_first.get(0) == 1
-            is_first.set(0, 0)
-            emit_comp_item_ex(jb, bnm, lparts.get(0), lparts.get(1), CKIND_FUNCTION(), bsig, lsp_lookup_doc(bnm),
-                              snip, stxt, "", -1, 0, 0, "", matched, fst)
+            let stxt = lsp_item_sort_text(bnm, typed_word, matched, "3")
+            if typed_word == "" || stxt != "" {
+                let fst = is_first.get(0) == 1
+                is_first.set(0, 0)
+                emit_comp_item_ex(jb, bnm, lparts.get(0), lparts.get(1), CKIND_FUNCTION(), bsig, lsp_lookup_doc(bnm),
+                                  snip, stxt, "", -1, 0, 0, "", matched, fst)
+            }
         }
         bfi = bfi + 1
     }
@@ -421,16 +437,19 @@ pub fn lsp_build_completion_json(source: str, az: Analyzer, doc_path: str, line0
         let tnm = ts.get(ti)
         if !seen.has_key("c::" + tnm) {
             seen.insert("c::" + tnm, 1)
-            mut stxt = "4_" + tnm
+            mut base_tier = "4"
             mut desc = "type"
             if lsp_is_static_runtime(tnm) {
-                stxt = "2_" + tnm
+                base_tier = "2"
                 desc = "stdlib"
             }
-            let fst = is_first.get(0) == 1
-            is_first.set(0, 0)
-            emit_comp_item_ex(jb, tnm, "", desc, CKIND_CLASS(), "type " + tnm, lsp_lookup_doc(tnm),
-                              "", stxt, "", -1, 0, 0, "", false, fst)
+            let stxt = lsp_item_sort_text(tnm, typed_word, false, base_tier)
+            if typed_word == "" || stxt != "" {
+                let fst = is_first.get(0) == 1
+                is_first.set(0, 0)
+                emit_comp_item_ex(jb, tnm, "", desc, CKIND_CLASS(), "type " + tnm, lsp_lookup_doc(tnm),
+                                  "", stxt, "", -1, 0, 0, "", false, fst)
+            }
         }
         ti = ti + 1
     }
@@ -440,25 +459,65 @@ pub fn lsp_build_completion_json(source: str, az: Analyzer, doc_path: str, line0
     mut ki = 0
     while ki < ks.len() {
         let knm = ks.get(ki)
-        mut ksort = "5b_" + knm
+        mut base_tier = "5b"
         if in_fn {
             if knm == "let" || knm == "mut" || knm == "if" || knm == "else" || knm == "elif" || knm == "for" || knm == "while" || knm == "match" || knm == "return" || knm == "guard" || knm == "defer" || knm == "as" || knm == "true" || knm == "false" || knm == "null" {
-                ksort = "5a_" + knm
+                base_tier = "5a"
             }
         } else {
             if knm == "fn" || knm == "pub" || knm == "class" || knm == "struct" || knm == "enum" || knm == "trait" || knm == "extend" || knm == "const" || knm == "import" || knm == "from" || knm == "as" || knm == "use" {
-                ksort = "5a_" + knm
+                base_tier = "5a"
             }
         }
-        let fst = is_first.get(0) == 1
-        is_first.set(0, 0)
-        emit_comp_item_ex(jb, knm, "", "keyword", CKIND_KEYWORD(), "keyword " + knm, lsp_lookup_doc(knm),
-                          "", ksort, "", -1, 0, 0, "", false, fst)
+        let ksort = lsp_item_sort_text(knm, typed_word, false, base_tier)
+        if typed_word == "" || ksort != "" {
+            let fst = is_first.get(0) == 1
+            is_first.set(0, 0)
+            emit_comp_item_ex(jb, knm, "", "keyword", CKIND_KEYWORD(), "keyword " + knm, lsp_lookup_doc(knm),
+                              "", ksort, "", -1, 0, 0, "", false, fst)
+        }
         ki = ki + 1
+    }
+
+    // Dynamic Snippets
+    if !is_member {
+        let lb = lsp_lbrace()
+        let rb = lsp_rbrace()
+        let dl = "$" + lb
+        if in_fn {
+            lsp_emit_snippet_item(jb, "if", "if condition \\{ ... }", "if " + dl + "1:condition} " + lb + "\n\t$0\n" + rb, typed_word, is_first)
+            lsp_emit_snippet_item(jb, "ifelse", "if condition \\{ ... } else \\{ ... }", "if " + dl + "1:condition} " + lb + "\n\t" + dl + "2}\n" + rb + " else " + lb + "\n\t$0\n" + rb, typed_word, is_first)
+            lsp_emit_snippet_item(jb, "for", "for loop (counted)", "for " + dl + "1:mut i = 0}; " + dl + "2:i < count}; " + dl + "3:i = i + 1} " + lb + "\n\t$0\n" + rb, typed_word, is_first)
+            lsp_emit_snippet_item(jb, "for_in", "for item in collection \\{ ... }", "for " + dl + "1:item} in " + dl + "2:collection} " + lb + "\n\t$0\n" + rb, typed_word, is_first)
+            lsp_emit_snippet_item(jb, "while", "while condition \\{ ... }", "while " + dl + "1:condition} " + lb + "\n\t$0\n" + rb, typed_word, is_first)
+            lsp_emit_snippet_item(jb, "match", "match expr \\{ pat => \\{ ... } }", "match " + dl + "1:expr} " + lb + "\n\t" + dl + "2:pattern} => " + lb + "\n\t\t$0\n\t" + rb + "\n" + rb, typed_word, is_first)
+            lsp_emit_snippet_item(jb, "guard", "guard condition else \\{ ... }", "guard " + dl + "1:condition} else " + lb + "\n\t$0\n" + rb, typed_word, is_first)
+            lsp_emit_snippet_item(jb, "try", "try \\{ ... } catch err \\{ ... }", "try " + lb + "\n\t" + dl + "1}\n" + rb + " catch " + dl + "2:err} " + lb + "\n\t$0\n" + rb, typed_word, is_first)
+            lsp_emit_snippet_item(jb, "spawn", "spawn background task thread", "spawn " + lb + "\n\t$0\n" + rb, typed_word, is_first)
+            lsp_emit_snippet_item(jb, "defer", "defer cleanup action", "defer " + lb + "\n\t$0\n" + rb, typed_word, is_first)
+        }
+        lsp_emit_snippet_item(jb, "fn", "fn name(args) -> Ret \\{ ... }", "fn " + dl + "1:name}(" + dl + "2:params}) -> " + dl + "3:void} " + lb + "\n\t$0\n" + rb, typed_word, is_first)
+        lsp_emit_snippet_item(jb, "pub_fn", "pub fn name(args) -> Ret \\{ ... }", "pub fn " + dl + "1:name}(" + dl + "2:params}) -> " + dl + "3:void} " + lb + "\n\t$0\n" + rb, typed_word, is_first)
+        lsp_emit_snippet_item(jb, "struct", "struct Name \\{ ... }", "struct " + dl + "1:Name} " + lb + "\n\t" + dl + "2:field}: " + dl + "3:i64}\n" + rb, typed_word, is_first)
+        lsp_emit_snippet_item(jb, "class", "class Name \\{ ... }", "class " + dl + "1:Name} " + lb + "\n\tfn init(" + dl + "2:params}) " + lb + "\n\t\t$0\n\t" + rb + "\n" + rb, typed_word, is_first)
+        lsp_emit_snippet_item(jb, "enum", "enum Name \\{ ... }", "enum " + dl + "1:Name} " + lb + "\n\t" + dl + "2:Variant1},\n\t" + dl + "3:Variant2}\n" + rb, typed_word, is_first)
+        lsp_emit_snippet_item(jb, "trait", "trait Name \\{ ... }", "trait " + dl + "1:Name} " + lb + "\n\tfn " + dl + "2:method}(" + dl + "3:params}) -> " + dl + "4:void}\n" + rb, typed_word, is_first)
+        lsp_emit_snippet_item(jb, "test", "test \"description\" \\{ ... }", "test \"" + dl + "1:test name}\" " + lb + "\n\t$0\n" + rb, typed_word, is_first)
     }
 
     jb.rbrack()
     jb.rbrace()
     return jb.finish()
+}
+
+fn lsp_emit_snippet_item(jb: JsonBuf, label: str, detail: str, snip_text: str, typed_word: str, is_first: List<i64>) {
+    let score = lsp_calc_fuzzy_score(label, typed_word)
+    if typed_word != "" && score == 0 { return }
+    mut stxt = "0000_" + label
+    if score >= 800 { stxt = "00000_" + label }
+    let fst = is_first.get(0) == 1
+    is_first.set(0, 0)
+    emit_comp_item_ex(jb, label, "", "snippet", CKIND_SNIPPET(), detail, "Aerix code snippet for `" + label + "`",
+                      snip_text, stxt, "", -1, 0, 0, "", false, fst)
 }
 

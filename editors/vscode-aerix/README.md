@@ -1,4 +1,4 @@
-# Aerix Language & IntelliSense Support (`v3.0.0-beta.3`)
+# Aerix Language & IntelliSense Support (`v3.0.0-beta.4`)
 
 <div align="center">
 
@@ -16,8 +16,12 @@
 
 ---
 
-## 🚀 Key Highlights & New in v3.0.0-beta.3
+## 🚀 Key Highlights & New in v3.0.0-beta.4
 
+- **Fuzzy Search & Subsequence Completion Ranking:** Intelligent ranking favoring exact matches, camelCase/snake_case word boundaries, and subsequence queries.
+- **Dynamic Interactive Snippets:** Instant expansions for `if`, `ifelse`, `for`, `for_in`, `while`, `match`, `guard`, `try`, `spawn`, `defer`, `fn`, `pub_fn`, `struct`, `class`, `enum`, `trait`, and `test`.
+- **Call Parameter Inlay Hints:** Call-site argument names automatically rendered (`kind: 2`) with smart suppression for identical argument names.
+- **Hierarchical Outline & Breadcrumbs:** Document symbols with full block range calculation for smooth code navigation.
 - **Instant Demand-Driven IntelliSense & Spatial AST Indexing:** Pre-indexed scoped symbols and binary-search spatial node lookup replace flat full-AST iterations, accelerating completions, hovers, and Go-to-Definition queries by up to 1,000x.
 - **Incremental Document Synchronization (`textDocumentSync: 2`):** Character-delta range splicing eliminates redundant full-file IPC re-transfers, providing sub-millisecond editor responsiveness with snappier diagnostics.
 - **Multi-Document Tab-Switching LRU Cache:** Retains in-memory semantic analysis states across open files, making tab switches and cross-file navigation instantaneous with zero re-parsing lag.
@@ -28,7 +32,7 @@
   - `from Window.Gui import createWindow`: Strictly imports only `createWindow` (and case-variant `CreateWindow`). Autocompletion suggestions in the file only expose the imported symbol(s), preventing symbol pollution.
   - `from Window.Gui import <cursor>`: Context-aware suggestions listing all functions, classes, and structs exported by `Window.Gui`.
 - **Zero-Dependency Native Compiler:** Directly compiles `.arx` sources into standalone PE32+ x86-64 native executables without needing GCC, Clang, or external toolchains.
-- **Integrated Toolchain Version Manager:** Switch between installed toolchain versions (`>= 1.1.3b` up to `3.0.0-beta.3`) or install new releases on-the-fly directly from the status bar (`$(versions) Aerix`).
+- **Integrated Toolchain Version Manager:** Switch between installed toolchain versions (`>= 1.1.3b` up to `3.0.0-beta.4`) or install new releases on-the-fly directly from the status bar (`$(versions) Aerix`).
 - **Silent & Prompted Auto-Updates:** Seamless background checking against GitHub Releases with non-intrusive notification prompts and auto-restarting LSP daemon.
 - **Dual-Layer Highlighting:** Instant TextMate grammar baseline (`aerix.tmLanguage.json`) combined with compiler-accurate LSP Semantic Tokens.
 
@@ -146,12 +150,12 @@ When `aerix.executablePath` is not explicitly set, the extension automatically l
 
 ### Install from VSIX
 ```powershell
-code --install-extension aerix-3.0.0-beta.3.vsix --force
+code --install-extension aerix-3.0.0-beta.4.vsix --force
 ```
 
 ### Install in Antigravity IDE
 ```powershell
-antigravity --install-extension aerix-3.0.0-beta.3.vsix --force
+antigravity --install-extension aerix-3.0.0-beta.4.vsix --force
 ```
 
 > **Tip:** After installing or switching compiler versions, run **`Developer: Reload Window`** (`Ctrl+Shift+P` -> `Reload Window`) to reconnect the LSP server cleanly.

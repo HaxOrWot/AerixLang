@@ -302,6 +302,66 @@ fn lsp_type_matches(cand_t: str, expected_t: str) -> bool {
     return false
 }
 
+pub fn lsp_calc_fuzzy_score(cand: str, query: str) -> i64 {
+    if query == "" { return 100 }
+    let qlen = query.len()
+    let clen = cand.len()
+    if qlen > clen { return 0 }
+    let cand_low = cand.to_lower()
+    let query_low = query.to_lower()
+
+    // 1. Exact match
+    if cand == query { return 1000 }
+    if cand_low == query_low { return 900 }
+
+    // 2. Exact prefix
+    if cand.starts_with(query) { return 800 }
+    if cand_low.starts_with(query_low) { return 700 }
+
+    // 3. Snake_case / CamelCase word boundary match
+    mut qi = 0
+    mut ci = 0
+    while qi < qlen && ci < clen {
+        let qb = query_low.byte_at(qi)
+        let cb = cand_low.byte_at(ci)
+        let is_boundary = (ci == 0) || (cand.byte_at(ci - 1) == 95) || 
+                          (cand.byte_at(ci) >= 65 && cand.byte_at(ci) <= 90)
+        if is_boundary && cb == qb {
+            qi = qi + 1
+        }
+        ci = ci + 1
+    }
+    if qi == qlen { return 600 }
+
+    // 4. Subsequence match (all letters appear in order)
+    qi = 0
+    ci = 0
+    while qi < qlen && ci < clen {
+        if cand_low.byte_at(ci) == query_low.byte_at(qi) {
+            qi = qi + 1
+        }
+        ci = ci + 1
+    }
+    if qi == qlen { return 400 }
+
+    return 0
+}
+
+pub fn lsp_item_sort_text(cand: str, typed_word: str, matched: bool, base_tier: str) -> str {
+    if typed_word == "" {
+        if matched { return "00_" + cand }
+        return base_tier + "_" + cand
+    }
+    let score = lsp_calc_fuzzy_score(cand, typed_word)
+    if score == 0 { return "" }
+    if matched && score >= 700 { return "00000_" + cand }
+    if matched { return "0000_" + cand }
+    if score >= 800 { return "000_" + cand }
+    if score >= 600 { return "00_" + cand }
+    if score >= 400 { return "0_" + cand }
+    return base_tier + "_" + cand
+}
+
 fn lsp_infer_expected_type(source: str, az: Analyzer, doc_path: str, line0: i64, cpos: i64, before_word: str) -> str {
     // 1. Inside call arguments -> active parameter type
     let sig_params = List<str>()

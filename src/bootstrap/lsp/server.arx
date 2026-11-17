@@ -175,7 +175,7 @@ fn lsp_build_initialize_result() -> str {
     jb.key("serverInfo")
     jb.lbrace()
     jb.kv_str("name", "aerix-lsp", true)
-    jb.kv_str("version", "3.0.0-beta.3", false)
+    jb.kv_str("version", "3.0.0-beta.4", false)
     jb.rbrace()
 
     jb.rbrace()
@@ -572,7 +572,7 @@ pub fn run_lsp_server() -> i64 {
                 continue
             }
             if method == "textDocument/documentSymbol" {
-                lsp_send_response(id_raw, lsp_build_document_symbols_json(cached_az, fpath))
+                lsp_send_response(id_raw, lsp_build_document_symbols_json(src, cached_az, fpath))
                 continue
             }
             if method == "textDocument/inlayHint" {
