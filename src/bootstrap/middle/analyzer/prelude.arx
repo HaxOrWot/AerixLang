@@ -5,7 +5,7 @@ extend Analyzer {
 
     priv fn prelude_static_ret(cls: str, mname: str) -> str {
         if cls == "File" {
-            if mname == "read_to_string" { return "str" }
+            if mname == "read" || mname == "read_to_string" || mname == "read_string" { return "str" }
             return "bool"
         }
         if cls == "Directory" {

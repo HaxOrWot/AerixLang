@@ -69,21 +69,22 @@ Before opening the v3.1+ multi-threading track, **v3.0 must become rock-solid**:
 ### Phase 2: Standard Library & Primitives Verification
 *Goal: Guarantee all built-in types and standard modules work consistently and without crashes.*
 
-- [ ] **String (`str`) Primitive Methods:**
-  - [ ] `.len()`, `.slice()`, `.contains()`, `.starts_with()`, `.ends_with()`.
-  - [ ] `.trim()`, `.split()`, `.replace()`.
-  - [ ] Numeric conversions (`to_i64()`, `to_f64()`) with safe defaults on invalid/empty strings.
-- [ ] **Dynamic Collections (`List<T>`, `Map<K, V>`):**
-  - [ ] `List<T>`: `.push()`, `.pop()`, `.get()`, `.set()`, `.len()`, `.clear()`.
-  - [ ] Bounds checking: clear runtime panic on out-of-bounds indexing instead of silent memory corruption.
-- [ ] **Console & File I/O:**
-  - [ ] Interpolated string formatting: `{var}`, `{expr}`, escaped braces `\{` and `\}`.
-  - [ ] File operations: `File.read()`, `File.write()`, `File.append()`, `File.exists()`.
-- [ ] **Standard Module Audits (`modules/`):**
-  - [ ] `Math` (trigonometry, rounding, clamps, constants).
-  - [ ] `Random` (seed generation, integer/float ranges).
-  - [ ] `Time` (clock, timestamps, sleep).
-  - [ ] `Socket` (basic TCP stream connectivity).
+- [x] **String (`str`) Primitive Methods:**
+  - [x] `.len()`, `.slice()`, `.contains()`, `.starts_with()`, `.ends_with()`.
+  - [x] `.trim()`, `.split()`, `.replace()`.
+  - [x] Numeric conversions (`to_i64()`, `to_f64()`) with safe defaults on invalid/empty strings.
+- [x] **Dynamic Collections (`List<T>`, `Map<K, V>`):**
+  - [x] `List<T>`: `.push()`, `.pop()`, `.get()`, `.set()`, `.len()`, `.clear()`.
+  - [x] `Map<K, V>`: `.insert()`, `.get()`, `.has_key()`, `.remove()`, `.clear()`, `.keys()`, `.values()`.
+  - [x] Bounds checking: clear runtime panic on out-of-bounds indexing instead of silent memory corruption.
+- [x] **Console & File I/O:**
+  - [x] Interpolated string formatting: `{var}`, `{expr}`, escaped braces `\{` and `\}`.
+  - [x] File operations: `File.read()`, `File.write()`, `File.append()`, `File.exists()`.
+- [x] **Standard Module Audits (`modules/`):**
+  - [x] `Math` (trigonometry, rounding, clamps, constants).
+  - [x] `Random` (seed generation, integer/float ranges).
+  - [x] `Time` (clock, timestamps, sleep).
+  - [x] `Socket` (basic TCP stream connectivity).
 
 ---
 

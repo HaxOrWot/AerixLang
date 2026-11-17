@@ -263,6 +263,119 @@ extend NativeRt {
         a.bind_label(l_kd)
         a.mov_rm64(REG_RAX(), REG_RBP(), -16)
         self.end_fn()
+
+        // __rt_map_remove(rcx = map, rdx = key, r8 = key_is_str) -> bool (1 if removed, 0 if not found)
+        self.begin_fn("__rt_map_remove", 64)
+        let l_mr_nf = a.new_label()
+        a.test_rr(REG_RCX(), REG_RCX())
+        a.jcc_rel32(CC_E(), l_mr_nf)
+        a.mov_mr64(REG_RBP(), -8, REG_RCX())   // map
+        a.mov_mr64(REG_RBP(), -16, REG_RDX())  // key
+        a.mov_mr64(REG_RBP(), -24, REG_R8())   // key_is_str
+        a.call_rel32(self.lbl("__rt_map_find"))
+        a.cmp_ri32(REG_RAX(), 0)
+        a.jcc_rel32(CC_L(), l_mr_nf)
+        // RAX has found idx
+        a.mov_mr64(REG_RBP(), -32, REG_RAX())  // found idx
+        a.mov_rm64(REG_RCX(), REG_RBP(), -8)   // map
+        a.mov_rm64(REG_RDX(), REG_RCX(), 16)  // len
+        a.sub_ri32(REG_RDX(), 1)               // last_idx = len - 1
+        a.mov_mr64(REG_RCX(), 16, REG_RDX())  // map->len = last_idx
+        a.mov_rm64(REG_RAX(), REG_RBP(), -32)  // found idx
+        let l_mr_done = a.new_label()
+        a.cmp_rr(REG_RAX(), REG_RDX())
+        a.jcc_rel32(CC_GE(), l_mr_done)        // if found_idx == last_idx, no swap needed!
+        // Swap keys[found_idx] = keys[last_idx]
+        // Swap vals[found_idx] = vals[last_idx]
+        a.mov_rm64(REG_R8(), REG_RCX(), 0)    // keys ptr
+        a.mov_rm64(REG_R9(), REG_RCX(), 8)    // vals ptr
+        
+        // Offset for last_idx
+        a.mov_rr(REG_R10(), REG_RDX())
+        a.add_rr(REG_R10(), REG_R10())
+        a.add_rr(REG_R10(), REG_R10())
+        a.add_rr(REG_R10(), REG_R10())         // last_idx * 8
+
+        // Offset for found_idx
+        a.mov_rr(REG_R11(), REG_RAX())
+        a.add_rr(REG_R11(), REG_R11())
+        a.add_rr(REG_R11(), REG_R11())
+        a.add_rr(REG_R11(), REG_R11())         // found_idx * 8
+
+        // keys[found_idx] = keys[last_idx]
+        a.add_rr(REG_R10(), REG_R8())          // keys + last_idx*8
+        a.mov_rm64(REG_RDX(), REG_R10(), 0)    // val = keys[last_idx]
+        a.add_rr(REG_R11(), REG_R8())          // keys + found_idx*8
+        a.mov_mr64(REG_R11(), 0, REG_RDX())    // keys[found_idx] = val
+
+        // Recompute offsets for vals:
+        a.mov_rm64(REG_RDX(), REG_RCX(), 16)  // last_idx
+        a.mov_rr(REG_R10(), REG_RDX())
+        a.add_rr(REG_R10(), REG_R10())
+        a.add_rr(REG_R10(), REG_R10())
+        a.add_rr(REG_R10(), REG_R10())
+        a.add_rr(REG_R10(), REG_R9())          // vals + last_idx*8
+        a.mov_rm64(REG_RDX(), REG_R10(), 0)    // val = vals[last_idx]
+        a.mov_rm64(REG_RAX(), REG_RBP(), -32)  // found_idx
+        a.mov_rr(REG_R11(), REG_RAX())
+        a.add_rr(REG_R11(), REG_R11())
+        a.add_rr(REG_R11(), REG_R11())
+        a.add_rr(REG_R11(), REG_R11())
+        a.add_rr(REG_R11(), REG_R9())          // vals + found_idx*8
+        a.mov_mr64(REG_R11(), 0, REG_RDX())    // vals[found_idx] = val
+
+        a.bind_label(l_mr_done)
+        a.mov_ri32_sext(REG_RAX(), 1)
+        self.end_fn()
+        a.bind_label(l_mr_nf)
+        a.mov_ri32_sext(REG_RAX(), 0)
+        self.end_fn()
+
+        // __rt_map_clear(rcx = map)
+        self.begin_fn("__rt_map_clear", 32)
+        let l_mc_ret = a.new_label()
+        a.test_rr(REG_RCX(), REG_RCX())
+        a.jcc_rel32(CC_E(), l_mc_ret)
+        a.mov_ri32_sext(REG_RAX(), 0)
+        a.mov_mr64(REG_RCX(), 16, REG_RAX())
+        a.bind_label(l_mc_ret)
+        self.end_fn()
+
+        // __rt_map_values(rcx = map) -> List ptr
+        self.begin_fn("__rt_map_values", 64)
+        a.mov_mr64(REG_RBP(), -8, REG_RCX())
+        a.call_rel32(self.lbl("__rt_list_new"))
+        a.mov_mr64(REG_RBP(), -16, REG_RAX())
+        a.mov_rm64(REG_RCX(), REG_RBP(), -8)
+        let l_vd = a.new_label()
+        a.test_rr(REG_RCX(), REG_RCX())
+        a.jcc_rel32(CC_E(), l_vd)
+        a.mov_ri32_sext(REG_RCX(), 0)
+        a.mov_mr64(REG_RBP(), -24, REG_RCX())
+        let l_vl = a.new_label()
+        a.bind_label(l_vl)
+        a.mov_rm64(REG_RCX(), REG_RBP(), -8)
+        a.mov_rm64(REG_R8(), REG_RCX(), 16)
+        a.mov_rm64(REG_RDX(), REG_RBP(), -24)
+        a.cmp_rr(REG_RDX(), REG_R8())
+        a.jcc_rel32(CC_GE(), l_vd)
+        a.mov_rm64(REG_RAX(), REG_RCX(), 8)
+        a.test_rr(REG_RAX(), REG_RAX())
+        a.jcc_rel32(CC_E(), l_vd)
+        a.add_rr(REG_RDX(), REG_RDX())
+        a.add_rr(REG_RDX(), REG_RDX())
+        a.add_rr(REG_RDX(), REG_RDX())
+        a.add_rr(REG_RAX(), REG_RDX())
+        a.mov_rm64(REG_RDX(), REG_RAX(), 0)
+        a.mov_rm64(REG_RCX(), REG_RBP(), -16)
+        a.call_rel32(self.lbl("__rt_list_push"))
+        a.mov_rm64(REG_RCX(), REG_RBP(), -24)
+        a.add_ri32(REG_RCX(), 1)
+        a.mov_mr64(REG_RBP(), -24, REG_RCX())
+        a.jmp_rel32(l_vl)
+        a.bind_label(l_vd)
+        a.mov_rm64(REG_RAX(), REG_RBP(), -16)
+        self.end_fn()
     }
 
 }

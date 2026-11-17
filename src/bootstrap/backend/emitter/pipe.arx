@@ -99,8 +99,11 @@ extend Emitter {
         // Arx_File & Arx_Process static helpers
         self.wcl("typedef struct Arx_File @ int64_t _dummy; ` Arx_File;")
         self.wcl("static inline bool Arx_File_exists(const char* p) @ return arx_file_exists(p); `")
+        self.wcl("static inline const char* Arx_File_read(const char* p) @ return arx_file_read_to_string(p); `")
         self.wcl("static inline const char* Arx_File_read_to_string(const char* p) @ return arx_file_read_to_string(p); `")
+        self.wcl("static inline bool Arx_File_write(const char* p, const char* c) @ return arx_file_write_string(p, c); `")
         self.wcl("static inline bool Arx_File_write_string(const char* p, const char* c) @ return arx_file_write_string(p, c); `")
+        self.wcl("static inline bool Arx_File_append(const char* p, const char* c) @ return arx_file_append_string(p, c); `")
         self.wcl("static inline bool Arx_File_append_string(const char* p, const char* c) @ return arx_file_append_string(p, c); `")
         self.wcl("static inline bool Arx_File_remove(const char* p) @ return arx_file_remove(p); `")
         self.wcl("static inline bool Arx_File_copy(const char* a, const char* b) @ return arx_file_copy(a, b); `")

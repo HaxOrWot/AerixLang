@@ -356,8 +356,8 @@ fn lsp_infer_builtin_member_ret(recv_t: str, mname: str) -> str {
         return ""
     }
     if recv_t == "File" {
-        if mname == "read_to_string" { return "str" }
-        if mname == "exists" || mname == "write_string" || mname == "append_string" || mname == "remove" || mname == "copy" { return "bool" }
+        if mname == "read" || mname == "read_to_string" || mname == "read_string" { return "str" }
+        if mname == "exists" || mname == "write" || mname == "write_string" || mname == "append" || mname == "append_string" || mname == "remove" || mname == "delete" || mname == "copy" { return "bool" }
         return ""
     }
     if recv_t == "Directory" {

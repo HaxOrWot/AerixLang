@@ -232,16 +232,22 @@ extend NativeCodegen {
         if cal >= 0 && self.nk.get(cal) == NK_MEMBER() {
             let recv_id = self.la.get(cal)
             let mname = self.sa.get(cal)
-            let recv_t = btype_norm(self.node_types.get(recv_id))
+            mut recv_t = btype_norm(self.node_types.get(recv_id))
+            if recv_t == "" || recv_t == "void" {
+                if self.nk.get(recv_id) == NK_IDENT() {
+                    recv_t = self.find_local_type(self.sa.get(recv_id))
+                }
+            }
 
             // Check static Type calls: File.exists, Directory.create, Env.args, Process.execute, Math.sqrt, Enum.Variant(...)
             if self.nk.get(recv_id) == NK_IDENT() {
                 let ns = self.sa.get(recv_id)
                 if ns == "File" {
                     if mname == "exists" { self.emit_call_with_temps(self.rt.lbl("__rt_file_exists"), false, arg_temps); return }
-                    if mname == "read_to_string" || mname == "read_string" { self.emit_call_with_temps(self.rt.lbl("__rt_file_read"), false, arg_temps); self.track_temp_str(); return }
-                    if mname == "write_string" || mname == "write" { self.emit_call_with_temps(self.rt.lbl("__rt_file_write"), false, arg_temps); return }
-                    if mname == "remove" { self.emit_call_with_temps(self.rt.lbl("__rt_file_remove"), false, arg_temps); return }
+                    if mname == "read" || mname == "read_to_string" || mname == "read_string" { self.emit_call_with_temps(self.rt.lbl("__rt_file_read"), false, arg_temps); self.track_temp_str(); return }
+                    if mname == "write" || mname == "write_string" { self.emit_call_with_temps(self.rt.lbl("__rt_file_write"), false, arg_temps); return }
+                    if mname == "append" || mname == "append_string" { self.emit_call_with_temps(self.rt.lbl("__rt_file_append"), false, arg_temps); return }
+                    if mname == "remove" || mname == "delete" { self.emit_call_with_temps(self.rt.lbl("__rt_file_remove"), false, arg_temps); return }
                     if mname == "copy" { self.emit_call_with_temps(self.rt.lbl("__rt_file_copy"), false, arg_temps); return }
                 }
                 if ns == "Directory" {
@@ -472,6 +478,15 @@ extend NativeCodegen {
                         self.emit_call_with_temps(self.rt.lbl("__rt_map_has_key"), false, margs)
                         return
                     }
+                    if mname == "remove" || mname == "delete" {
+                        margs.push(is_s)
+                        self.emit_call_with_temps(self.rt.lbl("__rt_map_remove"), false, margs)
+                        return
+                    }
+                    if mname == "clear" {
+                        self.emit_call_with_temps(self.rt.lbl("__rt_map_clear"), false, margs)
+                        return
+                    }
                     if mname == "len" || mname == "length" {
                         self.emit_call_with_temps(self.rt.lbl("__rt_map_len"), false, margs)
                         return
@@ -495,9 +510,18 @@ extend NativeCodegen {
                         self.emit_call_with_temps(self.rt.lbl("__rt_map_get"), false, margs)
                         return
                     }
-                    if mname == "has_key" {
+                    if mname == "has_key" || mname == "contains" || mname == "has" {
                         margs.push(is_s)
                         self.emit_call_with_temps(self.rt.lbl("__rt_map_has_key"), false, margs)
+                        return
+                    }
+                    if mname == "remove" || mname == "delete" {
+                        margs.push(is_s)
+                        self.emit_call_with_temps(self.rt.lbl("__rt_map_remove"), false, margs)
+                        return
+                    }
+                    if mname == "clear" {
+                        self.emit_call_with_temps(self.rt.lbl("__rt_map_clear"), false, margs)
                         return
                     }
                     if mname == "len" || mname == "length" {
@@ -514,6 +538,10 @@ extend NativeCodegen {
                     }
                     if mname == "keys" {
                         self.emit_call_with_temps(self.rt.lbl("__rt_map_keys"), false, margs)
+                        return
+                    }
+                    if mname == "values" {
+                        self.emit_call_with_temps(self.rt.lbl("__rt_map_values"), false, margs)
                         return
                     }
                 }

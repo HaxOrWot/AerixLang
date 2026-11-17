@@ -75,6 +75,7 @@ pub class NativeRt {
     pub s_pct_s_nl: i64
     pub s_rb: i64
     pub s_wb: i64
+    pub s_ab: i64
     pub s_windows: i64
     pub s_oom: i64
     pub s_assert_failed: i64
@@ -160,6 +161,7 @@ pub class NativeRt {
         self.s_pct_s_nl = pe.add_rdata_cstr("%s\n")
         self.s_rb = pe.add_rdata_cstr("rb")
         self.s_wb = pe.add_rdata_cstr("wb")
+        self.s_ab = pe.add_rdata_cstr("ab")
         self.s_windows = pe.add_rdata_cstr("windows")
         self.s_oom = pe.add_rdata_cstr("fatal: out of memory\n")
         self.s_assert_failed = pe.add_rdata_cstr("AssertionError: assertion failed\n")
