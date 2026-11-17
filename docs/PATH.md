@@ -123,17 +123,17 @@ Before opening the v3.1+ multi-threading track, **v3.0 must become rock-solid**:
 ### Phase 5: Release Candidate (`v3.0.0-rc.1`) & Launch Gate
 *Goal: Execute the clean promotion workflow per [GIT-INS.md](file:///Z:/VSCode/AerixLang/docs/GIT-INS.md).*
 
-- [ ] **Declare Feature Freeze:** No new keywords, syntax, or breaking grammar changes.
-- [ ] **Update Project-Wide Version Checklist:**
-  - `AerixInstaller/src/installer_manifest.json` (`3.0.0-rc.1`)
-  - `AerixInstaller/src/InstallerEngine.cs`
-  - `AerixInstaller/src/AssemblyInfo.cs`
-  - `src/bootstrap/main.arx` & `src/bootstrap/lsp/server.arx`
-  - `editors/vscode-aerix/package.json`
-  - Documentation files (`README.md`, `GUIDE.md`, `USER.md`).
-- [ ] **Build RC Artifacts:**
-  - `AerixSetup-3.0.0-rc.1.exe`
-  - `aerix-3.0.0-rc.1.vsix`
+- [x] **Declare Feature Freeze:** No new keywords, syntax, or breaking grammar changes.
+- [x] **Update Project-Wide Version Checklist:**
+  - [x] `AerixInstaller/src/installer_manifest.json` (`3.0.0-rc.1`)
+  - [x] `AerixInstaller/src/InstallerEngine/Core.cs` (`3.0.0-rc.1`)
+  - [x] `AerixInstaller/src/AssemblyInfo.cs` (`3.0.0.0`)
+  - [x] `src/bootstrap/main/mod.arx` & `src/bootstrap/lsp/server.arx` (`3.0.0-rc.1`)
+  - [x] `editors/vscode-aerix/package.json` (`3.0.0-rc.1`)
+  - [x] Documentation files (`README.md`, `GUIDE.md`).
+- [x] **Build RC Artifacts:**
+  - [x] `AerixSetup-3.0.0-rc.1.exe` (SHA256: `FA70C37A0F3A50D02547B80915FFCA92DE42B36C3596DD74FE080417E97F7914`)
+  - [x] `aerix-3.0.0-rc.1.vsix`
 - [ ] **7–14 Day RC Stabilization Buffer:**
   - Daily testing on real codebases.
 - [ ] **Promote to `v3.0.0 Stable`:**
