@@ -243,6 +243,14 @@ extend Emitter {
             } else {
                 self.wl("const char* " + tmp + " = arx_readln();")
             }
+            let target_t = btype_norm(self.node_types.get(nid))
+            if target_t != "" && target_t != "str" && target_t != "void" {
+                if target_t == "bool" { return "arx_cast_to_bool(" + tmp + ")" }
+                if btype_is_float(target_t) { return "((" + btype_to_c(target_t) + ")arx_cast_to_f64(" + tmp + "))" }
+                if btype_is_unsigned(target_t) { return "((" + btype_to_c(target_t) + ")arx_cast_to_u64(" + tmp + "))" }
+                if target_t == "char" { return "((" + tmp + " && " + tmp + "[0]) ? " + tmp + "[0] : '\\0')" }
+                return "((" + btype_to_c(target_t) + ")arx_cast_to_i64(" + tmp + "))"
+            }
             return tmp
         }
         if name == "to_string" && ac >= 1 {

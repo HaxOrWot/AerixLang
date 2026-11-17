@@ -361,6 +361,46 @@ pub class Analyzer {
         return ""
     }
 
+    priv fn is_input_call(nid: i64) -> bool {
+        if nid < 0 { return false }
+        let k = self.nk.get(nid)
+        if k == NK_CALL() {
+            if nid < self.call_targets.len() {
+                let tg = self.call_targets.get(nid)
+                if tg == "input" || tg == "read_line" { return true }
+            }
+            let callee = self.la.get(nid)
+            if callee >= 0 && self.nk.get(callee) == NK_IDENT() {
+                let cname = self.sa.get(callee)
+                if cname == "input" || cname == "read_line" { return true }
+            }
+        }
+        return false
+    }
+
+    priv fn is_input_or_coalesce(nid: i64) -> bool {
+        if self.is_input_call(nid) { return true }
+        if nid >= 0 && self.nk.get(nid) == NK_BIN_OP() && self.sa.get(nid) == "??" {
+            return self.is_input_call(self.la.get(nid))
+        }
+        return false
+    }
+
+    priv fn set_target_input_type(nid: i64, target_t: str) {
+        if nid < 0 { return }
+        if self.is_input_call(nid) {
+            self.node_types.set(nid, target_t)
+            return
+        }
+        if self.nk.get(nid) == NK_BIN_OP() && self.sa.get(nid) == "??" {
+            let left = self.la.get(nid)
+            if self.is_input_call(left) {
+                self.node_types.set(left, target_t)
+            }
+            self.node_types.set(nid, target_t)
+        }
+    }
+
     priv fn resolve_mod_path(raw_path: str) -> str {
         if raw_path == "" { return "" }
         if self.mod_aliases.has_key(raw_path) {

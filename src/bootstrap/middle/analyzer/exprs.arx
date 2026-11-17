@@ -81,7 +81,13 @@ extend Analyzer {
                 res_t = "f64"
             } else if op_s == "??" {
                 res_t = lt
-                if res_t == "" || res_t == "void" { res_t = rt }
+                if res_t == "" || res_t == "void" || (btype_is_str(lt) && (btype_is_numeric(rt) || rt == "bool" || rt == "char")) {
+                    res_t = rt
+                    let left_id = self.la.get(nid)
+                    if self.is_input_call(left_id) {
+                        self.node_types.set(left_id, res_t)
+                    }
+                }
             }
             self.node_types.set(nid, res_t)
             return res_t

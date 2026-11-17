@@ -177,7 +177,12 @@ extend Analyzer {
             if decl_t != "" {
                 res_t = self.norm_type_name(decl_t)
                 if init_id >= 0 {
-                    let it = self.analyze_expr(init_id)
+                    mut it = self.analyze_expr(init_id)
+                    let is_targetable = btype_is_numeric(res_t) || res_t == "bool" || res_t == "char"
+                    if is_targetable && self.is_input_or_coalesce(init_id) {
+                        self.set_target_input_type(init_id, res_t)
+                        it = res_t
+                    }
                     if it == "null" && btype_is_ptr(res_t) {
                         self.node_types.set(init_id, res_t)
                     } else if !self.unresolved_nodes.has_key(init_id) && !self.types_compatible(res_t, it) {
@@ -217,7 +222,12 @@ extend Analyzer {
             let lhs_id = self.la.get(nid)
             let rhs_id = self.ra.get(nid)
             let lt = self.analyze_expr(lhs_id)
-            let rt = self.analyze_expr(rhs_id)
+            mut rt = self.analyze_expr(rhs_id)
+            let is_targetable = btype_is_numeric(lt) || lt == "bool" || lt == "char"
+            if is_targetable && self.is_input_or_coalesce(rhs_id) {
+                self.set_target_input_type(rhs_id, lt)
+                rt = lt
+            }
             let root_name = self.get_root_ident(lhs_id)
             if root_name != "" {
                 self.scope_mark_mutated(root_name)

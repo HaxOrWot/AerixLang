@@ -167,6 +167,18 @@ extend NativeCodegen {
             if dt == st { return }
             if ncg_is_str(dt) {
                 self.emit_val_to_str_in_rax(st)
+            } else if ncg_is_str(st) {
+                if dt == "bool" {
+                    a.test_rr(REG_RAX(), REG_RAX())
+                    a.setcc_u8(CC_NE(), REG_RAX())
+                } else if ncg_is_float(dt) {
+                    a.mov_rr(REG_RCX(), REG_RAX())
+                    a.call_rel32(self.rt.lbl("__rt_str_to_f64"))
+                    a.movq_r_xmm(REG_RAX(), 0)
+                } else {
+                    a.mov_rr(REG_RCX(), REG_RAX())
+                    a.call_rel32(self.rt.lbl("__rt_str_to_i64"))
+                }
             } else if dt == "bool" {
                 a.test_rr(REG_RAX(), REG_RAX())
                 a.setcc_u8(CC_NE(), REG_RAX())

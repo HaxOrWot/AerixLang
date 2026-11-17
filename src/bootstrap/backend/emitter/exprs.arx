@@ -71,6 +71,7 @@ extend Emitter {
             if btype_is_str(st) {
                 if btype_is_float(tt) { return "((" + btype_to_c(tt) + ")arx_cast_to_f64(" + val + "))" }
                 if tt == "bool" { return "arx_cast_to_bool(" + val + ")" }
+                if btype_is_unsigned(tt) { return "((" + btype_to_c(tt) + ")arx_cast_to_u64(" + val + "))" }
                 return "((" + btype_to_c(tt) + ")arx_cast_to_i64(" + val + "))"
             }
             return "((" + btype_to_c(tt) + ")(" + val + "))"

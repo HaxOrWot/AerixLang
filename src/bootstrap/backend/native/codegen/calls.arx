@@ -117,6 +117,20 @@ extend NativeCodegen {
                 }
                 a.call_rel32(self.rt.lbl("__rt_read_line"))
                 self.track_temp_str()
+                let target_t = btype_norm(self.node_types.get(nid))
+                if target_t != "" && target_t != "str" && target_t != "void" {
+                    if target_t == "bool" {
+                        a.test_rr(REG_RAX(), REG_RAX())
+                        a.setcc_u8(CC_NE(), REG_RAX())
+                    } else if ncg_is_float(target_t) {
+                        a.mov_rr(REG_RCX(), REG_RAX())
+                        a.call_rel32(self.rt.lbl("__rt_str_to_f64"))
+                        a.movq_r_xmm(REG_RAX(), 0)
+                    } else {
+                        a.mov_rr(REG_RCX(), REG_RAX())
+                        a.call_rel32(self.rt.lbl("__rt_str_to_i64"))
+                    }
+                }
                 return
             }
 
