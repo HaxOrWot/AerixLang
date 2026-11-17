@@ -95,14 +95,14 @@ Before opening the v3.1+ multi-threading track, **v3.0 must become rock-solid**:
   - Uninstaller detects and terminates lingering background `arx.exe` or LSP processes before file deletion.
 - [x] **Modern Uninstaller GUI:**
   - Dark-mode layout, progress reporting, and full cleanup of registry/PATH entries.
-- [ ] **VS Code Extension (`editors/vscode-aerix`):**
-  - [ ] Update syntax grammar for latest keywords (`??`, `mut`, `let`, `extend`, `struct`, `class`).
-  - [ ] Verify Language Server Protocol (LSP) auto-complete, diagnostics squiggles, and hover tooltips.
-  - [ ] Package and test latest `.vsix` bundle.
-- [ ] **Aerix CLI (`arx`):**
-  - [ ] `arx --version`: Clean SemVer output matching installer version.
-  - [ ] `arx --help`: Clear, organized command list (`run`, `build`, `emit-c`, `check`).
-  - [ ] `arx check`: Fast syntax and type verification without generating output binaries.
+- [x] **VS Code Extension (`editors/vscode-aerix`):**
+  - [x] Update syntax grammar for latest keywords (`??`, `mut`, `let`, `extend`, `struct`, `class`).
+  - [x] Verify Language Server Protocol (LSP) auto-complete, diagnostics squiggles, and hover tooltips.
+  - [x] Package and test latest `.vsix` bundle.
+- [x] **Aerix CLI (`arx`):**
+  - [x] `arx --version`: Clean SemVer output matching installer version.
+  - [x] `arx --help`: Clear, organized command list (`run`, `build`, `emit-c`, `check`).
+  - [x] `arx check`: Fast syntax and type verification without generating output binaries.
 
 ---
 
