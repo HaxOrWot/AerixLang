@@ -18,7 +18,7 @@ namespace AerixSetup
     {
         private static void RegisterFileAssociations(string root)
         {
-            string fileIco = Path.Combine(root, "assets", "aerix_file.ico");
+            string fileIco = Path.Combine(root, "assets", "aerix.ico");
             string appIco = Path.Combine(root, "assets", "aerix.ico");
             string arxExe = Path.Combine(root, "bin", "arx.exe");
 
