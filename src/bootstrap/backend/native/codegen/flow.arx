@@ -1,0 +1,258 @@
+import "./mod.arx"
+
+extend NativeCodegen {
+    priv fn emit_for(nid: i64) {
+        let a = self.asmb
+        let item_v = self.sa.get(nid)
+        let idx_v = self.sb.get(nid)
+        let iter_id = self.la.get(nid)
+        let body_id = self.ra.get(nid)
+        let ik = self.nk.get(iter_id)
+
+        let l_top = a.new_label()
+        let l_step = a.new_label()
+        let l_end = a.new_label()
+
+        let smark = self.scope_names.len()
+        let dmark = self.defer_nodes.len()
+        self.push_scope()
+        self.loop_cnt_lbls.push(l_step)
+        self.loop_brk_lbls.push(l_end)
+        self.loop_defer_marks.push(self.defer_nodes.len())
+        self.loop_scope_marks.push(self.scope_names.len())
+
+        if ik == NK_RANGE() {
+            self.emit_expr(self.la.get(iter_id))
+            let cur_off = self.alloc_slot(item_v, "i64")
+            a.mov_mr64(REG_RBP(), -cur_off, REG_RAX())
+            self.emit_expr(self.ra.get(iter_id))
+            let end_off = self.alloc_slot("", "i64")
+            a.mov_mr64(REG_RBP(), -end_off, REG_RAX())
+
+            a.bind_label(l_top)
+            a.mov_rm64(REG_RAX(), REG_RBP(), -cur_off)
+            a.mov_rm64(REG_RCX(), REG_RBP(), -end_off)
+            a.cmp_rr(REG_RAX(), REG_RCX())
+            if has_flag(self.ia.get(iter_id), FLAG_INCLUSIVE()) || self.sa.get(iter_id) == "..=" {
+                a.jcc_rel32(CC_G(), l_end)
+            } else {
+                a.jcc_rel32(CC_GE(), l_end)
+            }
+            self.emit_stmt(body_id)
+            a.bind_label(l_step)
+            a.mov_rm64(REG_RAX(), REG_RBP(), -cur_off)
+            a.add_ri32(REG_RAX(), 1)
+            a.mov_mr64(REG_RBP(), -cur_off, REG_RAX())
+            a.jmp_rel32(l_top)
+        } else {
+            mut raw_it = iter_id
+            if ik == NK_CALL() {
+                let cal = self.la.get(iter_id)
+                if self.nk.get(cal) == NK_IDENT() && self.sa.get(cal) == "enumerate" && self.child_count(iter_id) == 1 {
+                    raw_it = self.child_at(iter_id, 0)
+                }
+            }
+            let it_t = btype_norm(self.node_types.get(raw_it))
+            let is_str = ncg_is_str(it_t)
+            let is_set = btype_is_set(it_t)
+            let is_map = btype_is_map(it_t)
+            mut elem_t = "i64"
+            if is_str {
+                elem_t = "char"
+            } else if btype_is_list(it_t) || is_set {
+                elem_t = btype_list_elem(it_t)
+            } else if is_map {
+                elem_t = btype_map_key(it_t)
+            }
+
+            self.emit_expr(raw_it)
+            let col_off = self.alloc_slot("", it_t)
+            a.mov_mr64(REG_RBP(), -col_off, REG_RAX())
+
+            let idx_off = self.alloc_slot(idx_v, "i64")
+            a.mov_ri32_sext(REG_RCX(), 0)
+            a.mov_mr64(REG_RBP(), -idx_off, REG_RCX())
+
+            let len_off = self.alloc_slot("", "i64")
+            a.mov_rm64(REG_RCX(), REG_RBP(), -col_off)
+            if is_str {
+                a.call_rel32(self.rt.lbl("__rt_str_len"))
+            } else if is_set || is_map {
+                a.mov_rm64(REG_RAX(), REG_RCX(), 16)
+            } else {
+                a.call_rel32(self.rt.lbl("__rt_list_len"))
+            }
+            a.mov_mr64(REG_RBP(), -len_off, REG_RAX())
+
+            let item_off = self.alloc_slot(item_v, elem_t)
+            a.bind_label(l_top)
+            a.mov_rm64(REG_RAX(), REG_RBP(), -idx_off)
+            a.mov_rm64(REG_RCX(), REG_RBP(), -len_off)
+            a.cmp_rr(REG_RAX(), REG_RCX())
+            a.jcc_rel32(CC_GE(), l_end)
+
+            a.mov_rm64(REG_RCX(), REG_RBP(), -col_off)
+            a.mov_rm64(REG_RDX(), REG_RBP(), -idx_off)
+            if is_str {
+                a.call_rel32(self.rt.lbl("__rt_str_byte_at"))
+            } else if is_set || is_map {
+                // Set and Map backed by Map struct: keys array at [map + 0]
+                a.mov_rm64(REG_RAX(), REG_RCX(), 0)
+                a.add_rr(REG_RDX(), REG_RDX())
+                a.add_rr(REG_RDX(), REG_RDX())
+                a.add_rr(REG_RDX(), REG_RDX())
+                a.add_rr(REG_RAX(), REG_RDX())
+                a.mov_rm64(REG_RAX(), REG_RAX(), 0)
+            } else {
+                a.call_rel32(self.rt.lbl("__rt_list_get"))
+            }
+            a.mov_mr64(REG_RBP(), -item_off, REG_RAX())
+            if ncg_is_str(elem_t) {
+                a.mov_rr(REG_RCX(), REG_RAX())
+                a.call_rel32(self.rt.lbl("__rt_arc_retain"))
+            }
+
+            self.emit_stmt(body_id)
+            a.bind_label(l_step)
+            if ncg_is_str(elem_t) {
+                a.mov_rm64(REG_RCX(), REG_RBP(), -item_off)
+                a.call_rel32(self.rt.lbl("__rt_arc_release"))
+                a.mov_ri32_sext(REG_RAX(), 0)
+                a.mov_mr64(REG_RBP(), -item_off, REG_RAX())
+            }
+            a.mov_rm64(REG_RAX(), REG_RBP(), -idx_off)
+            a.add_ri32(REG_RAX(), 1)
+            a.mov_mr64(REG_RBP(), -idx_off, REG_RAX())
+            a.jmp_rel32(l_top)
+        }
+
+        a.bind_label(l_end)
+        self.loop_cnt_lbls.pop()
+        self.loop_brk_lbls.pop()
+        self.loop_defer_marks.pop()
+        self.loop_scope_marks.pop()
+        self.emit_scope_defers(dmark)
+        self.emit_scope_drops(smark)
+        self.pop_scope()
+    }
+
+    priv fn emit_match(nid: i64) {
+        let a = self.asmb
+        let subj_id = self.la.get(nid)
+        let subj_t = btype_norm(self.node_types.get(subj_id))
+        let tmark = self.temp_str_slots.len()
+        self.emit_expr(subj_id)
+        let s_off = self.alloc_slot("", subj_t)
+        a.mov_mr64(REG_RBP(), -s_off, REG_RAX())
+
+        let l_done = a.new_label()
+        let ccnt = self.child_count(nid)
+        mut ci = 0
+        while ci < ccnt {
+            let case_id = self.child_at(nid, ci)
+            let pat_id = self.la.get(case_id)
+            let body_id = self.ra.get(case_id)
+            let guard_id = self.ea.get(case_id)
+            let ext = self.node_ext.get(pat_id)
+            let l_next = a.new_label()
+
+            let sm = self.scope_names.len()
+            let dm = self.defer_nodes.len()
+            self.push_scope()
+            let is_wild = (ext == "wildcard") || (self.nk.get(pat_id) == NK_IDENT() && self.sa.get(pat_id) == "_")
+            let is_ident_var = self.nk.get(pat_id) == NK_IDENT() && !ext.starts_with("enum_")
+            if is_wild {
+                // Wildcard '_' always matches
+            } else if is_ident_var {
+                // Variable binding pattern: captures subject value
+                let bnm = self.sa.get(pat_id)
+                let boff = self.alloc_slot(bnm, subj_t)
+                a.mov_rm64(REG_RAX(), REG_RBP(), -s_off)
+                a.mov_mr64(REG_RBP(), -boff, REG_RAX())
+                if ncg_is_str(subj_t) {
+                    a.mov_rr(REG_RCX(), REG_RAX())
+                    a.call_rel32(self.rt.lbl("__rt_arc_retain"))
+                }
+            } else if ext.starts_with("enum_unit::") {
+                let rest = ext.slice(11, ext.len())
+                let tag = self.enum_var_tags.get(rest)
+                a.mov_rm64(REG_RAX(), REG_RBP(), -s_off)
+                a.mov_rm64(REG_RAX(), REG_RAX(), 0)
+                a.cmp_ri32(REG_RAX(), tag)
+                a.jcc_rel32(CC_NE(), l_next)
+            } else if ext.starts_with("enum_payload::") {
+                let rest = ext.slice(14, ext.len())
+                let tag = self.enum_var_tags.get(rest)
+                let vnode = self.call_fn_nodes.get(pat_id)
+                a.mov_rm64(REG_RAX(), REG_RBP(), -s_off)
+                a.mov_rm64(REG_RAX(), REG_RAX(), 0)
+                a.cmp_ri32(REG_RAX(), tag)
+                a.jcc_rel32(CC_NE(), l_next)
+                let ac = self.child_count(pat_id)
+                mut ai = 0
+                while ai < ac {
+                    let arg_id = self.child_at(pat_id, ai)
+                    if self.nk.get(arg_id) == NK_IDENT() && self.sa.get(arg_id) != "_" {
+                        let bnm = self.sa.get(arg_id)
+                        mut ft = "i64"
+                        if vnode >= 0 && ai < self.child_count(vnode) {
+                            ft = btype_norm(self.sb.get(self.child_at(vnode, ai)))
+                        }
+                        let boff = self.alloc_slot(bnm, ft)
+                        a.mov_rm64(REG_RAX(), REG_RBP(), -s_off)
+                        a.mov_rm64(REG_RAX(), REG_RAX(), (ai + 1) * 8)
+                        a.mov_mr64(REG_RBP(), -boff, REG_RAX())
+                        if ncg_is_str(ft) {
+                            a.mov_rr(REG_RCX(), REG_RAX())
+                            a.call_rel32(self.rt.lbl("__rt_arc_retain"))
+                        }
+                    }
+                    ai = ai + 1
+                }
+            } else {
+                // Compare expression value equality (int/bool/str/float)
+                let pt = btype_norm(self.node_types.get(pat_id))
+                let is_str_cmp = ncg_is_str(subj_t) || ncg_is_str(pt) || self.nk.get(pat_id) == NK_STR_LIT() || self.nk.get(subj_id) == NK_STR_LIT()
+                self.emit_expr(pat_id)
+                a.mov_rm64(REG_RCX(), REG_RBP(), -s_off)
+                if is_str_cmp {
+                    a.mov_rr(REG_RDX(), REG_RAX())
+                    a.call_rel32(self.rt.lbl("__rt_str_eq"))
+                    a.test_rr(REG_RAX(), REG_RAX())
+                    a.jcc_rel32(CC_E(), l_next)
+                } else if ncg_is_float(subj_t) || ncg_is_float(pt) {
+                    a.movq_xmm_r(0, REG_RCX())
+                    a.movq_xmm_r(1, REG_RAX())
+                    a.ucomisd(0, 1)
+                    a.jcc_rel32(CC_NE(), l_next)
+                } else {
+                    a.cmp_rr(REG_RCX(), REG_RAX())
+                    a.jcc_rel32(CC_NE(), l_next)
+                }
+            }
+
+            if guard_id >= 0 {
+                self.emit_expr(guard_id)
+                a.test_rr(REG_RAX(), REG_RAX())
+                a.jcc_rel32(CC_E(), l_next)
+            }
+
+            if self.nk.get(body_id) == NK_BLOCK() {
+                self.emit_block_stmts(body_id)
+            } else {
+                self.emit_stmt(body_id)
+            }
+            self.emit_scope_defers(dm)
+            self.emit_scope_drops(sm)
+            a.jmp_rel32(l_done)
+            a.bind_label(l_next)
+            self.emit_scope_defers(dm)
+            self.emit_scope_drops(sm)
+            self.pop_scope()
+            ci = ci + 1
+        }
+        a.bind_label(l_done)
+        self.emit_temp_drops(tmark)
+    }
+
+}

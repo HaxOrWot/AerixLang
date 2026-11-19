@@ -1,0 +1,503 @@
+import "./mod.arx"
+
+extend NativeCodegen {
+    priv fn emit_expr(nid: i64) {
+        let a = self.asmb
+        if nid < 0 {
+            a.mov_ri32_sext(REG_RAX(), 0)
+            return
+        }
+        let k = self.nk.get(nid)
+
+        if k == NK_IF() {
+            let l_else = a.new_label()
+            let l_end = a.new_label()
+            self.emit_expr(self.la.get(nid))
+            a.test_rr(REG_RAX(), REG_RAX())
+            a.jcc_rel32(CC_E(), l_else)
+            self.emit_stmt(self.ra.get(nid))
+            a.jmp_rel32(l_end)
+            a.bind_label(l_else)
+            if self.ea.get(nid) >= 0 {
+                self.emit_stmt(self.ea.get(nid))
+            }
+            a.bind_label(l_end)
+            return
+        }
+
+        if k == NK_MATCH() {
+            self.emit_match(nid)
+            return
+        }
+
+        if k == NK_BLOCK() {
+            let dmark = self.defer_nodes.len()
+            let smark = self.scope_names.len()
+            self.push_scope()
+            self.emit_block_stmts(nid)
+            self.emit_scope_defers(dmark)
+            self.emit_scope_drops(smark)
+            self.pop_scope()
+            return
+        }
+
+        if k == NK_INT_LIT() {
+            let v = ncg_parse_int_lit(self.sa.get(nid))
+            if v >= -2147483648 && v <= 2147483647 {
+                a.mov_ri32_sext(REG_RAX(), v)
+            } else {
+                a.mov_ri64(REG_RAX(), v)
+            }
+            return
+        }
+
+        if k == NK_FLOAT_LIT() {
+            let fv = ncg_to_float_val(self.sa.get(nid))
+            let r_off = self.pe.add_rdata_f64(fv)
+            a.lea_rip_rdata(REG_RCX(), r_off)
+            a.mov_rm64(REG_RAX(), REG_RCX(), 0)
+            return
+        }
+
+        if k == NK_BOOL_LIT() {
+            mut bv = 0
+            if self.ia.get(nid) != 0 { bv = 1 }
+            a.mov_ri32_sext(REG_RAX(), bv)
+            return
+        }
+
+        if k == NK_CHAR_LIT() {
+            let cs = self.sa.get(nid)
+            mut cv = 0
+            if cs.len() > 0 { cv = cs.byte_at(0) }
+            a.mov_ri32_sext(REG_RAX(), cv)
+            return
+        }
+
+        if k == NK_NULL_LIT() {
+            a.mov_ri32_sext(REG_RAX(), 0)
+            return
+        }
+
+        if k == NK_STR_LIT() {
+            let r_off = self.pe.add_rdata_cstr(self.sa.get(nid))
+            a.lea_rip_rdata(REG_RAX(), r_off)
+            return
+        }
+
+        if k == NK_STR_INTERP() {
+            self.emit_str_interp(nid)
+            return
+        }
+
+        if k == NK_IDENT() {
+            let nm = self.sa.get(nid)
+            let off = self.find_local(nm)
+            if off >= 0 {
+                a.mov_rm64(REG_RAX(), REG_RBP(), -off)
+                return
+            }
+            if nm == "super" {
+                let soff = self.find_local("self")
+                if soff >= 0 {
+                    a.mov_rm64(REG_RAX(), REG_RBP(), -soff)
+                    return
+                }
+            }
+            if self.global_offs.has_key(nm) {
+                a.mov_rm64_rip_data(REG_RAX(), self.global_offs.get(nm))
+                return
+            }
+            if self.cur_class != "" {
+                mut cur_c = self.cur_class
+                mut guard_c = 0
+                while cur_c != "" && guard_c < 32 {
+                    let fk = cur_c + "::" + nm
+                    if self.cls_field_offs.has_key(fk) {
+                        let soff = self.find_local("self")
+                        if soff >= 0 {
+                            a.mov_rm64(REG_RCX(), REG_RBP(), -soff)
+                            a.mov_rm64(REG_RAX(), REG_RCX(), self.cls_field_offs.get(fk))
+                            return
+                        }
+                    }
+                    if self.az.cls_base_map.has_key(cur_c) {
+                        cur_c = self.az.cls_base_map.get(cur_c)
+                    } else {
+                        cur_c = ""
+                    }
+                    guard_c = guard_c + 1
+                }
+            }
+            a.mov_ri32_sext(REG_RAX(), 0)
+            return
+        }
+
+        if k == NK_BIN_OP() {
+            self.emit_bin_op(nid)
+            return
+        }
+
+        if k == NK_UNARY_OP() {
+            let op_s = self.sa.get(nid)
+            let ot = btype_norm(self.node_types.get(self.la.get(nid)))
+            self.emit_expr(self.la.get(nid))
+            if op_s == "-" {
+                if ncg_is_float(ot) {
+                    a.mov_ri64(REG_RCX(), -9223372036854775807 - 1)
+                    a.xor_rr(REG_RAX(), REG_RCX())
+                } else {
+                    a.neg_r(REG_RAX())
+                }
+            } else if op_s == "!" || op_s == "not" {
+                a.test_rr(REG_RAX(), REG_RAX())
+                a.setcc_u8(CC_E(), REG_RAX())
+            } else if op_s == "~" {
+                a.not_r(REG_RAX())
+            }
+            return
+        }
+
+        if k == NK_CAST() {
+            let src = self.la.get(nid)
+            let st = btype_norm(self.node_types.get(src))
+            mut dt = btype_norm(self.sa.get(nid))
+            if dt == "" { dt = btype_norm(self.node_types.get(nid)) }
+            self.emit_expr(src)
+            if dt == st { return }
+            if ncg_is_str(dt) {
+                self.emit_val_to_str_in_rax(st)
+            } else if ncg_is_str(st) {
+                if dt == "bool" {
+                    a.test_rr(REG_RAX(), REG_RAX())
+                    a.setcc_u8(CC_NE(), REG_RAX())
+                } else if ncg_is_float(dt) {
+                    a.mov_rr(REG_RCX(), REG_RAX())
+                    a.call_rel32(self.rt.lbl("__rt_str_to_f64"))
+                    a.movq_r_xmm(REG_RAX(), 0)
+                } else {
+                    a.mov_rr(REG_RCX(), REG_RAX())
+                    a.call_rel32(self.rt.lbl("__rt_str_to_i64"))
+                }
+            } else if dt == "bool" {
+                a.test_rr(REG_RAX(), REG_RAX())
+                a.setcc_u8(CC_NE(), REG_RAX())
+            } else if ncg_is_float(dt) && !ncg_is_float(st) {
+                a.cvtsi2sd(0, REG_RAX())
+                a.movq_r_xmm(REG_RAX(), 0)
+            } else if !ncg_is_float(dt) && ncg_is_float(st) {
+                a.movq_xmm_r(0, REG_RAX())
+                a.cvttsd2si(REG_RAX(), 0)
+            }
+            return
+        }
+
+        if k == NK_SIZEOF() {
+            let st = btype_norm(self.sa.get(nid))
+            if self.cls_sizes.has_key(st) {
+                a.mov_ri32_sext(REG_RAX(), self.cls_sizes.get(st))
+            } else {
+                a.mov_ri32_sext(REG_RAX(), 8)
+            }
+            return
+        }
+
+        if k == NK_MEMBER() {
+            let obj_id = self.la.get(nid)
+            let mem = self.sa.get(nid)
+            let ext = self.node_ext.get(nid)
+            if ext.starts_with("mod_call::") {
+                let sym = ext.slice(10, ext.len())
+                a.call_rel32(self.rt.lbl(sym))
+                return
+            }
+            if ext.starts_with("mod_global::") {
+                let gname = ext.slice(12, ext.len())
+                if self.global_offs.has_key(gname) {
+                    a.mov_rm64_rip_data(REG_RAX(), self.global_offs.get(gname))
+                    return
+                }
+            }
+            if ext.starts_with("enum_unit::") {
+                let rest = ext.slice(11, ext.len())
+                if self.enum_unit_ptrs.has_key(rest) {
+                    a.lea_rip_rdata(REG_RAX(), self.enum_unit_ptrs.get(rest))
+                    return
+                }
+            }
+            if self.nk.get(obj_id) == NK_IDENT() {
+                mut onm = self.sa.get(obj_id)
+                if self.az.item_aliases.has_key(onm) { onm = self.az.item_aliases.get(onm) }
+                let ekey = onm + "::" + mem
+                if self.enum_unit_ptrs.has_key(ekey) {
+                    a.lea_rip_rdata(REG_RAX(), self.enum_unit_ptrs.get(ekey))
+                    return
+                }
+            }
+            mut ot = btype_norm(self.node_types.get(obj_id))
+            if ot == "" && self.nk.get(obj_id) == NK_IDENT() {
+                let onm = self.sa.get(obj_id)
+                if onm == "self" {
+                    ot = self.cur_class
+                } else if onm == "super" {
+                    if self.cur_class != "" && self.az.cls_base_map.has_key(self.cur_class) {
+                        ot = self.az.cls_base_map.get(self.cur_class)
+                    }
+                } else {
+                    ot = self.find_local_type(onm)
+                }
+            }
+            if self.az.item_aliases.has_key(ot) {
+                ot = self.az.item_aliases.get(ot)
+            }
+            if self.az.enum_idx_map.has_key(ot) {
+                let ekey = ot + "::" + mem
+                if self.enum_unit_ptrs.has_key(ekey) {
+                    a.lea_rip_rdata(REG_RAX(), self.enum_unit_ptrs.get(ekey))
+                    return
+                }
+            }
+            self.emit_expr(obj_id)
+            if (mem == "len" || mem == "length") {
+                if ncg_is_str(ot) {
+                    a.mov_rr(REG_RCX(), REG_RAX())
+                    a.call_rel32(self.rt.lbl("__rt_str_len"))
+                    return
+                }
+                if btype_is_list(ot) || btype_is_fixed_arr(ot) {
+                    a.mov_rm64(REG_RAX(), REG_RAX(), 8)
+                    return
+                }
+                if btype_is_map(ot) || btype_is_set(ot) {
+                    a.mov_rm64(REG_RAX(), REG_RAX(), 16)
+                    return
+                }
+                if ot == "ByteBuffer" {
+                    a.mov_rm64(REG_RAX(), REG_RAX(), 8)
+                    return
+                }
+            }
+            mut cur_c = ot
+            mut guard_f = 0
+            while cur_c != "" && guard_f < 32 {
+                let fkey = cur_c + "::" + mem
+                if self.cls_field_offs.has_key(fkey) {
+                    a.mov_rm64(REG_RAX(), REG_RAX(), self.cls_field_offs.get(fkey))
+                    return
+                }
+                if self.az.cls_base_map.has_key(cur_c) {
+                    cur_c = self.az.cls_base_map.get(cur_c)
+                } else {
+                    cur_c = ""
+                }
+                guard_f = guard_f + 1
+            }
+            return
+        }
+
+        if k == NK_INDEX() {
+            let col_id = self.la.get(nid)
+            let idx_id = self.ra.get(nid)
+            let ct = btype_norm(self.node_types.get(col_id))
+            self.emit_expr(col_id)
+            let c_tmp = self.alloc_slot("", ct)
+            a.mov_mr64(REG_RBP(), -c_tmp, REG_RAX())
+            self.emit_expr(idx_id)
+            a.mov_rr(REG_RDX(), REG_RAX())
+            a.mov_rm64(REG_RCX(), REG_RBP(), -c_tmp)
+            if ncg_is_str(ct) {
+                a.call_rel32(self.rt.lbl("__rt_str_byte_at"))
+            } else if btype_is_map(ct) {
+                let kt = btype_map_key(ct)
+                mut ks_f = 0
+                if ncg_is_str(kt) { ks_f = 1 }
+                a.mov_ri32_sext(REG_R8(), ks_f)
+                a.call_rel32(self.rt.lbl("__rt_map_get"))
+            } else {
+                a.call_rel32(self.rt.lbl("__rt_list_get"))
+            }
+            return
+        }
+
+        if k == NK_FIXED_ARR() {
+            let cnt = self.child_count(nid)
+            a.call_rel32(self.rt.lbl("__rt_list_new"))
+            let l_tmp = self.alloc_slot("", "List<i64>")
+            a.mov_mr64(REG_RBP(), -l_tmp, REG_RAX())
+            mut i = 0
+            while i < cnt {
+                let cid = self.child_at(nid, i)
+                let ct = btype_norm(self.node_types.get(cid))
+                self.emit_expr(cid)
+                a.mov_rr(REG_RDX(), REG_RAX())
+                a.mov_rm64(REG_RCX(), REG_RBP(), -l_tmp)
+                if ncg_is_str(ct) {
+                    a.call_rel32(self.rt.lbl("__rt_list_push_str"))
+                } else {
+                    a.call_rel32(self.rt.lbl("__rt_list_push"))
+                }
+                i = i + 1
+            }
+            a.mov_rm64(REG_RAX(), REG_RBP(), -l_tmp)
+            return
+        }
+
+        if k == NK_FIXED_REPEAT() {
+            self.emit_expr(self.la.get(nid))
+            let v_tmp = self.alloc_slot("", "i64")
+            a.mov_mr64(REG_RBP(), -v_tmp, REG_RAX())
+            self.emit_expr(self.ra.get(nid))
+            let cnt_tmp = self.alloc_slot("", "i64")
+            a.mov_mr64(REG_RBP(), -cnt_tmp, REG_RAX())
+            a.call_rel32(self.rt.lbl("__rt_list_new"))
+            let l_tmp = self.alloc_slot("", "List<i64>")
+            a.mov_mr64(REG_RBP(), -l_tmp, REG_RAX())
+            let idx_tmp = self.alloc_slot("", "i64")
+            a.mov_ri32_sext(REG_RCX(), 0)
+            a.mov_mr64(REG_RBP(), -idx_tmp, REG_RCX())
+            let l_rl = a.new_label()
+            let l_rd = a.new_label()
+            a.bind_label(l_rl)
+            a.mov_rm64(REG_RAX(), REG_RBP(), -idx_tmp)
+            a.mov_rm64(REG_RCX(), REG_RBP(), -cnt_tmp)
+            a.cmp_rr(REG_RAX(), REG_RCX())
+            a.jcc_rel32(CC_GE(), l_rd)
+            a.mov_rm64(REG_RCX(), REG_RBP(), -l_tmp)
+            a.mov_rm64(REG_RDX(), REG_RBP(), -v_tmp)
+            a.call_rel32(self.rt.lbl("__rt_list_push"))
+            a.mov_rm64(REG_RAX(), REG_RBP(), -idx_tmp)
+            a.add_ri32(REG_RAX(), 1)
+            a.mov_mr64(REG_RBP(), -idx_tmp, REG_RAX())
+            a.jmp_rel32(l_rl)
+            a.bind_label(l_rd)
+            a.mov_rm64(REG_RAX(), REG_RBP(), -l_tmp)
+            return
+        }
+
+        if k == NK_PIPELINE() || k == NK_CASCADE() {
+            let lid = self.la.get(nid)
+            let rid = self.ra.get(nid)
+            self.emit_expr(lid)
+            if k == NK_PIPELINE() && (self.nk.get(rid) == NK_CALL() || self.nk.get(rid) == NK_GENERIC_CALL()) {
+                let pslot = self.alloc_slot("", btype_norm(self.node_types.get(lid)))
+                a.mov_mr64(REG_RBP(), -pslot, REG_RAX())
+                self.emit_call_with_pipe(rid, pslot)
+                return
+            }
+            self.emit_expr(rid)
+            return
+        }
+
+        if k == NK_CALL() || k == NK_GENERIC_CALL() {
+            self.emit_call_with_pipe(nid, -1)
+            return
+        }
+
+        if k == NK_NEW() {
+            mut cname = btype_norm(self.sa.get(nid))
+            if self.az.item_aliases.has_key(cname) { cname = self.az.item_aliases.get(cname) }
+            mut sz = 8
+            if self.cls_sizes.has_key(cname) { sz = self.cls_sizes.get(cname) }
+            if sz < 8 { sz = 8 }
+            a.mov_ri32_sext(REG_RCX(), 1)
+            a.mov_ri32_sext(REG_RDX(), sz)
+            a.call_rip_iat(self.rt.imp_calloc)
+            let obj_slot = self.alloc_slot("", cname)
+            a.mov_mr64(REG_RBP(), -obj_slot, REG_RAX())
+
+            let ac = self.child_count(nid)
+            let arg_temps = List<i64>()
+            let arg_types = List<str>()
+            mut ai = 0
+            while ai < ac {
+                let aid = self.child_at(nid, ai)
+                mut val_id = aid
+                if self.nk.get(aid) == NK_NAMED_ARG() { val_id = self.la.get(aid) }
+                let at = btype_norm(self.node_types.get(val_id))
+                self.emit_expr(val_id)
+                let slot = self.alloc_slot("", at)
+                a.mov_mr64(REG_RBP(), -slot, REG_RAX())
+                arg_temps.push(slot)
+                arg_types.push(at)
+                ai = ai + 1
+            }
+
+            mut ctor_fn = self.call_fn_nodes.get(nid)
+            if ctor_fn < 0 {
+                mut cur_c = cname
+                mut guard_c = 0
+                while cur_c != "" && guard_c < 32 {
+                    if self.az.sig_by_key.has_key("ctor::" + cur_c) {
+                        let c_sigi = self.az.find_best_overload("ctor::" + cur_c, arg_types, ac)
+                        if c_sigi >= 0 {
+                            ctor_fn = self.az.sig_nodes.get(c_sigi)
+                            break
+                        }
+                    }
+                    if self.az.cls_base_map.has_key(cur_c) {
+                        cur_c = self.az.cls_base_map.get(cur_c)
+                    } else {
+                        cur_c = ""
+                    }
+                    guard_c = guard_c + 1
+                }
+            }
+            if ctor_fn >= 0 {
+                let cargs = List<i64>()
+                cargs.push(obj_slot)
+                mut k_i = 0
+                while k_i < arg_temps.len() { cargs.push(arg_temps.get(k_i)); k_i = k_i + 1 }
+                self.emit_default_args_if_needed(ctor_fn, arg_temps.len(), cargs)
+                self.emit_call_with_temps(self.rt.lbl(self.fn_symbol_name(ctor_fn)), false, cargs)
+            }
+            a.mov_rm64(REG_RAX(), REG_RBP(), -obj_slot)
+            return
+        }
+
+        if k == NK_TUPLE_LIT() {
+            let cnt = self.child_count(nid)
+            a.mov_ri32_sext(REG_RCX(), 1)
+            a.mov_ri32_sext(REG_RDX(), cnt * 8)
+            a.call_rip_iat(self.rt.imp_calloc)
+            let t_slot = self.alloc_slot("", "tuple")
+            a.mov_mr64(REG_RBP(), -t_slot, REG_RAX())
+            mut i = 0
+            while i < cnt {
+                self.emit_expr(self.child_at(nid, i))
+                a.mov_rm64(REG_RCX(), REG_RBP(), -t_slot)
+                a.mov_mr64(REG_RCX(), i * 8, REG_RAX())
+                i = i + 1
+            }
+            a.mov_rm64(REG_RAX(), REG_RBP(), -t_slot)
+            return
+        }
+    }
+
+    // Assumes value is currently in RAX
+    priv fn emit_val_to_str_in_rax(vt: str) {
+        let a = self.asmb
+        let nt = btype_norm(vt)
+        if ncg_is_str(nt) { return }
+        if nt == "bool" {
+            a.mov_rr(REG_RCX(), REG_RAX())
+            a.call_rel32(self.rt.lbl("__rt_bool_to_str"))
+            return
+        }
+        if nt == "char" {
+            a.mov_rr(REG_RCX(), REG_RAX())
+            a.call_rel32(self.rt.lbl("__rt_char_to_str"))
+            self.track_temp_str()
+            return
+        }
+        if ncg_is_float(nt) {
+            a.mov_rr(REG_RCX(), REG_RAX())
+            a.call_rel32(self.rt.lbl("__rt_f64_to_str"))
+            self.track_temp_str()
+            return
+        }
+        a.mov_rr(REG_RCX(), REG_RAX())
+        a.call_rel32(self.rt.lbl("__rt_i64_to_str"))
+        self.track_temp_str()
+    }
+
+}

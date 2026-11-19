@@ -1,0 +1,125 @@
+import "./mod.arx"
+
+extend Parser {
+    // --- AST Arena Allocation ---
+
+    priv fn add_node(kind: i64, s1: str, s2: str, i1: i64, l_id: i64, r_id: i64, e_id: i64, line_num: i64) -> i64 {
+        let id = self.ncount
+        self.nk.push(kind)
+        self.sa.push(s1)
+        self.sb.push(s2)
+        self.ia.push(i1)
+        self.la.push(l_id)
+        self.ra.push(r_id)
+        self.ea.push(e_id)
+        self.ls.push(0)
+        self.ll.push(0)
+        self.ln.push(line_num)
+        self.nc.push(self.cur_col())
+        self.nf.push(self.cur_file)
+        self.ncount = id + 1
+        return id
+    }
+
+    priv fn make_group(kind: i64, s1: str, s2: str, i1: i64, l_id: i64, r_id: i64, e_id: i64, line_num: i64, items: List<i64>, count: i64) -> i64 {
+        let start = self.chcount
+        mut i = 0
+        while i < count {
+            self.ch.push(items.get(i))
+            i = i + 1
+        }
+        self.chcount = start + count
+        let id = self.ncount
+        self.nk.push(kind)
+        self.sa.push(s1)
+        self.sb.push(s2)
+        self.ia.push(i1)
+        self.la.push(l_id)
+        self.ra.push(r_id)
+        self.ea.push(e_id)
+        self.ls.push(start)
+        self.ll.push(count)
+        self.ln.push(line_num)
+        self.nc.push(self.cur_col())
+        self.nf.push(self.cur_file)
+        self.ncount = id + 1
+        return id
+    }
+
+    priv fn register_generic(base: str, args: List<str>, arg_count: i64) -> str {
+        if base == "List" && arg_count == 1 {
+            let elem = args.get(0)
+            let m = "List_" + btype_mangle(elem)
+            if !self.seen_generics.has_key(m) {
+                self.seen_generics.insert(m, 1)
+                self.gen_list_types.push(elem)
+                self.gen_list_count = self.gen_list_count + 1
+            }
+            return m
+        } else if base == "Map" && arg_count == 2 {
+            let kt = args.get(0)
+            let vt = args.get(1)
+            let m = "Map_" + btype_mangle(kt) + "_" + btype_mangle(vt)
+            if !self.seen_generics.has_key(m) {
+                self.seen_generics.insert(m, 1)
+                self.gen_map_keys.push(kt)
+                self.gen_map_vals.push(vt)
+                self.gen_map_count = self.gen_map_count + 1
+            }
+            return m
+        } else if base == "Set" && arg_count == 1 {
+            let elem = args.get(0)
+            let m = "Set_" + btype_mangle(elem)
+            if !self.seen_generics.has_key(m) {
+                self.seen_generics.insert(m, 1)
+                self.gen_set_types.push(elem)
+                self.gen_set_count = self.gen_set_count + 1
+            }
+            return m
+        } else if base == "Stack" && arg_count == 1 {
+            let elem = args.get(0)
+            let m = "Stack_" + btype_mangle(elem)
+            if !self.seen_generics.has_key(m) {
+                self.seen_generics.insert(m, 1)
+                self.gen_stack_types.push(elem)
+                self.gen_stack_count = self.gen_stack_count + 1
+            }
+            return m
+        } else if base == "Queue" && arg_count == 1 {
+            let elem = args.get(0)
+            let m = "Queue_" + btype_mangle(elem)
+            if !self.seen_generics.has_key(m) {
+                self.seen_generics.insert(m, 1)
+                self.gen_queue_types.push(elem)
+                self.gen_queue_count = self.gen_queue_count + 1
+            }
+            return m
+        } else if base == "Deque" && arg_count == 1 {
+            let elem = args.get(0)
+            let m = "Deque_" + btype_mangle(elem)
+            if !self.seen_generics.has_key(m) {
+                self.seen_generics.insert(m, 1)
+                self.gen_deque_types.push(elem)
+                self.gen_deque_count = self.gen_deque_count + 1
+            }
+            return m
+        }
+        mut out = base
+        mut i = 0
+        while i < arg_count {
+            out = out + "_" + args.get(i)
+            i = i + 1
+        }
+        return out
+    }
+
+    priv fn register_tuple(tup_t: str) {
+        let key = "TUP::" + tup_t
+        if !self.seen_generics.has_key(key) {
+            self.seen_generics.insert(key, 1)
+            self.gen_tuple_types.push(tup_t)
+            self.gen_tuple_count = self.gen_tuple_count + 1
+        }
+    }
+
+}

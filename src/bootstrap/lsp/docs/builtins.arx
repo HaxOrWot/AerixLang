@@ -1,0 +1,147 @@
+import "./mod.arx"
+
+pub fn lsp_is_ident_char(b: i64) -> bool {
+    if b >= 65 && b <= 90 { return true }
+    if b >= 97 && b <= 122 { return true }
+    if b >= 48 && b <= 57 { return true }
+    return b == 95
+}
+
+pub fn lsp_is_keyword(w: str) -> bool {
+    return w == "fn" || w == "let" || w == "mut" || w == "const" || w == "class" || w == "struct" ||
+           w == "enum" || w == "trait" || w == "type" || w == "init" || w == "drop" || w == "if" ||
+           w == "else" || w == "elif" || w == "match" || w == "for" || w == "in" || w == "while" ||
+           w == "loop" || w == "break" || w == "continue" || w == "return" || w == "spawn" ||
+           w == "try" || w == "catch" || w == "finally" || w == "throw" || w == "self" || w == "super" ||
+           w == "pub" || w == "priv" || w == "prot" || w == "static" || w == "virtual" || w == "override" ||
+           w == "abstract" || w == "new" || w == "delete" || w == "extends" || w == "implements" ||
+           w == "prop" || w == "op" || w == "extend" || w == "guard" || w == "defer" || w == "unsafe" ||
+           w == "sizeof" || w == "as" || w == "use" || w == "import" || w == "from" || w == "cinclude" ||
+           w == "cextern" || w == "true" || w == "false" || w == "null" || w == "get" || w == "set"
+}
+
+pub fn lsp_is_primitive_type(w: str) -> bool {
+    return w == "i8" || w == "i16" || w == "i32" || w == "i64" || w == "int" ||
+           w == "u8" || w == "u16" || w == "u32" || w == "u64" || w == "uint" ||
+           w == "usize" || w == "isize" || w == "f32" || w == "f64" || w == "float" ||
+           w == "f32x4" || w == "f64x2" || w == "bool" || w == "char" || w == "str" || w == "void"
+}
+
+pub fn lsp_is_container_type(w: str) -> bool {
+    return w == "List" || w == "Map" || w == "Set" || w == "Stack" || w == "Queue" ||
+           w == "Deque" || w == "ByteBuffer" || w == "String" || w == "Channel" || w == "LinearArena"
+}
+
+pub fn lsp_is_static_runtime(w: str) -> bool {
+    return w == "File" || w == "Directory" || w == "Env" || w == "Process"
+}
+
+pub fn lsp_is_builtin_fn(w: str) -> bool {
+    return w == "println" || w == "print" || w == "eprintln" || w == "input" || w == "read_line" ||
+           w == "to_string" || w == "chr" || w == "ord" || w == "len" || w == "parse_int" ||
+           w == "parse_float" || w == "panic" || w == "abort" || w == "exit" || w == "assert" ||
+           w == "assert_eq" || w == "typeof" || w == "sqrt" || w == "sin" || w == "cos" || w == "tan" ||
+           w == "pow" || w == "floor" || w == "ceil" || w == "round" || w == "log" || w == "exp" ||
+           w == "abs" || w == "min" || w == "max" || w == "enumerate" || w == "arx_free" ||
+           w == "arx_channel_new" || w == "arx_channel_send" || w == "arx_channel_recv" ||
+           w == "arx_channel_close" || w == "arx_channel_free" || w == "arx_thread_join" ||
+           w == "arx_sleep_ms" || w == "arx_time_now" || w == "arx_prng_seed" ||
+           w == "arx_prng_next_i64" || w == "arx_prng_next_f64"
+}
+
+pub fn lsp_keyword_list() -> List<str> {
+    let ks = List<str>()
+    ks.push("fn"); ks.push("let"); ks.push("mut"); ks.push("const")
+    ks.push("class"); ks.push("struct"); ks.push("enum"); ks.push("trait")
+    ks.push("init"); ks.push("drop"); ks.push("prop"); ks.push("op"); ks.push("extend")
+    ks.push("if"); ks.push("else"); ks.push("elif"); ks.push("match")
+    ks.push("for"); ks.push("in"); ks.push("while"); ks.push("loop")
+    ks.push("break"); ks.push("continue"); ks.push("return")
+    ks.push("guard"); ks.push("defer"); ks.push("spawn")
+    ks.push("try"); ks.push("catch"); ks.push("finally"); ks.push("throw")
+    ks.push("pub"); ks.push("priv"); ks.push("prot"); ks.push("static")
+    ks.push("virtual"); ks.push("override"); ks.push("abstract")
+    ks.push("extends"); ks.push("implements"); ks.push("self"); ks.push("super")
+    ks.push("new"); ks.push("as"); ks.push("sizeof"); ks.push("unsafe")
+    ks.push("import"); ks.push("from"); ks.push("use")
+    ks.push("cinclude"); ks.push("cextern")
+    ks.push("true"); ks.push("false"); ks.push("null")
+    return ks
+}
+
+pub fn lsp_type_list() -> List<str> {
+    let ts = List<str>()
+    ts.push("i8"); ts.push("i16"); ts.push("i32"); ts.push("i64"); ts.push("int")
+    ts.push("u8"); ts.push("u16"); ts.push("u32"); ts.push("u64"); ts.push("uint")
+    ts.push("usize"); ts.push("isize")
+    ts.push("f32"); ts.push("f64"); ts.push("float"); ts.push("f32x4"); ts.push("f64x2")
+    ts.push("bool"); ts.push("char"); ts.push("str"); ts.push("void")
+    ts.push("List"); ts.push("Map"); ts.push("Set"); ts.push("Stack"); ts.push("Queue"); ts.push("Deque")
+    ts.push("ByteBuffer"); ts.push("String"); ts.push("Channel"); ts.push("LinearArena")
+    ts.push("File"); ts.push("Directory"); ts.push("Env"); ts.push("Process")
+    return ts
+}
+
+pub fn lsp_builtin_fn_list() -> List<str> {
+    let bs = List<str>()
+    bs.push("println"); bs.push("print"); bs.push("eprintln")
+    bs.push("input"); bs.push("read_line"); bs.push("to_string")
+    bs.push("parse_int"); bs.push("parse_float"); bs.push("chr"); bs.push("ord"); bs.push("len")
+    bs.push("abs"); bs.push("min"); bs.push("max")
+    bs.push("sqrt"); bs.push("sin"); bs.push("cos"); bs.push("tan")
+    bs.push("pow"); bs.push("floor"); bs.push("ceil"); bs.push("round"); bs.push("log"); bs.push("exp")
+    bs.push("assert"); bs.push("assert_eq"); bs.push("panic"); bs.push("abort"); bs.push("exit")
+    bs.push("typeof"); bs.push("enumerate"); bs.push("arx_free")
+    bs.push("arx_time_now"); bs.push("arx_sleep_ms"); bs.push("arx_thread_join")
+    bs.push("arx_channel_new"); bs.push("arx_channel_send"); bs.push("arx_channel_recv")
+    bs.push("arx_channel_close"); bs.push("arx_channel_free")
+    bs.push("arx_prng_seed"); bs.push("arx_prng_next_i64"); bs.push("arx_prng_next_f64")
+    return bs
+}
+
+pub fn lsp_builtin_fn_sig(w: str) -> str {
+    if w == "println" { return "fn println(val: any) -> void" }
+    if w == "print" { return "fn print(val: any) -> void" }
+    if w == "eprintln" { return "fn eprintln(val: any) -> void" }
+    if w == "input" { return "fn input(prompt: str = \"\") -> str" }
+    if w == "read_line" { return "fn read_line() -> str" }
+    if w == "to_string" { return "fn to_string(val: any) -> str" }
+    if w == "parse_int" { return "fn parse_int(s: str) -> i64" }
+    if w == "parse_float" { return "fn parse_float(s: str) -> f64" }
+    if w == "chr" { return "fn chr(code: i64) -> char" }
+    if w == "ord" { return "fn ord(c: char) -> i64" }
+    if w == "len" { return "fn len(x: str | List<T> | Map<K, V> | Set<T>) -> i64" }
+    if w == "abs" { return "fn abs(x: i64 | f64) -> i64 | f64" }
+    if w == "min" { return "fn min(a: i64 | f64, b: i64 | f64) -> i64 | f64" }
+    if w == "max" { return "fn max(a: i64 | f64, b: i64 | f64) -> i64 | f64" }
+    if w == "sqrt" { return "fn sqrt(x: f64) -> f64" }
+    if w == "sin" { return "fn sin(rad: f64) -> f64" }
+    if w == "cos" { return "fn cos(rad: f64) -> f64" }
+    if w == "tan" { return "fn tan(rad: f64) -> f64" }
+    if w == "pow" { return "fn pow(base: f64, exp: f64) -> f64" }
+    if w == "floor" { return "fn floor(x: f64) -> f64" }
+    if w == "ceil" { return "fn ceil(x: f64) -> f64" }
+    if w == "round" { return "fn round(x: f64) -> f64" }
+    if w == "log" { return "fn log(x: f64) -> f64" }
+    if w == "exp" { return "fn exp(x: f64) -> f64" }
+    if w == "assert" { return "fn assert(cond: bool) -> void" }
+    if w == "assert_eq" { return "fn assert_eq(actual: T, expected: T) -> void" }
+    if w == "panic" { return "fn panic(msg: str) -> void" }
+    if w == "abort" { return "fn abort() -> void" }
+    if w == "exit" { return "fn exit(code: i64) -> void" }
+    if w == "typeof" { return "fn typeof(expr: any) -> str" }
+    if w == "enumerate" { return "fn enumerate(items: List<T>) -> List<Pair>" }
+    if w == "arx_free" { return "fn arx_free(ptr: any) -> void" }
+    if w == "arx_time_now" { return "fn arx_time_now() -> f64" }
+    if w == "arx_sleep_ms" { return "fn arx_sleep_ms(ms: i64) -> void" }
+    if w == "arx_thread_join" { return "fn arx_thread_join(handle: i64) -> i64" }
+    if w == "arx_channel_new" { return "fn arx_channel_new(capacity: i64) -> i64" }
+    if w == "arx_channel_send" { return "fn arx_channel_send(ch: i64, val: i64) -> void" }
+    if w == "arx_channel_recv" { return "fn arx_channel_recv(ch: i64) -> i64" }
+    if w == "arx_channel_close" { return "fn arx_channel_close(ch: i64) -> void" }
+    if w == "arx_channel_free" { return "fn arx_channel_free(ch: i64) -> void" }
+    if w == "arx_prng_seed" { return "fn arx_prng_seed(seed: u64) -> void" }
+    if w == "arx_prng_next_i64" { return "fn arx_prng_next_i64(min_v: i64, max_v: i64) -> i64" }
+    if w == "arx_prng_next_f64" { return "fn arx_prng_next_f64() -> f64" }
+    return ""
+}

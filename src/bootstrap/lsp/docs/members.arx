@@ -1,0 +1,302 @@
+import "./mod.arx"
+
+pub fn lsp_builtin_methods_for(recv_t: str) -> List<str> {
+    let ms = List<str>()
+    if recv_t == "str" {
+        ms.push("len:() -> i64")
+        ms.push("is_empty:() -> bool")
+        ms.push("byte_at:(idx: i64) -> i64")
+        ms.push("char_at:(idx: i64) -> char")
+        ms.push("slice:(start: i64, end: i64) -> str")
+        ms.push("contains:(q: str) -> bool")
+        ms.push("starts_with:(pfx: str) -> bool")
+        ms.push("ends_with:(sfx: str) -> bool")
+        ms.push("replace:(old_s: str, new_s: str) -> str")
+        ms.push("split:(delim: str) -> List<str>")
+        ms.push("trim:() -> str")
+        ms.push("to_upper:() -> str")
+        ms.push("to_lower:() -> str")
+        ms.push("to_i64:() -> i64")
+        ms.push("to_f64:() -> f64")
+        return ms
+    }
+    if recv_t == "ByteBuffer" {
+        ms.push("write_u8:(b: i64) -> void")
+        ms.push("write_i32_le:(v: i64) -> void")
+        ms.push("write_i32_be:(v: i64) -> void")
+        ms.push("write_f64_le:(v: f64) -> void")
+        ms.push("write_str:(s: str) -> void")
+        ms.push("read_u8:() -> i64")
+        ms.push("read_i32_le:() -> i64")
+        ms.push("read_i32_be:() -> i64")
+        ms.push("to_str:() -> str")
+        ms.push("seek:(off: i64) -> void")
+        ms.push("pos:() -> i64")
+        ms.push("len:() -> i64")
+        ms.push("reset:() -> void")
+        ms.push("free:() -> void")
+        return ms
+    }
+    if recv_t == "String" {
+        ms.push("append:(s: str) -> void")
+        ms.push("as_str:() -> str")
+        ms.push("trim:() -> String")
+        ms.push("to_upper:() -> String")
+        ms.push("to_lower:() -> String")
+        ms.push("replace:(a: str, b: str) -> String")
+        ms.push("split:(delim: str) -> List<str>")
+        ms.push("len:() -> i64")
+        ms.push("contains:(q: str) -> bool")
+        ms.push("starts_with:(p: str) -> bool")
+        ms.push("ends_with:(s: str) -> bool")
+        return ms
+    }
+    if recv_t.starts_with("List<") {
+        ms.push("push:(val: T) -> void")
+        ms.push("pop:() -> T")
+        ms.push("get:(idx: i64) -> T")
+        ms.push("set:(idx: i64, val: T) -> void")
+        ms.push("len:() -> i64")
+        ms.push("is_empty:() -> bool")
+        ms.push("contains:(val: T) -> bool")
+        ms.push("index_of:(val: T) -> i64")
+        ms.push("insert:(idx: i64, val: T) -> void")
+        ms.push("remove_at:(idx: i64) -> T")
+        ms.push("swap_remove:(idx: i64) -> T")
+        ms.push("reverse:() -> void")
+        ms.push("sort:() -> void")
+        ms.push("slice:(s: i64, e: i64) -> List<T>")
+        ms.push("clear:() -> void")
+        ms.push("free:() -> void")
+        return ms
+    }
+    if recv_t.starts_with("Map<") {
+        ms.push("insert:(key: K, val: V) -> void")
+        ms.push("get:(key: K) -> V")
+        ms.push("has_key:(key: K) -> bool")
+        ms.push("remove:(key: K) -> bool")
+        ms.push("keys:() -> List<K>")
+        ms.push("values:() -> List<V>")
+        ms.push("len:() -> i64")
+        ms.push("is_empty:() -> bool")
+        ms.push("clear:() -> void")
+        ms.push("free:() -> void")
+        return ms
+    }
+    if recv_t.starts_with("Set<") {
+        ms.push("add:(val: T) -> bool")
+        ms.push("has:(val: T) -> bool")
+        ms.push("remove:(val: T) -> bool")
+        ms.push("to_list:() -> List<T>")
+        ms.push("union:(other: Set<T>) -> Set<T>")
+        ms.push("intersection:(other: Set<T>) -> Set<T>")
+        ms.push("difference:(other: Set<T>) -> Set<T>")
+        ms.push("len:() -> i64")
+        ms.push("is_empty:() -> bool")
+        return ms
+    }
+    if recv_t.starts_with("Stack<") || recv_t.starts_with("Queue<") {
+        ms.push("push:(val: T) -> void")
+        ms.push("pop:() -> T")
+        ms.push("peek:() -> T")
+        ms.push("len:() -> i64")
+        ms.push("is_empty:() -> bool")
+        return ms
+    }
+    if recv_t.starts_with("Deque<") {
+        ms.push("push_back:(val: T) -> void")
+        ms.push("push_front:(val: T) -> void")
+        ms.push("pop_back:() -> T")
+        ms.push("pop_front:() -> T")
+        ms.push("peek_front:() -> T")
+        ms.push("peek_back:() -> T")
+        ms.push("len:() -> i64")
+        ms.push("is_empty:() -> bool")
+        return ms
+    }
+    if recv_t == "File" {
+        ms.push("exists:(path: str) -> bool")
+        ms.push("read_to_string:(path: str) -> str")
+        ms.push("write_string:(path: str, content: str) -> bool")
+        ms.push("append_string:(path: str, content: str) -> bool")
+        ms.push("remove:(path: str) -> bool")
+        ms.push("copy:(src: str, dst: str) -> bool")
+        return ms
+    }
+    if recv_t == "Directory" {
+        ms.push("exists:(path: str) -> bool")
+        ms.push("create:(path: str) -> bool")
+        ms.push("list_files:(path: str) -> List<str>")
+        ms.push("list_dirs:(path: str) -> List<str>")
+        return ms
+    }
+    if recv_t == "Env" {
+        ms.push("args:() -> List<str>")
+        ms.push("arg_count:() -> i64")
+        ms.push("get:(name: str) -> str")
+        ms.push("set:(name: str, val: str) -> bool")
+        ms.push("cwd:() -> str")
+        ms.push("os_name:() -> str")
+        ms.push("exit:(code: i64) -> void")
+        return ms
+    }
+    if recv_t == "Process" {
+        ms.push("execute:(cmd: str) -> i64")
+        ms.push("run_capture:(cmd: str) -> str")
+        return ms
+    }
+    if recv_t.starts_with("Channel<") || recv_t == "Channel" {
+        ms.push("send:(val: T) -> void")
+        ms.push("recv:() -> T")
+        ms.push("close:() -> void")
+        return ms
+    }
+    if recv_t == "LinearArena" {
+        ms.push("alloc:(bytes: i64) -> usize")
+        ms.push("reset:() -> void")
+        ms.push("used:() -> i64")
+        ms.push("free:() -> void")
+        return ms
+    }
+    if recv_t == "Math" {
+        ms.push("sqrt:(x: f64) -> f64")
+        ms.push("pow:(base: f64, exp: f64) -> f64")
+        ms.push("sin:(rad: f64) -> f64")
+        ms.push("cos:(rad: f64) -> f64")
+        ms.push("tan:(rad: f64) -> f64")
+        ms.push("floor:(x: f64) -> f64")
+        ms.push("ceil:(x: f64) -> f64")
+        ms.push("round:(x: f64) -> f64")
+        ms.push("log:(x: f64) -> f64")
+        ms.push("exp:(x: f64) -> f64")
+        ms.push("abs:(x: f64) -> f64")
+        ms.push("min:(a: f64, b: f64) -> f64")
+        ms.push("max:(a: f64, b: f64) -> f64")
+        return ms
+    }
+    if recv_t == "Random" {
+        ms.push("seed:(val: u64) -> void")
+        ms.push("next_i64:(min_v: i64, max_v: i64) -> i64")
+        ms.push("next_f64:() -> f64")
+        ms.push("range:(min_v: i64, max_v: i64) -> i64")
+        return ms
+    }
+    return ms
+}
+
+pub fn lsp_lookup_member_doc(recv_t: str, mname: str) -> str {
+    if recv_t == "str" || recv_t == "String" {
+        if mname == "len" { return "Returns byte length of the string." }
+        if mname == "is_empty" { return "Returns `true` if string length is `0`." }
+        if mname == "byte_at" { return "Returns byte value (`0..255`) at `idx`." }
+        if mname == "char_at" { return "Returns `char` at byte index `idx`." }
+        if mname == "slice" { return "Returns substring in half-open byte range `[start, end)`." }
+        if mname == "contains" { return "Returns `true` if `q` occurs as a substring." }
+        if mname == "starts_with" { return "Returns `true` if string begins with prefix `pfx`." }
+        if mname == "ends_with" { return "Returns `true` if string ends with suffix `sfx`." }
+        if mname == "replace" { return "Returns a copy with all occurrences of `old_s` replaced by `new_s`." }
+        if mname == "split" { return "Splits string by `delim` into a `List<str>`." }
+        if mname == "trim" { return "Returns a copy with leading and trailing whitespace removed." }
+        if mname == "to_upper" { return "Returns an ASCII-uppercased copy." }
+        if mname == "to_lower" { return "Returns an ASCII-lowercased copy." }
+        if mname == "to_i64" { return "Parses base-10 integer string to `i64`." }
+        if mname == "to_f64" { return "Parses floating-point string to `f64`." }
+        if mname == "append" { return "Appends `s` onto the mutable `String` buffer." }
+        if mname == "as_str" { return "Borrows contents as an immutable `str` slice." }
+    }
+    if recv_t.starts_with("List<") {
+        if mname == "push" { return "Appends element `val` to the end of the list in amortized O(1)." }
+        if mname == "pop" { return "Removes and returns the last element." }
+        if mname == "get" { return "Returns the element at index `idx`." }
+        if mname == "set" { return "Overwrites the element at index `idx` with `val`." }
+        if mname == "len" { return "Returns the number of elements in the list." }
+        if mname == "is_empty" { return "Returns `true` when `len() == 0`." }
+        if mname == "contains" { return "Returns `true` if `val` is present in the list." }
+        if mname == "index_of" { return "Returns first index of `val`, or `-1` if absent." }
+        if mname == "insert" { return "Inserts `val` at `idx`, shifting later elements right." }
+        if mname == "remove_at" { return "Removes and returns element at `idx`, preserving order." }
+        if mname == "swap_remove" { return "O(1) removal: swaps element at `idx` with last and pops." }
+        if mname == "reverse" { return "Reverses elements in place." }
+        if mname == "sort" { return "Sorts elements in ascending order in place." }
+        if mname == "slice" { return "Returns a sub-list covering `[s, e)`." }
+        if mname == "clear" { return "Removes all elements without freeing capacity." }
+        if mname == "free" { return "Releases the backing heap buffer." }
+    }
+    if recv_t.starts_with("Map<") {
+        if mname == "insert" { return "Inserts or updates `key -> val` in O(1) average time." }
+        if mname == "get" { return "Retrieves value associated with `key`." }
+        if mname == "has_key" { return "Returns `true` if `key` exists in the map." }
+        if mname == "remove" { return "Removes `key` and returns `true` if it was present." }
+        if mname == "keys" { return "Returns a `List<K>` of all keys in the map." }
+        if mname == "values" { return "Returns a `List<V>` of all values in the map." }
+        if mname == "len" { return "Returns number of key-value entries." }
+        if mname == "is_empty" { return "Returns `true` when the map has no entries." }
+        if mname == "clear" { return "Clears all map entries." }
+        if mname == "free" { return "Frees map hash table memory." }
+    }
+    if recv_t.starts_with("Set<") {
+        if mname == "add" { return "Adds `val` to the set; returns `true` if newly inserted." }
+        if mname == "has" { return "Returns `true` if `val` is in the set." }
+        if mname == "remove" { return "Removes `val`; returns `true` if present." }
+        if mname == "to_list" { return "Collects all elements into a `List<T>`." }
+        if mname == "union" { return "Returns a new set with elements from `self` or `other`." }
+        if mname == "intersection" { return "Returns a new set with elements common to `self` and `other`." }
+        if mname == "difference" { return "Returns elements in `self` not present in `other`." }
+        if mname == "len" { return "Returns cardinality of the set." }
+        if mname == "is_empty" { return "Returns `true` if set contains zero elements." }
+    }
+    if recv_t == "ByteBuffer" {
+        if mname == "write_u8" { return "Appends a single unsigned byte (`0..255`)." }
+        if mname == "write_i32_le" { return "Appends 32-bit little-endian integer." }
+        if mname == "write_i32_be" { return "Appends 32-bit big-endian integer." }
+        if mname == "write_f64_le" { return "Appends 64-bit little-endian float." }
+        if mname == "write_str" { return "Appends raw bytes of `s` without NUL terminator." }
+        if mname == "read_u8" { return "Reads next byte at cursor and advances position." }
+        if mname == "to_str" { return "Copies accumulated buffer contents into an immutable `str`." }
+        if mname == "seek" { return "Moves read/write cursor to byte offset `off`." }
+        if mname == "pos" { return "Returns current cursor offset." }
+        if mname == "len" { return "Returns total written byte length." }
+        if mname == "reset" { return "Resets length and cursor to `0`, keeping allocated capacity." }
+        if mname == "free" { return "Releases internal byte buffer heap memory." }
+    }
+    if recv_t == "File" {
+        if mname == "exists" { return "Returns `true` if a file exists at `path`." }
+        if mname == "read_to_string" { return "Reads entire file at `path` into a UTF-8 `str`." }
+        if mname == "write_string" { return "Writes `content` to `path`, creating or truncating the file." }
+        if mname == "append_string" { return "Appends `content` to the end of `path`." }
+        if mname == "remove" { return "Deletes the file at `path`." }
+        if mname == "copy" { return "Copies file from `src` to `dst`." }
+    }
+    if recv_t == "Directory" {
+        if mname == "exists" { return "Returns `true` if directory `path` exists." }
+        if mname == "create" { return "Creates directory (and missing parents) at `path`." }
+        if mname == "list_files" { return "Returns child file paths/names in `path`." }
+        if mname == "list_dirs" { return "Returns child subdirectory names in `path`." }
+    }
+    if recv_t == "Env" {
+        if mname == "args" { return "Returns command-line argument list (`argv`)." }
+        if mname == "arg_count" { return "Returns number of CLI arguments (`argc`)." }
+        if mname == "get" { return "Reads environment variable `name`, or `\"\"` if unset." }
+        if mname == "set" { return "Sets environment variable `name` for this process." }
+        if mname == "cwd" { return "Returns current working directory path." }
+        if mname == "os_name" { return "Returns host OS identifier (`\"windows\"`, `\"linux\"`, `\"macos\"`)." }
+        if mname == "exit" { return "Exits the process immediately with status `code`." }
+    }
+    if recv_t == "Process" {
+        if mname == "execute" { return "Runs shell command `cmd` synchronously and returns its exit code." }
+        if mname == "run_capture" { return "Executes `cmd` and returns captured stdout as `str`." }
+    }
+    if recv_t == "Math" {
+        return "Mathematical runtime function on `" + recv_t + "`."
+    }
+    if recv_t == "Random" {
+        return "Deterministic runtime PRNG helper on `Random`."
+    }
+    if recv_t == "LinearArena" {
+        return "O(1) arena memory allocator method."
+    }
+    if recv_t.starts_with("Channel<") || recv_t == "Channel" {
+        return "Thread-safe channel primitive."
+    }
+    return ""
+}

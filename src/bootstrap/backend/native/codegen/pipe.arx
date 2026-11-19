@@ -1,0 +1,180 @@
+import "./mod.arx"
+
+extend NativeCodegen {
+    pub fn compile(out_exe: str) -> bool {
+        self.collect_layouts_and_decls()
+        self.rt.emit_all()
+
+        // Bind global init
+        self.asmb.bind_label(self.rt.lbl_global_init)
+        self.emit_global_init_fn()
+
+        // Bind __rt_user_main trampoline (calls user `main` if present)
+        mut main_nid = -1
+        mut ri = 0
+        while ri < self.az.root_count {
+            let nid = self.az.root_decls.get(ri)
+            if self.nk.get(nid) == NK_FN_DEF() && self.sa.get(nid) == "main" {
+                main_nid = nid
+            }
+            ri = ri + 1
+        }
+        self.asmb.bind_label(self.rt.lbl_user_main)
+        if main_nid >= 0 {
+            self.asmb.jmp_rel32(self.rt.lbl(self.fn_symbol_name(main_nid)))
+        } else {
+            self.asmb.mov_ri32_sext(REG_RAX(), 0)
+            self.asmb.ret()
+        }
+
+        // Emit all functions, methods, constructors
+        ri = 0
+        while ri < self.az.root_count {
+            let nid = self.az.root_decls.get(ri)
+            let k = self.nk.get(nid)
+            if k == NK_FN_DEF() || k == NK_CEXTERN() {
+                self.emit_fn(nid, "", false)
+            } else if k == NK_CLASS_DEF() {
+                let cname = self.sa.get(nid)
+                let cg = self.ra.get(nid)
+                mut i = 0
+                while i < self.child_count(cg) {
+                    self.emit_fn(self.child_at(cg, i), cname, true)
+                    i = i + 1
+                }
+                let mg = self.ea.get(nid)
+                i = 0
+                while i < self.child_count(mg) {
+                    self.emit_fn(self.child_at(mg, i), cname, false)
+                    i = i + 1
+                }
+            } else if k == NK_EXTEND_DEF() {
+                let tname = self.sa.get(nid)
+                mut i = 0
+                while i < self.child_count(nid) {
+                    self.emit_fn(self.child_at(nid, i), tname, false)
+                    i = i + 1
+                }
+            }
+            ri = ri + 1
+        }
+
+        self.resolve_all_synthetic_trampolines()
+
+        return self.pe.build_and_write(self.asmb, out_exe)
+    }
+
+    priv fn resolve_all_synthetic_trampolines() {
+        let rk = self.rt.labels.keys()
+        mut ki = 0
+        while ki < rk.len() {
+            let k = rk.get(ki)
+            let lid = self.rt.labels.get(k)
+            if lid < self.asmb.label_addrs.len() && self.asmb.label_addrs.get(lid) < 0 {
+                self.resolve_synthetic_label(k, lid)
+            }
+            ki = ki + 1
+        }
+    }
+
+    priv fn resolve_synthetic_label(name: str, lid: i64) {
+        if lid >= self.asmb.label_addrs.len() || self.asmb.label_addrs.get(lid) >= 0 { return }
+        let a = self.asmb
+        a.bind_label(lid)
+
+        if name == "assert" || name == "arx_assert" {
+            a.jmp_rel32(self.rt.lbl("__rt_assert"))
+            return
+        }
+        if name == "Arx_Env_arg" {
+            a.jmp_rel32(self.rt.lbl("__rt_env_arg"))
+            return
+        }
+        if name == "Arx_Directory_list_files" || name == "Arx_Directory_list_dirs" {
+            a.jmp_rel32(self.rt.lbl("__rt_list_new"))
+            return
+        }
+
+        // Generic Stack methods
+        if name.starts_with("Arx_Stack_") {
+            if name.ends_with("_init") { a.jmp_rel32(self.rt.lbl("__rt_list_new")); return }
+            if name.ends_with("_push") { a.jmp_rel32(self.rt.lbl("__rt_list_push")); return }
+            if name.ends_with("_pop") { a.jmp_rel32(self.rt.lbl("__rt_list_pop")); return }
+            if name.ends_with("_peek") { a.jmp_rel32(self.rt.lbl("__rt_stack_peek")); return }
+            if name.ends_with("_len") || name.ends_with("_length") { a.jmp_rel32(self.rt.lbl("__rt_list_len")); return }
+            if name.ends_with("_is_empty") { a.jmp_rel32(self.rt.lbl("__rt_list_is_empty")); return }
+            if name.ends_with("_clear") { a.jmp_rel32(self.rt.lbl("__rt_list_clear")); return }
+            if name.ends_with("_free") { a.jmp_rel32(self.rt.lbl("__rt_list_free")); return }
+        }
+
+        // Generic Queue & Deque methods
+        if name.starts_with("Arx_Queue_") || name.starts_with("Arx_Deque_") {
+            if name.ends_with("_init") { a.jmp_rel32(self.rt.lbl("__rt_queue_new")); return }
+            if name.ends_with("_enqueue") || name.ends_with("_push_back") || name.ends_with("_push_front") { a.jmp_rel32(self.rt.lbl("__rt_queue_enqueue")); return }
+            if name.ends_with("_dequeue") || name.ends_with("_pop_front") || name.ends_with("_pop_back") { a.jmp_rel32(self.rt.lbl("__rt_queue_dequeue")); return }
+            if name.ends_with("_peek") || name.ends_with("_peek_front") || name.ends_with("_peek_back") { a.jmp_rel32(self.rt.lbl("__rt_queue_peek")); return }
+            if name.ends_with("_len") || name.ends_with("_length") { a.jmp_rel32(self.rt.lbl("__rt_queue_len")); return }
+            if name.ends_with("_is_empty") { a.jmp_rel32(self.rt.lbl("__rt_queue_is_empty")); return }
+            if name.ends_with("_clear") { a.jmp_rel32(self.rt.lbl("__rt_queue_clear")); return }
+            if name.ends_with("_free") { a.jmp_rel32(self.rt.lbl("__rt_queue_free")); return }
+        }
+
+        // Generic List methods
+        if name.starts_with("Arx_List_") {
+            if name.ends_with("_is_empty") { a.jmp_rel32(self.rt.lbl("__rt_list_is_empty")); return }
+            if name.ends_with("_free") { a.jmp_rel32(self.rt.lbl("__rt_list_free")); return }
+            if name.ends_with("_clear") { a.jmp_rel32(self.rt.lbl("__rt_list_clear")); return }
+        }
+
+        // Generic Map / Set methods
+        if name.starts_with("Arx_Map_") || name.starts_with("Arx_Set_") {
+            if name.ends_with("_is_empty") { a.jmp_rel32(self.rt.lbl("__rt_map_is_empty")); return }
+            if name.ends_with("_free") { a.jmp_rel32(self.rt.lbl("__rt_map_free")); return }
+        }
+
+        // Safe fallback stub for external/unresolved symbols
+        a.mov_ri32_sext(REG_RAX(), 0)
+        a.ret()
+    }
+
+    priv fn emit_global_init_fn() {
+        let a = self.asmb
+        a.push_r(REG_RBP())
+        a.mov_rr(REG_RBP(), REG_RSP())
+        let patch_at = a.pos() + 3
+        a.sub_ri32(REG_RSP(), 128)
+        self.next_local_off = 8
+        self.max_local_off = 8
+        self.max_call_args = 4
+        self.cur_class = ""
+        self.cur_ret_type = "void"
+        self.cur_ret_lbl = a.new_label()
+
+        mut i = 0
+        while i < self.global_nodes.len() {
+            let gid = self.global_nodes.get(i)
+            let nm = self.sa.get(gid)
+            let val_id = self.la.get(gid)
+            if val_id >= 0 {
+                self.emit_expr(val_id)
+                a.mov_mr64_rip_data(self.global_offs.get(nm), REG_RAX())
+            }
+            i = i + 1
+        }
+
+        a.bind_label(self.cur_ret_lbl)
+        mut shadow_and_args = 32
+        if self.max_call_args > 4 {
+            shadow_and_args = 32 + (self.max_call_args - 4) * 8
+        }
+        if shadow_and_args < 112 { shadow_and_args = 112 }
+        mut frame = self.max_local_off + shadow_and_args
+        let rem = frame % 16
+        if rem != 0 { frame = frame + (16 - rem) }
+        a.patch_i32(patch_at, frame)
+        a.add_ri32(REG_RSP(), frame)
+        a.pop_r(REG_RBP())
+        a.ret()
+    }
+
+}

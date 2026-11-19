@@ -1,0 +1,124 @@
+import "./mod.arx"
+
+extend Analyzer {
+
+    // --- Scope Stack ---
+
+    priv fn scope_push() {
+        self.scope_marks.push(self.scope_count)
+        self.scope_depth = self.scope_depth + 1
+    }
+
+    priv fn scope_pop() {
+        if self.scope_depth <= 0 { return }
+        self.scope_depth = self.scope_depth - 1
+        let target = self.scope_marks.pop()
+        while self.scope_count > target {
+            let last_idx = self.scope_count - 1
+            let name = self.scope_names.get(last_idx)
+            let is_m = self.scope_mut.get(last_idx)
+            let r_cnt = self.scope_reads.get(last_idx)
+            let w_cnt = self.scope_writes.get(last_idx)
+            let nid = self.scope_nids.get(last_idx)
+            let is_p = self.scope_is_param.get(last_idx)
+
+            if nid >= 0 && is_p == 0 && name != "" && name != "self" && name != "_" && !name.starts_with("_") {
+                if r_cnt == 0 {
+                    self.add_diag(nid, name.len(), "W0002", "unused variable '" + name + "'", "if this is intentional, prefix with an underscore: '_" + name + "'", 2)
+                } else if is_m == 1 && w_cnt == 0 {
+                    self.add_diag(nid, name.len(), "W0003", "variable '" + name + "' does not need to be mutable", "remove 'mut' or declare with 'let'", 2)
+                }
+            }
+
+            self.scope_names.pop()
+            self.scope_types.pop()
+            self.scope_mut.pop()
+            self.scope_lines.pop()
+            self.scope_nids.pop()
+            self.scope_reads.pop()
+            self.scope_writes.pop()
+            self.scope_is_param.pop()
+            self.scope_count = self.scope_count - 1
+        }
+    }
+
+    priv fn scope_def_full(name: str, raw_t: str, is_mut: i64, decl_ln: i64, decl_nid: i64, is_param: i64) {
+        let nt = btype_norm(raw_t)
+        self.ensure_generic_type(nt)
+        self.scope_names.push(name)
+        self.scope_types.push(nt)
+        self.scope_mut.push(is_mut)
+        self.scope_lines.push(decl_ln)
+        self.scope_nids.push(decl_nid)
+        self.scope_reads.push(0)
+        self.scope_writes.push(0)
+        self.scope_is_param.push(is_param)
+        self.scope_count = self.scope_count + 1
+    }
+
+    priv fn scope_def(name: str, raw_t: str) {
+        self.scope_def_full(name, raw_t, 1, 0, -1, 1)
+    }
+
+    priv fn scope_mark_used(name: str) {
+        mut i = self.scope_count - 1
+        while i >= 0 {
+            if self.scope_names.get(i) == name {
+                let r = self.scope_reads.get(i)
+                self.scope_reads.set(i, r + 1)
+                return
+            }
+            i = i - 1
+        }
+    }
+
+    priv fn scope_unmark_used(name: str) {
+        mut i = self.scope_count - 1
+        while i >= 0 {
+            if self.scope_names.get(i) == name {
+                let r = self.scope_reads.get(i)
+                if r > 0 { self.scope_reads.set(i, r - 1) }
+                return
+            }
+            i = i - 1
+        }
+    }
+
+    priv fn scope_mark_mutated(name: str) {
+        mut i = self.scope_count - 1
+        while i >= 0 {
+            if self.scope_names.get(i) == name {
+                let w = self.scope_writes.get(i)
+                self.scope_writes.set(i, w + 1)
+                return
+            }
+            i = i - 1
+        }
+    }
+
+    priv fn scope_is_mut(name: str) -> i64 {
+        mut i = self.scope_count - 1
+        while i >= 0 {
+            if self.scope_names.get(i) == name {
+                return self.scope_mut.get(i)
+            }
+            i = i - 1
+        }
+        return 1
+    }
+
+    priv fn scope_lookup(name: str) -> str {
+        mut i = self.scope_count - 1
+        while i >= 0 {
+            if self.scope_names.get(i) == name {
+                return self.scope_types.get(i)
+            }
+            i = i - 1
+        }
+        if self.global_types.has_key(name) {
+            return self.global_types.get(name)
+        }
+        return ""
+    }
+
+}

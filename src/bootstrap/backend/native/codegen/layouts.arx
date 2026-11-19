@@ -1,0 +1,119 @@
+import "./mod.arx"
+
+extend NativeCodegen {
+
+    priv fn child_count(gid: i64) -> i64 {
+        if gid < 0 { return 0 }
+        return self.ll.get(gid)
+    }
+
+    priv fn child_at(gid: i64, idx: i64) -> i64 {
+        return self.ch.get(self.ls.get(gid) + idx)
+    }
+
+    priv fn find_class_node(cname: str) -> i64 {
+        mut nm = cname
+        if self.az.item_aliases.has_key(nm) { nm = self.az.item_aliases.get(nm) }
+        if !self.az.cls_idx_map.has_key(nm) { return -1 }
+        return self.az.cls_nodes.get(self.az.cls_idx_map.get(nm))
+    }
+
+    // Collect fields including parent classes
+    priv fn collect_cls_fields_rec(cname: str, out_names: List<str>) {
+        let cid = self.find_class_node(cname)
+        if cid < 0 { return }
+        mut parent = btype_norm(self.sb.get(cid))
+        if parent == "" && self.az.cls_base_map.has_key(cname) {
+            parent = btype_norm(self.az.cls_base_map.get(cname))
+        }
+        if self.az.item_aliases.has_key(parent) {
+            parent = self.az.item_aliases.get(parent)
+        }
+        if parent != "" && parent != cname {
+            self.collect_cls_fields_rec(parent, out_names)
+        }
+        let fg = self.la.get(cid)
+        let fc = self.child_count(fg)
+        mut i = 0
+        while i < fc {
+            let fid = self.child_at(fg, i)
+            out_names.push(self.sa.get(fid))
+            i = i + 1
+        }
+    }
+
+    priv fn collect_layouts_and_decls() {
+        // 1. Class field offsets
+        mut ci = 0
+        while ci < self.az.cls_count {
+            let cname = self.az.cls_names.get(ci)
+            let fnames = List<str>()
+            self.collect_cls_fields_rec(cname, fnames)
+            mut idx = 0
+            while idx < fnames.len() {
+                self.cls_field_offs.insert(cname + "::" + fnames.get(idx), idx * 8)
+                idx = idx + 1
+            }
+            mut sz = fnames.len() * 8
+            if sz < 8 { sz = 8 }
+            self.cls_sizes.insert(cname, sz)
+            ci = ci + 1
+        }
+
+        // 2. Enum tags and unit singletons in .rdata
+        mut ei = 0
+        while ei < self.az.enum_count {
+            let eid = self.az.enum_nodes.get(ei)
+            let ename = self.sa.get(eid)
+            let vc = self.child_count(eid)
+            mut vi = 0
+            while vi < vc {
+                let vid = self.child_at(eid, vi)
+                let vname = self.sa.get(vid)
+                let key = ename + "::" + vname
+                self.enum_var_tags.insert(key, vi)
+                let bytes = List<i64>()
+                bytes.push(vi & 255)
+                bytes.push((vi >> 8) & 255)
+                bytes.push((vi >> 16) & 255)
+                bytes.push((vi >> 24) & 255)
+                bytes.push(0); bytes.push(0); bytes.push(0); bytes.push(0)
+                let r_off = self.pe.add_rdata_bytes(bytes)
+                self.enum_unit_ptrs.insert(key, r_off)
+                vi = vi + 1
+            }
+            ei = ei + 1
+        }
+
+        // 3. Globals & Win32 PE IAT extern bindings
+        mut ri = 0
+        while ri < self.az.root_count {
+            let nid = self.az.root_decls.get(ri)
+            if self.nk.get(nid) == NK_VAR_DECL_GLOBAL() {
+                let nm = self.sa.get(nid)
+                if !self.global_offs.has_key(nm) {
+                    self.global_offs.insert(nm, self.pe.alloc_data_qword(0))
+                }
+                self.global_nodes.push(nid)
+            }
+            ri = ri + 1
+        }
+
+        let ext_keys = self.fn_externs.keys()
+        mut eki = 0
+        while eki < ext_keys.len() {
+            let ek = ext_keys.get(eki)
+            let full_ext = self.fn_externs.get(ek)
+            let parts = full_ext.split("::")
+            if parts.len() >= 2 {
+                let dll = parts.get(0)
+                let sym = parts.get(1)
+                let iat_off = self.pe.add_import(dll, sym)
+                self.extern_iats.insert(ek, iat_off)
+                self.extern_iats.insert("arx_" + ek, iat_off)
+            }
+            eki = eki + 1
+        }
+    }
+
+}

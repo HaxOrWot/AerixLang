@@ -1,0 +1,62 @@
+import "./mod.arx"
+
+// --- 4. Signature Help ---
+
+fn lsp_line_col_to_offset(source: str, line0: i64, char0: i64) -> i64 {
+    let n = source.len()
+    mut ln = 0
+    mut i = 0
+    while ln < line0 && i < n {
+        if source.byte_at(i) == 10 { ln = ln + 1 }
+        i = i + 1
+    }
+    mut col = 0
+    while col < char0 && i < n && source.byte_at(i) != 10 && source.byte_at(i) != 13 {
+        col = col + 1
+        i = i + 1
+    }
+    return i
+}
+
+pub fn lsp_build_signature_help_json(source: str, az: Analyzer, doc_path: str, line0: i64, char0: i64) -> str {
+    let sig_params = List<str>()
+    let meta = List<str>()
+    let commas = lsp_resolve_call_site_sig(source, az, doc_path, line0, char0, sig_params, meta)
+    if commas < 0 || meta.len() < 2 { return "null" }
+    let sig_label = meta.get(0)
+    let sig_doc = meta.get(1)
+
+    let jb = JsonBuf()
+    jb.lbrace()
+    jb.key("signatures")
+    jb.lbrack()
+    jb.lbrace()
+    jb.kv_str("label", sig_label, true)
+    if sig_doc != "" {
+        jb.comma()
+        jb.key("documentation")
+        jb.lbrace()
+        jb.kv_str("kind", "markdown", true)
+        jb.kv_str("value", sig_doc, false)
+        jb.rbrace()
+    }
+    jb.comma()
+    jb.key("parameters")
+    jb.lbrack()
+    mut pi = 0
+    while pi < sig_params.len() {
+        if pi > 0 { jb.comma() }
+        jb.lbrace()
+        jb.kv_str("label", sig_params.get(pi), true)
+        jb.rbrace()
+        pi = pi + 1
+    }
+    jb.rbrack()
+    jb.rbrace()
+    jb.rbrack()
+    jb.kv_int("activeSignature", 0, false)
+    jb.kv_int("activeParameter", commas, false)
+    jb.rbrace()
+    return jb.finish()
+}
+

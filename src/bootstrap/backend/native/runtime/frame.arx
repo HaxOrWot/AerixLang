@@ -1,0 +1,65 @@
+import "./mod.arx"
+
+extend NativeRt {
+    pub fn lbl(name: str) -> i64 {
+        if self.labels.has_key(name) {
+            return self.labels.get(name)
+        }
+        let id = self.asmb.new_label()
+        self.labels.insert(name, id)
+        return id
+    }
+
+    priv fn begin_fn(name: str, frame_bytes: i64) {
+        let id = self.lbl(name)
+        self.asmb.bind_label(id)
+        self.asmb.push_r(REG_RBP())
+        self.asmb.mov_rr(REG_RBP(), REG_RSP())
+        self.asmb.sub_ri32(REG_RSP(), frame_bytes)
+    }
+
+    priv fn end_fn() {
+        self.asmb.mov_rr(REG_RSP(), REG_RBP())
+        self.asmb.pop_r(REG_RBP())
+        self.asmb.ret()
+    }
+
+    pub fn emit_all() {
+        // 0. Program Entry Point (RVA 0x1000)
+        self.asmb.push_r(REG_RBP())
+        self.asmb.mov_rr(REG_RBP(), REG_RSP())
+        self.asmb.sub_ri32(REG_RSP(), 48)
+
+        // Set console output code page to UTF-8 (65001)
+        self.asmb.mov_ri32_sext(REG_RCX(), 65001)
+        self.asmb.call_rip_iat(self.imp_set_cp)
+
+        // Parse command line via GetCommandLineA() into List<str> and cache in args_list_off
+        self.asmb.call_rel32(self.lbl("__rt_env_args"))
+        self.asmb.mov_mr64_rip_data(self.args_list_off, REG_RAX())
+
+        // Run global variable initializers
+        self.asmb.call_rel32(self.lbl_global_init)
+
+        // Pass parsed arguments list in RCX to user main()
+        self.asmb.mov_rm64_rip_data(REG_RCX(), self.args_list_off)
+        self.asmb.call_rel32(self.lbl_user_main)
+
+        // Exit process with user main's return code (in RAX)
+        self.asmb.mov_rr(REG_RCX(), REG_RAX())
+        self.asmb.call_rip_iat(self.imp_exit_process)
+        self.end_fn()
+
+        self.emit_memory()
+        self.emit_io_and_fmt()
+        self.emit_strings()
+        self.emit_list()
+        self.emit_map()
+        self.emit_queue()
+        self.emit_bytebuf()
+        self.emit_os_fs_env()
+        self.emit_assert()
+        self.emit_exceptions()
+    }
+
+}

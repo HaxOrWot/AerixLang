@@ -1,0 +1,403 @@
+import "./mod.arx"
+
+fn lsp_format_params(az: Analyzer, fn_nid: i64) -> str {
+    let pg = az.la.get(fn_nid)
+    if pg < 0 { return "" }
+    let pc = az.ll.get(pg)
+    let bb = ByteBuffer()
+    mut i = 0
+    while i < pc {
+        if i > 0 { bb.write_str(", ") }
+        let pid = az.ch.get(az.ls.get(pg) + i)
+        if has_flag(az.ia.get(pid), FLAG_MUT()) {
+            bb.write_str("mut ")
+        }
+        bb.write_str(az.sa.get(pid))
+        bb.write_str(": ")
+        bb.write_str(btype_norm(az.sb.get(pid)))
+        i = i + 1
+    }
+    let out = bb.to_str()
+    bb.free()
+    return out
+}
+
+fn lsp_fn_signature_str(az: Analyzer, fn_nid: i64) -> str {
+    let k = az.nk.get(fn_nid)
+    let params = lsp_format_params(az, fn_nid)
+    if k == NK_INIT_DEF() {
+        return "init(" + params + ")"
+    }
+    if k == NK_DROP_DEF() {
+        return "drop()"
+    }
+    let nm = az.sa.get(fn_nid)
+    let rt = btype_norm(az.sb.get(fn_nid))
+    mut prefix = ""
+    if has_flag(az.ia.get(fn_nid), FLAG_PUB()) { prefix = "pub " }
+    if has_flag(az.ia.get(fn_nid), FLAG_STATIC()) { prefix = prefix + "static " }
+    if rt == "" || rt == "void" {
+        return prefix + "fn " + nm + "(" + params + ")"
+    }
+    return prefix + "fn " + nm + "(" + params + ") -> " + rt
+}
+
+fn lsp_find_class_node(az: Analyzer, cname: str) -> i64 {
+    if !az.cls_idx_map.has_key(cname) { return -1 }
+    return az.cls_nodes.get(az.cls_idx_map.get(cname))
+}
+
+fn lsp_find_enum_node(az: Analyzer, ename: str) -> i64 {
+    if !az.enum_idx_map.has_key(ename) { return -1 }
+    return az.enum_nodes.get(az.enum_idx_map.get(ename))
+}
+
+fn lsp_enclosing_class_at(az: Analyzer, doc_path: str, line1: i64) -> str {
+    mut best_cls = ""
+    mut best_line = -1
+    mut ci = 0
+    while ci < az.cls_count {
+        let cid = az.cls_nodes.get(ci)
+        if az.nf.get(cid) == doc_path {
+            let cln = az.ln.get(cid)
+            if cln <= line1 && cln > best_line {
+                best_line = cln
+                best_cls = az.sa.get(cid)
+            }
+        }
+        ci = ci + 1
+    }
+    if best_cls == "" { return "" }
+    // Ensure no later top-level fn or enum started between best_line and line1
+    mut fi = 0
+    while fi < az.fn_count {
+        let fid = az.fn_nodes.get(fi)
+        if az.nf.get(fid) == doc_path {
+            let fln = az.ln.get(fid)
+            if fln > best_line && fln <= line1 {
+                return ""
+            }
+        }
+        fi = fi + 1
+    }
+    mut ei = 0
+    while ei < az.enum_count {
+        let eid = az.enum_nodes.get(ei)
+        if az.nf.get(eid) == doc_path {
+            let eln = az.ln.get(eid)
+            if eln > best_line && eln <= line1 {
+                return ""
+            }
+        }
+        ei = ei + 1
+    }
+    return best_cls
+}
+
+fn lsp_enclosing_fn_bounds(source: str, az: Analyzer, doc_path: str, line1: i64) -> List<i64> {
+    lsp_ensure_doc_index(az, doc_path, source)
+    let res = List<i64>()
+    mut best_nid = -1
+    mut best_start = -1
+    mut best_end = 1000000
+
+    mut fi = 0
+    let fcnt = az.doc_idx_fn_starts.len()
+    while fi < fcnt {
+        let st = az.doc_idx_fn_starts.get(fi)
+        let ed = az.doc_idx_fn_ends.get(fi)
+        if st <= line1 && line1 <= ed && st > best_start {
+            best_start = st
+            best_nid = az.doc_idx_fn_nodes.get(fi)
+            best_end = ed
+        }
+        fi = fi + 1
+    }
+
+    res.push(best_nid)
+    res.push(best_start)
+    res.push(best_end)
+    return res
+}
+
+fn lsp_resolve_scoped_var_node(az: Analyzer, doc_path: str, line1: i64, fn_start: i64, name: str) -> i64 {
+    lsp_ensure_doc_index(az, doc_path, "")
+    mut best_nid = -1
+    mut best_ln = -1
+    mut min_ln = 1
+    if fn_start > 0 { min_ln = fn_start }
+
+    mut vi = 0
+    let vcnt = az.doc_idx_var_nodes.len()
+    while vi < vcnt {
+        if az.doc_idx_var_names.get(vi) == name {
+            let nln = az.doc_idx_var_lines.get(vi)
+            let fst = az.doc_idx_var_fn_starts.get(vi)
+            if (fn_start <= 0 || fst == fn_start) && nln >= min_ln && nln <= line1 && nln >= best_ln {
+                best_ln = nln
+                best_nid = az.doc_idx_var_nodes.get(vi)
+            }
+        }
+        vi = vi + 1
+    }
+    return best_nid
+}
+
+fn lsp_unwrap_optional_type(t: str) -> str {
+    let tr = t.trim()
+    if tr.ends_with("?") && tr.len() > 1 { return tr.slice(0, tr.len() - 1).trim() }
+    if tr.starts_with("Option<") && tr.ends_with(">") {
+        let inner = lsp_generic_inner_arg(tr, 0)
+        if inner != "" { return inner }
+    }
+    return tr
+}
+
+fn lsp_unwrap_iterable_type(iter_t: str) -> str {
+    if iter_t == "" { return "" }
+    if iter_t == "str" { return "u8" }
+    let elem = lsp_unwrap_indexed_type(iter_t)
+    if elem != "" {
+        let base_lt = lsp_str_find(iter_t, "<", 0)
+        if base_lt > 0 && iter_t.slice(0, base_lt).trim() == "Map" {
+            return lsp_generic_inner_arg(iter_t, 0)
+        }
+        return elem
+    }
+    return ""
+}
+
+fn lsp_resolve_var_type(az: Analyzer, doc_path: str, line1: i64, name: str, source: str = "") -> str {
+    if name == "self" {
+        return lsp_enclosing_class_at(az, doc_path, line1)
+    }
+    if name == "super" {
+        let ec = lsp_enclosing_class_at(az, doc_path, line1)
+        if ec != "" && az.cls_base_map.has_key(ec) {
+            return az.cls_base_map.get(ec)
+        }
+        return ""
+    }
+    // Check locals/params inside enclosing function (or top-level if none)
+    mut min_ln = 1
+    if source != "" {
+        let fb = lsp_enclosing_fn_bounds(source, az, doc_path, line1)
+        if fb.get(1) > 0 { min_ln = fb.get(1) }
+    }
+    mut best_type = ""
+    mut best_ln = -1
+    mut best_nid = -1
+
+    lsp_ensure_doc_index(az, doc_path, source)
+    mut vi = 0
+    let vcnt = az.doc_idx_var_nodes.len()
+    while vi < vcnt {
+        if az.doc_idx_var_names.get(vi) == name {
+            let nln = az.doc_idx_var_lines.get(vi)
+            let fst = az.doc_idx_var_fn_starts.get(vi)
+            if (min_ln <= 1 || fst == min_ln) && nln >= min_ln && nln <= line1 && nln >= best_ln {
+                best_ln = nln
+                best_nid = az.doc_idx_var_nodes.get(vi)
+                let t = az.doc_idx_var_types.get(vi)
+                if t != "" && t != "void" {
+                    best_type = t
+                }
+            }
+        }
+        vi = vi + 1
+    }
+    if best_type != "" && (best_nid < 0 || az.nk.get(best_nid) != NK_FOR() || best_type != "i64") {
+        return lsp_unwrap_optional_type(best_type)
+    }
+
+    // Fallback RHS inference on declaration line when AST node type is unresolved (or default i64 on for-in)
+    if best_nid >= 0 {
+        let fsrc = lsp_read_target_source(source, doc_path, doc_path)
+        if fsrc != "" {
+            let dline = lsp_get_line_text(fsrc, best_ln - 1).trim()
+            if az.nk.get(best_nid) == NK_FOR() {
+                let in_pos = lsp_str_find(dline, " in ", 0)
+                if in_pos > 0 {
+                    mut rhs_iter = dline.slice(in_pos + 4, dline.len()).trim()
+                    let brace_p = lsp_str_find(rhs_iter, lsp_lbrace(), 0)
+                    if brace_p > 0 { rhs_iter = rhs_iter.slice(0, brace_p).trim() }
+                    if lsp_str_find(rhs_iter, "..", 0) >= 0 { return "i64" }
+                    let it = lsp_infer_expr_receiver_type(az, doc_path, best_ln, rhs_iter, fsrc)
+                    let elem = lsp_unwrap_iterable_type(it)
+                    if elem != "" { return elem }
+                }
+            } else {
+                let eq_pos = lsp_str_find(dline, "=", 0)
+                if eq_pos > 0 && (eq_pos + 1 >= dline.len() || dline.byte_at(eq_pos + 1) != 61) {
+                    let rhs_e = dline.slice(eq_pos + 1, dline.len()).trim()
+                    if rhs_e != "" && rhs_e != name {
+                        let rt = lsp_infer_expr_receiver_type(az, doc_path, best_ln, rhs_e, fsrc)
+                        if rt != "" { return lsp_unwrap_optional_type(rt) }
+                    }
+                }
+            }
+        }
+    }
+    if best_type != "" { return lsp_unwrap_optional_type(best_type) }
+
+    // Enclosing class fields (implicit self)
+    let ec2 = lsp_enclosing_class_at(az, doc_path, line1)
+    if ec2 != "" {
+        mut walk = ec2
+        mut hops = 0
+        while walk != "" && hops < 8 {
+            let fk = walk + "::" + name
+            if az.cls_field_types.has_key(fk) {
+                return lsp_unwrap_optional_type(az.cls_field_types.get(fk))
+            }
+            if az.cls_base_map.has_key(walk) {
+                walk = az.cls_base_map.get(walk)
+            } else {
+                walk = ""
+            }
+            hops = hops + 1
+        }
+    }
+    // Check module globals
+    if az.global_types.has_key(name) {
+        return lsp_unwrap_optional_type(az.global_types.get(name))
+    }
+    return ""
+}
+
+fn lsp_generic_inner_arg(t: str, arg_idx: i64) -> str {
+    let lt = lsp_str_find(t, "<", 0)
+    if lt < 0 { return "" }
+    let n = t.len()
+    mut gt = n - 1
+    while gt > lt && t.byte_at(gt) != 62 {
+        gt = gt - 1
+    }
+    if gt <= lt + 1 { return "" }
+    let inner = t.slice(lt + 1, gt)
+    mut depth = 0
+    mut start = 0
+    mut cur_idx = 0
+    mut i = 0
+    while i <= inner.len() {
+        let at_end = (i == inner.len())
+        mut is_sep = false
+        if !at_end {
+            let b = inner.byte_at(i)
+            if b == 60 || b == 40 { depth = depth + 1 }
+            else if b == 62 || b == 41 { depth = depth - 1 }
+            else if b == 44 && depth == 0 { is_sep = true }
+        }
+        if at_end || is_sep {
+            if cur_idx == arg_idx {
+                return inner.slice(start, i).trim()
+            }
+            cur_idx = cur_idx + 1
+            start = i + 1
+        }
+        i = i + 1
+    }
+    return ""
+}
+
+fn lsp_infer_builtin_member_ret(recv_t: str, mname: str) -> str {
+    if recv_t == "str" {
+        if mname == "slice" || mname == "replace" || mname == "trim" || mname == "to_upper" || mname == "to_lower" { return "str" }
+        if mname == "split" { return "List<str>" }
+        if mname == "len" || mname == "byte_at" || mname == "to_i64" { return "i64" }
+        if mname == "to_f64" { return "f64" }
+        if mname == "is_empty" || mname == "contains" || mname == "starts_with" || mname == "ends_with" { return "bool" }
+        return ""
+    }
+    if recv_t == "ByteBuffer" {
+        if mname == "to_str" { return "str" }
+        if mname == "read_u8" || mname == "read_i32_le" || mname == "read_i32_be" || mname == "pos" || mname == "len" { return "i64" }
+        return ""
+    }
+    if recv_t == "String" {
+        if mname == "as_str" { return "str" }
+        if mname == "trim" || mname == "to_upper" || mname == "to_lower" || mname == "replace" { return "String" }
+        if mname == "split" { return "List<str>" }
+        if mname == "len" { return "i64" }
+        if mname == "contains" || mname == "starts_with" || mname == "ends_with" { return "bool" }
+        return ""
+    }
+    if recv_t.starts_with("List<") {
+        let t_elem = lsp_generic_inner_arg(recv_t, 0)
+        if mname == "get" || mname == "pop" || mname == "remove_at" || mname == "swap_remove" { return t_elem }
+        if mname == "slice" { return recv_t }
+        if mname == "len" || mname == "index_of" { return "i64" }
+        if mname == "is_empty" || mname == "contains" { return "bool" }
+        return ""
+    }
+    if recv_t.starts_with("Map<") {
+        let k_elem = lsp_generic_inner_arg(recv_t, 0)
+        let v_elem = lsp_generic_inner_arg(recv_t, 1)
+        if mname == "get" { return v_elem }
+        if mname == "keys" { return "List<" + k_elem + ">" }
+        if mname == "values" { return "List<" + v_elem + ">" }
+        if mname == "has_key" || mname == "remove" || mname == "is_empty" { return "bool" }
+        if mname == "len" { return "i64" }
+        return ""
+    }
+    if recv_t.starts_with("Set<") {
+        let t_elem = lsp_generic_inner_arg(recv_t, 0)
+        if mname == "to_list" { return "List<" + t_elem + ">" }
+        if mname == "union" || mname == "intersection" || mname == "difference" { return recv_t }
+        if mname == "len" { return "i64" }
+        if mname == "add" || mname == "has" || mname == "remove" || mname == "is_empty" { return "bool" }
+        return ""
+    }
+    if recv_t.starts_with("Stack<") || recv_t.starts_with("Queue<") || recv_t.starts_with("Deque<") {
+        let t_elem = lsp_generic_inner_arg(recv_t, 0)
+        if mname == "pop" || mname == "peek" || mname == "pop_back" || mname == "pop_front" || mname == "peek_front" || mname == "peek_back" { return t_elem }
+        if mname == "len" { return "i64" }
+        if mname == "is_empty" { return "bool" }
+        return ""
+    }
+    if recv_t == "File" {
+        if mname == "read" || mname == "read_to_string" || mname == "read_string" { return "str" }
+        if mname == "exists" || mname == "write" || mname == "write_string" || mname == "append" || mname == "append_string" || mname == "remove" || mname == "delete" || mname == "copy" { return "bool" }
+        return ""
+    }
+    if recv_t == "Directory" {
+        if mname == "list_files" || mname == "list_dirs" { return "List<str>" }
+        if mname == "exists" || mname == "create" { return "bool" }
+        return ""
+    }
+    if recv_t == "Env" {
+        if mname == "args" { return "List<str>" }
+        if mname == "get" || mname == "cwd" || mname == "os_name" { return "str" }
+        if mname == "arg_count" { return "i64" }
+        if mname == "set" { return "bool" }
+        return ""
+    }
+    if recv_t == "Process" {
+        if mname == "run_capture" { return "str" }
+        if mname == "execute" { return "i64" }
+        return ""
+    }
+    if recv_t.starts_with("Channel<") || recv_t == "Channel" {
+        if mname == "recv" {
+            let elem = lsp_generic_inner_arg(recv_t, 0)
+            if elem != "" { return elem }
+            return "i64"
+        }
+        return ""
+    }
+    if recv_t == "LinearArena" {
+        if mname == "alloc" { return "usize" }
+        if mname == "used" { return "i64" }
+        return ""
+    }
+    if recv_t == "Math" {
+        return "f64"
+    }
+    if recv_t == "Random" {
+        if mname == "next_f64" { return "f64" }
+        if mname == "next_i64" || mname == "range" { return "i64" }
+        return ""
+    }
+    return ""
+}
+

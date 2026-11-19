@@ -425,6 +425,42 @@ static inline bool arx_cast_to_bool(const char* s) {
     return (strcmp(s, "true") == 0 || strcmp(s, "1") == 0 || strcmp(s, "yes") == 0 || strcmp(s, "t") == 0 || strcmp(s, "y") == 0);
 }
 
+static inline int64_t arx_cast_to_i64_or(const char* s, int64_t def) {
+    if (!s) return def;
+    while (*s == ' ' || *s == '\t' || *s == '\r' || *s == '\n') s++;
+    if (*s == '\0') return def;
+    char* end = NULL;
+    int64_t v = (int64_t)strtoll(s, &end, 10);
+    return (end == s) ? def : v;
+}
+
+static inline uint64_t arx_cast_to_u64_or(const char* s, uint64_t def) {
+    if (!s) return def;
+    while (*s == ' ' || *s == '\t' || *s == '\r' || *s == '\n') s++;
+    if (*s == '\0') return def;
+    char* end = NULL;
+    uint64_t v = (uint64_t)strtoull(s, &end, 10);
+    return (end == s) ? def : v;
+}
+
+static inline double arx_cast_to_f64_or(const char* s, double def) {
+    if (!s) return def;
+    while (*s == ' ' || *s == '\t' || *s == '\r' || *s == '\n') s++;
+    if (*s == '\0') return def;
+    char* end = NULL;
+    double v = strtod(s, &end);
+    return (end == s) ? def : v;
+}
+
+static inline bool arx_cast_to_bool_or(const char* s, bool def) {
+    if (!s) return def;
+    while (*s == ' ' || *s == '\t' || *s == '\r' || *s == '\n') s++;
+    if (*s == '\0') return def;
+    if (strcmp(s, "true") == 0 || strcmp(s, "1") == 0 || strcmp(s, "yes") == 0 || strcmp(s, "t") == 0 || strcmp(s, "y") == 0) return true;
+    if (strcmp(s, "false") == 0 || strcmp(s, "0") == 0 || strcmp(s, "no") == 0 || strcmp(s, "f") == 0 || strcmp(s, "n") == 0) return false;
+    return def;
+}
+
 static inline const char* arx_cast_i64_to_str(int64_t v) {
     return arx_format_str("%lld", (long long)v);
 }

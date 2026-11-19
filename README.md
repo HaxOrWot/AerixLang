@@ -1,13 +1,8 @@
-# Aerix (`.arx`)
-
 <div align="center">
 
-```text
-       ___         _      
-      / _ \___ ___(_)_ __ 
-     / __ / -_) __/ /\ \ /
-    /_/ |_\__/_/ /_//_\_\ 
-```
+<img src="editors/vscode-aerix/icons/aerix-icon.png" width="128" height="128" alt="Aerix Logo" />
+
+# Aerix (`.arx`)
 
 ### **The Expressive Native Systems Programming Language**
 *The developer ergonomics of modern scripting &bull; The bare-metal velocity of native x86-64 machine code*
@@ -149,7 +144,7 @@ fn process_log(path: str) {
 ## 📦 Installation
 
 ### Option A: Windows Installer (Recommended)
-Download **`AerixSetup-2.2.25.exe`** from [GitHub Releases](https://github.com/HaxOrWot/AerixLang/releases).
+Download **`AerixSetup-3.0.0.exe`** from [GitHub Releases](https://github.com/HaxOrWot/AerixLang/releases).
 * Installs `arx.exe`, standard modules, and headers to `C:\Aerix\bin`.
 * Automatically configures user & machine `PATH` environment variables.
 * Includes background update manager (`Updater.exe`) and the official VS Code / Antigravity extension.

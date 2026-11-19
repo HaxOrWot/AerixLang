@@ -1,0 +1,400 @@
+import "./mod.arx"
+
+fn cmd_check(input_file: str) -> i64 {
+    let az = compile_frontend(input_file)
+    if az.has_errors > 0 {
+        return 1
+    }
+    println("OK: " + input_file + " (" + (az.ncount as str) + " AST nodes, " + (az.fn_count as str) + " fns, " + (az.cls_count as str) + " classes)")
+    return 0
+}
+
+fn cmd_fmt(target_path: str, check_only: bool) -> i64 {
+    mut target = "."
+    if target_path != "" { target = target_path }
+    let norm = bpath_normalize(target)
+    if !File.exists(norm) && !Directory.exists(norm) {
+        eprintln("error: path not found: " + target)
+        return 1
+    }
+
+    let files_to_format = List<str>()
+    if Directory.exists(norm) {
+        let all_files = Directory.list_files(norm)
+        mut fi = 0
+        while fi < all_files.len() {
+            let f = all_files.get(fi)
+            if f.ends_with(".arx") {
+                files_to_format.push(f)
+            }
+            fi = fi + 1
+        }
+    } else {
+        files_to_format.push(norm)
+    }
+
+    if files_to_format.len() == 0 {
+        println("No .arx files found to format in '" + target + "'")
+        return 0
+    }
+
+    mut unformatted_count = 0
+    mut formatted_count = 0
+    mut i = 0
+    while i < files_to_format.len() {
+        let fpath = files_to_format.get(i)
+        let orig = File.read_to_string(fpath)
+        let formatted = lsp_format_source(orig)
+        if orig != formatted {
+            if check_only {
+                eprintln("  ✕ unformatted: " + fpath)
+                unformatted_count = unformatted_count + 1
+            } else {
+                File.write_string(fpath, formatted)
+                println("  ✓ formatted: " + fpath)
+                formatted_count = formatted_count + 1
+            }
+        } else if !check_only {
+            println("  - unchanged: " + fpath)
+        }
+        i = i + 1
+    }
+
+    if check_only {
+        if unformatted_count > 0 {
+            eprintln("Formatting check failed: " + (unformatted_count as str) + " file(s) need formatting.")
+            return 1
+        }
+        println("All " + (files_to_format.len() as str) + " file(s) are cleanly formatted.")
+        return 0
+    }
+
+    println("Done: formatted " + (formatted_count as str) + " of " + (files_to_format.len() as str) + " file(s).")
+    return 0
+}
+
+fn cmd_test(target_path: str, opt_flag: str, backend: str, verbose: bool) -> i64 {
+    mut scan_dir = "."
+    if target_path != "" {
+        scan_dir = target_path
+    }
+    let norm = bpath_normalize(scan_dir)
+
+    mut is_native = true
+    let env_be = Env.get("AERIX_BACKEND")
+    if backend == "c" || backend == "--c" || (backend == "auto" && (env_be == "c" || env_be == "gcc")) {
+        is_native = false
+    }
+
+    let is_verbose = verbose || Env.get("AERIX_VERBOSE") == "1" || Env.get("VERBOSE") == "1"
+    if is_native && is_verbose {
+        println("[Native x86-64 backend — zero external toolchain dependencies]")
+    }
+
+    let test_files = List<str>()
+    if File.exists(norm) && norm.ends_with(".arx") {
+        test_files.push(norm)
+    } else if Directory.exists(norm) {
+        let files = Directory.list_files(norm)
+        mut fi = 0
+        while fi < files.len() {
+            let f = files.get(fi)
+            let base = bpath_basename(f)
+            if (base.starts_with("test_") || base.ends_with("_test.arx")) && base.ends_with(".arx") {
+                test_files.push(f)
+            }
+            fi = fi + 1
+        }
+        let sub_tests = bpath_join(norm, "tests")
+        if Directory.exists(sub_tests) {
+            let tfiles = Directory.list_files(sub_tests)
+            mut ti = 0
+            while ti < tfiles.len() {
+                let tf = tfiles.get(ti)
+                let tbase = bpath_basename(tf)
+                if tbase.ends_with(".arx") {
+                    test_files.push(tf)
+                }
+                ti = ti + 1
+            }
+        }
+    } else {
+        eprintln("error: target path not found: " + target_path)
+        return 1
+    }
+
+    let ntests = test_files.len()
+    if ntests == 0 {
+        println("No test files found matching 'test_*.arx' or '*_test.arx'.")
+        return 0
+    }
+
+    println("Running " + (ntests as str) + " Aerix test suite(s)...")
+    println("")
+
+    mut passed = 0
+    mut failed = 0
+    let empty_args = List<str>()
+
+    mut i = 0
+    while i < ntests {
+        let tf = test_files.get(i)
+        let tname = bpath_basename(tf)
+        let rc = cmd_run(tf, opt_flag, backend, empty_args, 0, false)
+        if rc == 0 {
+            println("  ✓ " + tname + " ... ok")
+            passed = passed + 1
+        } else {
+            eprintln("  ✕ " + tname + " ... FAILED (exit code " + (rc as str) + ")")
+            failed = failed + 1
+        }
+        i = i + 1
+    }
+
+    println("")
+    if failed > 0 {
+        eprintln("test result: FAILED. " + (passed as str) + " passed, " + (failed as str) + " failed.")
+        return 1
+    }
+    println("test result: ok. " + (passed as str) + " passed, 0 failed.")
+    return 0
+}
+
+fn cmd_emit_c(input_file: str, out_file: str) -> i64 {
+    mut target = out_file
+    if target == "" {
+        target = strip_arx_ext(bpath_normalize(input_file)) + ".c"
+    }
+    let dir = bpath_dirname(target)
+    if dir != "" && dir != "." {
+        Directory.create(dir)
+    }
+    let c_src = emit_c_for_file(input_file)
+    if !File.write_string(target, c_src) {
+        eprintln("ERROR: Failed to write C file: " + target)
+        return 1
+    }
+    return 0
+}
+
+fn emit_native_exe(input_file: str, exe_path: str, verbose: bool) -> i64 {
+    let target_exe = ensure_exe_ext(bpath_normalize(exe_path))
+    let dir = bpath_dirname(target_exe)
+    if dir != "" && dir != "." {
+        Directory.create(dir)
+    }
+
+    let is_verbose = verbose || Env.get("AERIX_VERBOSE") == "1" || Env.get("VERBOSE") == "1"
+    if is_verbose {
+        println("[Native x86-64 backend — zero external toolchain dependencies]")
+    }
+
+    // Stage 1: AST parsing and frontend validation
+    let az = compile_frontend(input_file)
+    if az.has_errors > 0 {
+        eprintln("error: native compilation failed at AST walk / frontend analysis stage (" + (az.has_errors as str) + " error(s))")
+        return 1
+    }
+
+    // Stage 2: Native machine code emission & label resolution
+    mut ncg = NativeCodegen(az)
+    let compile_ok = ncg.compile(target_exe)
+
+    // Verify label resolution
+    mut unresolved_labels = 0
+    mut li = 0
+    while li < ncg.asmb.label_ref_id.len() {
+        let lid = ncg.asmb.label_ref_id.get(li)
+        if lid >= ncg.asmb.label_addrs.len() || ncg.asmb.label_addrs.get(lid) < 0 {
+            unresolved_labels = unresolved_labels + 1
+        }
+        li = li + 1
+    }
+
+    if unresolved_labels > 0 {
+        if File.exists(target_exe) {
+            File.remove(target_exe)
+        }
+        mut ui = 0
+        while ui < ncg.asmb.label_ref_id.len() {
+            let ulid = ncg.asmb.label_ref_id.get(ui)
+            if ulid >= ncg.asmb.label_addrs.len() || ncg.asmb.label_addrs.get(ulid) < 0 {
+                mut lbl_name = "label_" + (ulid as str)
+                let rk = ncg.rt.labels.keys()
+                mut ki = 0
+                while ki < rk.len() {
+                    let k = rk.get(ki)
+                    if ncg.rt.labels.get(k) == ulid {
+                        lbl_name = k
+                        break
+                    }
+                    ki = ki + 1
+                }
+                eprintln("error: unresolved label reference '" + lbl_name + "'")
+            }
+            ui = ui + 1
+        }
+        eprintln("error: native compilation failed at label resolution stage (" + (unresolved_labels as str) + " unresolved label reference(s))")
+        return 1
+    }
+
+    // Stage 3: PE binary write check
+    if !compile_ok || !File.exists(target_exe) {
+        if ncg.asmb.code.len() == 0 {
+            eprintln("error: native compilation failed at AST walk stage: no machine code generated")
+        } else {
+            eprintln("error: native compilation failed at PE binary write stage: unable to write " + target_exe)
+        }
+        return 1
+    }
+
+    return 0
+}
+
+fn cmd_build(input_file: str, out_file: str, opt_flag: str, keep_c: bool, backend: str, verbose: bool) -> i64 {
+    let norm_in = bpath_normalize(input_file)
+    mut exe_path = out_file
+    if exe_path == "" {
+        exe_path = strip_arx_ext(norm_in)
+    }
+    exe_path = ensure_exe_ext(bpath_normalize(exe_path))
+
+    mut use_native = true
+    let env_be = Env.get("AERIX_BACKEND")
+    if backend == "c" || backend == "--c" || keep_c || (backend == "auto" && (env_be == "c" || env_be == "gcc")) {
+        use_native = false
+    } else {
+        use_native = true
+    }
+
+    if use_native {
+        let rc = emit_native_exe(norm_in, exe_path, verbose)
+        if rc == 0 {
+            println("Built " + exe_path)
+        }
+        return rc
+    }
+
+    let c_path = strip_exe_ext(exe_path) + ".c"
+    let c_src = emit_c_for_file(norm_in)
+    return link_c_to_exe_from(c_src, c_path, exe_path, opt_flag, keep_c, norm_in)
+}
+
+fn cmd_run(input_file: str, opt_flag: str, backend: str, prog_args: List<str>, prog_argc: i64, verbose: bool) -> i64 {
+    let norm_in = bpath_normalize(input_file)
+    let tmp_dir = bpath_join(get_temp_dir(), "aerix_boot_run")
+    Directory.create(tmp_dir)
+    let base = strip_arx_ext(bpath_basename(norm_in))
+    let exe_path = ensure_exe_ext(bpath_join(tmp_dir, base))
+
+    mut use_native = true
+    let env_be = Env.get("AERIX_BACKEND")
+    if backend == "c" || backend == "--c" || (backend == "auto" && (env_be == "c" || env_be == "gcc")) {
+        use_native = false
+    } else {
+        use_native = true
+    }
+
+    mut rc_link = 0
+    if use_native {
+        rc_link = emit_native_exe(norm_in, exe_path, verbose)
+    } else {
+        let c_path = bpath_join(tmp_dir, base + ".c")
+        let c_src = emit_c_for_file(norm_in)
+        rc_link = link_c_to_exe_from(c_src, c_path, exe_path, opt_flag, false, norm_in)
+    }
+    if rc_link != 0 {
+        return rc_link
+    }
+
+    let bb = ByteBuffer()
+    if Env.os_name() == "windows" {
+        let win_exe = exe_path.replace("/", "\\")
+        bb.write_str(quote_shell_arg(win_exe))
+    } else {
+        bb.write_str(quote_shell_arg(exe_path))
+    }
+    mut i = 0
+    while i < prog_argc {
+        bb.write_u8(32)
+        bb.write_str(quote_shell_arg(prog_args.get(i)))
+        i = i + 1
+    }
+    let run_cmd = bb.to_str()
+    bb.free()
+
+    let rc = Process.execute(run_cmd)
+    File.remove(exe_path)
+    if rc == -1 {
+        eprintln("error: failed to execute compiled binary '" + exe_path + "'. If Windows Defender or antivirus blocked temp execution, try 'arx build \"" + input_file + "\"' and run the built .exe directly.")
+    } else if rc >= 3221225472 {
+        eprintln("error: compiled program crashed or failed to initialize (Windows status code " + (rc as str) + ").")
+    }
+    return rc
+}
+
+fn cmd_doc(target_path: str, out_dir: str) -> i64 {
+    return generate_docs(target_path, out_dir)
+}
+
+fn cmd_repl() -> i64 {
+    let bin = resolve_bin_name()
+    println("==================================================================")
+    println("  Aerix Interactive REPL v3.0.0 (x86_64-windows)")
+    println("  Type :help for commands, :exit or :quit to quit.")
+    println("==================================================================")
+    println("")
+    let tmp_dir = bpath_join(get_temp_dir(), "aerix_repl")
+    Directory.create(tmp_dir)
+    let tmp_src = bpath_join(tmp_dir, "repl_session.arx")
+
+    mut line_num = 1
+    while true {
+        let line = input("aerix[" + line_num + "]> ")
+        let trimmed = line.trim()
+        if trimmed == ":exit" || trimmed == ":quit" || trimmed == ":q" {
+            println("Goodbye!")
+            break
+        }
+        if trimmed == ":help" || trimmed == ":h" {
+            println("Aerix REPL Commands:")
+            println("  :exit, :quit, :q     Exit the interactive session")
+            println("  :help, :h            Display this help menu")
+            println("  :version, :v         Display compiler version")
+            println("  :clear, :cls         Clear the screen")
+            continue
+        }
+        if trimmed == ":version" || trimmed == ":v" {
+            println("Aerix Self-Hosting Bootstrap Compiler (" + bin + ") v3.0.0")
+            continue
+        }
+        if trimmed == ":clear" || trimmed == ":cls" {
+            if Env.os_name() == "windows" {
+                Process.execute("cls")
+            } else {
+                Process.execute("clear")
+            }
+            continue
+        }
+        if trimmed == "" {
+            continue
+        }
+
+        mut harness = ""
+        if trimmed.starts_with("let ") || trimmed.starts_with("mut ") || trimmed.starts_with("const ") || trimmed.starts_with("println") || trimmed.starts_with("print(") || trimmed.starts_with("for ") || trimmed.starts_with("while ") || trimmed.starts_with("if ") || trimmed.starts_with("fn ") {
+            harness = "fn main() \{\n    " + trimmed + "\n\}\n"
+        } else {
+            harness = "fn main() \{\n    let __res = (" + trimmed + ")\n    println(\"=> \" + (__res as str))\n\}\n"
+        }
+
+        File.write_string(tmp_src, harness)
+        let prog_args = List<str>()
+        cmd_run(tmp_src, "-O0", "c", prog_args, 0, false)
+        if File.exists(tmp_src) {
+            File.remove(tmp_src)
+        }
+        line_num = line_num + 1
+    }
+    return 0
+}
+

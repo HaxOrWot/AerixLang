@@ -1,11 +1,11 @@
 // Aerix Native LSP — JSON-RPC 2.0 Language Server Daemon (arx lsp)
 
 import "../middle/paths.arx"
-import "../middle/analyzer.arx"
+import "../middle/analyzer/mod.arx"
 import "./json.arx"
-import "./docs.arx"
-import "./highlight.arx"
-import "./features.arx"
+import "./docs/mod.arx"
+import "./highlight/mod.arx"
+import "./features/mod.arx"
 
 fn lsp_read_msg_str() -> str {
     let n = arx_lsp_read_start()
@@ -67,11 +67,11 @@ fn lsp_build_initialize_result() -> str {
     jb.key("capabilities")
     jb.lbrace()
 
-    // Text document sync (Full = 1)
+    // Text document sync (Full = 1, Incremental = 2)
     jb.key("textDocumentSync")
     jb.lbrace()
     jb.kv_bool("openClose", true, true)
-    jb.kv_int("change", 1, false)
+    jb.kv_int("change", 2, false)
     jb.comma()
     jb.key("save")
     jb.lbrace()
@@ -175,7 +175,7 @@ fn lsp_build_initialize_result() -> str {
     jb.key("serverInfo")
     jb.lbrace()
     jb.kv_str("name", "aerix-lsp", true)
-    jb.kv_str("version", "2.2.25", false)
+    jb.kv_str("version", "3.0.0", false)
     jb.rbrace()
 
     jb.rbrace()
@@ -208,6 +208,37 @@ fn lsp_encode_semantic_tokens_json(data: List<i64>) -> str {
     return jb.finish()
 }
 
+fn lsp_get_or_analyze(uri: str, fpath: str, src: str, path_docs: Map<str, str>,
+                      doc_cache_uris: List<str>, doc_cache_srcs: List<str>, doc_cache_azs: List<Analyzer>,
+                      cache_slot_ref: List<i64>) -> Analyzer {
+    mut az_slot = -1
+    mut di = 0
+    let n = doc_cache_uris.len()
+    while di < n {
+        if doc_cache_uris.get(di) == uri && doc_cache_srcs.get(di) == src {
+            az_slot = di
+            break
+        }
+        di = di + 1
+    }
+    if az_slot >= 0 {
+        return doc_cache_azs.get(az_slot)
+    }
+    let az = lsp_analyze_document(fpath, src, path_docs)
+    if doc_cache_uris.len() < 8 {
+        doc_cache_uris.push(uri)
+        doc_cache_srcs.push(src)
+        doc_cache_azs.push(az)
+    } else {
+        let slot = cache_slot_ref.get(0)
+        doc_cache_uris.set(slot, uri)
+        doc_cache_srcs.set(slot, src)
+        doc_cache_azs.set(slot, az)
+        cache_slot_ref.set(0, (slot + 1) % 8)
+    }
+    return az
+}
+
 pub fn run_lsp_server() -> i64 {
     arx_lsp_init_stdio()
 
@@ -215,6 +246,13 @@ pub fn run_lsp_server() -> i64 {
     let path_docs = Map<str, str>()
     let hdr_cache = HlHeaderCache()
     mut shutting_down = false
+
+    // Multi-document LRU analysis cache (8 slots)
+    let doc_cache_uris = List<str>()
+    let doc_cache_srcs = List<str>()
+    let doc_cache_azs = List<Analyzer>()
+    let cache_slot_ref = List<i64>()
+    cache_slot_ref.push(0)
 
     // Single-document active analysis cache
     mut cached_uri = ""
@@ -273,22 +311,63 @@ pub fn run_lsp_server() -> i64 {
             hdr_cache.invalidate(fpath)
             if sem_uri == uri && sem_src != text { sem_uri = "" }
             if cached_uri == uri && cached_src != text { has_cached_az = false }
+            mut di = 0
+            while di < doc_cache_uris.len() {
+                if doc_cache_uris.get(di) == uri {
+                    doc_cache_uris.set(di, "")
+                    doc_cache_srcs.set(di, "")
+                    break
+                }
+                di = di + 1
+            }
             continue
         }
 
         if method == "textDocument/didChange" {
             let td = jdoc.get(params, "textDocument")
             let uri = jdoc.get_str(td, "uri")
+            let fpath = bpath_normalize(lsp_uri_to_path(uri))
             let changes = jdoc.get(params, "contentChanges")
-            if jdoc.arr_len(changes) > 0 {
-                let c0 = jdoc.arr_get(changes, 0)
-                let text = jdoc.get_str(c0, "text")
-                let fpath = bpath_normalize(lsp_uri_to_path(uri))
-                uri_docs.insert(uri, text)
-                path_docs.insert(fpath, text)
+            let chg_cnt = jdoc.arr_len(changes)
+            if chg_cnt > 0 {
+                mut cur_text = ""
+                if uri_docs.has_key(uri) {
+                    cur_text = uri_docs.get(uri)
+                } else if File.exists(fpath) {
+                    cur_text = File.read_to_string(fpath)
+                }
+                mut ci = 0
+                while ci < chg_cnt {
+                    let c_item = jdoc.arr_get(changes, ci)
+                    let text = jdoc.get_str(c_item, "text")
+                    let rng = jdoc.get(c_item, "range")
+                    if rng >= 0 && cur_text != "" {
+                        let r_st = jdoc.get(rng, "start")
+                        let r_en = jdoc.get(rng, "end")
+                        let sl = jdoc.get_int(r_st, "line", 0)
+                        let sc = jdoc.get_int(r_st, "character", 0)
+                        let el = jdoc.get_int(r_en, "line", 0)
+                        let ec = jdoc.get_int(r_en, "character", 0)
+                        cur_text = lsp_splice_text(cur_text, sl, sc, el, ec, text)
+                    } else {
+                        cur_text = text
+                    }
+                    ci = ci + 1
+                }
+                uri_docs.insert(uri, cur_text)
+                path_docs.insert(fpath, cur_text)
                 hdr_cache.invalidate(fpath)
-                if sem_uri == uri && sem_src != text { sem_uri = "" }
-                if cached_uri == uri && cached_src != text { has_cached_az = false }
+                if sem_uri == uri && sem_src != cur_text { sem_uri = "" }
+                if cached_uri == uri && cached_src != cur_text { has_cached_az = false }
+                mut di = 0
+                while di < doc_cache_uris.len() {
+                    if doc_cache_uris.get(di) == uri {
+                        doc_cache_uris.set(di, "")
+                        doc_cache_srcs.set(di, "")
+                        break
+                    }
+                    di = di + 1
+                }
             }
             continue
         }
@@ -306,7 +385,7 @@ pub fn run_lsp_server() -> i64 {
                 path_docs.insert(fpath, src)
             }
             if !has_cached_az || cached_uri != uri || cached_src != src {
-                cached_az = lsp_analyze_document(fpath, src, path_docs)
+                cached_az = lsp_get_or_analyze(uri, fpath, src, path_docs, doc_cache_uris, doc_cache_srcs, doc_cache_azs, cache_slot_ref)
                 cached_uri = uri
                 cached_src = src
                 has_cached_az = true
@@ -338,6 +417,30 @@ pub fn run_lsp_server() -> i64 {
             cached_uri = uri
             cached_src = src
             has_cached_az = true
+            mut updated_cache = false
+            mut di = 0
+            while di < doc_cache_uris.len() {
+                if doc_cache_uris.get(di) == uri {
+                    doc_cache_srcs.set(di, src)
+                    doc_cache_azs.set(di, cached_az)
+                    updated_cache = true
+                    break
+                }
+                di = di + 1
+            }
+            if !updated_cache {
+                if doc_cache_uris.len() < 8 {
+                    doc_cache_uris.push(uri)
+                    doc_cache_srcs.push(src)
+                    doc_cache_azs.push(cached_az)
+                } else {
+                    let slot = cache_slot_ref.get(0)
+                    doc_cache_uris.set(slot, uri)
+                    doc_cache_srcs.set(slot, src)
+                    doc_cache_azs.set(slot, cached_az)
+                    cache_slot_ref.set(0, (slot + 1) % 8)
+                }
+            }
             lsp_publish_diagnostics(uri, lsp_build_diagnostics_json(cached_az, fpath, src))
             continue
         }
@@ -351,6 +454,15 @@ pub fn run_lsp_server() -> i64 {
             hdr_cache.invalidate(fpath)
             if sem_uri == uri { sem_uri = ""; sem_src = ""; sem_json = ""; sem_is_full = false }
             if cached_uri == uri { has_cached_az = false; cached_uri = ""; cached_src = "" }
+            mut di = 0
+            while di < doc_cache_uris.len() {
+                if doc_cache_uris.get(di) == uri {
+                    doc_cache_uris.set(di, "")
+                    doc_cache_srcs.set(di, "")
+                    break
+                }
+                di = di + 1
+            }
             lsp_publish_diagnostics(uri, "[]")
             continue
         }
@@ -376,7 +488,21 @@ pub fn run_lsp_server() -> i64 {
                 continue
             }
             if method == "textDocument/semanticTokens/full" {
-                let az_ready = has_cached_az && cached_uri == uri && cached_src == src
+                mut az_ready = has_cached_az && cached_uri == uri && cached_src == src
+                if !az_ready {
+                    mut di = 0
+                    while di < doc_cache_uris.len() {
+                        if doc_cache_uris.get(di) == uri && doc_cache_srcs.get(di) == src {
+                            cached_az = doc_cache_azs.get(di)
+                            cached_uri = uri
+                            cached_src = src
+                            has_cached_az = true
+                            az_ready = true
+                            break
+                        }
+                        di = di + 1
+                    }
+                }
                 if sem_uri == uri && sem_src == src && (sem_is_full || !az_ready) {
                     lsp_send_response(id_raw, sem_json)
                     continue
@@ -397,7 +523,7 @@ pub fn run_lsp_server() -> i64 {
             }
 
             if !has_cached_az || cached_uri != uri || cached_src != src {
-                cached_az = lsp_analyze_document(fpath, src, path_docs)
+                cached_az = lsp_get_or_analyze(uri, fpath, src, path_docs, doc_cache_uris, doc_cache_srcs, doc_cache_azs, cache_slot_ref)
                 cached_uri = uri
                 cached_src = src
                 has_cached_az = true
@@ -446,7 +572,7 @@ pub fn run_lsp_server() -> i64 {
                 continue
             }
             if method == "textDocument/documentSymbol" {
-                lsp_send_response(id_raw, lsp_build_document_symbols_json(cached_az, fpath))
+                lsp_send_response(id_raw, lsp_build_document_symbols_json(src, cached_az, fpath))
                 continue
             }
             if method == "textDocument/inlayHint" {

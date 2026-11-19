@@ -1,0 +1,99 @@
+import "./mod.arx"
+
+pub fn lsp_hex_upper(v: i64) -> i64 {
+    if v < 10 { return 48 + v }
+    return 65 + (v - 10)
+}
+
+pub fn lsp_hex_val(b: i64) -> i64 {
+    if b >= 48 && b <= 57 { return b - 48 }
+    if b >= 65 && b <= 70 { return b - 55 }
+    if b >= 97 && b <= 102 { return b - 87 }
+    return -1
+}
+
+pub fn lsp_uri_to_path(uri: str) -> str {
+    mut raw = uri
+    if raw.starts_with("file:///") {
+        raw = raw.slice(8, raw.len())
+        if raw.len() >= 2 {
+            // Check Windows drive letter like C:/ vs POSIX path
+            let is_win_drive = raw.len() >= 3 && raw.byte_at(1) == 58
+            let is_enc_drive = raw.len() >= 5 && raw.byte_at(1) == 37 && raw.byte_at(2) == 51 && (raw.byte_at(3) == 65 || raw.byte_at(3) == 97)
+            if !is_win_drive && !is_enc_drive {
+                raw = "/" + raw
+            }
+        }
+    } else if raw.starts_with("file://") {
+        raw = raw.slice(7, raw.len())
+    }
+
+    let bb = ByteBuffer()
+    let n = raw.len()
+    mut i = 0
+    while i < n {
+        let b = raw.byte_at(i)
+        if b == 37 && i + 2 < n {
+            let h0 = lsp_hex_val(raw.byte_at(i + 1))
+            let h1 = lsp_hex_val(raw.byte_at(i + 2))
+            if h0 >= 0 && h1 >= 0 {
+                bb.write_u8(h0 * 16 + h1)
+                i = i + 3
+                continue
+            }
+        }
+        bb.write_u8(b)
+        i = i + 1
+    }
+    let decoded = bb.to_str()
+    bb.free()
+    return decoded.replace("\\", "/")
+}
+
+pub fn lsp_path_to_uri(path: str) -> str {
+    let norm = path.replace("\\", "/")
+    let bb = ByteBuffer()
+    bb.write_str("file://")
+    if !norm.starts_with("/") {
+        bb.write_u8(47)
+    }
+    let n = norm.len()
+    mut i = 0
+    while i < n {
+        let b = norm.byte_at(i)
+        if b == 32 {
+            bb.write_str("%20")
+        } else if b == 58 && i == 1 {
+            bb.write_str("%3A")
+        } else {
+            bb.write_u8(b)
+        }
+        i = i + 1
+    }
+    let out = bb.to_str()
+    bb.free()
+    return out
+}
+
+pub fn lsp_str_find(s: str, sub: str, start: i64 = 0) -> i64 {
+    let n = s.len()
+    let m = sub.len()
+    if m == 0 { return start }
+    if m > n { return -1 }
+    mut i = start
+    if i < 0 { i = 0 }
+    while i <= n - m {
+        mut match_ok = true
+        mut j = 0
+        while j < m {
+            if s.byte_at(i + j) != sub.byte_at(j) {
+                match_ok = false
+                break
+            }
+            j = j + 1
+        }
+        if match_ok { return i }
+        i = i + 1
+    }
+    return -1
+}

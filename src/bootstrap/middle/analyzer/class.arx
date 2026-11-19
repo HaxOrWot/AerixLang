@@ -1,0 +1,94 @@
+import "./mod.arx"
+
+extend Analyzer {
+    // --- Class Field / Overload Resolution Helpers ---
+
+    priv fn lookup_field_type(cls_name: str, field_name: str) -> str {
+        mut cur = cls_name
+        mut guard_cnt = 0
+        while cur != "" && guard_cnt < 32 {
+            let fkey = cur + "::" + field_name
+            if self.cls_field_types.has_key(fkey) {
+                return self.cls_field_types.get(fkey)
+            }
+            if self.cls_base_map.has_key(cur) {
+                cur = self.cls_base_map.get(cur)
+            } else {
+                cur = ""
+            }
+            guard_cnt = guard_cnt + 1
+        }
+        return ""
+    }
+
+    priv fn find_best_overload(key: str, arg_types: List<str>, argc: i64) -> i64 {
+        if !self.sig_by_key.has_key(key) { return -1 }
+        let raw = self.sig_by_key.get(key)
+        let parts = raw.split(",")
+        let pc = parts.len()
+        if pc == 1 {
+            return parts.get(0).to_i64()
+        }
+        mut best = -1
+        mut best_score = -1
+        mut pi = 0
+        while pi < pc {
+            let sidx = parts.get(pi).to_i64()
+            let fn_nid = self.sig_nodes.get(sidx)
+            let pg = self.la.get(fn_nid)
+            mut max_p = 0
+            mut min_p = 0
+            if pg >= 0 {
+                max_p = self.child_count(pg)
+                mut j = 0
+                while j < max_p {
+                    let pid = self.child_at(pg, j)
+                    if self.la.get(pid) < 0 { min_p = min_p + 1 }
+                    j = j + 1
+                }
+            }
+            if argc >= min_p && argc <= max_p {
+                mut score = 100 - (max_p - argc)
+                if pg >= 0 {
+                    mut ai = 0
+                    while ai < argc {
+                        let pid = self.child_at(pg, ai)
+                        let pt = self.norm_type_name(self.sb.get(pid))
+                        let at = self.norm_type_name(arg_types.get(ai))
+                        if pt == at {
+                            score = score + 50
+                        } else if btype_is_numeric(pt) && btype_is_numeric(at) {
+                            score = score + 10
+                        }
+                        ai = ai + 1
+                    }
+                }
+                if score > best_score {
+                    best_score = score
+                    best = sidx
+                }
+            }
+            pi = pi + 1
+        }
+        if best >= 0 { return best }
+        return parts.get(0).to_i64()
+    }
+
+    priv fn lookup_method_sig(recv_cls: str, mname: str, arg_types: List<str>, argc: i64) -> i64 {
+        mut cur = recv_cls
+        mut guard_cnt = 0
+        while cur != "" && guard_cnt < 32 {
+            let key = "m::" + cur + "::" + mname
+            let res = self.find_best_overload(key, arg_types, argc)
+            if res >= 0 { return res }
+            if self.cls_base_map.has_key(cur) {
+                cur = self.cls_base_map.get(cur)
+            } else {
+                cur = ""
+            }
+            guard_cnt = guard_cnt + 1
+        }
+        return -1
+    }
+
+}

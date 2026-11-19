@@ -1,0 +1,352 @@
+import "./mod.arx"
+
+fn hl_src_sig(s: str) -> str {
+    let n = s.len()
+    if n == 0 { return "0" }
+    return "" + n + ":" + s.byte_at(0) + ":" + s.byte_at(n / 2) + ":" + s.byte_at(n - 1)
+}
+
+fn hl_strip_gen_prefix(t: str) -> str {
+    let lt = lsp_str_find(t, "<", 0)
+    if lt > 0 { return t.slice(0, lt) }
+    return t
+}
+
+fn hl_collect_dir_arx_cached(dir_path: str, cache: HlHeaderCache) -> List<str> {
+    if cache.dir_arx_cache.has_key(dir_path) {
+        return cache.dir_arx_cache.get(dir_path)
+    }
+    let out = List<str>()
+    let stack = List<str>()
+    stack.push(dir_path)
+    while stack.len() > 0 {
+        let cur = stack.pop()
+        let files = Directory.list_files(cur)
+        mut fi = 0
+        while fi < files.len() {
+            let fnm = files.get(fi)
+            if str_ends_with_arx(fnm) {
+                out.push(bpath_join(cur, fnm))
+            }
+            fi = fi + 1
+        }
+        let dirs = Directory.list_dirs(cur)
+        mut di = 0
+        while di < dirs.len() {
+            stack.push(bpath_join(cur, dirs.get(di)))
+            di = di + 1
+        }
+    }
+    cache.dir_arx_cache.insert(dir_path, out)
+    return out
+}
+
+fn hl_extract_header_from_ts(ts: TokenStream, sig_str: str) -> HlFileHeader {
+    let hdr = HlFileHeader(sig_str)
+    let n = ts.count
+    mut brace_depth = 0
+    mut cls_depth = -1
+    mut enum_depth = -1
+    mut cur_cls = ""
+    mut is_static = false
+    mut in_fn_sig = false
+    mut fn_paren_depth = 0
+    mut prev_k = TK_EOF()
+    mut i = 0
+
+    while i < n {
+        let k = ts.kinds.get(i)
+        let v = ts.vals.get(i)
+        if k == TK_EOF() { break }
+        if k == TK_NEWLINE() {
+            is_static = false
+            i = i + 1
+            continue
+        }
+
+        if k == TK_LBRACE() {
+            brace_depth = brace_depth + 1
+            prev_k = k; i = i + 1; continue
+        }
+        if k == TK_RBRACE() {
+            if cls_depth == brace_depth {
+                cls_depth = -1
+                cur_cls = ""
+            }
+            if enum_depth == brace_depth {
+                enum_depth = -1
+            }
+            brace_depth = brace_depth - 1
+            if brace_depth < 0 { brace_depth = 0 }
+            prev_k = k; i = i + 1; continue
+        }
+        if k == TK_LPAREN() {
+            if in_fn_sig { fn_paren_depth = fn_paren_depth + 1 }
+            prev_k = k; i = i + 1; continue
+        }
+        if k == TK_RPAREN() {
+            if in_fn_sig {
+                fn_paren_depth = fn_paren_depth - 1
+                if fn_paren_depth <= 0 {
+                    in_fn_sig = false
+                }
+            }
+            prev_k = k; i = i + 1; continue
+        }
+        if k == TK_SEMICOLON() {
+            is_static = false
+            prev_k = k; i = i + 1; continue
+        }
+
+        // Collect imports / use directives at top level
+        if brace_depth == 0 && (k == TK_IMPORT() || k == TK_USE() || k == TK_FROM()) {
+            mut j = i + 1
+            if k == TK_FROM() {
+                if j < n && ts.kinds.get(j) == TK_STR() {
+                    hdr.import_files.push(ts.vals.get(j))
+                } else {
+                    mut from_path = ""
+                    while j < n && (ts.kinds.get(j) == TK_IDENT() || ts.kinds.get(j) == TK_DOT()) {
+                        from_path = from_path + ts.vals.get(j)
+                        j = j + 1
+                    }
+                    if from_path != "" {
+                        hdr.import_mods.push(from_path)
+                    }
+                }
+                while j < n && ts.kinds.get(j) != TK_NEWLINE() && ts.kinds.get(j) != TK_SEMICOLON() && ts.kinds.get(j) != TK_EOF() {
+                    j = j + 1
+                }
+                i = j
+                prev_k = k
+                continue
+            }
+            if j < n && ts.kinds.get(j) == TK_LBRACE() {
+                while j < n && ts.kinds.get(j) != TK_RBRACE() && ts.kinds.get(j) != TK_EOF() {
+                    j = j + 1
+                }
+                if j < n && ts.kinds.get(j) == TK_RBRACE() { j = j + 1 }
+                if j < n && ts.kinds.get(j) == TK_FROM() { j = j + 1 }
+            }
+            if j < n && ts.kinds.get(j) == TK_STR() {
+                hdr.import_files.push(ts.vals.get(j))
+                i = j + 1
+                prev_k = TK_STR()
+                continue
+            }
+            while j < n && ts.kinds.get(j) == TK_IDENT() {
+                mut full_m = ts.vals.get(j)
+                j = j + 1
+                while j + 1 < n && ts.kinds.get(j) == TK_DOT() && ts.kinds.get(j + 1) == TK_IDENT() {
+                    full_m = full_m + "." + ts.vals.get(j + 1)
+                    j = j + 2
+                }
+                hdr.import_mods.push(full_m)
+                if j + 1 < n && ts.kinds.get(j) == TK_AS() && ts.kinds.get(j + 1) == TK_IDENT() {
+                    j = j + 2
+                }
+                if j < n && ts.kinds.get(j) == TK_COMMA() {
+                    j = j + 1
+                } else {
+                    break
+                }
+            }
+            i = j
+            prev_k = k
+            continue
+        }
+
+        if k == TK_STATIC() {
+            is_static = true
+            prev_k = k; i = i + 1; continue
+        }
+        if k == TK_FN() {
+            in_fn_sig = true
+            fn_paren_depth = 0
+        }
+
+        if k == TK_IDENT() {
+            let nxt = next_sig_kind(ts, i)
+            if (prev_k == TK_CLASS() || prev_k == TK_STRUCT() || prev_k == TK_TRAIT()) && brace_depth == 0 {
+                hdr.classes.push(v)
+                cls_depth = 1
+                cur_cls = v
+                is_static = false
+            } else if prev_k == TK_ENUM() && brace_depth == 0 {
+                hdr.enums.push(v)
+                enum_depth = 1
+                is_static = false
+            } else if enum_depth > 0 && brace_depth == enum_depth {
+                if nxt == TK_LPAREN() || nxt == TK_COMMA() || nxt == TK_RBRACE() || nxt == TK_NEWLINE() {
+                    hdr.enum_vars.push(v)
+                }
+            } else if prev_k == TK_FN() {
+                if cls_depth > 0 && brace_depth == cls_depth && cur_cls != "" {
+                    let mk = cur_cls + "::" + v
+                    hdr.method_all_keys.push(mk)
+                    if is_static { hdr.method_static_keys.push(mk) }
+                } else if brace_depth == 0 {
+                    hdr.fns.push(v)
+                }
+                is_static = false
+            } else if prev_k == TK_CEXTERN() && brace_depth == 0 {
+                hdr.fns.push(v)
+            } else if cls_depth > 0 && brace_depth == cls_depth && !in_fn_sig && nxt == TK_COLON() && cur_cls != "" {
+                let fk = cur_cls + "::" + v
+                hdr.field_all_keys.push(fk)
+                if prev_k != TK_MUT() {
+                    hdr.field_ro_keys.push(fk)
+                }
+                is_static = false
+            } else if brace_depth == 0 && (prev_k == TK_LET() || prev_k == TK_CONST() || prev_k == TK_MUT()) {
+                if prev_k == TK_MUT() {
+                    hdr.global_mut.push(v)
+                } else {
+                    hdr.global_ro.push(v)
+                }
+                // Check explicit ': Type' or '= Type(...)' on same statement
+                let n1 = next_nonnl_idx(ts, i)
+                if n1 < n && ts.kinds.get(n1) == TK_COLON() {
+                    let t_idx = next_nonnl_idx(ts, n1)
+                    if t_idx < n && ts.kinds.get(t_idx) == TK_IDENT() {
+                        hdr.global_type_keys.push(v)
+                        hdr.global_type_vals.push(ts.vals.get(t_idx))
+                    }
+                } else if n1 < n && ts.kinds.get(n1) == TK_EQUALS() {
+                    let r_idx = next_nonnl_idx(ts, n1)
+                    if r_idx < n && ts.kinds.get(r_idx) == TK_IDENT() {
+                        hdr.global_type_keys.push(v)
+                        hdr.global_type_vals.push(ts.vals.get(r_idx))
+                    }
+                }
+            }
+        }
+
+        prev_k = k
+        i = i + 1
+    }
+    return hdr
+}
+
+fn hl_merge_header(env: HlSymEnv, hdr: HlFileHeader) {
+    mut i = 0
+    while i < hdr.classes.len() { env.class_set.insert(hdr.classes.get(i), 1); i = i + 1 }
+    i = 0
+    while i < hdr.enums.len() { env.enum_set.insert(hdr.enums.get(i), 1); i = i + 1 }
+    i = 0
+    while i < hdr.enum_vars.len() { env.enum_var_set.insert(hdr.enum_vars.get(i), 1); i = i + 1 }
+    i = 0
+    while i < hdr.fns.len() { env.fn_set.insert(hdr.fns.get(i), 1); i = i + 1 }
+    i = 0
+    while i < hdr.global_ro.len() { env.global_ro.insert(hdr.global_ro.get(i), 1); i = i + 1 }
+    i = 0
+    while i < hdr.global_mut.len() { env.global_mut.insert(hdr.global_mut.get(i), 1); i = i + 1 }
+    i = 0
+    while i < hdr.global_type_keys.len() {
+        env.global_var_types.insert(hdr.global_type_keys.get(i), hdr.global_type_vals.get(i))
+        i = i + 1
+    }
+    i = 0
+    while i < hdr.field_all_keys.len() {
+        env.class_fields.insert(hdr.field_all_keys.get(i), 1)
+        i = i + 1
+    }
+    i = 0
+    while i < hdr.field_ro_keys.len() {
+        env.field_ro.insert(hdr.field_ro_keys.get(i), 1)
+        i = i + 1
+    }
+    i = 0
+    while i < hdr.method_all_keys.len() {
+        env.class_methods.insert(hdr.method_all_keys.get(i), 1)
+        i = i + 1
+    }
+    i = 0
+    while i < hdr.method_static_keys.len() {
+        env.method_static.insert(hdr.method_static_keys.get(i), 1)
+        i = i + 1
+    }
+}
+
+fn hl_load_header_cached(fpath: str, docs_by_path: Map<str, str>, cache: HlHeaderCache) -> HlFileHeader {
+    let norm = bpath_normalize(fpath)
+    mut src = ""
+    if docs_by_path.has_key(norm) {
+        src = docs_by_path.get(norm)
+    } else {
+        if cache.headers.has_key(norm) {
+            return cache.headers.get(norm)
+        }
+        if !File.exists(norm) {
+            return HlFileHeader("missing")
+        }
+        src = File.read_to_string(norm)
+    }
+
+    let sig = hl_src_sig(src)
+    if cache.headers.has_key(norm) {
+        let cached = cache.headers.get(norm)
+        if cached.sig == sig {
+            return cached
+        }
+    }
+
+    mut lx = Lexer(src, norm)
+    lx.recover_mode = true
+    let ts = lx.tokenize()
+    let hdr = hl_extract_header_from_ts(ts, sig)
+    cache.headers.insert(norm, hdr)
+    return hdr
+}
+
+fn hl_collect_imports_cached(entry_hdr: HlFileHeader, entry_path: str, docs_by_path: Map<str, str>, cache: HlHeaderCache, env: HlSymEnv) {
+    let entry_dir = bpath_dirname(entry_path)
+    let visited = Map<str, i64>()
+    visited.insert(entry_path, 1)
+
+    let queue_paths = List<str>()
+    let queue_hdrs = List<HlFileHeader>()
+    queue_paths.push(entry_path)
+    queue_hdrs.push(entry_hdr)
+
+    mut q = 0
+    while q < queue_paths.len() {
+        let cur_path = queue_paths.get(q)
+        let cur_dir = bpath_dirname(cur_path)
+        let hdr = queue_hdrs.get(q)
+        q = q + 1
+
+        mut fi = 0
+        while fi < hdr.import_files.len() {
+            let imp = hdr.import_files.get(fi)
+            fi = fi + 1
+            let resolved = bpath_join(cur_dir, imp)
+            if visited.has_key(resolved) { continue }
+            visited.insert(resolved, 1)
+            let ihdr = hl_load_header_cached(resolved, docs_by_path, cache)
+            hl_merge_header(env, ihdr)
+            queue_paths.push(resolved)
+            queue_hdrs.push(ihdr)
+        }
+
+        mut mi = 0
+        while mi < hdr.import_mods.len() {
+            let mname = hdr.import_mods.get(mi)
+            mi = mi + 1
+            let mod_dir = find_module_dir(mname, entry_dir)
+            if mod_dir == "" { continue }
+            let mod_files = hl_collect_dir_arx_cached(mod_dir, cache)
+            mut mfi = 0
+            while mfi < mod_files.len() {
+                let mf = bpath_normalize(mod_files.get(mfi))
+                mfi = mfi + 1
+                if visited.has_key(mf) { continue }
+                visited.insert(mf, 1)
+                let mhdr = hl_load_header_cached(mf, docs_by_path, cache)
+                hl_merge_header(env, mhdr)
+                queue_paths.push(mf)
+                queue_hdrs.push(mhdr)
+            }
+        }
+    }
+}

@@ -264,18 +264,36 @@ class AerixLspClient {
         });
     }
 
-    _changeDoc(doc) {
+    _changeDoc(doc, contentChanges) {
         const uri = doc.uri.toString();
         if (!this.openedUris.has(uri)) {
             this._openDoc(doc);
             return;
+        }
+        let changes;
+        if (Array.isArray(contentChanges) && contentChanges.length > 0) {
+            changes = contentChanges.map((c) => {
+                if (c.range) {
+                    return {
+                        range: {
+                            start: { line: c.range.start.line, character: c.range.start.character },
+                            end: { line: c.range.end.line, character: c.range.end.character }
+                        },
+                        rangeLength: c.rangeLength,
+                        text: c.text
+                    };
+                }
+                return { text: c.text };
+            });
+        } else {
+            changes = [{ text: doc.getText() }];
         }
         this._send({
             jsonrpc: '2.0',
             method: 'textDocument/didChange',
             params: {
                 textDocument: { uri, version: doc.version },
-                contentChanges: [{ text: doc.getText() }]
+                contentChanges: changes
             }
         });
     }
@@ -288,30 +306,36 @@ class AerixLspClient {
         if (pending) {
             clearTimeout(pending.timer);
             this.dirtyTimers.delete(uri);
-            this._changeDoc(pending.doc);
+            this._changeDoc(pending.doc, pending.changes);
         } else if (!this.openedUris.has(uri)) {
             this._openDoc(doc);
         }
         return true;
     }
 
-    scheduleDocChange(doc) {
+    scheduleDocChange(doc, contentChanges) {
         const uri = doc.uri.toString();
         const prev = this.dirtyTimers.get(uri);
-        if (prev) clearTimeout(prev.timer);
+        let changes = contentChanges;
+        if (prev) {
+            clearTimeout(prev.timer);
+            if (prev.changes && contentChanges) {
+                changes = prev.changes.concat(contentChanges);
+            }
+        }
         const timer = setTimeout(async () => {
             this.dirtyTimers.delete(uri);
             await this.start();
             if (this.proc && this.initialized) {
-                this._changeDoc(doc);
+                this._changeDoc(doc, changes);
                 if (this.onTokensRefresh) this.onTokensRefresh();
             }
-        }, 40);
-        this.dirtyTimers.set(uri, { timer, doc });
-        this.scheduleDiagnostics(doc, 650);
+        }, 30);
+        this.dirtyTimers.set(uri, { timer, doc, changes });
+        this.scheduleDiagnostics(doc, 120);
     }
 
-    scheduleDiagnostics(doc, delayMs = 650) {
+    scheduleDiagnostics(doc, delayMs = 120) {
         const uri = doc.uri.toString();
         const prev = this.diagTimers.get(uri);
         if (prev) clearTimeout(prev);
@@ -453,7 +477,7 @@ function activate(context) {
         }),
         vscode.workspace.onDidChangeTextDocument((ev) => {
             if (ev.document.languageId === 'aerix') {
-                client.scheduleDocChange(ev.document);
+                client.scheduleDocChange(ev.document, ev.contentChanges);
             }
         }),
         vscode.workspace.onDidSaveTextDocument((doc) => {
@@ -520,7 +544,7 @@ function activate(context) {
                 if (!items.length) {
                     return [];
                 }
-                return items.map((it) => {
+                const mapped = items.map((it) => {
                     const labelObj = it.labelDetails
                         ? {
                             label: it.label,
@@ -551,6 +575,7 @@ function activate(context) {
                     }
                     return ci;
                 });
+                return new vscode.CompletionList(mapped, res && res.isIncomplete === true);
             }
         }, '.', '>', ':', '<', '"', '/', '$', '~', '@', '#', '{', ' '),
 

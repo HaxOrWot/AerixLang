@@ -1,0 +1,378 @@
+import "./mod.arx"
+
+extend Analyzer {
+    // --- Expression Inference ---
+
+    priv fn analyze_expr(nid: i64) -> str {
+        if nid < 0 { return "void" }
+        let k = self.nk.get(nid)
+
+        if k == NK_INT_LIT() { self.node_types.set(nid, "i64"); return "i64" }
+        if k == NK_FLOAT_LIT() { self.node_types.set(nid, "f64"); return "f64" }
+        if k == NK_STR_LIT() { self.node_types.set(nid, "str"); return "str" }
+        if k == NK_CHAR_LIT() { self.node_types.set(nid, "char"); return "char" }
+        if k == NK_BOOL_LIT() { self.node_types.set(nid, "bool"); return "bool" }
+        if k == NK_NULL_LIT() { self.node_types.set(nid, "null"); return "null" }
+        if k == NK_SIZEOF() { self.node_types.set(nid, "i64"); return "i64" }
+
+        if k == NK_STR_INTERP() {
+            let pc = self.child_count(nid)
+            mut i = 0
+            while i < pc {
+                self.analyze_expr(self.child_at(nid, i))
+                i = i + 1
+            }
+            self.node_types.set(nid, "str")
+            return "str"
+        }
+
+        if k == NK_IDENT() {
+            let name = self.sa.get(nid)
+            mut t = self.scope_lookup(name)
+            if t != "" {
+                self.scope_mark_used(name)
+            } else {
+                if name == "self" && self.cur_class != "" {
+                    t = self.cur_class
+                } else if name == "true" || name == "false" {
+                    t = "bool"
+                } else if self.cls_idx_map.has_key(name) {
+                    t = name
+                } else if self.enum_idx_map.has_key(name) {
+                    t = name
+                } else if self.mod_aliases.has_key(name) || self.item_aliases.has_key(name) || self.loaded_mods.has_key(name) {
+                    t = "module"
+                } else if self.sig_by_key.has_key("fn::" + name) || self.is_builtin_ident(name) {
+                    t = "i64"
+                } else {
+                    t = "i64"
+                    self.unresolved_nodes.insert(nid, 1)
+                    let sug = self.suggest_ident(name)
+                    mut hmsg = "declare '" + name + "' with 'let' or 'mut' before using it, or import its module"
+                    if sug != "" { hmsg = "did you mean '" + sug + "'?" }
+                    self.add_diag(nid, name.len(), "E0201", "cannot find value '" + name + "' in this scope", hmsg, 1)
+                }
+            }
+            self.node_types.set(nid, t)
+            return t
+        }
+
+        if k == NK_UNARY_OP() {
+            let op_s = self.sa.get(nid)
+            let ot = self.analyze_expr(self.la.get(nid))
+            mut rt = ot
+            if op_s == "!" {
+                rt = "bool"
+            } else if op_s == "&" {
+                rt = ot + "*"
+            }
+            self.node_types.set(nid, rt)
+            return rt
+        }
+
+        if k == NK_BIN_OP() {
+            let op_s = self.sa.get(nid)
+            let lt = btype_norm(self.analyze_expr(self.la.get(nid)))
+            let rt = btype_norm(self.analyze_expr(self.ra.get(nid)))
+            mut res_t = lt
+            if op_s == "==" || op_s == "!=" || op_s == "<" || op_s == "<=" || op_s == ">" || op_s == ">=" || op_s == "&&" || op_s == "||" {
+                res_t = "bool"
+            } else if op_s == "+" && (btype_is_str(lt) || btype_is_str(rt)) {
+                res_t = "str"
+            } else if btype_is_float(lt) || btype_is_float(rt) {
+                res_t = "f64"
+            } else if op_s == "??" {
+                res_t = lt
+                if res_t == "" || res_t == "void" || (btype_is_str(lt) && (btype_is_numeric(rt) || rt == "bool" || rt == "char")) {
+                    res_t = rt
+                    let left_id = self.la.get(nid)
+                    if self.is_input_call(left_id) {
+                        self.node_types.set(left_id, res_t)
+                    }
+                }
+            }
+            self.node_types.set(nid, res_t)
+            return res_t
+        }
+
+        if k == NK_CAST() {
+            let src_t = btype_norm(self.analyze_expr(self.la.get(nid)))
+            let tt = btype_norm(self.sa.get(nid))
+            self.ensure_generic_type(tt)
+            self.node_types.set(nid, tt)
+            if src_t != "" && src_t != "void" && src_t == tt {
+                self.add_diag(nid, tt.len() + 3, "W0006", "redundant cast to '" + tt + "'", "expression is already of type '" + tt + "'", 2)
+            }
+            return tt
+        }
+
+        if k == NK_FIXED_ARR() {
+            let cnt = self.child_count(nid)
+            mut et = "i64"
+            mut i = 0
+            while i < cnt {
+                let t = self.analyze_expr(self.child_at(nid, i))
+                if i == 0 { et = t }
+                i = i + 1
+            }
+            let arr_t = "[" + et + ";" + (cnt as str) + "]"
+            self.node_types.set(nid, arr_t)
+            return arr_t
+        }
+
+        if k == NK_FIXED_REPEAT() {
+            let et = self.analyze_expr(self.la.get(nid))
+            let arr_t = "[" + et + ";" + self.sa.get(nid) + "]"
+            self.node_types.set(nid, arr_t)
+            return arr_t
+        }
+
+        if k == NK_TUPLE_LIT() {
+            let cnt = self.child_count(nid)
+            if cnt == 0 {
+                self.node_types.set(nid, "void")
+                return "void"
+            }
+            mut tup_s = "Tuple<"
+            mut i = 0
+            while i < cnt {
+                let et = btype_norm(self.analyze_expr(self.child_at(nid, i)))
+                if i > 0 { tup_s = tup_s + "," }
+                tup_s = tup_s + et
+                i = i + 1
+            }
+            tup_s = tup_s + ">"
+            self.ensure_generic_type(tup_s)
+            self.node_types.set(nid, tup_s)
+            return tup_s
+        }
+
+        if k == NK_INDEX() {
+            let lhs_id = self.la.get(nid)
+            let idx_id = self.ra.get(nid)
+            let obj_t = btype_norm(self.analyze_expr(lhs_id))
+            self.analyze_expr(idx_id)
+            if self.nk.get(idx_id) == NK_RANGE() {
+                if btype_is_str(obj_t) {
+                    self.node_types.set(nid, "str")
+                    return "str"
+                }
+                if btype_is_fixed_arr(obj_t) {
+                    let st = "Slice_" + btype_arr_elem(obj_t)
+                    self.node_types.set(nid, st)
+                    return st
+                }
+                self.node_types.set(nid, obj_t)
+                return obj_t
+            }
+            mut et = "i64"
+            if btype_is_fixed_arr(obj_t) {
+                et = btype_arr_elem(obj_t)
+            } else if btype_is_slice(obj_t) {
+                et = btype_slice_elem(obj_t)
+            } else if btype_is_list(obj_t) {
+                et = btype_list_elem(obj_t)
+            } else if btype_is_map(obj_t) {
+                et = btype_map_val(obj_t)
+            } else if btype_is_str(obj_t) {
+                et = "char"
+            } else if btype_is_ptr(obj_t) {
+                et = btype_ptr_inner(obj_t)
+            }
+            self.node_types.set(nid, et)
+            return et
+        }
+
+        if k == NK_RANGE() {
+            self.analyze_expr(self.la.get(nid))
+            self.analyze_expr(self.ra.get(nid))
+            self.node_types.set(nid, "__range__")
+            return "__range__"
+        }
+
+        if k == NK_PIPELINE() || k == NK_CASCADE() {
+            self.analyze_expr(self.la.get(nid))
+            let rt = self.analyze_expr(self.ra.get(nid))
+            self.node_types.set(nid, rt)
+            return rt
+        }
+
+        if k == NK_MEMBER() {
+            let lhs = self.la.get(nid)
+            let mname = self.sa.get(nid)
+            let full_p = self.get_member_path(nid)
+            let root_id = self.get_root_ident(nid)
+            if (root_id == "" || self.scope_lookup(root_id) == "") && full_p != "" && self.is_module_path(full_p) {
+                self.node_types.set(nid, "module")
+                return "module"
+            }
+
+            let lpath = self.get_member_path(lhs)
+            if self.nk.get(lhs) == NK_IDENT() {
+                let lname = self.sa.get(lhs)
+                if self.enum_idx_map.has_key(lname) {
+                    let vkey = lname + "::" + mname
+                    if self.enum_var_tag.has_key(vkey) {
+                        self.node_ext.set(nid, "enum_unit::" + vkey)
+                        self.node_types.set(nid, lname)
+                        return lname
+                    }
+                    if !self.sig_by_key.has_key("m::" + lname + "::" + mname) {
+                        self.add_diag(nid, mname.len(), "E0206", "no variant named '" + mname + "' found for enum '" + lname + "'", "check the declared variants of enum '" + lname + "'", 1)
+                    }
+                }
+            }
+
+            mut is_mod_access = false
+            if lpath != "" {
+                let root_lhs = self.get_root_ident(lhs)
+                if root_lhs != "" && self.scope_lookup(root_lhs) != "" {
+                    // Local variable in scope, not a module access
+                } else if self.is_module_path(lpath) {
+                    is_mod_access = true
+                } else if self.nk.get(lhs) == NK_IDENT() {
+                    let lname = self.sa.get(lhs)
+                    if !self.cls_idx_map.has_key(lname) && !self.enum_idx_map.has_key(lname) && self.scope_lookup(lname) == "" {
+                        is_mod_access = true
+                    }
+                }
+            }
+            if is_mod_access {
+                mut lookup_mname = mname
+                if self.item_aliases.has_key(mname) { lookup_mname = self.item_aliases.get(mname) }
+                let empty_args = List<str>()
+                let msig = self.find_best_overload("fn::" + lookup_mname, empty_args, 0)
+                if msig >= 0 {
+                    let rt = self.sig_rets.get(msig)
+                    self.node_ext.set(nid, "mod_call::" + self.sig_cnames.get(msig))
+                    self.node_types.set(nid, rt)
+                    return rt
+                }
+                if self.global_types.has_key(lookup_mname) {
+                    let gt = self.global_types.get(lookup_mname)
+                    self.node_ext.set(nid, "mod_global::" + lookup_mname)
+                    self.node_types.set(nid, gt)
+                    return gt
+                }
+            }
+            let lt = btype_norm(self.analyze_expr(lhs))
+            mut mt = self.lookup_field_type(lt, mname)
+            if mt == "" && (lt == "" || lt == "void") && self.cur_class != "" {
+                mt = self.lookup_field_type(self.cur_class, mname)
+            }
+            if mt == "" {
+                if btype_is_tuple(lt) && mname.starts_with("f") && mname.len() > 1 {
+                    let tidx = mname.slice(1, mname.len()).to_i64()
+                    if tidx >= 0 && tidx < btype_tuple_count(lt) {
+                        mt = btype_tuple_elem(lt, tidx)
+                    } else {
+                        mt = "i64"
+                    }
+                } else if (btype_is_list(lt) || btype_is_map(lt) || btype_is_set(lt) || btype_is_stack(lt) || btype_is_queue(lt) || btype_is_deque(lt) || btype_is_slice(lt) || btype_is_str(lt) || lt == "ByteBuffer" || lt == "String") && (mname == "length" || mname == "len") {
+                    mt = "i64"
+                } else {
+                    mt = "i64"
+                }
+            }
+            self.ensure_generic_type(mt)
+            self.node_types.set(nid, mt)
+            return mt
+        }
+
+        if k == NK_GENERIC_CALL() {
+            let mangled = self.sa.get(nid)
+            let base = self.sb.get(nid)
+            let ac = self.child_count(nid)
+            mut i = 0
+            while i < ac {
+                self.analyze_call_arg(self.child_at(nid, i))
+                i = i + 1
+            }
+            mut res_t = base
+            if base == "List" || base == "Set" || base == "Stack" || base == "Queue" || base == "Deque" {
+                let elem_t = mangled.slice(base.len() + 1, mangled.len())
+                mut gi = 0
+                if base == "List" {
+                    while gi < self.gen_list_count {
+                        let cand = self.gen_list_types.get(gi)
+                        if btype_mangle(cand) == elem_t { res_t = "List<" + cand + ">" }
+                        gi = gi + 1
+                    }
+                } else if base == "Set" {
+                    while gi < self.gen_set_count {
+                        let cand = self.gen_set_types.get(gi)
+                        if btype_mangle(cand) == elem_t { res_t = "Set<" + cand + ">" }
+                        gi = gi + 1
+                    }
+                } else if base == "Stack" {
+                    while gi < self.gen_stack_count {
+                        let cand = self.gen_stack_types.get(gi)
+                        if btype_mangle(cand) == elem_t { res_t = "Stack<" + cand + ">" }
+                        gi = gi + 1
+                    }
+                } else if base == "Queue" {
+                    while gi < self.gen_queue_count {
+                        let cand = self.gen_queue_types.get(gi)
+                        if btype_mangle(cand) == elem_t { res_t = "Queue<" + cand + ">" }
+                        gi = gi + 1
+                    }
+                } else {
+                    while gi < self.gen_deque_count {
+                        let cand = self.gen_deque_types.get(gi)
+                        if btype_mangle(cand) == elem_t { res_t = "Deque<" + cand + ">" }
+                        gi = gi + 1
+                    }
+                }
+            } else if base == "Map" {
+                mut mi = 0
+                while mi < self.gen_map_count {
+                    let kt = self.gen_map_keys.get(mi)
+                    let vt = self.gen_map_vals.get(mi)
+                    if "Map_" + btype_mangle(kt) + "_" + btype_mangle(vt) == mangled {
+                        res_t = "Map<" + kt + "," + vt + ">"
+                    }
+                    mi = mi + 1
+                }
+            }
+            self.call_kinds.set(nid, CK_CTOR())
+            self.call_targets.set(nid, "Arx_" + mangled + "_init")
+            self.node_types.set(nid, res_t)
+            return res_t
+        }
+
+        if k == NK_NEW() {
+            let cname = self.sa.get(nid)
+            let arg_types = List<str>()
+            let ac = self.child_count(nid)
+            mut i = 0
+            while i < ac {
+                arg_types.push(self.analyze_call_arg(self.child_at(nid, i)))
+                i = i + 1
+            }
+            let sig_i = self.find_best_overload("ctor::" + cname, arg_types, ac)
+            if sig_i >= 0 {
+                self.call_targets.set(nid, self.sig_cnames.get(sig_i))
+                self.call_fn_nodes.set(nid, self.sig_nodes.get(sig_i))
+            } else {
+                self.call_targets.set(nid, "Arx_" + btype_mangle(cname) + "_init")
+            }
+            self.call_kinds.set(nid, CK_NEW())
+            self.node_types.set(nid, cname)
+            return cname
+        }
+
+        if k == NK_CALL() {
+            return self.analyze_call(nid)
+        }
+
+        if k == NK_NAMED_ARG() {
+            let vt = self.analyze_expr(self.la.get(nid))
+            self.node_types.set(nid, vt)
+            return vt
+        }
+
+        self.node_types.set(nid, "i64")
+        return "i64"
+    }
+
+}

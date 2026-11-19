@@ -1,0 +1,55 @@
+import "../../../middle/types.arx"
+
+fn ncg_is_int_like(t: str) -> bool {
+    let nt = btype_norm(t)
+    return nt == "i64" || nt == "i32" || nt == "i16" || nt == "i8" || nt == "u64" || nt == "u32" || nt == "u16" || nt == "u8" || nt == "isize" || nt == "usize" || nt == "bool" || nt == "char"
+}
+
+fn ncg_is_float(t: str) -> bool {
+    let nt = btype_norm(t)
+    return nt == "f64" || nt == "f32"
+}
+
+fn ncg_is_str(t: str) -> bool {
+    let nt = btype_norm(t)
+    return nt == "str" || nt == "String"
+}
+
+fn ncg_to_float_val(s: str) -> f64 {
+    return s.to_f64()
+}
+
+fn ncg_parse_int_lit(s: str) -> i64 {
+    let n = s.len()
+    if n == 0 { return 0 }
+    mut i = 0
+    mut neg = false
+    if s.byte_at(0) == 45 {
+        neg = true
+        i = 1
+    }
+    mut base = 10
+    if i + 1 < n && s.byte_at(i) == 48 {
+        let p = s.byte_at(i + 1)
+        if p == 120 || p == 88 { base = 16; i = i + 2 }
+        else if p == 98 || p == 66 { base = 2; i = i + 2 }
+        else if p == 111 || p == 79 { base = 8; i = i + 2 }
+    }
+    mut acc = 0
+    while i < n {
+        let b = s.byte_at(i)
+        if b != 95 {
+            mut d = -1
+            if b >= 48 && b <= 57 { d = b - 48 }
+            else if b >= 97 && b <= 102 { d = b - 97 + 10 }
+            else if b >= 65 && b <= 70 { d = b - 65 + 10 }
+            if d >= 0 && d < base {
+                acc = acc * base + d
+            }
+        }
+        i = i + 1
+    }
+    if neg { return -acc }
+    return acc
+}
+

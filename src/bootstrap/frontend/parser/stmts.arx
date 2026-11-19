@@ -1,0 +1,263 @@
+import "./mod.arx"
+
+extend Parser {
+    // --- Statements ---
+
+    priv fn parse_block() -> i64 {
+        let b_tok = self.expect_k(TK_LBRACE(), "Expected opening brace to start block")
+        let bln = self.tok_lines.get(b_tok)
+        self.skip_stmt_end()
+        let stmts = List<i64>()
+        mut scount = 0
+        while self.cur_kind() != TK_RBRACE() && self.cur_kind() != TK_EOF() {
+            let lp = self.pos
+            let st = self.parse_stmt()
+            if st >= 0 {
+                stmts.push(st)
+                scount = scount + 1
+            }
+            self.skip_stmt_end()
+            if self.pos == lp { self.adv() }
+        }
+        self.expect_k(TK_RBRACE(), "Expected closing brace to close block")
+        return self.make_group(NK_BLOCK(), "", "", 0, -1, -1, -1, bln, stmts, scount)
+    }
+
+    priv fn parse_stmt() -> i64 {
+        let k = self.cur_kind()
+        if k == TK_LBRACE() {
+            return self.parse_block()
+        }
+        if k == TK_LET() || k == TK_MUT() || k == TK_CONST() {
+            return self.parse_var_decl()
+        }
+        if k == TK_IF() { return self.parse_if() }
+        if k == TK_WHILE() { return self.parse_while() }
+        if k == TK_LOOP() {
+            let lt = self.adv()
+            self.skip_newlines()
+            let blk = self.parse_block()
+            return self.add_node(NK_LOOP(), "", "", 0, blk, -1, -1, self.tok_lines.get(lt))
+        }
+        if k == TK_FOR() { return self.parse_for() }
+        if k == TK_MATCH() { return self.parse_match() }
+        if k == TK_RETURN() {
+            let rt = self.adv()
+            let rln = self.tok_lines.get(rt)
+            mut val_id = -1
+            let nk = self.cur_kind()
+            if nk != TK_NEWLINE() && nk != TK_SEMICOLON() && nk != TK_RBRACE() && nk != TK_EOF() {
+                val_id = self.parse_expr(0)
+            }
+            return self.with_tok_col(self.add_node(NK_RETURN(), "", "", 0, val_id, -1, -1, rln), rt)
+        }
+        if k == TK_BREAK() {
+            let bt = self.adv()
+            mut lbl = ""
+            if self.cur_kind() == TK_LABEL() { lbl = self.tok_vals.get(self.adv()) }
+            return self.add_node(NK_BREAK(), lbl, "", 0, -1, -1, -1, self.tok_lines.get(bt))
+        }
+        if k == TK_CONTINUE() {
+            let ct = self.adv()
+            mut lbl = ""
+            if self.cur_kind() == TK_LABEL() { lbl = self.tok_vals.get(self.adv()) }
+            return self.add_node(NK_CONTINUE(), lbl, "", 0, -1, -1, -1, self.tok_lines.get(ct))
+        }
+        if k == TK_DEFER() {
+            let dt = self.adv()
+            let st = self.parse_stmt()
+            return self.add_node(NK_DEFER(), "", "", 0, st, -1, -1, self.tok_lines.get(dt))
+        }
+        if k == TK_GUARD() {
+            let gt = self.adv()
+            let cond = self.parse_expr(0)
+            self.expect_k(TK_ELSE(), "Expected 'else' in guard")
+            self.skip_newlines()
+            let blk = self.parse_block()
+            return self.add_node(NK_GUARD(), "", "", 0, cond, blk, -1, self.tok_lines.get(gt))
+        }
+        if k == TK_TRY() { return self.parse_try_catch() }
+        if k == TK_THROW() {
+            let tt = self.adv()
+            let ex = self.parse_expr(0)
+            return self.add_node(NK_THROW(), "", "", 0, ex, -1, -1, self.tok_lines.get(tt))
+        }
+
+        // Assignment or expression statement
+        let lhs = self.parse_expr(0)
+        if lhs < 0 { return -1 }
+        let ak = self.cur_kind()
+        if ak == TK_EQUALS() || ak == TK_PLUS_EQ() || ak == TK_MINUS_EQ() || ak == TK_STAR_EQ() || ak == TK_SLASH_EQ() || ak == TK_PERCENT_EQ() {
+            let op_str = self.tok_vals.get(self.adv())
+            let rhs = self.parse_expr(0)
+            if rhs < 0 { return -1 }
+            let aid = self.add_node(NK_ASSIGN(), op_str, "", 0, lhs, rhs, -1, self.ln.get(lhs))
+            self.nc.set(aid, self.nc.get(lhs))
+            return aid
+        }
+        let esid = self.add_node(NK_EXPR_STMT(), "", "", 0, lhs, -1, -1, self.ln.get(lhs))
+        self.nc.set(esid, self.nc.get(lhs))
+        return esid
+    }
+
+    priv fn parse_var_decl() -> i64 {
+        let start_tok = self.adv()
+        let vln = self.tok_lines.get(start_tok)
+        mut is_mut = 0
+        if self.tok_kinds.get(start_tok) == TK_MUT() {
+            is_mut = FLAG_MUT()
+        } else if self.match_k(TK_MUT()) {
+            is_mut = FLAG_MUT()
+        }
+
+        // Tuple destructuring: let (a, b) = expr
+        if self.match_k(TK_LPAREN()) {
+            let names = List<i64>()
+            mut ncount = 0
+            while self.cur_kind() != TK_RPAREN() && self.cur_kind() != TK_EOF() {
+                let nt = self.expect_k(TK_IDENT(), "Expected identifier in tuple destructuring")
+                names.push(self.add_node(NK_IDENT(), self.tok_vals.get(nt), "", 0, -1, -1, -1, vln))
+                ncount = ncount + 1
+                if !self.match_k(TK_COMMA()) { break }
+            }
+            self.expect_k(TK_RPAREN(), "Expected ')' after tuple pattern")
+            self.expect_k(TK_EQUALS(), "Expected '=' in tuple destructuring")
+            let init_expr = self.parse_expr(0)
+            return self.make_group(NK_TUPLE_DESTR(), "", "", is_mut, init_expr, -1, -1, vln, names, ncount)
+        }
+
+        let name_tok = self.expect_k(TK_IDENT(), "Expected variable name")
+        let vname = self.tok_vals.get(name_tok)
+        mut tname = ""
+        if self.match_k(TK_COLON()) {
+            tname = self.parse_type_str()
+        }
+        mut init_id = -1
+        if self.match_k(TK_EQUALS()) {
+            init_id = self.parse_expr(0)
+        }
+        return self.add_node(NK_VAR_DECL(), vname, tname, is_mut, init_id, -1, -1, vln)
+    }
+
+    priv fn parse_if() -> i64 {
+        let itok = self.expect_k(TK_IF(), "Expected 'if'")
+        let iln = self.tok_lines.get(itok)
+        let cond = self.parse_expr(0)
+        self.skip_newlines()
+        let then_blk = self.parse_block()
+        mut else_blk = -1
+        self.skip_newlines()
+        if self.match_k(TK_ELSE()) {
+            self.skip_newlines()
+            if self.cur_kind() == TK_IF() {
+                let nested_if = self.parse_if()
+                let stmts = List<i64>()
+                stmts.push(nested_if)
+                else_blk = self.make_group(NK_BLOCK(), "", "", 0, -1, -1, -1, self.ln.get(nested_if), stmts, 1)
+            } else {
+                else_blk = self.parse_block()
+            }
+        }
+        return self.add_node(NK_IF(), "", "", 0, cond, then_blk, else_blk, iln)
+    }
+
+    priv fn parse_while() -> i64 {
+        let wt = self.expect_k(TK_WHILE(), "Expected 'while'")
+        let wln = self.tok_lines.get(wt)
+        let cond = self.parse_expr(0)
+        self.skip_newlines()
+        let blk = self.parse_block()
+        return self.add_node(NK_WHILE(), "", "", 0, cond, blk, -1, wln)
+    }
+
+    priv fn parse_for() -> i64 {
+        let ft = self.expect_k(TK_FOR(), "Expected 'for'")
+        let fln = self.tok_lines.get(ft)
+        mut idx_var = ""
+        mut item_var = ""
+        if self.match_k(TK_LPAREN()) {
+            let t0 = self.expect_k(TK_IDENT(), "Expected index variable name")
+            idx_var = self.tok_vals.get(t0)
+            self.expect_k(TK_COMMA(), "Expected ',' in enumerate loop pattern")
+            let t1 = self.expect_k(TK_IDENT(), "Expected element variable name")
+            item_var = self.tok_vals.get(t1)
+            self.expect_k(TK_RPAREN(), "Expected ')' after for-loop tuple pattern")
+        } else {
+            let t0 = self.expect_k(TK_IDENT(), "Expected loop variable name")
+            item_var = self.tok_vals.get(t0)
+        }
+        self.expect_k(TK_IN(), "Expected 'in' in for loop")
+        let iter_expr = self.parse_expr(0)
+        self.skip_newlines()
+        let blk = self.parse_block()
+        return self.add_node(NK_FOR(), item_var, idx_var, 0, iter_expr, blk, -1, fln)
+    }
+
+    priv fn parse_match() -> i64 {
+        let mt = self.expect_k(TK_MATCH(), "Expected 'match'")
+        let mln = self.tok_lines.get(mt)
+        let subj = self.parse_expr(0)
+        self.skip_newlines()
+        self.expect_k(TK_LBRACE(), "Expected opening brace to start match body")
+        self.skip_stmt_end()
+
+        let cases = List<i64>()
+        mut ccount = 0
+        while self.cur_kind() != TK_RBRACE() && self.cur_kind() != TK_EOF() {
+            let lp = self.pos
+            let pat_ln = self.cur_line()
+            let pat = self.parse_expr(0)
+            mut guard_id = -1
+            if self.match_k(TK_IF()) {
+                guard_id = self.parse_expr(0)
+            }
+            self.expect_k(TK_FAT_ARROW(), "Expected '=>' in match arm")
+            self.skip_newlines()
+            mut body_id = -1
+            if self.cur_kind() == TK_LBRACE() {
+                body_id = self.parse_block()
+            } else {
+                let arm_st = self.parse_stmt()
+                let stmts = List<i64>()
+                stmts.push(arm_st)
+                body_id = self.make_group(NK_BLOCK(), "", "", 0, -1, -1, -1, pat_ln, stmts, 1)
+            }
+            cases.push(self.add_node(NK_MATCH_CASE(), "", "", 0, pat, body_id, guard_id, pat_ln))
+            ccount = ccount + 1
+            self.match_k(TK_COMMA())
+            self.skip_stmt_end()
+            if self.pos == lp { self.adv() }
+        }
+        self.expect_k(TK_RBRACE(), "Expected closing brace to close match body")
+        return self.make_group(NK_MATCH(), "", "", 0, subj, -1, -1, mln, cases, ccount)
+    }
+
+    priv fn parse_try_catch() -> i64 {
+        let tt = self.expect_k(TK_TRY(), "Expected 'try'")
+        let tln = self.tok_lines.get(tt)
+        self.skip_newlines()
+        let try_blk = self.parse_block()
+        mut catch_var = ""
+        mut catch_blk = -1
+        mut finally_blk = -1
+        self.skip_newlines()
+        if self.match_k(TK_CATCH()) {
+            if self.match_k(TK_LPAREN()) {
+                let ct = self.expect_k(TK_IDENT(), "Expected catch variable")
+                catch_var = self.tok_vals.get(ct)
+                self.expect_k(TK_RPAREN(), "Expected ')' after catch variable")
+            } else if self.cur_kind() == TK_IDENT() {
+                catch_var = self.tok_vals.get(self.adv())
+            }
+            self.skip_newlines()
+            catch_blk = self.parse_block()
+        }
+        self.skip_newlines()
+        if self.match_k(TK_FINALLY()) {
+            self.skip_newlines()
+            finally_blk = self.parse_block()
+        }
+        return self.add_node(NK_TRY_CATCH(), catch_var, "", 0, try_blk, catch_blk, finally_blk, tln)
+    }
+
+}

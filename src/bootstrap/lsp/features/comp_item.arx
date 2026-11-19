@@ -1,0 +1,431 @@
+import "./mod.arx"
+
+// --- 2. Completions ---
+
+fn emit_comp_item_ex(jb: JsonBuf, label: str, label_detail: str, label_desc: str, kind: i64,
+                      detail: str, doc: str, insert_txt: str, sort_txt: str, filter_txt: str,
+                      te_ln0: i64, te_s0: i64, te_e0: i64, te_text: str,
+                      preselect: bool, first: bool) {
+    if !first { jb.comma() }
+    jb.lbrace()
+    jb.kv_str("label", label, true)
+    if label_detail != "" || label_desc != "" {
+        jb.comma()
+        jb.key("labelDetails")
+        jb.lbrace()
+        mut ld_first = true
+        if label_detail != "" {
+            jb.kv_str("detail", label_detail, true)
+            ld_first = false
+        }
+        if label_desc != "" {
+            jb.kv_str("description", label_desc, ld_first)
+        }
+        jb.rbrace()
+    }
+    jb.kv_int("kind", kind, false)
+    if sort_txt != "" { jb.kv_str("sortText", sort_txt, false) }
+    if filter_txt != "" { jb.kv_str("filterText", filter_txt, false) }
+    if preselect { jb.kv_bool("preselect", true, false) }
+    if detail != "" { jb.kv_str("detail", detail, false) }
+    if doc != "" {
+        jb.comma()
+        jb.key("documentation")
+        jb.lbrace()
+        jb.kv_str("kind", "markdown", true)
+        jb.kv_str("value", doc, false)
+        jb.rbrace()
+    }
+    if te_ln0 >= 0 {
+        jb.comma()
+        jb.key("textEdit")
+        jb.lbrace()
+        jb.key("range")
+        jb.lbrace()
+        jb.key("start"); jb.lbrace(); jb.kv_int("line", te_ln0, true); jb.kv_int("character", te_s0, false); jb.rbrace()
+        jb.comma()
+        jb.key("end"); jb.lbrace(); jb.kv_int("line", te_ln0, true); jb.kv_int("character", te_e0, false); jb.rbrace()
+        jb.rbrace()
+        jb.comma()
+        jb.kv_str("newText", te_text, true)
+        jb.rbrace()
+        jb.kv_int("insertTextFormat", 2, false)
+    } else if insert_txt != "" {
+        jb.kv_str("insertText", insert_txt, false)
+        jb.kv_int("insertTextFormat", 2, false)
+    }
+    jb.rbrace()
+}
+
+fn emit_comp_item(jb: JsonBuf, label: str, kind: i64, detail: str, doc: str, insert_txt: str, sort_txt: str, first: bool) {
+    emit_comp_item_ex(jb, label, "", "", kind, detail, doc, insert_txt, sort_txt, "", -1, 0, 0, "", false, first)
+}
+
+fn lsp_extract_sig_params_from_str(sig_label: str) -> List<str> {
+    let out = List<str>()
+    let open_p = lsp_str_find(sig_label, "(", 0)
+    if open_p < 0 { return out }
+    let n = sig_label.len()
+    mut cl = open_p + 1
+    mut depth = 1
+    while cl < n && depth > 0 {
+        let b = sig_label.byte_at(cl)
+        if b == 40 { depth = depth + 1 }
+        else if b == 41 { depth = depth - 1 }
+        if depth > 0 { cl = cl + 1 }
+    }
+    let inner = sig_label.slice(open_p + 1, cl).trim()
+    if inner == "" { return out }
+    mut d = 0
+    mut start = 0
+    mut i = 0
+    while i <= inner.len() {
+        let at_end = (i == inner.len())
+        mut sep = false
+        if !at_end {
+            let b = inner.byte_at(i)
+            if b == 60 || b == 40 { d = d + 1 }
+            else if b == 62 || b == 41 { d = d - 1 }
+            else if b == 44 && d == 0 { sep = true }
+        }
+        if at_end || sep {
+            let part = inner.slice(start, i).trim()
+            if part != "" { out.push(part) }
+            start = i + 1
+        }
+        i = i + 1
+    }
+    return out
+}
+
+fn lsp_resolve_call_site_sig(source: str, az: Analyzer, doc_path: str, line0: i64, char0: i64,
+                             sig_params: List<str>, meta: List<str>) -> i64 {
+    let curoff = lsp_line_col_to_offset(source, line0, char0)
+    if curoff <= 0 { return -1 }
+
+    // Walk backward across lines (bounded to 4096 bytes) tracking balanced () and strings
+    mut floor_off = curoff - 4096
+    if floor_off < 0 { floor_off = 0 }
+    mut depth = 0
+    mut commas = 0
+    mut in_str = false
+    mut open_idx = -1
+    mut i = curoff - 1
+    while i >= floor_off {
+        let b = source.byte_at(i)
+        if b == 34 && (i == 0 || source.byte_at(i - 1) != 92) {
+            in_str = !in_str
+        } else if !in_str {
+            if b == 41 {
+                depth = depth + 1
+            } else if b == 40 {
+                if depth == 0 {
+                    open_idx = i
+                    break
+                }
+                depth = depth - 1
+            } else if b == 44 && depth == 0 {
+                commas = commas + 1
+            } else if b == 123 || b == 125 || b == 59 {
+                break
+            }
+        }
+        i = i - 1
+    }
+    if open_idx <= 0 { return -1 }
+
+    mut end_name = open_idx
+    while end_name > 0 && (source.byte_at(end_name - 1) == 32 || source.byte_at(end_name - 1) == 9) {
+        end_name = end_name - 1
+    }
+    mut start_name = end_name
+    while start_name > 0 && lsp_is_ident_char(source.byte_at(start_name - 1)) {
+        start_name = start_name - 1
+    }
+    let callee = source.slice(start_name, end_name)
+    if callee == "" { return -1 }
+
+    mut sig_label = ""
+    mut sig_doc = ""
+    mut fn_nid = -1
+
+    let has_dot = start_name > 0 && source.byte_at(start_name - 1) == 46
+    let has_cascade = start_name >= 2 && source.byte_at(start_name - 1) == 62 && source.byte_at(start_name - 2) == 126
+    if has_dot || has_cascade {
+        let op_pos = start_name - 1
+        mut ls = start_name - 1
+        while ls > 0 && source.byte_at(ls - 1) != 10 { ls = ls - 1 }
+        let line_before = source.slice(ls, op_pos + 1)
+        let rname = lsp_extract_receiver_before_dot(line_before, line_before.len() - 1)
+        let rt = lsp_infer_expr_receiver_type(az, doc_path, line0 + 1, rname, source)
+        if rt != "" {
+            let owner = lsp_find_class_method_sidx(az, rt, callee)
+            if owner >= 0 {
+                fn_nid = az.sig_nodes.get(owner)
+            } else {
+                let bmethods = lsp_builtin_methods_for(rt)
+                mut bi = 0
+                while bi < bmethods.len() {
+                    let msig = bmethods.get(bi)
+                    if msig.starts_with(callee + ":") {
+                        sig_label = lsp_subst_generic_sig(msig, rt)
+                        sig_doc = lsp_lookup_member_doc(rt, callee)
+                        break
+                    }
+                    bi = bi + 1
+                }
+            }
+        }
+    } else if az.cls_idx_map.has_key(callee) {
+        let ctor_k = "ctor::" + callee
+        if az.sig_by_key.has_key(ctor_k) {
+            let sidx = az.sig_by_key.get(ctor_k).split(",").get(0).to_i64()
+            fn_nid = az.sig_nodes.get(sidx)
+        }
+    } else {
+        let fn_k = "fn::" + callee
+        if az.sig_by_key.has_key(fn_k) {
+            let sidx = az.sig_by_key.get(fn_k).split(",").get(0).to_i64()
+            fn_nid = az.sig_nodes.get(sidx)
+        } else {
+            let ec_c = lsp_enclosing_class_at(az, doc_path, line0 + 1)
+            if ec_c != "" {
+                let msidx = lsp_find_class_method_sidx(az, ec_c, callee)
+                if msidx >= 0 { fn_nid = az.sig_nodes.get(msidx) }
+            }
+        }
+        if fn_nid < 0 {
+            let bsig = lsp_builtin_fn_sig(callee)
+            if bsig != "" {
+                sig_label = bsig
+                sig_doc = lsp_lookup_doc(callee)
+            }
+        }
+    }
+
+    if fn_nid >= 0 {
+        sig_label = lsp_fn_signature_str(az, fn_nid)
+        sig_doc = lsp_extract_doc_comments(source, doc_path, az.nf.get(fn_nid), az.ln.get(fn_nid))
+        let pg = az.la.get(fn_nid)
+        if pg >= 0 {
+            let pc = az.ll.get(pg)
+            mut pi = 0
+            while pi < pc {
+                let pid = az.ch.get(az.ls.get(pg) + pi)
+                sig_params.push(az.sa.get(pid) + ": " + btype_norm(az.sb.get(pid)))
+                pi = pi + 1
+            }
+        }
+    } else if sig_label != "" {
+        let parsed_p = lsp_extract_sig_params_from_str(sig_label)
+        mut pi = 0
+        while pi < parsed_p.len() {
+            sig_params.push(parsed_p.get(pi))
+            pi = pi + 1
+        }
+    }
+
+    if sig_label == "" { return -1 }
+    meta.push(sig_label)
+    meta.push(sig_doc)
+    return commas
+}
+
+fn lsp_sig_to_label_parts(sig: str) -> List<str> {
+    let out = List<str>()
+    let open_p = lsp_str_find(sig, "(", 0)
+    if open_p < 0 {
+        out.push(""); out.push("")
+        return out
+    }
+    let n = sig.len()
+    mut cl = open_p + 1
+    mut depth = 1
+    while cl < n && depth > 0 {
+        let b = sig.byte_at(cl)
+        if b == 40 { depth = depth + 1 }
+        else if b == 41 { depth = depth - 1 }
+        if depth > 0 { cl = cl + 1 }
+    }
+    let params_paren = sig.slice(open_p, cl + 1)
+    mut ret = "void"
+    let arrow = lsp_str_find(sig, "->", cl)
+    if arrow >= 0 {
+        ret = sig.slice(arrow + 2, n).trim()
+    }
+    out.push(params_paren)
+    out.push(ret)
+    return out
+}
+
+fn lsp_build_call_snippet(name: str, param_paren: str, insert_parens: bool) -> str {
+    if !insert_parens || param_paren == "" { return "" }
+    if param_paren == "()" { return name + "()$0" }
+    let plist = lsp_extract_sig_params_from_str(name + param_paren)
+    if plist.len() == 0 { return name + "()$0" }
+    let bb = ByteBuffer()
+    bb.write_str(name)
+    bb.write_str("(")
+    mut i = 0
+    while i < plist.len() {
+        if i > 0 { bb.write_str(", ") }
+        mut seg = plist.get(i).trim()
+        if seg.starts_with("mut ") { seg = seg.slice(4, seg.len()).trim() }
+        let col_i = lsp_str_find(seg, ":", 0)
+        mut pname = seg
+        if col_i > 0 { pname = seg.slice(0, col_i).trim() }
+        let eq_i = lsp_str_find(pname, "=", 0)
+        if eq_i > 0 { pname = pname.slice(0, eq_i).trim() }
+        if pname == "" { pname = "arg" + (i + 1) }
+        bb.write_str("$")
+        bb.write_u8(123)
+        bb.write_str("" + (i + 1))
+        bb.write_str(":")
+        bb.write_str(pname)
+        bb.write_str("}")
+        i = i + 1
+    }
+    bb.write_str(")$0")
+    let out = bb.to_str()
+    bb.free()
+    return out
+}
+
+fn lsp_type_matches(cand_t: str, expected_t: str) -> bool {
+    if expected_t == "" || cand_t == "" { return false }
+    let cn = btype_norm(lsp_unwrap_optional_type(cand_t))
+    let en = btype_norm(lsp_unwrap_optional_type(expected_t))
+    if en == "any" || cn == "any" { return false }
+    if cn == en { return true }
+    if (en == "int" && cn == "i64") || (en == "i64" && cn == "int") { return true }
+    if (en == "float" && cn == "f64") || (en == "f64" && cn == "float") { return true }
+    return false
+}
+
+pub fn lsp_calc_fuzzy_score(cand: str, query: str) -> i64 {
+    if query == "" { return 100 }
+    let qlen = query.len()
+    let clen = cand.len()
+    if qlen > clen { return 0 }
+    let cand_low = cand.to_lower()
+    let query_low = query.to_lower()
+
+    // 1. Exact match
+    if cand == query { return 1000 }
+    if cand_low == query_low { return 900 }
+
+    // 2. Exact prefix
+    if cand.starts_with(query) { return 800 }
+    if cand_low.starts_with(query_low) { return 700 }
+
+    // 3. Snake_case / CamelCase word boundary match
+    mut qi = 0
+    mut ci = 0
+    while qi < qlen && ci < clen {
+        let qb = query_low.byte_at(qi)
+        let cb = cand_low.byte_at(ci)
+        let is_boundary = (ci == 0) || (cand.byte_at(ci - 1) == 95) || 
+                          (cand.byte_at(ci) >= 65 && cand.byte_at(ci) <= 90)
+        if is_boundary && cb == qb {
+            qi = qi + 1
+        }
+        ci = ci + 1
+    }
+    if qi == qlen { return 600 }
+
+    // 4. Subsequence match (all letters appear in order)
+    qi = 0
+    ci = 0
+    while qi < qlen && ci < clen {
+        if cand_low.byte_at(ci) == query_low.byte_at(qi) {
+            qi = qi + 1
+        }
+        ci = ci + 1
+    }
+    if qi == qlen { return 400 }
+
+    return 0
+}
+
+pub fn lsp_item_sort_text(cand: str, typed_word: str, matched: bool, base_tier: str) -> str {
+    if typed_word == "" {
+        if matched { return "00_" + cand }
+        return base_tier + "_" + cand
+    }
+    let score = lsp_calc_fuzzy_score(cand, typed_word)
+    if score == 0 { return "" }
+    if matched && score >= 700 { return "00000_" + cand }
+    if matched { return "0000_" + cand }
+    if score >= 800 { return "000_" + cand }
+    if score >= 600 { return "00_" + cand }
+    if score >= 400 { return "0_" + cand }
+    return base_tier + "_" + cand
+}
+
+fn lsp_infer_expected_type(source: str, az: Analyzer, doc_path: str, line0: i64, cpos: i64, before_word: str) -> str {
+    // 1. Inside call arguments -> active parameter type
+    let sig_params = List<str>()
+    let meta = List<str>()
+    let arg_idx = lsp_resolve_call_site_sig(source, az, doc_path, line0, cpos, sig_params, meta)
+    if arg_idx >= 0 && arg_idx < sig_params.len() {
+        let p = sig_params.get(arg_idx)
+        let col_i = lsp_str_find(p, ":", 0)
+        if col_i > 0 {
+            mut pt = p.slice(col_i + 1, p.len()).trim()
+            let eq_i = lsp_str_find(pt, "=", 0)
+            if eq_i > 0 { pt = pt.slice(0, eq_i).trim() }
+            if pt != "" && pt != "any" && pt != "T" && pt != "K" && pt != "V" {
+                return btype_norm(pt)
+            }
+        }
+    }
+
+    // 2. Return statement -> enclosing function return type
+    if before_word == "return" || before_word.ends_with(" return") {
+        let fb = lsp_enclosing_fn_bounds(source, az, doc_path, line0 + 1)
+        let fn_nid = fb.get(0)
+        if fn_nid >= 0 {
+            let rt = btype_norm(az.sb.get(fn_nid))
+            if rt != "" && rt != "void" { return rt }
+        }
+    }
+
+    // 3. Typed declaration RHS: `let x: Type = ...` or `mut x: Type = ...`
+    if before_word.ends_with("=") && !before_word.ends_with("==") && !before_word.ends_with("!=") && !before_word.ends_with("<=") && !before_word.ends_with(">=") {
+        let lhs = before_word.slice(0, before_word.len() - 1).trim()
+        let col_i2 = lsp_str_find(lhs, ":", 0)
+        if col_i2 > 0 {
+            let decl_t = btype_norm(lhs.slice(col_i2 + 1, lhs.len()).trim())
+            if decl_t != "" { return decl_t }
+        }
+    }
+    return ""
+}
+
+fn lsp_is_type_position(before_word: str) -> bool {
+    if before_word == "" { return false }
+    if before_word.ends_with("->") || before_word.ends_with("extends") || before_word.ends_with("implements") || before_word.ends_with("as") {
+        return true
+    }
+    if before_word.ends_with(":") && !before_word.ends_with("::") && !before_word.ends_with("?:") {
+        return true
+    }
+    // Unclosed generic `<` after identifier (e.g., `List<`, `Map<str, `)
+    mut i = before_word.len() - 1
+    mut ad = 0
+    while i >= 0 {
+        let b = before_word.byte_at(i)
+        if b == 62 { ad = ad + 1 }
+        else if b == 60 {
+            if ad == 0 {
+                return i > 0 && lsp_is_ident_char(before_word.byte_at(i - 1))
+            }
+            ad = ad - 1
+        } else if b == 40 || b == 41 || b == 123 || b == 125 || b == 61 || b == 59 {
+            return false
+        }
+        i = i - 1
+    }
+    return false
+}
+

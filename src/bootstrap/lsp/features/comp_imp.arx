@@ -1,0 +1,319 @@
+import "./mod.arx"
+
+fn lsp_emit_import_completions(az: Analyzer, doc_path: str, line0: i64, prefix: str, cpos: i64, jb: JsonBuf, is_first: List<i64>) -> bool {
+    let tr = prefix.trim()
+    if !tr.starts_with("import ") && !tr.starts_with("use ") && !tr.starts_with("from ") && tr != "import" && tr != "use" && tr != "from" { return false }
+    let qpos = lsp_str_find(prefix, "\"", 0)
+
+    let from_pos = lsp_str_find(prefix, "from ", 0)
+    let imp_pos = lsp_str_find(prefix, " import", from_pos)
+    if from_pos >= 0 && imp_pos > from_pos && cpos > imp_pos + 6 {
+        // Cursor is after `from <module> import `
+        mut mod_raw = prefix.slice(from_pos + 5, imp_pos).trim()
+        if mod_raw.starts_with("\"") && mod_raw.ends_with("\"") && mod_raw.len() > 1 {
+            mod_raw = mod_raw.slice(1, mod_raw.len() - 1)
+        }
+        let seen_syms = Map<str, i64>()
+
+        // 1. Functions from mod_raw
+        mut fi = 0
+        while fi < az.fn_count {
+            let fid = az.fn_nodes.get(fi)
+            let fn_file = az.nf.get(fid)
+            if lsp_file_matches_mod(fn_file, mod_raw) {
+                let fnm = az.sa.get(fid)
+                if fnm != "" && !seen_syms.has_key("f::" + fnm) {
+                    seen_syms.insert("f::" + fnm, 1)
+                    let sig = lsp_fn_signature_str(az, fid)
+                    let fst = is_first.get(0) == 1
+                    is_first.set(0, 0)
+                    emit_comp_item_ex(jb, fnm, "", "function", CKIND_FUNCTION(), sig,
+                                      "Function `" + fnm + "` exported from `" + mod_raw + "`.",
+                                      fnm, "0_" + fnm, "", -1, 0, 0, "", false, fst)
+                }
+            }
+            fi = fi + 1
+        }
+
+        // 2. Classes & Structs from mod_raw
+        mut ci = 0
+        while ci < az.cls_count {
+            let cid = az.cls_nodes.get(ci)
+            let c_file = az.nf.get(cid)
+            if lsp_file_matches_mod(c_file, mod_raw) {
+                let cnm = az.cls_names.get(ci)
+                if cnm != "" && !seen_syms.has_key("c::" + cnm) {
+                    seen_syms.insert("c::" + cnm, 1)
+                    let fst = is_first.get(0) == 1
+                    is_first.set(0, 0)
+                    emit_comp_item_ex(jb, cnm, "", "class", CKIND_CLASS(), "class " + cnm,
+                                      "Class/Struct `" + cnm + "` exported from `" + mod_raw + "`.",
+                                      cnm, "0_" + cnm, "", -1, 0, 0, "", false, fst)
+                }
+            }
+            ci = ci + 1
+        }
+
+        // 3. Enums from mod_raw
+        mut ei = 0
+        while ei < az.enum_count {
+            let eid = az.enum_nodes.get(ei)
+            let e_file = az.nf.get(eid)
+            if lsp_file_matches_mod(e_file, mod_raw) {
+                let enm = az.enum_names.get(ei)
+                if enm != "" && !seen_syms.has_key("e::" + enm) {
+                    seen_syms.insert("e::" + enm, 1)
+                    let fst = is_first.get(0) == 1
+                    is_first.set(0, 0)
+                    emit_comp_item_ex(jb, enm, "", "enum", CKIND_ENUM(), "enum " + enm,
+                                      "Enum `" + enm + "` exported from `" + mod_raw + "`.",
+                                      enm, "0_" + enm, "", -1, 0, 0, "", false, fst)
+                }
+            }
+            ei = ei + 1
+        }
+
+        // 4. Built-in module symbol catalogs (covers case when module files were not pre-parsed into az AST yet)
+        let std_items = List<str>()
+        let std_kinds = List<i64>()
+        let std_details = List<str>()
+        if mod_raw == "Window.Gui" || mod_raw == "Gui" {
+            std_items.push("createWindow"); std_kinds.push(CKIND_FUNCTION()); std_details.push("fn createWindow(title: str, width: i64, height: i64) -> i64")
+            std_items.push("CreateWindow"); std_kinds.push(CKIND_FUNCTION()); std_details.push("fn CreateWindow(title: str, width: i64, height: i64) -> i64")
+            std_items.push("AppWindow"); std_kinds.push(CKIND_CLASS()); std_details.push("class AppWindow")
+            std_items.push("Button"); std_kinds.push(CKIND_CLASS()); std_details.push("class Button")
+            std_items.push("TextBox"); std_kinds.push(CKIND_CLASS()); std_details.push("class TextBox")
+            std_items.push("CheckBox"); std_kinds.push(CKIND_CLASS()); std_details.push("class CheckBox")
+            std_items.push("ProgressBar"); std_kinds.push(CKIND_CLASS()); std_details.push("class ProgressBar")
+            std_items.push("ListBox"); std_kinds.push(CKIND_CLASS()); std_details.push("class ListBox")
+            std_items.push("ComboBox"); std_kinds.push(CKIND_CLASS()); std_details.push("class ComboBox")
+            std_items.push("Canvas"); std_kinds.push(CKIND_CLASS()); std_details.push("class Canvas")
+            std_items.push("dialogInfo"); std_kinds.push(CKIND_FUNCTION()); std_details.push("fn dialogInfo(title: str, msg: str) -> void")
+            std_items.push("dialogWarning"); std_kinds.push(CKIND_FUNCTION()); std_details.push("fn dialogWarning(title: str, msg: str) -> void")
+            std_items.push("dialogError"); std_kinds.push(CKIND_FUNCTION()); std_details.push("fn dialogError(title: str, msg: str) -> void")
+        } else if mod_raw == "Window.Gui.Canvas" || mod_raw == "Canvas" {
+            std_items.push("Canvas"); std_kinds.push(CKIND_CLASS()); std_details.push("class Canvas")
+            std_items.push("rgb"); std_kinds.push(CKIND_FUNCTION()); std_details.push("fn rgb(r: i64, g: i64, b: i64) -> i64")
+            std_items.push("RGB"); std_kinds.push(CKIND_FUNCTION()); std_details.push("fn RGB(r: i64, g: i64, b: i64) -> i64")
+            std_items.push("colorRed"); std_kinds.push(CKIND_FUNCTION()); std_details.push("fn colorRed() -> i64")
+            std_items.push("colorBlack"); std_kinds.push(CKIND_FUNCTION()); std_details.push("fn colorBlack() -> i64")
+            std_items.push("colorWhite"); std_kinds.push(CKIND_FUNCTION()); std_details.push("fn colorWhite() -> i64")
+            std_items.push("colorGreen"); std_kinds.push(CKIND_FUNCTION()); std_details.push("fn colorGreen() -> i64")
+            std_items.push("colorBlue"); std_kinds.push(CKIND_FUNCTION()); std_details.push("fn colorBlue() -> i64")
+            std_items.push("colorYellow"); std_kinds.push(CKIND_FUNCTION()); std_details.push("fn colorYellow() -> i64")
+            std_items.push("colorCyan"); std_kinds.push(CKIND_FUNCTION()); std_details.push("fn colorCyan() -> i64")
+            std_items.push("colorGray"); std_kinds.push(CKIND_FUNCTION()); std_details.push("fn colorGray() -> i64")
+        } else if mod_raw == "Window" {
+            std_items.push("createWindow"); std_kinds.push(CKIND_FUNCTION()); std_details.push("fn createWindow(title: str, width: i64, height: i64) -> i64")
+            std_items.push("AppWindow"); std_kinds.push(CKIND_CLASS()); std_details.push("class AppWindow")
+            std_items.push("MessageBox"); std_kinds.push(CKIND_FUNCTION()); std_details.push("fn MessageBox(title: str, msg: str) -> void")
+            std_items.push("beep"); std_kinds.push(CKIND_FUNCTION()); std_details.push("fn beep(freq: i64, dur_ms: i64) -> void")
+            std_items.push("isKeyDown"); std_kinds.push(CKIND_FUNCTION()); std_details.push("fn isKeyDown(vk: i64) -> bool")
+            std_items.push("screenWidth"); std_kinds.push(CKIND_FUNCTION()); std_details.push("fn screenWidth() -> i64")
+            std_items.push("screenHeight"); std_kinds.push(CKIND_FUNCTION()); std_details.push("fn screenHeight() -> i64")
+            std_items.push("Gui"); std_kinds.push(CKIND_MODULE()); std_details.push("submodule Window.Gui")
+            std_items.push("Clipboard"); std_kinds.push(CKIND_MODULE()); std_details.push("submodule Window.Clipboard")
+        } else if mod_raw == "Time" {
+            std_items.push("now"); std_kinds.push(CKIND_FUNCTION()); std_details.push("fn now() -> i64")
+            std_items.push("now_ms"); std_kinds.push(CKIND_FUNCTION()); std_details.push("fn now_ms() -> i64")
+            std_items.push("now_ns"); std_kinds.push(CKIND_FUNCTION()); std_details.push("fn now_ns() -> i64")
+            std_items.push("sleep"); std_kinds.push(CKIND_FUNCTION()); std_details.push("fn sleep(ms: i64) -> void")
+            std_items.push("Date"); std_kinds.push(CKIND_CLASS()); std_details.push("class Date")
+            std_items.push("Stopwatch"); std_kinds.push(CKIND_CLASS()); std_details.push("class Stopwatch")
+        } else if mod_raw == "Random" {
+            std_items.push("randInt"); std_kinds.push(CKIND_FUNCTION()); std_details.push("fn randInt(min: i64, max: i64) -> i64")
+            std_items.push("randFloat"); std_kinds.push(CKIND_FUNCTION()); std_details.push("fn randFloat() -> f64")
+            std_items.push("randBool"); std_kinds.push(CKIND_FUNCTION()); std_details.push("fn randBool() -> bool")
+            std_items.push("seed"); std_kinds.push(CKIND_FUNCTION()); std_details.push("fn seed(val: i64) -> void")
+            std_items.push("choice"); std_kinds.push(CKIND_FUNCTION()); std_details.push("fn choice(items: List<T>) -> T")
+            std_items.push("shuffle"); std_kinds.push(CKIND_FUNCTION()); std_details.push("fn shuffle(items: List<T>) -> void")
+        } else if mod_raw == "Math" {
+            std_items.push("sqrt"); std_kinds.push(CKIND_FUNCTION()); std_details.push("fn sqrt(x: f64) -> f64")
+            std_items.push("sin"); std_kinds.push(CKIND_FUNCTION()); std_details.push("fn sin(x: f64) -> f64")
+            std_items.push("cos"); std_kinds.push(CKIND_FUNCTION()); std_details.push("fn cos(x: f64) -> f64")
+            std_items.push("tan"); std_kinds.push(CKIND_FUNCTION()); std_details.push("fn tan(x: f64) -> f64")
+            std_items.push("pow"); std_kinds.push(CKIND_FUNCTION()); std_details.push("fn pow(base: f64, exp: f64) -> f64")
+            std_items.push("abs"); std_kinds.push(CKIND_FUNCTION()); std_details.push("fn abs(x: i64) -> i64")
+            std_items.push("min"); std_kinds.push(CKIND_FUNCTION()); std_details.push("fn min(a: i64, b: i64) -> i64")
+            std_items.push("max"); std_kinds.push(CKIND_FUNCTION()); std_details.push("fn max(a: i64, b: i64) -> i64")
+            std_items.push("floor"); std_kinds.push(CKIND_FUNCTION()); std_details.push("fn floor(x: f64) -> f64")
+            std_items.push("ceil"); std_kinds.push(CKIND_FUNCTION()); std_details.push("fn ceil(x: f64) -> f64")
+            std_items.push("round"); std_kinds.push(CKIND_FUNCTION()); std_details.push("fn round(x: f64) -> f64")
+            std_items.push("log"); std_kinds.push(CKIND_FUNCTION()); std_details.push("fn log(x: f64) -> f64")
+            std_items.push("exp"); std_kinds.push(CKIND_FUNCTION()); std_details.push("fn exp(x: f64) -> f64")
+            std_items.push("PI"); std_kinds.push(CKIND_FIELD()); std_details.push("const PI: f64 = 3.141592653589793")
+            std_items.push("E"); std_kinds.push(CKIND_FIELD()); std_details.push("const E: f64 = 2.718281828459045")
+        } else if mod_raw == "Socket" {
+            std_items.push("TcpListener"); std_kinds.push(CKIND_CLASS()); std_details.push("class TcpListener")
+            std_items.push("TcpStream"); std_kinds.push(CKIND_CLASS()); std_details.push("class TcpStream")
+            std_items.push("UdpSocket"); std_kinds.push(CKIND_CLASS()); std_details.push("class UdpSocket")
+        }
+
+        mut s_i = 0
+        while s_i < std_items.len() {
+            let snm = std_items.get(s_i)
+            let skd = std_kinds.get(s_i)
+            let sdt = std_details.get(s_i)
+            if !seen_syms.has_key("std::" + snm) && !seen_syms.has_key("f::" + snm) && !seen_syms.has_key("c::" + snm) {
+                seen_syms.insert("std::" + snm, 1)
+                let fst = is_first.get(0) == 1
+                is_first.set(0, 0)
+                emit_comp_item_ex(jb, snm, "", "stdlib", skd, sdt,
+                                  "Exported symbol `" + snm + "` from `" + mod_raw + "`.",
+                                  snm, "0_" + snm, "", -1, 0, 0, "", false, fst)
+            }
+            s_i = s_i + 1
+        }
+
+        let lb_snip = lsp_lbrace()
+        let fst_snip = is_first.get(0) == 1
+        is_first.set(0, 0)
+        emit_comp_item_ex(jb, lb_snip + " ... }", "", "selective", CKIND_SNIPPET(), "Selective import block",
+                          "Import multiple symbols in braces.", lb_snip + " $1 }", "0a_braces", "", -1, 0, 0, "", false, fst_snip)
+        return true
+    }
+    if qpos < 0 {
+        // Unquoted import completion: suggest standard modules, submodules, snippets, and local files
+        let mods = List<str>()
+        if tr.ends_with("Window.Gui.") || tr.contains("Window.Gui.") || tr.ends_with("Gui.") || tr.contains("Gui.") {
+            mods.push("Window.Gui.Canvas")
+            mods.push("Canvas")
+        } else if tr.ends_with("Window.") || tr.contains("Window.") {
+            mods.push("Window.Gui")
+            mods.push("Window.Gui.Canvas")
+            mods.push("Window.Clipboard")
+            mods.push("Gui")
+            mods.push("Clipboard")
+        } else if tr.ends_with("Socket.") || tr.contains("Socket.") {
+            mods.push("Socket.Http")
+            mods.push("Http")
+        } else if tr.ends_with("Random.") || tr.contains("Random.") {
+            mods.push("Random.Crypto")
+            mods.push("Crypto")
+        } else {
+            mods.push("Math"); mods.push("Random"); mods.push("Random.Crypto")
+            mods.push("Socket"); mods.push("Socket.Http"); mods.push("Time")
+            mods.push("Window"); mods.push("Window.Gui"); mods.push("Window.Gui.Canvas"); mods.push("Window.Clipboard")
+        }
+        mut mi = 0
+        while mi < mods.len() {
+            let mnm = mods.get(mi)
+            let fst = is_first.get(0) == 1
+            is_first.set(0, 0)
+            emit_comp_item_ex(jb, mnm, "", "stdlib", CKIND_MODULE(), "Aerix stdlib module `" + mnm + "`",
+                              "Standard library module `" + mnm + "`.", "", "0_" + mnm, "",
+                              -1, 0, 0, "", false, fst)
+            mi = mi + 1
+        }
+
+        let fst_snip = is_first.get(0) == 1
+        is_first.set(0, 0)
+        let lb_snip = lsp_lbrace()
+        emit_comp_item_ex(jb, lb_snip + " ... } from \"...\"", "", "selective", CKIND_SNIPPET(), "Selective import",
+                          "Import specific symbols from a module or file.", lb_snip + " $1 } from \"$2\"", "0a_selective", "",
+                          -1, 0, 0, "", false, fst_snip)
+
+        let fst_from = is_first.get(0) == 1
+        is_first.set(0, 0)
+        emit_comp_item_ex(jb, "from ... import ...", "", "from_import", CKIND_SNIPPET(), "From import statement",
+                          "Import symbols from a module or file.", "from $1 import $2", "0b_from", "",
+                          -1, 0, 0, "", false, fst_from)
+
+        let fst_from_as = is_first.get(0) == 1
+        is_first.set(0, 0)
+        emit_comp_item_ex(jb, "from ... import ... as ...", "", "from_import_as", CKIND_SNIPPET(), "From import with alias",
+                          "Import symbols from a module or file with an alias.", "from $1 import $2 as $3", "0c_from_as", "",
+                          -1, 0, 0, "", false, fst_from_as)
+
+        let fst_imp_as = is_first.get(0) == 1
+        is_first.set(0, 0)
+        emit_comp_item_ex(jb, "import ... as ...", "", "import_as", CKIND_SNIPPET(), "Import with alias",
+                          "Import a module with an alias.", "import $1 as $2", "0d_import_as", "",
+                          -1, 0, 0, "", false, fst_imp_as)
+
+        let base_dir = bpath_dirname(doc_path)
+        if base_dir != "" && Directory.exists(base_dir) {
+            let files = Directory.list_files(base_dir)
+            mut fi = 0
+            while fi < files.len() {
+                let f = bpath_basename(files.get(fi))
+                if str_ends_with_arx(f) && bpath_join(base_dir, f) != bpath_normalize(doc_path) {
+                    let ins = "\"./" + f + "\""
+                    let fst = is_first.get(0) == 1
+                    is_first.set(0, 0)
+                    emit_comp_item_ex(jb, f, "", "file", CKIND_FILE(), "Aerix source file", "Import `" + ins + "`",
+                                      ins, "1_" + f, "", -1, 0, 0, "", false, fst)
+                }
+                fi = fi + 1
+            }
+        }
+        return true
+    }
+
+    // Inside quotes: ensure cursor is inside unclosed quote
+    let after_q = prefix.slice(qpos + 1, prefix.len())
+    if lsp_str_find(after_q, "\"", 0) >= 0 { return false }
+
+    let slash_pos = after_q.replace("\\", "/")
+    mut last_sl = -1
+    mut si = 0
+    while si < slash_pos.len() {
+        if slash_pos.byte_at(si) == 47 { last_sl = si }
+        si = si + 1
+    }
+    mut dir_rel = ""
+    if last_sl >= 0 { dir_rel = slash_pos.slice(0, last_sl + 1) }
+
+    // Suggest built-in stdlib modules at root quote level
+    if dir_rel == "" {
+        let mods = List<str>()
+        mods.push("Math"); mods.push("Random"); mods.push("Socket"); mods.push("Time"); mods.push("Window")
+        mut mi = 0
+        while mi < mods.len() {
+            let mnm = mods.get(mi)
+            let fst = is_first.get(0) == 1
+            is_first.set(0, 0)
+            emit_comp_item_ex(jb, mnm, "", "stdlib", CKIND_MODULE(), "Aerix stdlib module `" + mnm + "`",
+                              "Standard library module `" + mnm + "`.", "", "0_" + mnm, "",
+                              line0, qpos + 1, cpos, mnm, false, fst)
+            mi = mi + 1
+        }
+    }
+
+    // Suggest real relative files & folders in current document directory
+    let base_dir = bpath_dirname(doc_path)
+    if base_dir != "" {
+        mut scan_dir = base_dir
+        if dir_rel != "" { scan_dir = bpath_join(base_dir, dir_rel) }
+        if Directory.exists(scan_dir) {
+            let files = Directory.list_files(scan_dir)
+            mut fi = 0
+            while fi < files.len() {
+                let f = bpath_basename(files.get(fi))
+                if str_ends_with_arx(f) && bpath_join(scan_dir, f) != bpath_normalize(doc_path) {
+                    let ins = dir_rel + f
+                    let fst = is_first.get(0) == 1
+                    is_first.set(0, 0)
+                    emit_comp_item_ex(jb, f, "", dir_rel, CKIND_FILE(), "Aerix module", "Import `" + ins + "`",
+                                      "", "1_" + f, ins, line0, qpos + 1, cpos, ins, false, fst)
+                }
+                fi = fi + 1
+            }
+            let dirs = Directory.list_dirs(scan_dir)
+            mut di = 0
+            while di < dirs.len() {
+                let d = bpath_basename(dirs.get(di))
+                if !d.starts_with(".") && d != "dist" && d != "seed" {
+                    let ins = dir_rel + d + "/"
+                    let fst = is_first.get(0) == 1
+                    is_first.set(0, 0)
+                    emit_comp_item_ex(jb, d + "/", "", "folder", CKIND_FOLDER(), "Directory", "Browse `" + ins + "`",
+                                      "", "2_" + d, ins, line0, qpos + 1, cpos, ins, false, fst)
+                }
+                di = di + 1
+            }
+        }
+    }
+    return true
+}
+

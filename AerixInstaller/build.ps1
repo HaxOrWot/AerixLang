@@ -92,11 +92,7 @@ $stageBinUpdater = Join-Path $stageDir "bin\Updater.exe"
     /resource:"$appIcon,aerix.ico" `
     /resource:"$brandPng,aerix-icon.png" `
     /resource:"$manifestRes,installer_manifest.json" `
-    (Join-Path $srcDir "AssemblyInfo.cs") `
-    (Join-Path $srcDir "InstallerEngine.cs") `
-    (Join-Path $srcDir "UpdateProgressForm.cs") `
-    (Join-Path $srcDir "SetupForm.cs") `
-    (Join-Path $srcDir "Program.cs")
+    @((Get-ChildItem -Path $srcDir -Recurse -Filter "*.cs").FullName)
 
 if ($LASTEXITCODE -ne 0) { throw "Failed to compile Updater.exe" }
 Copy-Item "$stageUpdater" "$stageBinUpdater" -Force
@@ -141,11 +137,7 @@ $manifestRes = Join-Path $srcDir "installer_manifest.json"
     /resource:"$appIcon,aerix.ico" `
     /resource:"$brandPng,aerix-icon.png" `
     /resource:"$manifestRes,installer_manifest.json" `
-    (Join-Path $srcDir "AssemblyInfo.cs") `
-    (Join-Path $srcDir "InstallerEngine.cs") `
-    (Join-Path $srcDir "UpdateProgressForm.cs") `
-    (Join-Path $srcDir "SetupForm.cs") `
-    (Join-Path $srcDir "Program.cs")
+    @((Get-ChildItem -Path $srcDir -Recurse -Filter "*.cs").FullName)
 
 if ($LASTEXITCODE -ne 0) { throw "Failed to compile C# setup executable" }
 

@@ -1,0 +1,173 @@
+import "./mod.arx"
+
+extend NativeCodegen {
+    priv fn emit_fn(nid: i64, cname: str, is_ctor: bool) {
+        let body = self.ra.get(nid)
+        if body < 0 {
+            let fn_sym = self.fn_symbol_name(nid)
+            let fn_name = self.sa.get(nid)
+            mut iat_slot = -1
+            if self.extern_iats.has_key(fn_name) {
+                iat_slot = self.extern_iats.get(fn_name)
+            } else if self.extern_iats.has_key("arx_" + fn_name) {
+                iat_slot = self.extern_iats.get("arx_" + fn_name)
+            } else if self.extern_iats.has_key(fn_sym) {
+                iat_slot = self.extern_iats.get(fn_sym)
+            }
+            let fn_lbl = self.rt.lbl(fn_sym)
+            if fn_lbl < self.asmb.label_addrs.len() && self.asmb.label_addrs.get(fn_lbl) < 0 {
+                self.asmb.bind_label(fn_lbl)
+                if iat_slot >= 0 {
+                    self.asmb.call_rip_iat(iat_slot)
+                    self.asmb.ret()
+                } else {
+                    self.asmb.mov_ri32_sext(REG_RAX(), 0)
+                    self.asmb.ret()
+                }
+            }
+            if fn_name != "" && fn_name != fn_sym {
+                let fn_lbl2 = self.rt.lbl(fn_name)
+                if fn_lbl2 < self.asmb.label_addrs.len() && self.asmb.label_addrs.get(fn_lbl2) < 0 {
+                    self.asmb.bind_label(fn_lbl2)
+                    if iat_slot >= 0 {
+                        self.asmb.call_rip_iat(iat_slot)
+                        self.asmb.ret()
+                    } else {
+                        self.asmb.mov_ri32_sext(REG_RAX(), 0)
+                        self.asmb.ret()
+                    }
+                }
+            }
+            let arx_pref = "arx_" + fn_name
+            if fn_name != "" && arx_pref != fn_sym {
+                let fn_lbl3 = self.rt.lbl(arx_pref)
+                if fn_lbl3 < self.asmb.label_addrs.len() && self.asmb.label_addrs.get(fn_lbl3) < 0 {
+                    self.asmb.bind_label(fn_lbl3)
+                    if iat_slot >= 0 {
+                        self.asmb.call_rip_iat(iat_slot)
+                        self.asmb.ret()
+                    } else {
+                        self.asmb.mov_ri32_sext(REG_RAX(), 0)
+                        self.asmb.ret()
+                    }
+                }
+            }
+            return
+        }
+
+        let a = self.asmb
+        let fn_lbl = self.rt.lbl(self.fn_symbol_name(nid))
+        a.bind_label(fn_lbl)
+        a.push_r(REG_RBP())
+        a.mov_rr(REG_RBP(), REG_RSP())
+        let patch_at = a.pos() + 3
+        a.sub_ri32(REG_RSP(), 128)
+
+        self.next_local_off = 8
+        self.max_local_off = 8
+        self.max_call_args = 4
+        self.cur_class = cname
+        self.cur_ret_type = btype_norm(self.sb.get(nid))
+        if is_ctor { self.cur_ret_type = "void" }
+        self.cur_ret_lbl = a.new_label()
+        self.push_scope()
+
+        let is_st = has_flag(self.ia.get(nid), FLAG_STATIC())
+        let pnames = List<str>()
+        let ptypes = List<str>()
+        if cname != "" && !is_st {
+            pnames.push("self")
+            ptypes.push(cname)
+        }
+        let pg = self.la.get(nid)
+        let pc = self.child_count(pg)
+        mut pi = 0
+        while pi < pc {
+            let pid = self.child_at(pg, pi)
+            pnames.push(self.sa.get(pid))
+            ptypes.push(self.sb.get(pid))
+            pi = pi + 1
+        }
+
+        // Spill incoming Win64 ABI args into frame locals (integers in RCX/RDX/R8/R9, floats in XMM0-XMM3)
+        mut idx = 0
+        while idx < pnames.len() {
+            let pt = ptypes.get(idx)
+            let off = self.alloc_slot(pnames.get(idx), pt)
+            let is_fl = ncg_is_float(pt)
+            if idx == 0 {
+                if is_fl {
+                    a.movq_r_xmm(REG_RAX(), 0)
+                    a.mov_mr64(REG_RBP(), -off, REG_RAX())
+                } else {
+                    a.mov_mr64(REG_RBP(), -off, REG_RCX())
+                }
+            } else if idx == 1 {
+                if is_fl {
+                    a.movq_r_xmm(REG_RAX(), 1)
+                    a.mov_mr64(REG_RBP(), -off, REG_RAX())
+                } else {
+                    a.mov_mr64(REG_RBP(), -off, REG_RDX())
+                }
+            } else if idx == 2 {
+                if is_fl {
+                    a.movq_r_xmm(REG_RAX(), 2)
+                    a.mov_mr64(REG_RBP(), -off, REG_RAX())
+                } else {
+                    a.mov_mr64(REG_RBP(), -off, REG_R8())
+                }
+            } else if idx == 3 {
+                if is_fl {
+                    a.movq_r_xmm(REG_RAX(), 3)
+                    a.mov_mr64(REG_RBP(), -off, REG_RAX())
+                } else {
+                    a.mov_mr64(REG_RBP(), -off, REG_R9())
+                }
+            } else {
+                // Caller stacked arg 5+ above saved RBP+ret: [rbp + 16 + 32 + (idx-4)*8]
+                a.mov_rm64(REG_RAX(), REG_RBP(), 16 + 32 + (idx - 4) * 8)
+                a.mov_mr64(REG_RBP(), -off, REG_RAX())
+            }
+            idx = idx + 1
+        }
+        self.fn_param_mark = self.scope_names.len()
+
+        // Check default parameter values when omitted? Handled at call site; compile body statements
+        self.emit_block_stmts(body)
+        self.emit_scope_defers(0)
+        self.emit_scope_drops(self.fn_param_mark)
+
+        a.bind_label(self.cur_ret_lbl)
+        if self.cur_ret_type == "void" {
+            a.mov_ri32_sext(REG_RAX(), 0)
+        } else if ncg_is_float(self.cur_ret_type) {
+            a.movq_xmm_r(0, REG_RAX())
+        }
+        self.pop_scope()
+        self.cur_class = ""
+
+        mut shadow_and_args = 32
+        if self.max_call_args > 4 {
+            shadow_and_args = 32 + (self.max_call_args - 4) * 8
+        }
+        if shadow_and_args < 112 { shadow_and_args = 112 }
+        mut frame = self.max_local_off + shadow_and_args
+        let rem = frame % 16
+        if rem != 0 { frame = frame + (16 - rem) }
+        a.patch_i32(patch_at, frame)
+        a.add_ri32(REG_RSP(), frame)
+        a.pop_r(REG_RBP())
+        a.ret()
+    }
+
+    priv fn emit_block_stmts(blk_id: i64) {
+        if blk_id < 0 { return }
+        let cnt = self.child_count(blk_id)
+        mut i = 0
+        while i < cnt {
+            self.emit_stmt(self.child_at(blk_id, i))
+            i = i + 1
+        }
+    }
+
+}

@@ -235,6 +235,24 @@ pub class X64Asm {
         self.emit_i32(disp)
     }
 
+    pub fn lock_inc_m64(base: i64, disp: i64) {
+        self.emit_u8(0xF0)
+        self.rex(1, 0, base)
+        self.emit_u8(0xFF)
+        self.modrm(2, 0, base)
+        if (base & 7) == 4 { self.emit_u8(0x24) }
+        self.emit_i32(disp)
+    }
+
+    pub fn lock_dec_m64(base: i64, disp: i64) {
+        self.emit_u8(0xF0)
+        self.rex(1, 1, base)
+        self.emit_u8(0xFF)
+        self.modrm(2, 1, base)
+        if (base & 7) == 4 { self.emit_u8(0x24) }
+        self.emit_i32(disp)
+    }
+
     pub fn lea_rm(dst: i64, base: i64, disp: i64) {
         self.rex(1, dst, base)
         self.emit_u8(0x8D)

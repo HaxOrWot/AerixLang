@@ -1,0 +1,299 @@
+import "./mod.arx"
+
+extend NativeCodegen {
+    priv fn emit_stmt(nid: i64) {
+        if nid < 0 { return }
+        let a = self.asmb
+        let k = self.nk.get(nid)
+
+        if k == NK_BLOCK() {
+            let dmark = self.defer_nodes.len()
+            let smark = self.scope_names.len()
+            self.push_scope()
+            self.emit_block_stmts(nid)
+            self.emit_scope_defers(dmark)
+            self.emit_scope_drops(smark)
+            self.pop_scope()
+            return
+        }
+
+        if k == NK_VAR_DECL() {
+            let vname = self.sa.get(nid)
+            let val_id = self.la.get(nid)
+            mut vt = self.sb.get(nid)
+            if vt != "" {
+                vt = btype_norm(vt)
+            } else {
+                vt = btype_norm(self.node_types.get(nid))
+            }
+            if (vt == "" || vt == "void" || vt == "i64") && val_id >= 0 {
+                let inferred = btype_norm(self.node_types.get(val_id))
+                if inferred != "" && inferred != "void" { vt = inferred }
+            }
+            if vt == "" || vt == "void" { vt = "i64" }
+            let off = self.alloc_slot(vname, vt)
+            let tmark = self.temp_str_slots.len()
+            if val_id >= 0 {
+                self.emit_expr(val_id)
+            } else {
+                a.mov_ri32_sext(REG_RAX(), 0)
+            }
+            if ncg_is_str(vt) {
+                let r_val = self.alloc_slot("", "str")
+                a.mov_mr64(REG_RBP(), -r_val, REG_RAX())
+                if self.temp_str_slots.len() > tmark {
+                    self.temp_str_slots.pop()
+                } else {
+                    a.mov_rr(REG_RCX(), REG_RAX())
+                    a.call_rel32(self.rt.lbl("__rt_arc_retain"))
+                }
+                self.emit_temp_drops(tmark)
+                a.mov_rm64(REG_RAX(), REG_RBP(), -r_val)
+            } else {
+                let r_val = self.alloc_slot("", "i64")
+                a.mov_mr64(REG_RBP(), -r_val, REG_RAX())
+                self.emit_temp_drops(tmark)
+                a.mov_rm64(REG_RAX(), REG_RBP(), -r_val)
+            }
+            a.mov_mr64(REG_RBP(), -off, REG_RAX())
+            return
+        }
+
+        if k == NK_ASSIGN() {
+            self.emit_assign(nid)
+            return
+        }
+
+        if k == NK_IF() {
+            let l_else = a.new_label()
+            let l_end = a.new_label()
+            let cmark = self.temp_str_slots.len()
+            self.emit_expr(self.la.get(nid))
+            let rslot = self.alloc_slot("", "i64")
+            a.mov_mr64(REG_RBP(), -rslot, REG_RAX())
+            self.emit_temp_drops(cmark)
+            a.mov_rm64(REG_RAX(), REG_RBP(), -rslot)
+            a.test_rr(REG_RAX(), REG_RAX())
+            a.jcc_rel32(CC_E(), l_else)
+            self.emit_stmt(self.ra.get(nid))
+            a.jmp_rel32(l_end)
+            a.bind_label(l_else)
+            if self.ea.get(nid) >= 0 {
+                self.emit_stmt(self.ea.get(nid))
+            }
+            a.bind_label(l_end)
+            return
+        }
+
+        if k == NK_WHILE() {
+            let l_top = a.new_label()
+            let l_end = a.new_label()
+            self.loop_cnt_lbls.push(l_top)
+            self.loop_brk_lbls.push(l_end)
+            self.loop_defer_marks.push(self.defer_nodes.len())
+            self.loop_scope_marks.push(self.scope_names.len())
+            a.bind_label(l_top)
+            let cmark = self.temp_str_slots.len()
+            self.emit_expr(self.la.get(nid))
+            let rslot = self.alloc_slot("", "i64")
+            a.mov_mr64(REG_RBP(), -rslot, REG_RAX())
+            self.emit_temp_drops(cmark)
+            a.mov_rm64(REG_RAX(), REG_RBP(), -rslot)
+            a.test_rr(REG_RAX(), REG_RAX())
+            a.jcc_rel32(CC_E(), l_end)
+            self.emit_stmt(self.ra.get(nid))
+            a.jmp_rel32(l_top)
+            a.bind_label(l_end)
+            self.loop_cnt_lbls.pop()
+            self.loop_brk_lbls.pop()
+            self.loop_defer_marks.pop()
+            self.loop_scope_marks.pop()
+            return
+        }
+
+        if k == NK_LOOP() {
+            let l_top = a.new_label()
+            let l_end = a.new_label()
+            self.loop_cnt_lbls.push(l_top)
+            self.loop_brk_lbls.push(l_end)
+            self.loop_defer_marks.push(self.defer_nodes.len())
+            self.loop_scope_marks.push(self.scope_names.len())
+            a.bind_label(l_top)
+            self.emit_stmt(self.la.get(nid))
+            a.jmp_rel32(l_top)
+            a.bind_label(l_end)
+            self.loop_cnt_lbls.pop()
+            self.loop_brk_lbls.pop()
+            self.loop_defer_marks.pop()
+            self.loop_scope_marks.pop()
+            return
+        }
+
+        if k == NK_FOR() {
+            self.emit_for(nid)
+            return
+        }
+
+        if k == NK_BREAK() {
+            if self.loop_brk_lbls.len() > 0 {
+                self.emit_scope_defers(self.loop_defer_marks.get(self.loop_defer_marks.len() - 1))
+                self.emit_scope_drops(self.loop_scope_marks.get(self.loop_scope_marks.len() - 1))
+                a.jmp_rel32(self.loop_brk_lbls.get(self.loop_brk_lbls.len() - 1))
+            }
+            return
+        }
+
+        if k == NK_CONTINUE() {
+            if self.loop_cnt_lbls.len() > 0 {
+                self.emit_scope_defers(self.loop_defer_marks.get(self.loop_defer_marks.len() - 1))
+                self.emit_scope_drops(self.loop_scope_marks.get(self.loop_scope_marks.len() - 1))
+                a.jmp_rel32(self.loop_cnt_lbls.get(self.loop_cnt_lbls.len() - 1))
+            }
+            return
+        }
+
+        if k == NK_RETURN() {
+            let tmark = self.temp_str_slots.len()
+            let val_id = self.la.get(nid)
+            if val_id >= 0 {
+                self.emit_expr(val_id)
+            } else {
+                a.mov_ri32_sext(REG_RAX(), 0)
+            }
+            let rslot = self.alloc_slot("", "i64")
+            a.mov_mr64(REG_RBP(), -rslot, REG_RAX())
+            if ncg_is_str(self.cur_ret_type) {
+                if self.temp_str_slots.len() > tmark {
+                    self.temp_str_slots.pop()
+                } else {
+                    a.mov_rm64(REG_RCX(), REG_RBP(), -rslot)
+                    a.call_rel32(self.rt.lbl("__rt_arc_retain"))
+                }
+            }
+            self.emit_temp_drops(tmark)
+            self.emit_scope_defers(0)
+            self.emit_scope_drops(self.fn_param_mark)
+            a.mov_rm64(REG_RAX(), REG_RBP(), -rslot)
+            a.jmp_rel32(self.cur_ret_lbl)
+            return
+        }
+
+        if k == NK_DEFER() {
+            self.defer_nodes.push(self.la.get(nid))
+            return
+        }
+
+        if k == NK_GUARD() {
+            let l_ok = a.new_label()
+            self.emit_expr(self.la.get(nid))
+            a.test_rr(REG_RAX(), REG_RAX())
+            a.jcc_rel32(CC_NE(), l_ok)
+            self.emit_stmt(self.ra.get(nid))
+            a.bind_label(l_ok)
+            return
+        }
+
+        if k == NK_MATCH() {
+            self.emit_match(nid)
+            return
+        }
+
+        if k == NK_TRY_CATCH() {
+            let try_blk = self.la.get(nid)
+            let catch_blk = self.ra.get(nid)
+            let finally_blk = self.ea.get(nid)
+            let cvar = self.sa.get(nid)
+
+            let l_catch = a.new_label()
+            let l_after_catch = a.new_label()
+
+            // Push try context
+            a.call_rel32(self.rt.lbl("__rt_try_push"))
+            a.test_rr(REG_RAX(), REG_RAX())
+            a.jcc_rel32(CC_NE(), l_catch)
+
+            // Try block
+            let s_try = self.scope_names.len()
+            let d_try = self.defer_nodes.len()
+            self.push_scope()
+            self.emit_block_stmts(try_blk)
+            self.emit_scope_defers(d_try)
+            self.emit_scope_drops(s_try)
+            self.pop_scope()
+            a.call_rel32(self.rt.lbl("__rt_try_pop"))
+            a.jmp_rel32(l_after_catch)
+
+            // Catch block
+            a.bind_label(l_catch)
+            let s_catch = self.scope_names.len()
+            let d_catch = self.defer_nodes.len()
+            self.push_scope()
+            if cvar != "" {
+                let cslot = self.alloc_slot(cvar, "str")
+                a.mov_rm64_rip_data(REG_RAX(), self.rt.exc_msg_off)
+                a.mov_mr64(REG_RBP(), -cslot, REG_RAX())
+                a.mov_rr(REG_RCX(), REG_RAX())
+                a.call_rel32(self.rt.lbl("__rt_arc_retain"))
+            }
+            if catch_blk >= 0 {
+                self.emit_block_stmts(catch_blk)
+            }
+            self.emit_scope_defers(d_catch)
+            self.emit_scope_drops(s_catch)
+            self.pop_scope()
+
+            a.bind_label(l_after_catch)
+            // Finally block
+            if finally_blk >= 0 {
+                let s_fin = self.scope_names.len()
+                let d_fin = self.defer_nodes.len()
+                self.push_scope()
+                self.emit_block_stmts(finally_blk)
+                self.emit_scope_defers(d_fin)
+                self.emit_scope_drops(s_fin)
+                self.pop_scope()
+            }
+            return
+        }
+
+        if k == NK_THROW() {
+            let ex = self.la.get(nid)
+            self.emit_expr(ex)
+            self.emit_val_to_str_in_rax(self.node_types.get(ex))
+            a.mov_rr(REG_RCX(), REG_RAX())
+            a.call_rel32(self.rt.lbl("__rt_throw"))
+            return
+        }
+
+        if k == NK_EXPR_STMT() {
+            let tmark = self.temp_str_slots.len()
+            self.emit_expr(self.la.get(nid))
+            self.emit_temp_drops(tmark)
+            return
+        }
+
+        if k == NK_TUPLE_DESTR() {
+            let init_id = self.la.get(nid)
+            self.emit_expr(init_id)
+            let tmp_slot = self.alloc_slot("", "tuple")
+            a.mov_mr64(REG_RBP(), -tmp_slot, REG_RAX())
+            let ncnt = self.child_count(nid)
+            mut ni = 0
+            while ni < ncnt {
+                let cid = self.child_at(nid, ni)
+                let vname = self.sa.get(cid)
+                let vt = btype_norm(self.node_types.get(cid))
+                let vslot = self.alloc_slot(vname, vt)
+                a.mov_rm64(REG_RAX(), REG_RBP(), -tmp_slot)
+                a.mov_rm64(REG_RAX(), REG_RAX(), ni * 8)
+                a.mov_mr64(REG_RBP(), -vslot, REG_RAX())
+                ni = ni + 1
+            }
+            return
+        }
+
+        // Fallback: evaluate expression statement
+        self.emit_expr(nid)
+    }
+
+}

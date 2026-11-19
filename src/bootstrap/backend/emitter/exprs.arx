@@ -1,0 +1,296 @@
+import "./mod.arx"
+
+extend Emitter {
+    // --- Expressions ---
+
+    priv fn gen_expr(nid: i64) -> str {
+        if nid < 0 { return "0" }
+        let k = self.nk.get(nid)
+
+        if k == NK_INT_LIT() {
+            let v = self.sa.get(nid)
+            return "((int64_t)" + v + "LL)"
+        }
+        if k == NK_FLOAT_LIT() {
+            return "((double)" + self.sa.get(nid) + ")"
+        }
+        if k == NK_BOOL_LIT() {
+            if self.ia.get(nid) != 0 { return "true" }
+            return "false"
+        }
+        if k == NK_NULL_LIT() { return "NULL" }
+        if k == NK_CHAR_LIT() {
+            let s = self.sa.get(nid)
+            mut chv = 0
+            if s.len() > 0 { chv = s.byte_at(0) }
+            return "((char)" + (chv as str) + ")"
+        }
+        if k == NK_STR_LIT() {
+            let tmp = self.next_tmp()
+            self.w_ind()
+            self.w("const char* " + tmp + " = ")
+            self.write_c_str_lit(self.sa.get(nid))
+            self.w(";")
+            self.w_nl()
+            return tmp
+        }
+        if k == NK_STR_INTERP() {
+            let pc = self.child_count(nid)
+            if pc == 0 { return "\"\"" }
+            mut acc = ""
+            mut i = 0
+            while i < pc {
+                let pid = self.child_at(nid, i)
+                let pv = self.gen_expr(pid)
+                let pstr = self.emit_cast_to_str(self.node_types.get(pid), pv)
+                if i == 0 {
+                    acc = pstr
+                } else {
+                    let tacc = self.next_tmp()
+                    self.wl("const char* " + tacc + " = arx_str_concat(" + acc + ", " + pstr + ");")
+                    acc = tacc
+                }
+                i = i + 1
+            }
+            return acc
+        }
+        if k == NK_IDENT() {
+            return self.sa.get(nid)
+        }
+        if k == NK_SIZEOF() {
+            return "((int64_t)sizeof(" + btype_to_c(self.sa.get(nid)) + "))"
+        }
+        if k == NK_CAST() {
+            let tt = btype_norm(self.sa.get(nid))
+            let ex = self.la.get(nid)
+            let st = btype_norm(self.node_types.get(ex))
+            let val = self.gen_expr(ex)
+            if btype_is_str(tt) {
+                return self.emit_cast_to_str(st, val)
+            }
+            if btype_is_str(st) {
+                if btype_is_float(tt) { return "((" + btype_to_c(tt) + ")arx_cast_to_f64(" + val + "))" }
+                if tt == "bool" { return "arx_cast_to_bool(" + val + ")" }
+                if btype_is_unsigned(tt) { return "((" + btype_to_c(tt) + ")arx_cast_to_u64(" + val + "))" }
+                return "((" + btype_to_c(tt) + ")arx_cast_to_i64(" + val + "))"
+            }
+            return "((" + btype_to_c(tt) + ")(" + val + "))"
+        }
+        if k == NK_UNARY_OP() {
+            let op_s = self.sa.get(nid)
+            let ex = self.la.get(nid)
+            if op_s == "&" {
+                return self.emit_lvalue_addr(ex, self.node_types.get(ex))
+            }
+            let ov = self.gen_expr(ex)
+            return "(" + op_s + "(" + ov + "))"
+        }
+        if k == NK_BIN_OP() {
+            return self.gen_bin_op(nid)
+        }
+        if k == NK_MEMBER() {
+            let ext = self.node_ext.get(nid)
+            if ext.starts_with("enum_unit::") {
+                let rest = ext.slice(11, ext.len())
+                let ep = rest.split("::")
+                let ename = ep.get(0)
+                let vname = ep.get(1)
+                return "Arx_" + ename + "_" + vname + "()"
+            }
+            if ext.starts_with("mod_call::") {
+                return ext.slice(10, ext.len()) + "()"
+            }
+            if ext.starts_with("mod_global::") {
+                return ext.slice(12, ext.len())
+            }
+            let lhs = self.la.get(nid)
+            let mem = self.sa.get(nid)
+            if self.nk.get(lhs) == NK_IDENT() {
+                if self.sa.get(lhs) == "self" && self.cur_class != "" {
+                    return "self->" + mem
+                }
+            }
+            let lt = btype_norm(self.node_types.get(lhs))
+            if (btype_is_list(lt) || btype_is_map(lt) || btype_is_set(lt) || btype_is_stack(lt) || btype_is_queue(lt) || btype_is_deque(lt)) && (mem == "length" || mem == "len") {
+                let addr = self.emit_lvalue_addr(lhs, lt)
+                return "Arx_" + btype_mangle(lt) + "_len(" + addr + ")"
+            }
+            if btype_is_slice(lt) && (mem == "length" || mem == "len") {
+                return "((int64_t)(" + self.gen_expr(lhs) + ").len)"
+            }
+            if btype_is_str(lt) && (mem == "length" || mem == "len") {
+                return "arx_str_len(" + self.gen_expr(lhs) + ")"
+            }
+            let obj = self.gen_expr(lhs)
+            if btype_is_ptr(lt) {
+                return obj + "->" + mem
+            }
+            return obj + "." + mem
+        }
+        if k == NK_INDEX() {
+            let lhs = self.la.get(nid)
+            let lt = btype_norm(self.node_types.get(lhs))
+            let idx_id = self.ra.get(nid)
+            if self.nk.get(idx_id) == NK_RANGE() {
+                let s_expr = self.gen_expr(self.la.get(idx_id))
+                let e_raw = self.gen_expr(self.ra.get(idx_id))
+                mut e_expr = e_raw
+                mut inc_s = "false"
+                if has_flag(self.ia.get(idx_id), FLAG_INCLUSIVE()) {
+                    e_expr = "((" + e_raw + ") + 1)"
+                    inc_s = "true"
+                }
+                if btype_is_list(lt) {
+                    let addr = self.emit_lvalue_addr(lhs, lt)
+                    return "Arx_" + btype_mangle(lt) + "_slice(" + addr + ", " + s_expr + ", " + e_expr + ")"
+                }
+                if btype_is_str(lt) {
+                    return "__arx_bstr_slice(" + self.gen_expr(lhs) + ", " + s_expr + ", " + e_expr + ")"
+                }
+                if btype_is_fixed_arr(lt) {
+                    let elem_c = btype_to_c(btype_arr_elem(lt))
+                    return "arx_slice_create(" + self.gen_expr(lhs) + ", " + s_expr + ", " + e_raw + ", sizeof(" + elem_c + "), " + inc_s + ")"
+                }
+                if btype_is_slice(lt) {
+                    let elem_c = btype_to_c(btype_slice_elem(lt))
+                    return "arx_slice_sub(" + self.gen_expr(lhs) + ", " + s_expr + ", " + e_raw + ", sizeof(" + elem_c + "), " + inc_s + ")"
+                }
+            }
+            let idx = self.gen_expr(idx_id)
+            if btype_is_list(lt) {
+                let addr = self.emit_lvalue_addr(lhs, lt)
+                return "Arx_" + btype_mangle(lt) + "_get(" + addr + ", " + idx + ")"
+            }
+            if btype_is_map(lt) {
+                let addr = self.emit_lvalue_addr(lhs, lt)
+                return "Arx_" + btype_mangle(lt) + "_get(" + addr + ", " + idx + ")"
+            }
+            if btype_is_slice(lt) {
+                let elem_c = btype_to_c(btype_slice_elem(lt))
+                let obj = self.gen_expr(lhs)
+                return "((" + elem_c + "*)((" + obj + ").data))[" + idx + "]"
+            }
+            let obj = self.gen_expr(lhs)
+            return "(" + obj + ")[" + idx + "]"
+        }
+        if k == NK_CALL() || k == NK_NEW() || k == NK_GENERIC_CALL() {
+            return self.gen_call(nid)
+        }
+        if k == NK_NAMED_ARG() {
+            return self.gen_expr(self.la.get(nid))
+        }
+        if k == NK_TUPLE_LIT() {
+            let tup_t = btype_norm(self.node_types.get(nid))
+            let tup_m = btype_mangle(tup_t)
+            let cc = self.child_count(nid)
+            mut args_s = ""
+            mut ci = 0
+            while ci < cc {
+                let ev = self.gen_expr(self.child_at(nid, ci))
+                if ci > 0 { args_s = args_s + ", " }
+                args_s = args_s + ev
+                ci = ci + 1
+            }
+            let tmp = self.next_tmp()
+            self.wl("Arx_" + tup_m + " " + tmp + " = arx_make_" + tup_m + "(" + args_s + ");")
+            return tmp
+        }
+        if k == NK_PIPELINE() || k == NK_CASCADE() {
+            self.gen_expr(self.la.get(nid))
+            return self.gen_expr(self.ra.get(nid))
+        }
+        return "0"
+    }
+
+    priv fn gen_bin_op(nid: i64) -> str {
+        let op_s = self.sa.get(nid)
+        let lid = self.la.get(nid)
+        let rid = self.ra.get(nid)
+        let lt = btype_norm(self.node_types.get(lid))
+        let rt = btype_norm(self.node_types.get(rid))
+
+        // Short-circuit && and ||
+        if op_s == "&&" {
+            let lv = self.gen_expr(lid)
+            let tmp = self.next_tmp()
+            self.wl("bool " + tmp + " = false;")
+            self.w_ind()
+            self.w("if (" + lv + ") ")
+            self.w_lbrace()
+            self.w_nl()
+            self.indent = self.indent + 1
+            let rv = self.gen_expr(rid)
+            self.wl(tmp + " = (" + rv + ");")
+            self.close_blk()
+            return tmp
+        }
+        if op_s == "||" {
+            let lv = self.gen_expr(lid)
+            let tmp = self.next_tmp()
+            self.wl("bool " + tmp + " = true;")
+            self.w_ind()
+            if (!lv.starts_with("(") || !lv.ends_with(")")) {
+                self.w("if (!(" + lv + ")) ")
+            } else {
+                self.w("if (!" + lv + ") ")
+            }
+            self.w_lbrace()
+            self.w_nl()
+            self.indent = self.indent + 1
+            let rv = self.gen_expr(rid)
+            self.wl(tmp + " = (" + rv + ");")
+            self.close_blk()
+            return tmp
+        }
+        if op_s == "??" {
+            let lv = self.gen_expr(lid)
+            let tmp = self.next_tmp()
+            let ctype = btype_to_c(lt)
+            self.wl(ctype + " " + tmp + " = " + lv + ";")
+            self.w_ind()
+            if btype_is_str(lt) {
+                self.w("if (" + tmp + " == NULL || " + tmp + "[0] == '\\0') ")
+            } else if lt == "bool" {
+                self.w("if (!(" + tmp + ")) ")
+            } else if btype_is_numeric(lt) {
+                self.w("if (" + tmp + " == 0) ")
+            } else {
+                self.w("if (" + tmp + " == NULL) ")
+            }
+            self.w_lbrace()
+            self.w_nl()
+            self.indent = self.indent + 1
+            let rv = self.gen_expr(rid)
+            self.wl(tmp + " = (" + rv + ");")
+            self.close_blk()
+            return tmp
+        }
+
+        let lv = self.gen_expr(lid)
+        let rv = self.gen_expr(rid)
+
+        if op_s == "+" && (btype_is_str(lt) || btype_is_str(rt)) {
+            let ls = self.emit_cast_to_str(lt, lv)
+            let rs = self.emit_cast_to_str(rt, rv)
+            let tmp = self.next_tmp()
+            self.wl("const char* " + tmp + " = arx_str_concat(" + ls + ", " + rs + ");")
+            return tmp
+        }
+
+        if btype_is_str(lt) && btype_is_str(rt) {
+            if op_s == "==" || op_s == "!=" || op_s == "<" || op_s == "<=" || op_s == ">" || op_s == ">=" {
+                return "(arx_str_compare(" + lv + ", " + rv + ") " + op_s + " 0)"
+            }
+        }
+
+        if op_s == "**" {
+            if btype_is_float(lt) || btype_is_float(rt) {
+                return "pow((double)(" + lv + "), (double)(" + rv + "))"
+            }
+            return "((int64_t)pow((double)(" + lv + "), (double)(" + rv + ")))"
+        }
+
+        return "((" + lv + ") " + op_s + " (" + rv + "))"
+    }
+
+}

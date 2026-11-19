@@ -34,6 +34,11 @@ pub fn btype_is_int(t: str) -> bool {
     return nt == "i8" || nt == "i16" || nt == "i32" || nt == "i64" || nt == "u8" || nt == "u16" || nt == "u32" || nt == "u64" || nt == "usize" || nt == "isize"
 }
 
+pub fn btype_is_unsigned(t: str) -> bool {
+    let nt = btype_norm(t)
+    return nt == "u8" || nt == "u16" || nt == "u32" || nt == "u64" || nt == "usize"
+}
+
 pub fn btype_is_float(t: str) -> bool {
     let nt = btype_norm(t)
     return nt == "f32" || nt == "f64"

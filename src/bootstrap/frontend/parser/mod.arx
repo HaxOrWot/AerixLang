@@ -1,0 +1,10 @@
+// Auto-generated module entry — imports all parts of Parser
+import "./base.arx"
+import "./arena.arx"
+import "./tokens.arx"
+import "./loader.arx"
+import "./types.arx"
+import "./unit.arx"
+import "./decls.arx"
+import "./stmts.arx"
+import "./exprs.arx"
