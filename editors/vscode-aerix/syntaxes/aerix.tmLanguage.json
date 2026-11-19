@@ -169,7 +169,7 @@
           "match": "\\b(pub|priv|prot)?\\s*(class|struct|trait|extend|type)\\s+([A-Za-z_][A-Za-z0-9_]*)",
           "captures": {
             "1": { "name": "storage.modifier.aerix" },
-            "2": { "name": "storage.type.aerix" },
+            "2": { "name": "keyword.declaration.class.aerix storage.type.class.aerix keyword.other.class.aerix keyword.control.class.aerix storage.type.aerix" },
             "3": { "name": "entity.name.type.class.aerix" }
           }
         },
@@ -177,7 +177,7 @@
           "match": "\\b(pub|priv|prot)?\\s*(enum)\\s+([A-Za-z_][A-Za-z0-9_]*)",
           "captures": {
             "1": { "name": "storage.modifier.aerix" },
-            "2": { "name": "storage.type.enum.aerix" },
+            "2": { "name": "keyword.declaration.enum.aerix storage.type.enum.aerix keyword.other.enum.aerix keyword.control.enum.aerix storage.type.aerix" },
             "3": { "name": "entity.name.type.enum.aerix" }
           }
         },
@@ -333,7 +333,7 @@
           "match": "\\b(if|else|elif|match|case|for|in|while|loop|break|continue|return|guard|defer|try|catch|finally|throw|spawn|yield|async|await)\\b"
         },
         {
-          "name": "keyword.declaration.aerix",
+          "name": "keyword.declaration.aerix keyword.control.aerix storage.type.class.aerix storage.type.aerix",
           "match": "\\b(fn|let|mut|const|class|struct|enum|trait|type|init|drop|prop|op|extend|get|set)\\b"
         },
         {

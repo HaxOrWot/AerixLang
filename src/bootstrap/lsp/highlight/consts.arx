@@ -36,6 +36,9 @@ fn is_keyword_token_kind(k: i64) -> bool {
 
 fn hl_keyword_mod(k: i64) -> i64 {
     if k == TK_BOOL() || k == TK_NULL() { return SM_READONLY() }
+    if (k >= 20 && k <= 30) || k == TK_PROP() || k == TK_OP() || k == TK_EXTEND() {
+        return SM_DECL()
+    }
     if (k >= 31 && k <= 45) || k == TK_GUARD() || k == TK_DEFER() || k == TK_USE() || k == TK_IMPORT() || k == TK_FROM() || k == TK_AS() {
         return SM_CONTROL_FLOW()
     }

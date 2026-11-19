@@ -80,6 +80,8 @@
         "language": "aerix",
         "scopes": {
           "comment.documentation": ["comment.block.documentation.aerix", "comment.line.documentation.aerix"],
+          "keyword": ["keyword.control.aerix", "keyword.declaration.aerix", "storage.type.class.aerix", "storage.type.aerix"],
+          "keyword.declaration": ["keyword.declaration.aerix", "keyword.control.aerix", "storage.type.class.aerix", "storage.type.aerix"],
           "keyword.controlFlow": ["keyword.control.aerix"],
           "keyword.abstract": ["storage.modifier.aerix"],
           "keyword.readonly": ["constant.language.boolean.aerix", "constant.language.null.aerix"],
