@@ -129,6 +129,17 @@ extend NativeCodegen {
                     guard_c = guard_c + 1
                 }
             }
+            mut fn_lookup = nm
+            if self.az.item_aliases.has_key(fn_lookup) { fn_lookup = self.az.item_aliases.get(fn_lookup) }
+            if self.az.sig_by_key.has_key("fn::" + fn_lookup) {
+                let sig_str = self.az.sig_by_key.get("fn::" + fn_lookup)
+                let sig_parts = sig_str.split(",")
+                let sig_id = sig_parts.get(0) as i64
+                let fn_nid = self.az.sig_nodes.get(sig_id)
+                let fn_sym = self.fn_symbol_name(fn_nid)
+                a.lea_rip_label(REG_RAX(), self.rt.lbl(fn_sym))
+                return
+            }
             a.mov_ri32_sext(REG_RAX(), 0)
             return
         }

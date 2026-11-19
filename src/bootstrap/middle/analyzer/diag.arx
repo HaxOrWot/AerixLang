@@ -157,7 +157,7 @@ extend Analyzer {
         if name == "input" || name == "read_line" || name == "to_string" || name == "chr" || name == "parse_int" || name == "ord" || name == "len" { return true }
         if name == "parse_float" || name == "sqrt" || name == "sin" || name == "cos" || name == "tan" || name == "pow" || name == "floor" || name == "ceil" || name == "round" || name == "log" || name == "exp" || name == "abs" || name == "min" || name == "max" || name == "exit" { return true }
         if name == "File" || name == "Directory" || name == "Path" || name == "Process" || name == "Env" || name == "Math" || name == "ByteBuffer" || name == "String" || name == "List" || name == "Map" || name == "Set" || name == "Stack" || name == "Queue" || name == "Deque" { return true }
-        if name == "stdin" || name == "stdout" || name == "stderr" || name.starts_with("arx_") { return true }
+        if name == "stdin" || name == "stdout" || name == "stderr" || name.starts_with("arx_") || name.starts_with("__rt_") { return true }
         return false
     }
 

@@ -190,7 +190,7 @@ extend Analyzer {
             }
 
             // Fallback direct runtime helper or function variable; otherwise undefined function
-            if self.scope_lookup(name) == "" && !name.starts_with("arx_") {
+            if self.scope_lookup(name) == "" && !name.starts_with("arx_") && !name.starts_with("__rt_") {
                 self.unresolved_nodes.insert(nid, 1)
                 let sug = self.suggest_ident(name)
                 mut hmsg = "define 'fn " + name + "(...)' or import the module providing it"

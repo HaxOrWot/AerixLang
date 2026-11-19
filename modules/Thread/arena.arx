@@ -1,0 +1,28 @@
+// ==============================================================================
+// Aerix Standard Library: Thread::TLSArena
+// Thread-Local Scratch Arena for Zero-Lock, Zero-Contention Microsecond Allocations
+// ==============================================================================
+
+pub class TLSArena {
+    pub raw_ptr: i64
+
+    init(ptr: i64) {
+        self.raw_ptr = ptr
+    }
+
+    pub fn alloc(size: i64) -> i64 {
+        return __rt_tls_arena_alloc(self.raw_ptr, size)
+    }
+
+    pub fn reset() {
+        __rt_tls_arena_reset(self.raw_ptr)
+    }
+
+    pub fn cursor() -> i64 {
+        return __rt_tls_arena_cursor(self.raw_ptr)
+    }
+
+    pub fn rewind(mark: i64) {
+        __rt_tls_arena_rewind(self.raw_ptr, mark)
+    }
+}

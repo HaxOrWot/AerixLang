@@ -1,0 +1,36 @@
+// ==============================================================================
+// Aerix Standard Library: Sync::SpinLock
+// Ultra-Low Latency Spin-Guard with Hardware PAUSE Back-Off
+// ==============================================================================
+
+import "./atomic.arx"
+
+pub class SpinLock {
+    pub state: AtomicInt
+
+    init() {
+        self.state = AtomicInt(0)
+    }
+
+    pub fn lock() {
+        mut backoff = 1
+        while !self.state.compare_exchange_bool(0, 1) {
+            mut i = 0
+            while i < backoff {
+                atomicPause()
+                i = i + 1
+            }
+            if backoff < 64 {
+                backoff = backoff * 2
+            }
+        }
+    }
+
+    pub fn try_lock() -> bool {
+        return self.state.compare_exchange_bool(0, 1)
+    }
+
+    pub fn unlock() {
+        self.state.store(0)
+    }
+}

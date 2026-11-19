@@ -1,24 +1,26 @@
-# Aerix Language & IntelliSense Support (`v3.0.0`)
+# Aerix Language & IntelliSense Support (`v3.1.0-beta.1`)
 
 <div align="center">
 
 <img src="./icons/aerix-icon.png" width="128" height="128" alt="Aerix Logo" />
 
-[![Version](https://img.shields.io/badge/version-3.0.0-00DCFF.svg?style=for-the-badge&logo=visualstudiocode)](#)
-[![Release Channel](https://img.shields.io/badge/channel-stable-10B981.svg?style=for-the-badge)](#)
+[![Version](https://img.shields.io/badge/version-3.1.0--beta.1-00DCFF.svg?style=for-the-badge&logo=visualstudiocode)](#)
+[![Release Channel](https://img.shields.io/badge/channel-beta-blue.svg?style=for-the-badge)](#)
 [![Language](https://img.shields.io/badge/language-Aerix%20(.arx)-1E90FF.svg?style=for-the-badge)](#)
 [![LSP Engine](https://img.shields.io/badge/LSP-Compiler%20Driven%20(JSON--RPC)-7C4DFF.svg?style=for-the-badge)](#)
 [![Architecture](https://img.shields.io/badge/arch-x86__64--windows-orange.svg?style=for-the-badge)](#)
 
-**The official, production-grade Visual Studio Code & Antigravity IDE extension for Aerix (`.arx`). Powered directly by the self-hosting native compiler daemon (`arx lsp`) for ultra-responsive semantic analysis, context-ranked autocompletions, strict import scoping, hover docs, parameter hints, cross-file Go-to-Definition, live diagnostics, integrated toolchain version manager, and one-click execution.**
+**The official Visual Studio Code & Antigravity IDE extension for Aerix (`.arx`). Powered directly by the self-hosting native compiler daemon (`arx lsp`) for ultra-responsive semantic analysis, context-ranked autocompletions, strict import scoping, hover docs, parameter hints, cross-file Go-to-Definition, live diagnostics, integrated toolchain version manager, and one-click execution.**
 
 </div>
 
 ---
 
-## 🚀 Key Highlights & New in v3.0.0-beta.4
+## 🚀 Key Highlights & New in v3.1.0-beta.1
 
-- **Fuzzy Search & Subsequence Completion Ranking:** Intelligent ranking favoring exact matches, camelCase/snake_case word boundaries, and subsequence queries.
+- **Hardware-Direct Multi-Threading & Atomics (`Sync`, `Thread`):** Direct x86-64 `LOCK CMPXCHG` and `LOCK XADD` instructions, Win32 `CreateThread` worker spawning, `ThreadHandle.join()`, and low-latency spin-guards (`SpinLock`).
+- **Thread-Local Scratch Arenas (`TLSArena`):** Instant sub-nanosecond pointer-bump memory allocation with zero lock contention and $O(1)$ zero-cost reset.
+- **Bit-for-Bit Self-Hosting Convergence:** Fully validated 4-stage self-hosting compiler (`stage3` compiling `stage4` with identical SHA256 checksums).
 - **Dynamic Interactive Snippets:** Instant expansions for `if`, `ifelse`, `for`, `for_in`, `while`, `match`, `guard`, `try`, `spawn`, `defer`, `fn`, `pub_fn`, `struct`, `class`, `enum`, `trait`, and `test`.
 - **Call Parameter Inlay Hints:** Call-site argument names automatically rendered (`kind: 2`) with smart suppression for identical argument names.
 - **Hierarchical Outline & Breadcrumbs:** Document symbols with full block range calculation for smooth code navigation.

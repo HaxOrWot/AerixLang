@@ -1,0 +1,47 @@
+// ==============================================================================
+// Aerix Standard Library: Thread::Core
+// Native OS Thread Spawning, Joining, Sleep, and ID Querying
+// ==============================================================================
+
+import "./arena.arx"
+
+pub class ThreadHandle {
+    pub raw_handle: i64
+
+    init(h: i64) {
+        self.raw_handle = h
+    }
+
+    pub fn join() {
+        if self.raw_handle != 0 {
+            __rt_thread_join(self.raw_handle)
+            self.raw_handle = 0
+        }
+    }
+}
+
+pub fn spawn(entry: i64) -> ThreadHandle {
+    let h = __rt_thread_spawn(entry, 0)
+    return ThreadHandle(h)
+}
+
+pub fn spawn_arg(entry: i64, arg: i64) -> ThreadHandle {
+    let h = __rt_thread_spawn(entry, arg)
+    return ThreadHandle(h)
+}
+
+pub fn current_id() -> i64 {
+    return __rt_thread_current_id()
+}
+
+pub fn yield_now() {
+    __rt_thread_yield()
+}
+
+pub fn thread_sleep(ms: i64) {
+    __rt_thread_sleep(ms)
+}
+
+pub fn local_arena() -> TLSArena {
+    return TLSArena(__rt_tls_arena_get())
+}

@@ -1,0 +1,7 @@
+// ==============================================================================
+// Aerix Standard Library: Sync
+// Concurrency Synchronization, Atomics, and Spinlocks
+// ==============================================================================
+
+import "./atomic.arx"
+import "./lock.arx"

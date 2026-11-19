@@ -1,0 +1,201 @@
+import "./mod.arx"
+
+// ==============================================================================
+// Aerix Native x86-64 Runtime: Threading, Atomics, and TLSArena
+// High-concurrency low-latency primitives for multi-core parallelism.
+// ==============================================================================
+
+extend NativeRt {
+
+    priv fn emit_threading_and_atomics() {
+        let a = self.asmb
+
+        // ====================================================================
+        // Atomics Primitives
+        // ====================================================================
+
+        // __rt_atomic_load(rcx = ptr: i64) -> rax: i64
+        self.begin_fn("__rt_atomic_load", 32)
+        a.mov_rm64(REG_RAX(), REG_RCX(), 0)
+        self.end_fn()
+
+        // __rt_atomic_store(rcx = ptr: i64, rdx = val: i64) -> void
+        self.begin_fn("__rt_atomic_store", 32)
+        a.mov_mr64(REG_RCX(), 0, REG_RDX())
+        a.mfence()
+        self.end_fn()
+
+        // __rt_atomic_cmpxchg(rcx = ptr: i64, rdx = expected: i64, r8 = desired: i64) -> rax: old_val
+        self.begin_fn("__rt_atomic_cmpxchg", 32)
+        a.mov_rr(REG_RAX(), REG_RDX())
+        a.lock_cmpxchg_m64(REG_RCX(), 0, REG_R8())
+        self.end_fn()
+
+        // __rt_atomic_cmpxchg_bool(rcx = ptr: i64, rdx = expected: i64, r8 = desired: i64) -> rax: bool (1/0)
+        self.begin_fn("__rt_atomic_cmpxchg_bool", 32)
+        a.mov_rr(REG_RAX(), REG_RDX())
+        a.lock_cmpxchg_m64(REG_RCX(), 0, REG_R8())
+        a.setcc_u8(CC_E(), REG_RAX())
+        self.end_fn()
+
+        // __rt_atomic_xadd(rcx = ptr: i64, rdx = delta: i64) -> rax: old_val
+        self.begin_fn("__rt_atomic_xadd", 32)
+        a.mov_rr(REG_RAX(), REG_RDX())
+        a.lock_xadd_m64(REG_RCX(), 0, REG_RAX())
+        self.end_fn()
+
+        // __rt_atomic_pause() -> void
+        self.begin_fn("__rt_atomic_pause", 32)
+        a.pause()
+        self.end_fn()
+
+        // __rt_atomic_fence() -> void
+        self.begin_fn("__rt_atomic_fence", 32)
+        a.mfence()
+        self.end_fn()
+
+        // ====================================================================
+        // OS Threading Primitives (Win32 CreateThread / WaitForSingleObject)
+        // ====================================================================
+
+        // __rt_thread_spawn(rcx = fn_ptr: i64, rdx = arg: i64) -> rax: thread_handle
+        self.begin_fn("__rt_thread_spawn", 64)
+        // Set up Win32 CreateThread(NULL, 0, fn_ptr, arg, 0, NULL)
+        a.mov_rr(REG_R8(), REG_RCX())   // lpStartAddress = fn_ptr
+        a.mov_rr(REG_R9(), REG_RDX())   // lpParameter = arg
+        a.mov_ri32_sext(REG_RCX(), 0)   // lpThreadAttributes = NULL
+        a.mov_ri32_sext(REG_RDX(), 0)   // dwStackSize = 0 (default)
+        // Stack arg 5 at [rsp + 32]: dwCreationFlags = 0
+        a.mov_ri32_sext(REG_RAX(), 0)
+        a.mov_mr64(REG_RSP(), 32, REG_RAX())
+        // Stack arg 6 at [rsp + 40]: lpThreadId = NULL
+        a.mov_mr64(REG_RSP(), 40, REG_RAX())
+        a.call_rip_iat(self.imp_create_thread)
+        self.end_fn()
+
+        // __rt_thread_join(rcx = handle: i64) -> void
+        self.begin_fn("__rt_thread_join", 48)
+        let l_join_null = a.new_label()
+        a.test_rr(REG_RCX(), REG_RCX())
+        a.jcc_rel32(CC_E(), l_join_null)
+        a.mov_mr64(REG_RBP(), -8, REG_RCX())
+        a.mov_ri32_sext(REG_RDX(), -1) // INFINITE
+        a.call_rip_iat(self.imp_wait_obj)
+        a.mov_rm64(REG_RCX(), REG_RBP(), -8)
+        a.call_rip_iat(self.imp_close_handle)
+        a.bind_label(l_join_null)
+        self.end_fn()
+
+        // __rt_thread_current_id() -> rax: i64
+        self.begin_fn("__rt_thread_current_id", 48)
+        a.call_rip_iat(self.imp_get_cur_thread_id)
+        self.end_fn()
+
+        // __rt_thread_yield() -> void
+        self.begin_fn("__rt_thread_yield", 48)
+        a.mov_ri32_sext(REG_RCX(), 0)
+        a.call_rip_iat(self.imp_sleep)
+        self.end_fn()
+
+        // __rt_thread_sleep(rcx = ms: i64) -> void
+        self.begin_fn("__rt_thread_sleep", 48)
+        let l_slp_zero = a.new_label()
+        a.cmp_ri32(REG_RCX(), 0)
+        a.jcc_rel32(CC_LE(), l_slp_zero)
+        a.call_rip_iat(self.imp_sleep)
+        a.bind_label(l_slp_zero)
+        self.end_fn()
+
+        // ====================================================================
+        // Thread-Local Storage & TLSArena Primitives
+        // ====================================================================
+
+        // __rt_tls_arena_init() -> void (Invoked once during program bootstrap)
+        self.begin_fn("__rt_tls_arena_init", 48)
+        a.call_rip_iat(self.imp_tls_alloc)
+        a.mov_mr64_rip_data(self.tls_arena_index_off, REG_RAX())
+        self.end_fn()
+
+        // __rt_tls_arena_get() -> rax: ptr to TLSArena struct
+        // Structure: [arena + 0] = cursor: i64
+        //            [arena + 8] = capacity: i64 (2MB = 2097152)
+        //            [arena + 16] = base_ptr: i64
+        self.begin_fn("__rt_tls_arena_get", 48)
+        a.mov_rm64_rip_data(REG_RCX(), self.tls_arena_index_off)
+        a.call_rip_iat(self.imp_tls_get_val)
+        let l_got_arena = a.new_label()
+        a.test_rr(REG_RAX(), REG_RAX())
+        a.jcc_rel32(CC_NE(), l_got_arena)
+
+        // Arena not initialized for this thread yet: allocate control block (24 bytes)
+        a.mov_ri32_sext(REG_RCX(), 24)
+        a.call_rel32(self.lbl("__rt_alloc"))
+        a.mov_mr64(REG_RBP(), -8, REG_RAX()) // save arena block pointer
+
+        // Allocate 2MB chunk buffer (2097152 bytes)
+        a.mov_ri64(REG_RCX(), 2097152)
+        a.call_rel32(self.lbl("__rt_alloc"))
+
+        // Initialize control block fields
+        a.mov_rm64(REG_RDX(), REG_RBP(), -8) // RDX = arena block
+        a.mov_ri32_sext(REG_RCX(), 0)
+        a.mov_mr64(REG_RDX(), 0, REG_RCX())   // [arena + 0] = 0 (cursor)
+        a.mov_ri64(REG_RCX(), 2097152)
+        a.mov_mr64(REG_RDX(), 8, REG_RCX())   // [arena + 8] = 2097152 (capacity)
+        a.mov_mr64(REG_RDX(), 16, REG_RAX())  // [arena + 16] = buffer (RAX)
+
+        // Store arena pointer into TLS
+        a.mov_rm64_rip_data(REG_RCX(), self.tls_arena_index_off)
+        // RDX is arena pointer
+        a.call_rip_iat(self.imp_tls_set_val)
+        a.mov_rm64(REG_RAX(), REG_RBP(), -8)
+
+        a.bind_label(l_got_arena)
+        self.end_fn()
+
+        // __rt_tls_arena_alloc(rcx = arena: ptr, rdx = size: i64) -> rax: ptr
+        self.begin_fn("__rt_tls_arena_alloc", 48)
+        // 16-byte align size: (rdx + 15) & ~15
+        a.add_ri32(REG_RDX(), 15)
+        a.mov_ri64(REG_RAX(), -16)
+        a.and_rr(REG_RDX(), REG_RAX())
+
+        a.mov_rm64(REG_RAX(), REG_RCX(), 0)   // RAX = cursor
+        a.mov_rm64(REG_R8(), REG_RCX(), 8)    // R8  = capacity
+        a.mov_rr(REG_R9(), REG_RAX())
+        a.add_rr(REG_R9(), REG_RDX())         // R9  = new_cursor = cursor + size
+
+        let l_arena_fallback = a.new_label()
+        a.cmp_rr(REG_R9(), REG_R8())
+        a.jcc_rel32(CC_G(), l_arena_fallback)
+
+        // Cursor fits in arena: commit new cursor and return base + old_cursor
+        a.mov_mr64(REG_RCX(), 0, REG_R9())
+        a.mov_rm64(REG_R8(), REG_RCX(), 16)   // base pointer
+        a.add_rr(REG_RAX(), REG_R8())         // base + old_cursor
+        self.end_fn()
+
+        // Fallback: if arena is exhausted, allocate from global heap
+        a.bind_label(l_arena_fallback)
+        a.mov_rr(REG_RCX(), REG_RDX())
+        a.call_rel32(self.lbl("__rt_alloc"))
+        self.end_fn()
+
+        // __rt_tls_arena_reset(rcx = arena: ptr) -> void
+        self.begin_fn("__rt_tls_arena_reset", 32)
+        a.mov_ri32_sext(REG_RAX(), 0)
+        a.mov_mr64(REG_RCX(), 0, REG_RAX())
+        self.end_fn()
+
+        // __rt_tls_arena_cursor(rcx = arena: ptr) -> rax: i64
+        self.begin_fn("__rt_tls_arena_cursor", 32)
+        a.mov_rm64(REG_RAX(), REG_RCX(), 0)
+        self.end_fn()
+
+        // __rt_tls_arena_rewind(rcx = arena: ptr, rdx = mark: i64) -> void
+        self.begin_fn("__rt_tls_arena_rewind", 32)
+        a.mov_mr64(REG_RCX(), 0, REG_RDX())
+        self.end_fn()
+    }
+
+}

@@ -1,0 +1,7 @@
+// ==============================================================================
+// Aerix Standard Library: Thread
+// Native Multi-Threading, Thread Handles, and Thread-Local Scratch Arenas
+// ==============================================================================
+
+import "./arena.arx"
+import "./thread.arx"

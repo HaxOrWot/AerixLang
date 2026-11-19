@@ -286,7 +286,7 @@ extend Parser {
                 let m_idx = self.adv()
                 return self.with_tok_col(self.add_node(NK_MEMBER(), "f" + self.tok_vals.get(m_idx), "", 0, left, -1, -1, ln), m_idx)
             }
-            if self.cur_kind() == TK_IDENT() {
+            if self.cur_kind() == TK_IDENT() || self.cur_kind() == TK_SPAWN() {
                 let m_tok = self.adv()
                 return self.with_tok_col(self.add_node(NK_MEMBER(), self.tok_vals.get(m_tok), "", 0, left, -1, -1, ln), m_tok)
             }

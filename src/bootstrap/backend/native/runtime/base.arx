@@ -27,6 +27,13 @@ pub class NativeRt {
     pub imp_get_exit: i64
     pub imp_close_handle: i64
     pub imp_get_std_handle: i64
+    pub imp_create_thread: i64
+    pub imp_get_cur_thread_id: i64
+    pub imp_tls_alloc: i64
+    pub imp_tls_get_val: i64
+    pub imp_tls_set_val: i64
+    pub imp_tls_free: i64
+    pub tls_arena_index_off: i64
 
     pub imp_malloc: i64
     pub imp_calloc: i64
@@ -114,6 +121,13 @@ pub class NativeRt {
         self.imp_get_exit = pe.add_import("kernel32.dll", "GetExitCodeProcess")
         self.imp_close_handle = pe.add_import("kernel32.dll", "CloseHandle")
         self.imp_get_std_handle = pe.add_import("kernel32.dll", "GetStdHandle")
+        self.imp_create_thread = pe.add_import("kernel32.dll", "CreateThread")
+        self.imp_get_cur_thread_id = pe.add_import("kernel32.dll", "GetCurrentThreadId")
+        self.imp_tls_alloc = pe.add_import("kernel32.dll", "TlsAlloc")
+        self.imp_tls_get_val = pe.add_import("kernel32.dll", "TlsGetValue")
+        self.imp_tls_set_val = pe.add_import("kernel32.dll", "TlsSetValue")
+        self.imp_tls_free = pe.add_import("kernel32.dll", "TlsFree")
+        self.tls_arena_index_off = pe.alloc_data_qword(-1)
 
         self.imp_malloc = pe.add_import("msvcrt.dll", "malloc")
         self.imp_calloc = pe.add_import("msvcrt.dll", "calloc")

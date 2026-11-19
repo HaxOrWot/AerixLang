@@ -643,6 +643,222 @@ static inline void arx_thread_join(int64_t handle) {
 #endif
 }
 
+static inline int64_t arx_rt_thread_current_id(void) {
+#if defined(_WIN32) || defined(_WIN64)
+    return (int64_t)GetCurrentThreadId();
+#else
+    return (int64_t)(intptr_t)pthread_self();
+#endif
+}
+
+static inline int64_t arx_rt_thread_yield(void) {
+#if defined(_WIN32) || defined(_WIN64)
+    Sleep(0);
+#else
+    sched_yield();
+#endif
+    return 0;
+}
+
+static inline int64_t arx_rt_thread_sleep(int64_t ms) {
+    arx_sleep_ms(ms);
+    return 0;
+}
+
+// ----------------------------------------------------------------------------
+// Atomic Hardware Primitives
+// ----------------------------------------------------------------------------
+
+static inline int64_t arx_atomic_load(int64_t* ptr) {
+#if defined(__GNUC__) || defined(__clang__)
+    return __atomic_load_n(ptr, __ATOMIC_SEQ_CST);
+#elif defined(_MSC_VER)
+    return _InterlockedCompareExchange64((volatile LONG64*)ptr, 0, 0);
+#else
+    return *(volatile int64_t*)ptr;
+#endif
+}
+
+static inline int64_t arx_atomic_store(int64_t* ptr, int64_t val) {
+#if defined(__GNUC__) || defined(__clang__)
+    __atomic_store_n(ptr, val, __ATOMIC_SEQ_CST);
+#elif defined(_MSC_VER)
+    _InterlockedExchange64((volatile LONG64*)ptr, val);
+#else
+    *(volatile int64_t*)ptr = val;
+#endif
+    return 0;
+}
+
+static inline int64_t arx_atomic_cmpxchg(int64_t* ptr, int64_t expected, int64_t desired) {
+#if defined(__GNUC__) || defined(__clang__)
+    int64_t exp = expected;
+    __atomic_compare_exchange_n(ptr, &exp, desired, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
+    return exp;
+#elif defined(_MSC_VER)
+    return _InterlockedCompareExchange64((volatile LONG64*)ptr, desired, expected);
+#else
+    int64_t old = *ptr;
+    if (old == expected) *ptr = desired;
+    return old;
+#endif
+}
+
+static inline bool arx_atomic_cmpxchg_bool(int64_t* ptr, int64_t expected, int64_t desired) {
+#if defined(__GNUC__) || defined(__clang__)
+    int64_t exp = expected;
+    return __atomic_compare_exchange_n(ptr, &exp, desired, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
+#elif defined(_MSC_VER)
+    return _InterlockedCompareExchange64((volatile LONG64*)ptr, desired, expected) == expected;
+#else
+    if (*ptr == expected) { *ptr = desired; return true; }
+    return false;
+#endif
+}
+
+static inline int64_t arx_atomic_xadd(int64_t* ptr, int64_t delta) {
+#if defined(__GNUC__) || defined(__clang__)
+    return __atomic_fetch_add(ptr, delta, __ATOMIC_SEQ_CST);
+#elif defined(_MSC_VER)
+    return _InterlockedExchangeAdd64((volatile LONG64*)ptr, delta);
+#else
+    int64_t old = *ptr;
+    *ptr += delta;
+    return old;
+#endif
+}
+
+static inline int64_t arx_atomic_pause(void) {
+#if defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86)
+#if defined(_MSC_VER)
+    _mm_pause();
+#else
+    __asm__ __volatile__("pause");
+#endif
+#endif
+    return 0;
+}
+
+static inline int64_t arx_atomic_fence(void) {
+#if defined(__GNUC__) || defined(__clang__)
+    __atomic_thread_fence(__ATOMIC_SEQ_CST);
+#elif defined(_MSC_VER)
+    MemoryBarrier();
+#endif
+    return 0;
+}
+
+// ----------------------------------------------------------------------------
+// Thread-Local Scratch Arena (TLSArena)
+// ----------------------------------------------------------------------------
+
+typedef struct Arx_Internal_TLSArena {
+    int64_t cursor;
+    int64_t capacity;
+    uint8_t* buffer;
+} Arx_Internal_TLSArena;
+
+#if defined(_WIN32) || defined(_WIN64)
+static DWORD __arx_tls_arena_slot = TLS_OUT_OF_INDEXES;
+
+static inline void arx_tls_arena_init(void) {
+    if (__arx_tls_arena_slot == TLS_OUT_OF_INDEXES) {
+        __arx_tls_arena_slot = TlsAlloc();
+    }
+}
+
+static inline int64_t arx_tls_arena_get(void) {
+    if (__arx_tls_arena_slot == TLS_OUT_OF_INDEXES) {
+        arx_tls_arena_init();
+    }
+    Arx_Internal_TLSArena* arena = (Arx_Internal_TLSArena*)TlsGetValue(__arx_tls_arena_slot);
+    if (!arena) {
+        arena = (Arx_Internal_TLSArena*)malloc(sizeof(Arx_Internal_TLSArena));
+        arena->cursor = 0;
+        arena->capacity = 2097152;
+        arena->buffer = (uint8_t*)malloc(2097152);
+        TlsSetValue(__arx_tls_arena_slot, arena);
+    }
+    return (int64_t)(intptr_t)arena;
+}
+#else
+static pthread_key_t __arx_tls_arena_key;
+static pthread_once_t __arx_tls_arena_once = PTHREAD_ONCE_INIT;
+
+static void __arx_tls_arena_make_key(void) {
+    pthread_key_create(&__arx_tls_arena_key, free);
+}
+
+static inline void arx_tls_arena_init(void) {
+    pthread_once(&__arx_tls_arena_once, __arx_tls_arena_make_key);
+}
+
+static inline int64_t arx_tls_arena_get(void) {
+    arx_tls_arena_init();
+    Arx_Internal_TLSArena* arena = (Arx_Internal_TLSArena*)pthread_getspecific(__arx_tls_arena_key);
+    if (!arena) {
+        arena = (Arx_Internal_TLSArena*)malloc(sizeof(Arx_Internal_TLSArena));
+        arena->cursor = 0;
+        arena->capacity = 2097152;
+        arena->buffer = (uint8_t*)malloc(2097152);
+        pthread_setspecific(__arx_tls_arena_key, arena);
+    }
+    return (int64_t)(intptr_t)arena;
+}
+#endif
+
+static inline int64_t arx_tls_arena_alloc(int64_t arena_h, int64_t size) {
+    Arx_Internal_TLSArena* arena = (Arx_Internal_TLSArena*)(intptr_t)arena_h;
+    int64_t aligned_sz = (size + 15) & ~15;
+    if (arena && (arena->cursor + aligned_sz <= arena->capacity)) {
+        void* ptr = (void*)(arena->buffer + arena->cursor);
+        arena->cursor += aligned_sz;
+        return (int64_t)(intptr_t)ptr;
+    }
+    return (int64_t)(intptr_t)malloc((size_t)size);
+}
+
+static inline int64_t arx_tls_arena_reset(int64_t arena_h) {
+    Arx_Internal_TLSArena* arena = (Arx_Internal_TLSArena*)(intptr_t)arena_h;
+    if (arena) arena->cursor = 0;
+    return 0;
+}
+
+static inline int64_t arx_tls_arena_cursor(int64_t arena_h) {
+    Arx_Internal_TLSArena* arena = (Arx_Internal_TLSArena*)(intptr_t)arena_h;
+    return arena ? arena->cursor : 0;
+}
+
+static inline int64_t arx_tls_arena_rewind(int64_t arena_h, int64_t mark) {
+    Arx_Internal_TLSArena* arena = (Arx_Internal_TLSArena*)(intptr_t)arena_h;
+    if (arena) arena->cursor = mark;
+    return 0;
+}
+
+static inline int64_t arx_rt_thread_join(int64_t handle) {
+    arx_thread_join(handle);
+    return 0;
+}
+
+#define __rt_atomic_load arx_atomic_load
+#define __rt_atomic_store arx_atomic_store
+#define __rt_atomic_cmpxchg arx_atomic_cmpxchg
+#define __rt_atomic_cmpxchg_bool arx_atomic_cmpxchg_bool
+#define __rt_atomic_xadd arx_atomic_xadd
+#define __rt_atomic_pause arx_atomic_pause
+#define __rt_atomic_fence arx_atomic_fence
+#define __rt_thread_spawn arx_thread_spawn
+#define __rt_thread_join arx_rt_thread_join
+#define __rt_thread_current_id arx_rt_thread_current_id
+#define __rt_thread_yield arx_rt_thread_yield
+#define __rt_thread_sleep arx_rt_thread_sleep
+#define __rt_tls_arena_init arx_tls_arena_init
+#define __rt_tls_arena_get arx_tls_arena_get
+#define __rt_tls_arena_alloc arx_tls_arena_alloc
+#define __rt_tls_arena_reset arx_tls_arena_reset
+#define __rt_tls_arena_cursor arx_tls_arena_cursor
+#define __rt_tls_arena_rewind arx_tls_arena_rewind
+
 typedef struct Arx_Channel {
     int64_t* data;
     int64_t capacity;

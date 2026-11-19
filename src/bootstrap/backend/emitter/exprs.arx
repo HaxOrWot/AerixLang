@@ -55,7 +55,18 @@ extend Emitter {
             return acc
         }
         if k == NK_IDENT() {
-            return self.sa.get(nid)
+            let nm = self.sa.get(nid)
+            mut fi = 0
+            while fi < self.fn_count {
+                let fid = self.fn_nodes.get(fi)
+                if self.sa.get(fid) == nm {
+                    let cname = self.call_targets.get(fid)
+                    if cname != "" { return cname }
+                    return "arx_" + nm
+                }
+                fi = fi + 1
+            }
+            return nm
         }
         if k == NK_SIZEOF() {
             return "((int64_t)sizeof(" + btype_to_c(self.sa.get(nid)) + "))"

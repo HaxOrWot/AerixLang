@@ -253,6 +253,37 @@ pub class X64Asm {
         self.emit_i32(disp)
     }
 
+    pub fn lock_cmpxchg_m64(base: i64, disp: i64, src: i64) {
+        self.emit_u8(0xF0)
+        self.rex(1, src, base)
+        self.emit_u8(0x0F)
+        self.emit_u8(0xB1)
+        self.modrm(2, src, base)
+        if (base & 7) == 4 { self.emit_u8(0x24) }
+        self.emit_i32(disp)
+    }
+
+    pub fn lock_xadd_m64(base: i64, disp: i64, src: i64) {
+        self.emit_u8(0xF0)
+        self.rex(1, src, base)
+        self.emit_u8(0x0F)
+        self.emit_u8(0xC1)
+        self.modrm(2, src, base)
+        if (base & 7) == 4 { self.emit_u8(0x24) }
+        self.emit_i32(disp)
+    }
+
+    pub fn mfence() {
+        self.emit_u8(0x0F)
+        self.emit_u8(0xAE)
+        self.emit_u8(0xF0)
+    }
+
+    pub fn pause() {
+        self.emit_u8(0xF3)
+        self.emit_u8(0x90)
+    }
+
     pub fn lea_rm(dst: i64, base: i64, disp: i64) {
         self.rex(1, dst, base)
         self.emit_u8(0x8D)
@@ -262,6 +293,15 @@ pub class X64Asm {
     }
 
     // RIP-relative external & section references
+    pub fn lea_rip_label(dst: i64, lbl: i64) {
+        self.rex(1, dst, 0)
+        self.emit_u8(0x8D)
+        self.modrm(0, dst, 5)
+        self.label_ref_pos.push(self.pos())
+        self.label_ref_id.push(lbl)
+        self.emit_i32(0)
+    }
+
     pub fn lea_rip_rdata(dst: i64, rdata_off: i64) {
         self.rex(1, dst, 0)
         self.emit_u8(0x8D)

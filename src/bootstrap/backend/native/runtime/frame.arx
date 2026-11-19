@@ -34,6 +34,9 @@ extend NativeRt {
         self.asmb.mov_ri32_sext(REG_RCX(), 65001)
         self.asmb.call_rip_iat(self.imp_set_cp)
 
+        // Initialize TLS index for TLSArena
+        self.asmb.call_rel32(self.lbl("__rt_tls_arena_init"))
+
         // Parse command line via GetCommandLineA() into List<str> and cache in args_list_off
         self.asmb.call_rel32(self.lbl("__rt_env_args"))
         self.asmb.mov_mr64_rip_data(self.args_list_off, REG_RAX())
@@ -60,6 +63,7 @@ extend NativeRt {
         self.emit_os_fs_env()
         self.emit_assert()
         self.emit_exceptions()
+        self.emit_threading_and_atomics()
     }
 
 }

@@ -1,0 +1,84 @@
+// ==============================================================================
+// Aerix Standard Library: Sync::Atomic
+// Hardware-Direct Lock-Free Atomic Primitives (x86-64 LOCK CMPXCHG / LOCK XADD)
+// ==============================================================================
+
+pub fn atomicPause() {
+    __rt_atomic_pause()
+}
+
+pub fn atomicFence() {
+    __rt_atomic_fence()
+}
+
+pub class AtomicInt {
+    pub val: i64
+
+    init(initial: i64) {
+        self.val = initial
+    }
+
+    pub fn load() -> i64 {
+        return __rt_atomic_load(self as i64)
+    }
+
+    pub fn store(v: i64) {
+        __rt_atomic_store(self as i64, v)
+    }
+
+    pub fn compare_exchange(expected: i64, desired: i64) -> i64 {
+        return __rt_atomic_cmpxchg(self as i64, expected, desired)
+    }
+
+    pub fn compare_exchange_bool(expected: i64, desired: i64) -> bool {
+        return __rt_atomic_cmpxchg_bool(self as i64, expected, desired)
+    }
+
+    pub fn fetch_add(delta: i64) -> i64 {
+        return __rt_atomic_xadd(self as i64, delta)
+    }
+
+    pub fn fetch_sub(delta: i64) -> i64 {
+        return __rt_atomic_xadd(self as i64, -delta)
+    }
+
+    pub fn inc() -> i64 {
+        return __rt_atomic_xadd(self as i64, 1) + 1
+    }
+
+    pub fn dec() -> i64 {
+        return __rt_atomic_xadd(self as i64, -1) - 1
+    }
+}
+
+pub class AtomicBool {
+    pub val: i64
+
+    init(initial: bool) {
+        if initial {
+            self.val = 1
+        } else {
+            self.val = 0
+        }
+    }
+
+    pub fn load() -> bool {
+        return __rt_atomic_load(self as i64) != 0
+    }
+
+    pub fn store(v: bool) {
+        if v {
+            __rt_atomic_store(self as i64, 1)
+        } else {
+            __rt_atomic_store(self as i64, 0)
+        }
+    }
+
+    pub fn compare_exchange(expected: bool, desired: bool) -> bool {
+        mut exp = 0
+        if expected { exp = 1 }
+        mut des = 0
+        if desired { des = 1 }
+        return __rt_atomic_cmpxchg_bool(self as i64, exp, des)
+    }
+}

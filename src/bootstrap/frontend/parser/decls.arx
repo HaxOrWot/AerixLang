@@ -139,7 +139,12 @@ extend Parser {
     priv fn parse_fn_def(flags: i64) -> i64 {
         let f_tok = self.expect_k(TK_FN(), "Expected 'fn'")
         let fn_ln = self.tok_lines.get(f_tok)
-        let n_tok = self.expect_k(TK_IDENT(), "Expected function name")
+        mut n_tok = -1
+        if self.cur_kind() == TK_IDENT() || self.cur_kind() == TK_SPAWN() {
+            n_tok = self.adv()
+        } else {
+            n_tok = self.expect_k(TK_IDENT(), "Expected function name")
+        }
         let fn_name = self.tok_vals.get(n_tok)
         // Skip optional generic type parameters on fn definition
         if self.match_k(TK_LT()) {
