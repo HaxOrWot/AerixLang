@@ -274,8 +274,28 @@ The exact same core innovations directly revolutionize standard application deve
 * [x] Implement AVX2 256-bit SIMD math operations (`f32x8`, `i32x8`) in `modules/Math/simd.arx` with complete vector arithmetic (add, sub, mul, div, dot product, sum) and C99 differential parity.
 * [x] Verified bit-for-bit self-hosting bootstrap convergence (`stage2.exe == stage3.exe` SHA-256 match) and 100% differential parity across native and C99 backends.
 
-### Phase 4: AeroCraft Alpha & Public Multi-Core Benchmarks (v4.0.0)
-* [ ] Build **AeroCraft Core**:
+### Phase 4: Modern Language Ergonomics & Core Data Types (v3.4.0)
+* [ ] Implement **Enums & Tagged Unions**:
+  * Simple C-style enums (`enum Direction { North, South, East, West }`) compiled to `i32`.
+  * Algebraic tagged unions (`enum Shape { Circle(r: f64), Rect(w: f64, h: f64) }`) compiled to zero-cost `{ tag: i32, payload: union }` value structs.
+* [ ] Implement **Pattern Matching (`match` expressions)**:
+  * Value match (`match val { 1 => ..., 2 => ..., _ => ... }`).
+  * Enum and tagged union variant destructuring with compiler exhaustiveness verification.
+* [ ] Implement **`Result<T, E>` and `Option<T>` Value Types**:
+  * Non-allocating tagged union value types for explicit error handling.
+  * `!` suffix operator for rapid unwrapping and error bubbling (`let f = File.open(path)!`).
+* [ ] Standard Library Ergonomics:
+  * `Str` completions: `split`, `trim`, `replace`, `starts_with`, `ends_with`.
+  * `Path` module: `join`, `dirname`, `basename`, `exists`, `is_file`, `is_dir`.
+  * Zero-dependency native `Json` parser and serializer.
+
+### Phase 5: Native Backend Register Allocator & Inlining (v3.5.0)
+* [ ] Linear Scan Register Allocator in `src/bootstrap/backend/native/codegen/frame.arx` (eliminating naive stack-spilling, 2x–5x native execution speedup).
+* [ ] Function Inlining pass (`#[inline]`).
+* [ ] Peephole Optimizer (redundant move and dead store elimination).
+
+### Phase 6: AeroCraft Alpha & Public Multi-Core Benchmarks (v4.0.0)
+* [ ] Build **AeroCraft Core** using clean Enums, Match, and Result types:
   * Packet decoder for protocol 1.21+ (Handshake, Status, Login, Play).
   * Data-Oriented Chunk storage using packed 16x16x16 bit-arrays.
   * Spatial Island 32x32 region work-stealing scheduler.
