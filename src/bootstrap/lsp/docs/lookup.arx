@@ -6,7 +6,8 @@ pub fn lsp_lookup_doc(w: str) -> str {
     if w == "mut" { return "**Keyword `mut`** — Declares a mutable binding, field, or parameter." }
     if w == "const" { return "**Keyword `const`** — Declares a compile-time constant value." }
     if w == "class" { return "**Keyword `class`** — Value/object struct with fields, methods, constructors (`init`), destructors (`drop`), inheritance (`extends`), and traits (`implements`)." }
-    if w == "struct" { return "**Keyword `struct`** — Zero-overhead aggregate record declaration." }
+    if w == "struct" { return "**Keyword `struct`** — Value struct declaration. Non-escaping instances are allocated directly on the local stack frame with zero heap allocation (`calloc`) and zero ARC overhead." }
+    if w == "align" { return "**Attribute `#[align(N)]`** — Enforces minimum byte alignment on struct fields (e.g. `#[align(64)]` for cache-line alignment to eliminate multi-core false sharing)." }
     if w == "enum" { return "**Keyword `enum`** — Tagged algebraic union with optional per-variant payload fields." }
     if w == "trait" { return "**Keyword `trait`** — Interface contract enforced at compile time." }
     if w == "type" { return "**Keyword `type`** — Declares a semantic type alias." }
@@ -97,6 +98,13 @@ pub fn lsp_lookup_doc(w: str) -> str {
     if w == "Process" { return "**Stdlib `Process`** — Subprocess runner (`execute`, `run_capture`)." }
     if w == "Math" { return "**Stdlib `Math`** — Mathematical constants & functions (`sqrt`, `pow`, `sin`, `cos`, `tan`, `floor`, `ceil`, `round`, `abs`, `min`, `max`, `log`, `exp`)." }
     if w == "Random" { return "**Stdlib `Random`** — Fast deterministic PRNG (`seed`, `next_i64`, `next_f64`, `range`, `bool`)." }
+    if w == "Thread" { return "**Concurrency `Thread`** — Native OS thread operations: `Thread.spawn(fn() \\{ ... })`, `Thread.current_id()`, `Thread.hardware_concurrency()`, `Thread.parallel_for(start, end, fn(i) \\{ ... })`, and `Thread.local_arena()`." }
+    if w == "ThreadHandle" { return "**Concurrency `ThreadHandle`** — Opaque handle to a spawned native OS thread. Call `.join()` to block until thread completion." }
+    if w == "Sync" { return "**Concurrency `Sync`** — Multi-threaded synchronization primitives, memory fences, and atomic operations." }
+    if w == "Atomic" || w == "AtomicInt" || w == "AtomicBool" { return "**Concurrency `Atomic<T>`** — Lock-free atomic operations implemented via direct hardware x86-64 instructions (`lock cmpxchg`, `lock xadd`). Supports `.get()`, `.set(val)`, `.fetch_add(delta)`, and `.compare_exchange(expected, desired)`." }
+    if w == "SpinLock" { return "**Concurrency `SpinLock`** — Multi-core low-latency spinlock with hardware x86-64 `PAUSE` loops: `.acquire()` and `.release()`." }
+    if w == "TLSArena" { return "**Concurrency `TLSArena`** — Thread-Local Scratch Arena for sub-nanosecond pointer bump allocations without global heap mutex contention and O(1) zero-cost reset." }
+    if w == "RingBuffer" { return "**Concurrency `RingBuffer`** — High-throughput cache-line-aligned SPSC/MPMC lock-free circular queue." }
 
     // Builtin functions
     if w == "println" { return "Prints a value followed by a newline (`\\n`) to stdout." }

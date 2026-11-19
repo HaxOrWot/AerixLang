@@ -25,7 +25,8 @@ const TOKEN_MODIFIERS = [
 const AERIX_FALLBACK_COMPLETIONS = [
     // Keywords & Declarations
     { label: 'fn', kind: vscode.CompletionItemKind.Keyword, detail: 'fn name(params) -> type', insertText: 'fn ${1:name}(${2:params}) -> ${3:void} {\n\t${0}\n}' },
-    { label: 'struct', kind: vscode.CompletionItemKind.Struct, detail: 'struct Name { pub field: type }', insertText: 'struct ${1:Name} {\n\tpub ${2:field}: ${3:i64}\n\n\tinit(${2:field}: ${3:i64}) {\n\t\tself.${2:field} = ${2:field}\n\t}\n}' },
+    { label: 'struct', kind: vscode.CompletionItemKind.Struct, detail: 'struct Name { field: type }', insertText: 'struct ${1:Name} {\n\t${2:field}: ${3:f64}\n\n\tinit(${2:field}: ${3:f64}) {\n\t\tself.${2:field} = ${2:field}\n\t}\n}' },
+    { label: 'align', kind: vscode.CompletionItemKind.Property, detail: '#[align(64)] cache-line alignment attribute', insertText: '#[align(${1:64})]' },
     { label: 'class', kind: vscode.CompletionItemKind.Class, detail: 'class Name { pub field: type }', insertText: 'class ${1:Name} {\n\tpub ${2:field}: ${3:str}\n\n\tinit(${2:field}: ${3:str}) {\n\t\tself.${2:field} = ${2:field}\n\t}\n}' },
     { label: 'enum', kind: vscode.CompletionItemKind.Enum, detail: 'enum Name { Variant1, Variant2 }', insertText: 'enum ${1:Name} {\n\t${2:Variant1},\n\t${3:Variant2}\n}' },
     { label: 'trait', kind: vscode.CompletionItemKind.Interface, detail: 'trait Name { fn method() }', insertText: 'trait ${1:Name} {\n\tfn ${2:method}() -> ${3:void}\n}' },
@@ -53,6 +54,8 @@ const AERIX_FALLBACK_COMPLETIONS = [
     { label: 'len', kind: vscode.CompletionItemKind.Function, detail: 'len(collection) -> i64', insertText: 'len(${1:coll})' },
     { label: 'assert', kind: vscode.CompletionItemKind.Function, detail: 'assert(cond: bool)', insertText: 'assert(${1:condition})' },
     { label: 'assert_eq', kind: vscode.CompletionItemKind.Function, detail: 'assert_eq(actual, expected)', insertText: 'assert_eq(${1:actual}, ${2:expected})' },
+    { label: 'panic', kind: vscode.CompletionItemKind.Function, detail: 'panic(msg: str) -> void', insertText: 'panic(${1:"${0}"})' },
+    { label: 'abort', kind: vscode.CompletionItemKind.Function, detail: 'abort() -> void', insertText: 'abort()' },
     // Standard Primitive Types
     { label: 'i64', kind: vscode.CompletionItemKind.TypeParameter, detail: '64-bit signed integer' },
     { label: 'i32', kind: vscode.CompletionItemKind.TypeParameter, detail: '32-bit signed integer' },
@@ -62,12 +65,45 @@ const AERIX_FALLBACK_COMPLETIONS = [
     { label: 'char', kind: vscode.CompletionItemKind.TypeParameter, detail: 'Unicode codepoint character' },
     { label: 'str', kind: vscode.CompletionItemKind.TypeParameter, detail: 'Immutable UTF-8 string' },
     { label: 'void', kind: vscode.CompletionItemKind.TypeParameter, detail: 'Unit / void return type' },
-    // Standard Collections
+    // Standard Collections & Concurrency
     { label: 'List', kind: vscode.CompletionItemKind.Class, detail: 'Dynamic growable array List<T>', insertText: 'List<${1:i64}>()' },
     { label: 'Map', kind: vscode.CompletionItemKind.Class, detail: 'Key-value hash map Map<K, V>', insertText: 'Map<${1:str}, ${2:i64}>()' },
     { label: 'Set', kind: vscode.CompletionItemKind.Class, detail: 'Unique element hash set Set<T>', insertText: 'Set<${1:str}>()' },
-    { label: 'Channel', kind: vscode.CompletionItemKind.Class, detail: 'Thread-safe bounded channel Channel<T>', insertText: 'Channel<${1:str}>(${2:32})' }
+    { label: 'Channel', kind: vscode.CompletionItemKind.Class, detail: 'Thread-safe bounded channel Channel<T>', insertText: 'Channel<${1:str}>(${2:32})' },
+    { label: 'Thread', kind: vscode.CompletionItemKind.Class, detail: 'Native OS Thread (spawn, current_id, parallel_for, local_arena)' },
+    { label: 'ThreadHandle', kind: vscode.CompletionItemKind.Class, detail: 'Thread handle with .join()' },
+    { label: 'Sync', kind: vscode.CompletionItemKind.Class, detail: 'Multi-threaded synchronization primitives & memory fences' },
+    { label: 'Atomic', kind: vscode.CompletionItemKind.Class, detail: 'Lock-free atomic variable Atomic<T>', insertText: 'Atomic(${1:0})' },
+    { label: 'SpinLock', kind: vscode.CompletionItemKind.Class, detail: 'Low-latency multi-core spinlock', insertText: 'SpinLock()' },
+    { label: 'TLSArena', kind: vscode.CompletionItemKind.Class, detail: 'Thread-Local Scratch Arena for sub-nanosecond bump allocation' },
+    { label: 'RingBuffer', kind: vscode.CompletionItemKind.Class, detail: 'High-throughput cache-line-aligned lock-free ring buffer' }
 ];
+
+const AERIX_FALLBACK_HOVER = {
+    struct: '**Keyword `struct`** — Value struct declaration. Non-escaping instances are allocated directly on the local stack frame with zero heap allocation (`calloc`) and zero ARC overhead.',
+    align: '**Attribute `#[align(N)]`** — Enforces minimum byte alignment on struct fields (e.g. `#[align(64)]` for cache-line alignment to eliminate multi-core false sharing).',
+    Thread: '**Concurrency `Thread`** — Native OS thread operations: `Thread.spawn(fn() { ... })`, `Thread.current_id()`, `Thread.hardware_concurrency()`, `Thread.parallel_for(...)`, and `Thread.local_arena()`.',
+    ThreadHandle: '**Concurrency `ThreadHandle`** — Opaque handle to a spawned native OS thread. Call `.join()` to block until thread completion.',
+    Sync: '**Concurrency `Sync`** — Multi-threaded synchronization primitives, memory fences, and atomic operations.',
+    Atomic: '**Concurrency `Atomic<T>`** — Lock-free atomic operations implemented via direct hardware x86-64 instructions (`lock cmpxchg`, `lock xadd`). Supports `.get()`, `.set()`, `.fetch_add()`, and `.compare_exchange()`.',
+    SpinLock: '**Concurrency `SpinLock`** — Multi-core low-latency spinlock with hardware x86-64 `PAUSE` loops: `.acquire()` and `.release()`.',
+    TLSArena: '**Concurrency `TLSArena`** — Thread-Local Scratch Arena for sub-nanosecond pointer bump allocations without global heap mutex contention and O(1) zero-cost reset.',
+    RingBuffer: '**Concurrency `RingBuffer`** — High-throughput cache-line-aligned SPSC/MPMC lock-free circular queue.',
+    panic: '**Builtin `panic(msg: str)`** — Prints error message to stderr with call chain stack trace and aborts execution.',
+    abort: '**Builtin `abort()`** — Immediately terminates the process with abnormal exit and call stack backtrace.',
+    assert: '**Builtin `assert(cond: bool)`** — Aborts execution with call chain stack trace if `cond` is false.',
+    assert_eq: '**Builtin `assert_eq(actual, expected)`** — Aborts execution with diagnostic details if values differ.',
+    throw: '**Keyword `throw`** — Raises a runtime exception payload to the nearest enclosing `try { ... } catch (err) { ... }` frame.',
+    guard: '**Keyword `guard`** — Early-exit assertion: `guard cond else { return }`.',
+    defer: '**Keyword `defer`** — Schedules a cleanup statement in LIFO order on scope exit.',
+    match: '**Keyword `match`** — Exhaustive pattern matching on enums, literals, and destructured payloads.',
+    spawn: '**Keyword `spawn`** — Launches a function asynchronously on a native OS thread.'
+};
+
+function getFallbackHoverDoc(word) {
+    if (!word) return null;
+    return AERIX_FALLBACK_HOVER[word] || null;
+}
 
 function buildFallbackCompletions() {
     return AERIX_FALLBACK_COMPLETIONS.map((fb) => {
@@ -585,12 +621,25 @@ function activate(context) {
                     textDocument: { uri: doc.uri.toString() },
                     position: toLspPos(pos)
                 }, doc);
-                if (!res || !res.contents) return null;
-                const val = typeof res.contents === 'string' ? res.contents : (res.contents.value || '');
-                if (!val) return null;
-                const md = new vscode.MarkdownString(val);
-                md.isTrusted = true;
-                return new vscode.Hover(md);
+                if (res && res.contents) {
+                    const val = typeof res.contents === 'string' ? res.contents : (res.contents.value || '');
+                    if (val) {
+                        const md = new vscode.MarkdownString(val);
+                        md.isTrusted = true;
+                        return new vscode.Hover(md);
+                    }
+                }
+                const range = doc.getWordRangeAtPosition(pos);
+                if (range) {
+                    const word = doc.getText(range);
+                    const fbDoc = getFallbackHoverDoc(word);
+                    if (fbDoc) {
+                        const md = new vscode.MarkdownString(fbDoc);
+                        md.isTrusted = true;
+                        return new vscode.Hover(md, range);
+                    }
+                }
+                return null;
             }
         }),
 

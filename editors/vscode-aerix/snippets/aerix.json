@@ -353,10 +353,66 @@
     "prefix": "struct",
     "body": [
       "struct ${1:Name} {",
-      "\tpub ${2:field}: ${3:i64}${0}",
+      "\t${2:field}: ${3:f64}",
+      "",
+      "\tinit(${2:field}: ${3:f64}) {",
+      "\t\tself.${2:field} = ${2:field}",
+      "\t}",
+      "\t${0}",
       "}"
     ],
-    "description": "Declare a lightweight aggregate struct"
+    "description": "Declare a stack-allocated value struct"
+  },
+  "Aerix Align Attribute": {
+    "prefix": "align",
+    "body": [
+      "#[align(${1:64})]"
+    ],
+    "description": "Cache-line or hardware memory alignment attribute"
+  },
+  "Aerix Thread Spawn": {
+    "prefix": "thread_spawn",
+    "body": [
+      "let ${1:worker} = Thread.spawn(fn() {",
+      "\t${0}",
+      "})",
+      "${1:worker}.join()"
+    ],
+    "description": "Spawn a native background thread and join"
+  },
+  "Aerix Parallel For": {
+    "prefix": "parallel_for",
+    "body": [
+      "Thread.parallel_for(${1:0}, ${2:count}, fn(${3:i}: i64) {",
+      "\t${0}",
+      "})"
+    ],
+    "description": "Parallel work-stealing for loop across CPU cores"
+  },
+  "Aerix TLS Arena": {
+    "prefix": "tls_arena",
+    "body": [
+      "let ${1:arena} = Thread.local_arena()",
+      "let ${2:buf} = ${1:arena}.alloc(${3:4096})"
+    ],
+    "description": "Thread-Local Scratch Arena for sub-nanosecond bump allocation"
+  },
+  "Aerix Atomic Value": {
+    "prefix": "atomic",
+    "body": [
+      "let ${1:counter} = Atomic(${2:0})"
+    ],
+    "description": "Hardware-direct atomic variable (lock cmpxchg / lock xadd)"
+  },
+  "Aerix SpinLock Guard": {
+    "prefix": "spinlock",
+    "body": [
+      "let ${1:lock} = SpinLock()",
+      "${1:lock}.acquire()",
+      "${0}",
+      "${1:lock}.release()"
+    ],
+    "description": "Low-latency multi-core spinlock with x86 PAUSE"
   },
   "Aerix Extend Type": {
     "prefix": "extend",

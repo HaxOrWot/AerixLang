@@ -17,7 +17,7 @@ pub fn lsp_is_keyword(w: str) -> bool {
            w == "abstract" || w == "new" || w == "delete" || w == "extends" || w == "implements" ||
            w == "prop" || w == "op" || w == "extend" || w == "guard" || w == "defer" || w == "unsafe" ||
            w == "sizeof" || w == "as" || w == "use" || w == "import" || w == "from" || w == "cinclude" ||
-           w == "cextern" || w == "true" || w == "false" || w == "null" || w == "get" || w == "set"
+           w == "cextern" || w == "true" || w == "false" || w == "null" || w == "get" || w == "set" || w == "align"
 }
 
 pub fn lsp_is_primitive_type(w: str) -> bool {
@@ -29,11 +29,14 @@ pub fn lsp_is_primitive_type(w: str) -> bool {
 
 pub fn lsp_is_container_type(w: str) -> bool {
     return w == "List" || w == "Map" || w == "Set" || w == "Stack" || w == "Queue" ||
-           w == "Deque" || w == "ByteBuffer" || w == "String" || w == "Channel" || w == "LinearArena"
+           w == "Deque" || w == "ByteBuffer" || w == "String" || w == "Channel" || w == "LinearArena" ||
+           w == "Thread" || w == "ThreadHandle" || w == "Sync" || w == "Atomic" || w == "AtomicInt" ||
+           w == "AtomicBool" || w == "SpinLock" || w == "TLSArena" || w == "RingBuffer"
 }
 
 pub fn lsp_is_static_runtime(w: str) -> bool {
-    return w == "File" || w == "Directory" || w == "Env" || w == "Process"
+    return w == "File" || w == "Directory" || w == "Env" || w == "Process" ||
+           w == "Thread" || w == "Sync" || w == "Math" || w == "Random"
 }
 
 pub fn lsp_is_builtin_fn(w: str) -> bool {
@@ -65,7 +68,7 @@ pub fn lsp_keyword_list() -> List<str> {
     ks.push("new"); ks.push("as"); ks.push("sizeof"); ks.push("unsafe")
     ks.push("import"); ks.push("from"); ks.push("use")
     ks.push("cinclude"); ks.push("cextern")
-    ks.push("true"); ks.push("false"); ks.push("null")
+    ks.push("true"); ks.push("false"); ks.push("null"); ks.push("align")
     return ks
 }
 
@@ -79,6 +82,8 @@ pub fn lsp_type_list() -> List<str> {
     ts.push("List"); ts.push("Map"); ts.push("Set"); ts.push("Stack"); ts.push("Queue"); ts.push("Deque")
     ts.push("ByteBuffer"); ts.push("String"); ts.push("Channel"); ts.push("LinearArena")
     ts.push("File"); ts.push("Directory"); ts.push("Env"); ts.push("Process")
+    ts.push("Thread"); ts.push("ThreadHandle"); ts.push("Sync"); ts.push("Atomic")
+    ts.push("SpinLock"); ts.push("TLSArena"); ts.push("RingBuffer"); ts.push("Math"); ts.push("Random")
     return ts
 }
 

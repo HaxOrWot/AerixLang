@@ -50,6 +50,7 @@
           "end": "\\]",
           "endCaptures": { "0": { "name": "punctuation.definition.attribute.aerix" } },
           "patterns": [
+            { "match": "\\b(align|packed|inline|cold|pure|deprecated)\\b", "name": "entity.name.function.decorator.aerix" },
             { "match": "[A-Za-z_][A-Za-z0-9_]*", "name": "entity.name.function.decorator.aerix" },
             { "include": "#strings" },
             { "include": "#numbers" }
@@ -373,7 +374,7 @@
         },
         {
           "name": "support.class.aerix",
-          "match": "\\b(List|Map|Set|Stack|Queue|Deque|ByteBuffer|String|Channel|LinearArena|File|Directory|Env|Process|Math|Random|Time|Socket|Window|Canvas|Clipboard|Application|Gui)\\b"
+          "match": "\\b(List|Map|Set|Stack|Queue|Deque|ByteBuffer|String|Channel|LinearArena|File|Directory|Env|Process|Math|Random|Time|Socket|Window|Canvas|Clipboard|Application|Gui|Thread|ThreadHandle|Sync|Atomic|AtomicInt|AtomicBool|SpinLock|TLSArena|RingBuffer)\\b"
         },
         {
           "name": "entity.name.type.class.aerix",
