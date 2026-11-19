@@ -90,6 +90,10 @@ extend NativeCodegen {
             a.jmp_rel32(self.rt.lbl("__rt_env_arg"))
             return
         }
+        if name == "Arx_Directory_list_files" || name == "Arx_Directory_list_dirs" {
+            a.jmp_rel32(self.rt.lbl("__rt_list_new"))
+            return
+        }
 
         // Generic Stack methods
         if name.starts_with("Arx_Stack_") {

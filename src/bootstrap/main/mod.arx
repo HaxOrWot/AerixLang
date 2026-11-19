@@ -37,7 +37,7 @@ fn main() -> i64 {
                 return 0
             }
         }
-        println("Aerix Self-Hosting Bootstrap Compiler (arxc) v3.0.0-rc.1")
+        println("Aerix Self-Hosting Bootstrap Compiler (arxc) v3.0.0")
         maybe_trigger_bg_update()
         return 0
     }

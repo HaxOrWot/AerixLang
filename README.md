@@ -144,7 +144,7 @@ fn process_log(path: str) {
 ## 📦 Installation
 
 ### Option A: Windows Installer (Recommended)
-Download **`AerixSetup-3.0.0-rc.1.exe`** from [GitHub Releases](https://github.com/HaxOrWot/AerixLang/releases).
+Download **`AerixSetup-3.0.0.exe`** from [GitHub Releases](https://github.com/HaxOrWot/AerixLang/releases).
 * Installs `arx.exe`, standard modules, and headers to `C:\Aerix\bin`.
 * Automatically configures user & machine `PATH` environment variables.
 * Includes background update manager (`Updater.exe`) and the official VS Code / Antigravity extension.

@@ -254,16 +254,24 @@ extend NativeCodegen {
                 a.mov_mr64(REG_RBP(), -v_tmp, REG_RAX())
             }
 
-            a.mov_rm64(REG_RCX(), REG_RBP(), -c_tmp)
-            a.mov_rm64(REG_RDX(), REG_RBP(), -i_tmp)
-            a.mov_rm64(REG_R8(), REG_RBP(), -v_tmp)
             if btype_is_map(ct) {
                 let kt = btype_map_key(ct)
+                let vt = btype_map_val(ct)
+                if ncg_is_str(vt) {
+                    a.mov_rm64(REG_RCX(), REG_RBP(), -v_tmp)
+                    a.call_rel32(self.rt.lbl("__rt_arc_retain"))
+                }
+                a.mov_rm64(REG_RCX(), REG_RBP(), -c_tmp)
+                a.mov_rm64(REG_RDX(), REG_RBP(), -i_tmp)
+                a.mov_rm64(REG_R8(), REG_RBP(), -v_tmp)
                 mut ks_f = 0
                 if ncg_is_str(kt) { ks_f = 1 }
                 a.mov_ri32_sext(REG_R9(), ks_f)
                 a.call_rel32(self.rt.lbl("__rt_map_insert"))
             } else {
+                a.mov_rm64(REG_RCX(), REG_RBP(), -c_tmp)
+                a.mov_rm64(REG_RDX(), REG_RBP(), -i_tmp)
+                a.mov_rm64(REG_R8(), REG_RBP(), -v_tmp)
                 let et = btype_list_elem(ct)
                 if ncg_is_str(et) {
                     a.call_rel32(self.rt.lbl("__rt_list_set_str"))

@@ -217,4 +217,92 @@ extend NativeRt {
         self.end_fn()
     }
 
+    priv fn emit_str_pad(name: str, is_right: bool) {
+        let a = self.asmb
+        self.begin_fn(name, 96)
+        let l_s_ok = a.new_label()
+        a.test_rr(REG_RCX(), REG_RCX())
+        a.jcc_rel32(CC_NE(), l_s_ok)
+        a.lea_rip_rdata(REG_RCX(), self.s_empty)
+        a.bind_label(l_s_ok)
+
+        a.mov_mr64(REG_RBP(), -8, REG_RCX())
+        a.mov_mr64(REG_RBP(), -16, REG_RDX())
+        a.mov_mr64(REG_RBP(), -24, REG_R8())
+
+        a.call_rel32(self.lbl("__rt_str_len"))
+        a.mov_mr64(REG_RBP(), -32, REG_RAX())
+        let l_pad_needed = a.new_label()
+        a.mov_rm64(REG_RDX(), REG_RBP(), -16)
+        a.cmp_rr(REG_RAX(), REG_RDX())
+        a.jcc_rel32(CC_L(), l_pad_needed)
+        a.mov_rm64(REG_RAX(), REG_RBP(), -8)
+        self.end_fn()
+
+        a.bind_label(l_pad_needed)
+        a.mov_ri32_sext(REG_RAX(), 32)
+        a.mov_mr64(REG_RBP(), -40, REG_RAX())
+        a.mov_rm64(REG_RCX(), REG_RBP(), -24)
+        let l_pchar_set = a.new_label()
+        a.test_rr(REG_RCX(), REG_RCX())
+        a.jcc_rel32(CC_E(), l_pchar_set)
+        a.movzx_rm8(REG_RAX(), REG_RCX(), 0)
+        a.test_rr(REG_RAX(), REG_RAX())
+        a.jcc_rel32(CC_E(), l_pchar_set)
+        a.mov_mr64(REG_RBP(), -40, REG_RAX())
+        a.bind_label(l_pchar_set)
+
+        a.mov_rm64(REG_RCX(), REG_RBP(), -16)
+        a.add_ri32(REG_RCX(), 1)
+        a.call_rel32(self.lbl("__rt_arc_alloc"))
+        let l_buf_ok = a.new_label()
+        a.test_rr(REG_RAX(), REG_RAX())
+        a.jcc_rel32(CC_NE(), l_buf_ok)
+        a.mov_rm64(REG_RAX(), REG_RBP(), -8)
+        self.end_fn()
+
+        a.bind_label(l_buf_ok)
+        a.mov_mr64(REG_RBP(), -48, REG_RAX())
+
+        a.mov_rm64(REG_RAX(), REG_RBP(), -16)
+        a.mov_rm64(REG_RDX(), REG_RBP(), -32)
+        a.sub_rr(REG_RAX(), REG_RDX())
+        a.mov_mr64(REG_RBP(), -56, REG_RAX())
+
+        if is_right {
+            a.mov_rm64(REG_RCX(), REG_RBP(), -48)
+            a.mov_rm64(REG_RDX(), REG_RBP(), -8)
+            a.mov_rm64(REG_R8(), REG_RBP(), -32)
+            a.call_rip_iat(self.imp_memcpy)
+
+            a.mov_rm64(REG_RCX(), REG_RBP(), -48)
+            a.mov_rm64(REG_RAX(), REG_RBP(), -32)
+            a.add_rr(REG_RCX(), REG_RAX())
+            a.mov_rm64(REG_RDX(), REG_RBP(), -40)
+            a.mov_rm64(REG_R8(), REG_RBP(), -56)
+            a.call_rip_iat(self.imp_memset)
+        } else {
+            a.mov_rm64(REG_RCX(), REG_RBP(), -48)
+            a.mov_rm64(REG_RDX(), REG_RBP(), -40)
+            a.mov_rm64(REG_R8(), REG_RBP(), -56)
+            a.call_rip_iat(self.imp_memset)
+
+            a.mov_rm64(REG_RCX(), REG_RBP(), -48)
+            a.mov_rm64(REG_RAX(), REG_RBP(), -56)
+            a.add_rr(REG_RCX(), REG_RAX())
+            a.mov_rm64(REG_RDX(), REG_RBP(), -8)
+            a.mov_rm64(REG_R8(), REG_RBP(), -32)
+            a.call_rip_iat(self.imp_memcpy)
+        }
+
+        a.mov_rm64(REG_RCX(), REG_RBP(), -48)
+        a.mov_rm64(REG_RAX(), REG_RBP(), -16)
+        a.add_rr(REG_RCX(), REG_RAX())
+        a.mov_ri32_sext(REG_RDX(), 0)
+        a.mov_mr8(REG_RCX(), 0, REG_RDX())
+
+        a.mov_rm64(REG_RAX(), REG_RBP(), -48)
+        self.end_fn()
+    }
+
 }

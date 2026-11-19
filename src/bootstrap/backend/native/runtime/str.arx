@@ -404,6 +404,10 @@ extend NativeRt {
         // __rt_str_split(rcx = s, rdx = sep) -> List ptr
         self.emit_str_split()
 
+        // __rt_str_pad_right / __rt_str_pad_left
+        self.emit_str_pad("__rt_str_pad_right", true)
+        self.emit_str_pad("__rt_str_pad_left", false)
+
         // __rt_str_repeat(rcx = s, rdx = count) -> str
         self.begin_fn("__rt_str_repeat", 96)
         a.mov_mr64(REG_RBP(), -8, REG_RCX())

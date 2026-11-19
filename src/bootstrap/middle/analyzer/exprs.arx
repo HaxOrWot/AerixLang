@@ -32,7 +32,9 @@ extend Analyzer {
             if t != "" {
                 self.scope_mark_used(name)
             } else {
-                if name == "true" || name == "false" {
+                if name == "self" && self.cur_class != "" {
+                    t = self.cur_class
+                } else if name == "true" || name == "false" {
                     t = "bool"
                 } else if self.cls_idx_map.has_key(name) {
                     t = name
@@ -255,6 +257,9 @@ extend Analyzer {
             }
             let lt = btype_norm(self.analyze_expr(lhs))
             mut mt = self.lookup_field_type(lt, mname)
+            if mt == "" && (lt == "" || lt == "void") && self.cur_class != "" {
+                mt = self.lookup_field_type(self.cur_class, mname)
+            }
             if mt == "" {
                 if btype_is_tuple(lt) && mname.starts_with("f") && mname.len() > 1 {
                     let tidx = mname.slice(1, mname.len()).to_i64()

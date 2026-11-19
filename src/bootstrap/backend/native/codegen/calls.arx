@@ -233,9 +233,32 @@ extend NativeCodegen {
             let recv_id = self.la.get(cal)
             let mname = self.sa.get(cal)
             mut recv_t = btype_norm(self.node_types.get(recv_id))
-            if recv_t == "" || recv_t == "void" {
+            if recv_t == "" || recv_t == "void" || recv_t == "i64" {
                 if self.nk.get(recv_id) == NK_IDENT() {
-                    recv_t = self.find_local_type(self.sa.get(recv_id))
+                    let id_nm = self.sa.get(recv_id)
+                    if id_nm == "self" && self.cur_class != "" {
+                        recv_t = self.cur_class
+                    } else {
+                        recv_t = self.find_local_type(id_nm)
+                    }
+                } else if self.nk.get(recv_id) == NK_MEMBER() {
+                    let obj_id = self.la.get(recv_id)
+                    let fld_nm = self.sa.get(recv_id)
+                    mut obj_t = btype_norm(self.node_types.get(obj_id))
+                    if (obj_t == "" || obj_t == "void" || obj_t == "i64") && self.nk.get(obj_id) == NK_IDENT() {
+                        let onm = self.sa.get(obj_id)
+                        if onm == "self" {
+                            obj_t = self.cur_class
+                        } else {
+                            obj_t = self.find_local_type(onm)
+                        }
+                    }
+                    if obj_t != "" {
+                        let fkey = obj_t + "::" + fld_nm
+                        if self.az.cls_field_types.has_key(fkey) {
+                            recv_t = self.az.cls_field_types.get(fkey)
+                        }
+                    }
                 }
             }
 
@@ -348,6 +371,8 @@ extend NativeCodegen {
                 if mname == "replace" { self.emit_call_with_temps(self.rt.lbl("__rt_str_replace"), false, margs); self.track_temp_str(); return }
                 if mname == "split" { self.emit_call_with_temps(self.rt.lbl("__rt_str_split"), false, margs); return }
                 if mname == "repeat" { self.emit_call_with_temps(self.rt.lbl("__rt_str_repeat"), false, margs); self.track_temp_str(); return }
+                if mname == "pad_right" { self.emit_call_with_temps(self.rt.lbl("__rt_str_pad_right"), false, margs); self.track_temp_str(); return }
+                if mname == "pad_left" { self.emit_call_with_temps(self.rt.lbl("__rt_str_pad_left"), false, margs); self.track_temp_str(); return }
                 if mname == "to_i64" { self.emit_call_with_temps(self.rt.lbl("__rt_str_to_i64"), false, margs); return }
                 if mname == "to_f64" {
                     self.emit_call_with_temps(self.rt.lbl("__rt_str_to_f64"), false, margs)
@@ -450,7 +475,11 @@ extend NativeCodegen {
 
             if btype_is_map(recv_t) || btype_is_set(recv_t) {
                 mut kt = btype_list_elem(recv_t)
-                if btype_is_map(recv_t) { kt = btype_map_key(recv_t) }
+                mut vt = "i64"
+                if btype_is_map(recv_t) {
+                    kt = btype_map_key(recv_t)
+                    vt = btype_map_val(recv_t)
+                }
                 self.emit_expr(recv_id)
                 let rslot = self.alloc_slot("", recv_t)
                 a.mov_mr64(REG_RBP(), -rslot, REG_RAX())
@@ -501,6 +530,10 @@ extend NativeCodegen {
                     }
                 } else {
                     if mname == "insert" {
+                        if ncg_is_str(vt) && arg_temps.len() >= 2 {
+                            a.mov_rm64(REG_RCX(), REG_RBP(), -arg_temps.get(1))
+                            a.call_rel32(self.rt.lbl("__rt_arc_retain"))
+                        }
                         margs.push(is_s)
                         self.emit_call_with_temps(self.rt.lbl("__rt_map_insert"), false, margs)
                         return
