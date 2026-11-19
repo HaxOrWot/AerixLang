@@ -43,6 +43,22 @@ extend NativeCodegen {
         a.mov_rm64(REG_RAX(), REG_RBP(), -acc_tmp)
     }
 
+    priv fn expr_has_call(nid: i64) -> bool {
+        if nid < 0 { return false }
+        let k = self.nk.get(nid)
+        if k == NK_CALL() || k == NK_GENERIC_CALL() { return true }
+        if self.expr_has_call(self.la.get(nid)) { return true }
+        if self.expr_has_call(self.ra.get(nid)) { return true }
+        if self.expr_has_call(self.ea.get(nid)) { return true }
+        let cc = self.child_count(nid)
+        mut i = 0
+        while i < cc {
+            if self.expr_has_call(self.child_at(nid, i)) { return true }
+            i = i + 1
+        }
+        return false
+    }
+
     priv fn emit_bin_op(nid: i64) {
         let a = self.asmb
         let op_s = self.sa.get(nid)
@@ -124,6 +140,218 @@ extend NativeCodegen {
             a.bind_label(l_has_val)
             a.bind_label(l_done)
             return
+        }
+
+        // Direct optimization for arithmetic and comparisons:
+        if !ncg_is_str(lt) && !ncg_is_str(rt) && op_s != "**" {
+            let rk = self.nk.get(rid)
+
+            // Sub-case 1: Right-hand side is integer literal
+            if !ncg_is_float(lt) && !ncg_is_float(rt) && rk == NK_INT_LIT() {
+                let v = ncg_parse_int_lit(self.sa.get(rid))
+                self.emit_expr(lid)
+                let is_imm32 = (v >= -2147483648 && v <= 2147483647)
+                if op_s == "+" {
+                    if is_imm32 { a.add_ri32(REG_RAX(), v) }
+                    else { a.mov_ri64(REG_RCX(), v); a.add_rr(REG_RAX(), REG_RCX()) }
+                    return
+                }
+                if op_s == "-" {
+                    if is_imm32 { a.sub_ri32(REG_RAX(), v) }
+                    else { a.mov_ri64(REG_RCX(), v); a.sub_rr(REG_RAX(), REG_RCX()) }
+                    return
+                }
+                if op_s == "*" {
+                    a.mov_ri64(REG_RCX(), v)
+                    a.imul_rr(REG_RAX(), REG_RCX())
+                    return
+                }
+                if op_s == "/" {
+                    a.mov_ri64(REG_RCX(), v)
+                    a.cqo()
+                    a.idiv_r(REG_RCX())
+                    return
+                }
+                if op_s == "%" {
+                    a.mov_ri64(REG_RCX(), v)
+                    a.cqo()
+                    a.idiv_r(REG_RCX())
+                    a.mov_rr(REG_RAX(), REG_RDX())
+                    return
+                }
+                if op_s == "&" {
+                    a.mov_ri64(REG_RCX(), v)
+                    a.and_rr(REG_RAX(), REG_RCX())
+                    return
+                }
+                if op_s == "|" {
+                    a.mov_ri64(REG_RCX(), v)
+                    a.or_rr(REG_RAX(), REG_RCX())
+                    return
+                }
+                if op_s == "^" {
+                    a.mov_ri64(REG_RCX(), v)
+                    a.xor_rr(REG_RAX(), REG_RCX())
+                    return
+                }
+                if op_s == "<<" {
+                    a.mov_ri32_sext(REG_RCX(), v)
+                    a.shl_cl(REG_RAX())
+                    return
+                }
+                if op_s == ">>" {
+                    a.mov_ri32_sext(REG_RCX(), v)
+                    a.sar_cl(REG_RAX())
+                    return
+                }
+                if op_s == "==" || op_s == "!=" || op_s == "<" || op_s == "<=" || op_s == ">" || op_s == ">=" {
+                    if is_imm32 { a.cmp_ri32(REG_RAX(), v) }
+                    else { a.mov_ri64(REG_RCX(), v); a.cmp_rr(REG_RAX(), REG_RCX()) }
+                    if op_s == "==" { a.setcc_u8(CC_E(), REG_RAX()); return }
+                    if op_s == "!=" { a.setcc_u8(CC_NE(), REG_RAX()); return }
+                    if op_s == "<"  { a.setcc_u8(CC_L(), REG_RAX()); return }
+                    if op_s == "<=" { a.setcc_u8(CC_LE(), REG_RAX()); return }
+                    if op_s == ">"  { a.setcc_u8(CC_G(), REG_RAX()); return }
+                    if op_s == ">=" { a.setcc_u8(CC_GE(), REG_RAX()); return }
+                }
+            }
+
+            // Sub-case 2: Right-hand side is a local variable
+            if rk == NK_IDENT() {
+                let r_nm = self.sa.get(rid)
+                let roff = self.find_local(r_nm)
+                if roff >= 0 {
+                    let lk = self.nk.get(lid)
+                    if lk == NK_IDENT() && self.sa.get(lid) == r_nm {
+                        if ncg_is_float(lt) || ncg_is_float(rt) {
+                            if op_s == "*" {
+                                a.mov_rm64(REG_RAX(), REG_RBP(), -roff)
+                                if ncg_is_float(lt) { a.movq_xmm_r(0, REG_RAX()) } else { a.cvtsi2sd(0, REG_RAX()) }
+                                a.mulsd(0, 0)
+                                a.movq_r_xmm(REG_RAX(), 0)
+                                return
+                            }
+                        } else {
+                            if op_s == "*" {
+                                a.mov_rm64(REG_RAX(), REG_RBP(), -roff)
+                                a.imul_rr(REG_RAX(), REG_RAX())
+                                return
+                            }
+                            if op_s == "+" {
+                                a.mov_rm64(REG_RAX(), REG_RBP(), -roff)
+                                a.add_rr(REG_RAX(), REG_RAX())
+                                return
+                            }
+                            if op_s == "-" {
+                                a.mov_ri32_sext(REG_RAX(), 0)
+                                return
+                            }
+                        }
+                    }
+                    if ncg_is_float(lt) || ncg_is_float(rt) {
+                        self.emit_expr(lid)
+                        if ncg_is_float(lt) { a.movq_xmm_r(0, REG_RAX()) } else { a.cvtsi2sd(0, REG_RAX()) }
+                        a.mov_rm64(REG_RCX(), REG_RBP(), -roff)
+                        if ncg_is_float(rt) { a.movq_xmm_r(1, REG_RCX()) } else { a.cvtsi2sd(1, REG_RCX()) }
+                        if op_s == "+" { a.addsd(0, 1); a.movq_r_xmm(REG_RAX(), 0); return }
+                        if op_s == "-" { a.subsd(0, 1); a.movq_r_xmm(REG_RAX(), 0); return }
+                        if op_s == "*" { a.mulsd(0, 1); a.movq_r_xmm(REG_RAX(), 0); return }
+                        if op_s == "/" { a.divsd(0, 1); a.movq_r_xmm(REG_RAX(), 0); return }
+                        a.ucomisd(0, 1)
+                        if op_s == "==" { a.setcc_u8(CC_E(), REG_RAX()); return }
+                        if op_s == "!=" { a.setcc_u8(CC_NE(), REG_RAX()); return }
+                        if op_s == "<"  { a.setcc_u8(CC_B(), REG_RAX()); return }
+                        if op_s == "<=" { a.setcc_u8(CC_BE(), REG_RAX()); return }
+                        if op_s == ">"  { a.setcc_u8(CC_A(), REG_RAX()); return }
+                        if op_s == ">=" { a.setcc_u8(CC_AE(), REG_RAX()); return }
+                    } else {
+                        self.emit_expr(lid)
+                        a.mov_rm64(REG_RCX(), REG_RBP(), -roff)
+                        if op_s == "+" { a.add_rr(REG_RAX(), REG_RCX()); return }
+                        if op_s == "-" { a.sub_rr(REG_RAX(), REG_RCX()); return }
+                        if op_s == "*" { a.imul_rr(REG_RAX(), REG_RCX()); return }
+                        if op_s == "/" { a.cqo(); a.idiv_r(REG_RCX()); return }
+                        if op_s == "%" { a.cqo(); a.idiv_r(REG_RCX()); a.mov_rr(REG_RAX(), REG_RDX()); return }
+                        if op_s == "&" { a.and_rr(REG_RAX(), REG_RCX()); return }
+                        if op_s == "|" { a.or_rr(REG_RAX(), REG_RCX()); return }
+                        if op_s == "^" { a.xor_rr(REG_RAX(), REG_RCX()); return }
+                        if op_s == "<<" { a.shl_cl(REG_RAX()); return }
+                        if op_s == ">>" { a.sar_cl(REG_RAX()); return }
+                        a.cmp_rr(REG_RAX(), REG_RCX())
+                        if op_s == "==" { a.setcc_u8(CC_E(), REG_RAX()); return }
+                        if op_s == "!=" { a.setcc_u8(CC_NE(), REG_RAX()); return }
+                        if op_s == "<"  { a.setcc_u8(CC_L(), REG_RAX()); return }
+                        if op_s == "<=" { a.setcc_u8(CC_LE(), REG_RAX()); return }
+                        if op_s == ">"  { a.setcc_u8(CC_G(), REG_RAX()); return }
+                        if op_s == ">=" { a.setcc_u8(CC_GE(), REG_RAX()); return }
+                    }
+                }
+            }
+
+            // Sub-case 3: Right-hand side is float literal
+            if (ncg_is_float(lt) || ncg_is_float(rt)) && rk == NK_FLOAT_LIT() {
+                let fv = ncg_to_float_val(self.sa.get(rid))
+                let r_off = self.pe.add_rdata_f64(fv)
+                self.emit_expr(lid)
+                if ncg_is_float(lt) { a.movq_xmm_r(0, REG_RAX()) } else { a.cvtsi2sd(0, REG_RAX()) }
+                a.lea_rip_rdata(REG_RCX(), r_off)
+                a.mov_rm64(REG_RDX(), REG_RCX(), 0)
+                a.movq_xmm_r(1, REG_RDX())
+                if op_s == "+" { a.addsd(0, 1); a.movq_r_xmm(REG_RAX(), 0); return }
+                if op_s == "-" { a.subsd(0, 1); a.movq_r_xmm(REG_RAX(), 0); return }
+                if op_s == "*" { a.mulsd(0, 1); a.movq_r_xmm(REG_RAX(), 0); return }
+                if op_s == "/" { a.divsd(0, 1); a.movq_r_xmm(REG_RAX(), 0); return }
+                a.ucomisd(0, 1)
+                if op_s == "==" { a.setcc_u8(CC_E(), REG_RAX()); return }
+                if op_s == "!=" { a.setcc_u8(CC_NE(), REG_RAX()); return }
+                if op_s == "<"  { a.setcc_u8(CC_B(), REG_RAX()); return }
+                if op_s == "<=" { a.setcc_u8(CC_BE(), REG_RAX()); return }
+                if op_s == ">"  { a.setcc_u8(CC_A(), REG_RAX()); return }
+                if op_s == ">=" { a.setcc_u8(CC_AE(), REG_RAX()); return }
+            }
+
+            // Sub-case 4: Compound expressions without function calls (using R10 scratch register)
+            if !self.expr_has_call(rid) {
+                self.emit_expr(lid)
+                a.mov_rr(REG_R10(), REG_RAX())
+                self.emit_expr(rid)
+                a.mov_rr(REG_RCX(), REG_RAX())
+                a.mov_rr(REG_RAX(), REG_R10())
+                if ncg_is_float(lt) || ncg_is_float(rt) {
+                    if ncg_is_float(lt) { a.movq_xmm_r(0, REG_RAX()) } else { a.cvtsi2sd(0, REG_RAX()) }
+                    if ncg_is_float(rt) { a.movq_xmm_r(1, REG_RCX()) } else { a.cvtsi2sd(1, REG_RCX()) }
+                    if op_s == "+" { a.addsd(0, 1); a.movq_r_xmm(REG_RAX(), 0); return }
+                    if op_s == "-" { a.subsd(0, 1); a.movq_r_xmm(REG_RAX(), 0); return }
+                    if op_s == "*" { a.mulsd(0, 1); a.movq_r_xmm(REG_RAX(), 0); return }
+                    if op_s == "/" { a.divsd(0, 1); a.movq_r_xmm(REG_RAX(), 0); return }
+                    a.ucomisd(0, 1)
+                    if op_s == "==" { a.setcc_u8(CC_E(), REG_RAX()); return }
+                    if op_s == "!=" { a.setcc_u8(CC_NE(), REG_RAX()); return }
+                    if op_s == "<"  { a.setcc_u8(CC_B(), REG_RAX()); return }
+                    if op_s == "<=" { a.setcc_u8(CC_BE(), REG_RAX()); return }
+                    if op_s == ">"  { a.setcc_u8(CC_A(), REG_RAX()); return }
+                    if op_s == ">=" { a.setcc_u8(CC_AE(), REG_RAX()); return }
+                } else {
+                    if op_s == "+" { a.add_rr(REG_RAX(), REG_RCX()); return }
+                    if op_s == "-" { a.sub_rr(REG_RAX(), REG_RCX()); return }
+                    if op_s == "*" { a.imul_rr(REG_RAX(), REG_RCX()); return }
+                    if op_s == "/" { a.cqo(); a.idiv_r(REG_RCX()); return }
+                    if op_s == "%" { a.cqo(); a.idiv_r(REG_RCX()); a.mov_rr(REG_RAX(), REG_RDX()); return }
+                    if op_s == "&" { a.and_rr(REG_RAX(), REG_RCX()); return }
+                    if op_s == "|" { a.or_rr(REG_RAX(), REG_RCX()); return }
+                    if op_s == "^" { a.xor_rr(REG_RAX(), REG_RCX()); return }
+                    if op_s == "<<" { a.shl_cl(REG_RAX()); return }
+                    if op_s == ">>" { a.sar_cl(REG_RAX()); return }
+                    a.cmp_rr(REG_RAX(), REG_RCX())
+                    if op_s == "==" { a.setcc_u8(CC_E(), REG_RAX()); return }
+                    if op_s == "!=" { a.setcc_u8(CC_NE(), REG_RAX()); return }
+                    if op_s == "<"  { a.setcc_u8(CC_L(), REG_RAX()); return }
+                    if op_s == "<=" { a.setcc_u8(CC_LE(), REG_RAX()); return }
+                    if op_s == ">"  { a.setcc_u8(CC_G(), REG_RAX()); return }
+                    if op_s == ">=" { a.setcc_u8(CC_GE(), REG_RAX()); return }
+                }
+                return
+            }
         }
 
         self.emit_expr(lid)

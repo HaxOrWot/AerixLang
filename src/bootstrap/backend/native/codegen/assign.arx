@@ -36,11 +36,15 @@ extend NativeCodegen {
                         a.mov_mr64(REG_RBP(), -loff, REG_RAX())
                         a.call_rel32(self.rt.lbl("__rt_arc_release"))
                     } else {
-                        let r_val = self.alloc_slot("", "i64")
-                        a.mov_mr64(REG_RBP(), -r_val, REG_RAX())
-                        self.emit_temp_drops(tmark)
-                        a.mov_rm64(REG_RAX(), REG_RBP(), -r_val)
-                        a.mov_mr64(REG_RBP(), -loff, REG_RAX())
+                        if self.temp_str_slots.len() > tmark {
+                            let r_val = self.alloc_slot("", "i64")
+                            a.mov_mr64(REG_RBP(), -r_val, REG_RAX())
+                            self.emit_temp_drops(tmark)
+                            a.mov_rm64(REG_RAX(), REG_RBP(), -r_val)
+                            a.mov_mr64(REG_RBP(), -loff, REG_RAX())
+                        } else {
+                            a.mov_mr64(REG_RBP(), -loff, REG_RAX())
+                        }
                     }
                     return
                 } else if self.global_offs.has_key(vname) {

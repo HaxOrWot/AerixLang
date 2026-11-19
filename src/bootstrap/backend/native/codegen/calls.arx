@@ -716,9 +716,25 @@ extend NativeCodegen {
                 a.lea_rm(REG_RAX(), REG_RBP(), -stack_off)
                 a.mov_mr64(REG_RBP(), -obj_slot, REG_RAX())
             } else {
-                a.mov_ri32_sext(REG_RCX(), 1)
-                a.mov_ri32_sext(REG_RDX(), sz)
-                a.call_rip_iat(self.rt.imp_calloc)
+                a.call_rel32(self.rt.lbl("__rt_tls_arena_get"))
+                a.mov_rr(REG_RCX(), REG_RAX())
+                a.mov_ri64(REG_RDX(), sz)
+                a.call_rel32(self.rt.lbl("__rt_tls_arena_alloc"))
+                if sz <= 64 {
+                    mut zi = 0
+                    while zi < sz {
+                        a.mov_ri32_sext(REG_RDX(), 0)
+                        a.mov_mr64(REG_RAX(), zi, REG_RDX())
+                        zi = zi + 8
+                    }
+                } else {
+                    a.mov_mr64(REG_RBP(), -obj_slot, REG_RAX())
+                    a.mov_rr(REG_RCX(), REG_RAX())
+                    a.mov_ri32_sext(REG_RDX(), 0)
+                    a.mov_ri64(REG_R8(), sz)
+                    a.call_rip_iat(self.rt.imp_memset)
+                    a.mov_rm64(REG_RAX(), REG_RBP(), -obj_slot)
+                }
                 a.mov_mr64(REG_RBP(), -obj_slot, REG_RAX())
             }
 

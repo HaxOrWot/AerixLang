@@ -119,6 +119,97 @@ pub class PeepholeOptimizer {
                 }
             }
 
+            // Pattern 4: 32-bit displacement load followed by redundant store of same value
+            // Load:   48 8B 85 <d0 d1 d2 d3> (7 bytes: mov rax, [rbp+disp])
+            // Store:  48 89 85 <d0 d1 d2 d3> (7 bytes: mov [rbp+disp], rax)
+            if i + 13 < n {
+                if b0 == 0x48 && b1 == 0x8B && b2 == 0x85 {
+                    let d0 = asmb.code.get(i + 3)
+                    let d1 = asmb.code.get(i + 4)
+                    let d2 = asmb.code.get(i + 5)
+                    let d3 = asmb.code.get(i + 6)
+                    let s0 = asmb.code.get(i + 7)
+                    let s1 = asmb.code.get(i + 8)
+                    let s2 = asmb.code.get(i + 9)
+                    let sd0 = asmb.code.get(i + 10)
+                    let sd1 = asmb.code.get(i + 11)
+                    let sd2 = asmb.code.get(i + 12)
+                    let sd3 = asmb.code.get(i + 13)
+                    if s0 == 0x48 && s1 == 0x89 && s2 == 0x85 && sd0 == d0 && sd1 == d1 && sd2 == d2 && sd3 == d3 {
+                        if !label_set.has_key(i + 7) && !fix_set.has_key(i + 7) {
+                            asmb.code.set(i + 7, 0x90)
+                            asmb.code.set(i + 8, 0x90)
+                            asmb.code.set(i + 9, 0x90)
+                            asmb.code.set(i + 10, 0x90)
+                            asmb.code.set(i + 11, 0x90)
+                            asmb.code.set(i + 12, 0x90)
+                            asmb.code.set(i + 13, 0x90)
+                            count = count + 1
+                            i = i + 14
+                            continue
+                        }
+                    }
+                }
+            }
+
+            // Pattern 5: Store to stack followed by load into RCX: forward directly via MOV RCX, RAX
+            // Store: 48 89 85 <d0 d1 d2 d3> (mov [rbp+disp], rax)
+            // Load:  48 8B 8D <d0 d1 d2 d3> (mov rcx, [rbp+disp])
+            if i + 13 < n {
+                if b0 == 0x48 && b1 == 0x89 && b2 == 0x85 {
+                    let d0 = asmb.code.get(i + 3)
+                    let d1 = asmb.code.get(i + 4)
+                    let d2 = asmb.code.get(i + 5)
+                    let d3 = asmb.code.get(i + 6)
+                    let l0 = asmb.code.get(i + 7)
+                    let l1 = asmb.code.get(i + 8)
+                    let l2 = asmb.code.get(i + 9)
+                    let ld0 = asmb.code.get(i + 10)
+                    let ld1 = asmb.code.get(i + 11)
+                    let ld2 = asmb.code.get(i + 12)
+                    let ld3 = asmb.code.get(i + 13)
+                    if l0 == 0x48 && l1 == 0x8B && l2 == 0x8D && ld0 == d0 && ld1 == d1 && ld2 == d2 && ld3 == d3 {
+                        if !label_set.has_key(i + 7) && !fix_set.has_key(i + 7) {
+                            // Replace mov rcx, [rbp+disp] with: mov rcx, rax (48 89 C1) + 4 NOPs
+                            asmb.code.set(i + 7, 0x48)
+                            asmb.code.set(i + 8, 0x89)
+                            asmb.code.set(i + 9, 0xC1)
+                            asmb.code.set(i + 10, 0x90)
+                            asmb.code.set(i + 11, 0x90)
+                            asmb.code.set(i + 12, 0x90)
+                            asmb.code.set(i + 13, 0x90)
+                            count = count + 1
+                            i = i + 14
+                            continue
+                        }
+                    }
+                }
+            }
+
+            // Pattern 6: Redundant float XMM <-> GPR roundtrips (5 bytes each)
+            // 66 48 0F 6E C0 (movq xmm0, rax) followed by 66 48 0F 7E C0 (movq rax, xmm0)
+            if i + 9 < n {
+                if b0 == 0x66 && b1 == 0x48 && b2 == 0x0F && asmb.code.get(i + 3) == 0x6E && asmb.code.get(i + 4) == 0xC0 {
+                    let m0 = asmb.code.get(i + 5)
+                    let m1 = asmb.code.get(i + 6)
+                    let m2 = asmb.code.get(i + 7)
+                    let m3 = asmb.code.get(i + 8)
+                    let m4 = asmb.code.get(i + 9)
+                    if m0 == 0x66 && m1 == 0x48 && m2 == 0x0F && m3 == 0x7E && m4 == 0xC0 {
+                        if !label_set.has_key(i + 5) && !fix_set.has_key(i + 5) {
+                            asmb.code.set(i + 5, 0x90)
+                            asmb.code.set(i + 6, 0x90)
+                            asmb.code.set(i + 7, 0x90)
+                            asmb.code.set(i + 8, 0x90)
+                            asmb.code.set(i + 9, 0x90)
+                            count = count + 1
+                            i = i + 10
+                            continue
+                        }
+                    }
+                }
+            }
+
             i = i + 1
         }
 

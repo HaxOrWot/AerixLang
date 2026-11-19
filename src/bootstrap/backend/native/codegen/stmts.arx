@@ -50,10 +50,12 @@ extend NativeCodegen {
                 self.emit_temp_drops(tmark)
                 a.mov_rm64(REG_RAX(), REG_RBP(), -r_val)
             } else {
-                let r_val = self.alloc_slot("", "i64")
-                a.mov_mr64(REG_RBP(), -r_val, REG_RAX())
-                self.emit_temp_drops(tmark)
-                a.mov_rm64(REG_RAX(), REG_RBP(), -r_val)
+                if self.temp_str_slots.len() > tmark {
+                    let r_val = self.alloc_slot("", "i64")
+                    a.mov_mr64(REG_RBP(), -r_val, REG_RAX())
+                    self.emit_temp_drops(tmark)
+                    a.mov_rm64(REG_RAX(), REG_RBP(), -r_val)
+                }
             }
             a.mov_mr64(REG_RBP(), -off, REG_RAX())
             return
@@ -69,10 +71,12 @@ extend NativeCodegen {
             let l_end = a.new_label()
             let cmark = self.temp_str_slots.len()
             self.emit_expr(self.la.get(nid))
-            let rslot = self.alloc_slot("", "i64")
-            a.mov_mr64(REG_RBP(), -rslot, REG_RAX())
-            self.emit_temp_drops(cmark)
-            a.mov_rm64(REG_RAX(), REG_RBP(), -rslot)
+            if self.temp_str_slots.len() > cmark {
+                let rslot = self.alloc_slot("", "i64")
+                a.mov_mr64(REG_RBP(), -rslot, REG_RAX())
+                self.emit_temp_drops(cmark)
+                a.mov_rm64(REG_RAX(), REG_RBP(), -rslot)
+            }
             a.test_rr(REG_RAX(), REG_RAX())
             a.jcc_rel32(CC_E(), l_else)
             self.emit_stmt(self.ra.get(nid))
@@ -95,10 +99,12 @@ extend NativeCodegen {
             a.bind_label(l_top)
             let cmark = self.temp_str_slots.len()
             self.emit_expr(self.la.get(nid))
-            let rslot = self.alloc_slot("", "i64")
-            a.mov_mr64(REG_RBP(), -rslot, REG_RAX())
-            self.emit_temp_drops(cmark)
-            a.mov_rm64(REG_RAX(), REG_RBP(), -rslot)
+            if self.temp_str_slots.len() > cmark {
+                let rslot = self.alloc_slot("", "i64")
+                a.mov_mr64(REG_RBP(), -rslot, REG_RAX())
+                self.emit_temp_drops(cmark)
+                a.mov_rm64(REG_RAX(), REG_RBP(), -rslot)
+            }
             a.test_rr(REG_RAX(), REG_RAX())
             a.jcc_rel32(CC_E(), l_end)
             self.emit_stmt(self.ra.get(nid))
