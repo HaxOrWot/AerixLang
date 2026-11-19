@@ -62,6 +62,7 @@ pub fn NK_CASCADE() -> i64 { return 70 }         // Method cascade operator expr
 pub fn NK_NEW() -> i64 { return 71 }             // Heap instantiation expression (`new ClassName(...)`)
 pub fn NK_GENERIC_CALL() -> i64 { return 72 }    // Generic function call (`func<T>(...)`)
 pub fn NK_NAMED_ARG() -> i64 { return 73 }       // Named function argument (`name: value`)
+pub fn NK_TRY_UNWRAP() -> i64 { return 74 }        // Error unwrap / propagation operator (`expr!`)
 
 // Modifier / Flag bitmasks encoded in int_a
 pub fn FLAG_PUB() -> i64 { return 1 }            // Public visibility modifier (`pub`)
@@ -70,9 +71,10 @@ pub fn FLAG_MUT() -> i64 { return 4 }            // Mutable variable or paramete
 pub fn FLAG_INCLUSIVE() -> i64 { return 8 }      // Inclusive range flag (`..=`)
 pub fn FLAG_PACKED() -> i64 { return 16 }        // Packed struct layout flag
 pub fn FLAG_STRUCT() -> i64 { return 32 }        // Value struct type flag (vs reference class)
+pub fn FLAG_INLINE() -> i64 { return 64 }
 
 // Check if a specific bit flag is set in the flags bitmask.
-pub fn has_flag(flags: i64, bit: i64) -> bool {
-    if bit <= 0 { return false }
-    return (flags / bit) % 2 == 1
+pub fn has_flag(flags: i64, flag_bit: i64) -> bool {
+    if flag_bit <= 0 { return false }
+    return (flags / flag_bit) % 2 == 1
 }

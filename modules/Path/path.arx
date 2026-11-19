@@ -1,0 +1,103 @@
+// ==============================================================================
+// Aerix Standard Library: Path
+// Cross-Platform Filesystem Path Manipulation & Queries
+// ==============================================================================
+
+pub fn separator() -> str {
+    if Env.os_name() == "windows" { return "\\" }
+    return "/"
+}
+
+pub fn join(p1: str, p2: str) -> str {
+    if p1 == "" { return p2 }
+    if p2 == "" { return p1 }
+    let sep = separator()
+    mut p1_clean = p1
+    if p1_clean.ends_with("\\") || p1_clean.ends_with("/") {
+        p1_clean = p1_clean.slice(0, p1_clean.len() - 1)
+    }
+    mut p2_clean = p2
+    if p2_clean.starts_with("\\") || p2_clean.starts_with("/") {
+        p2_clean = p2_clean.slice(1, p2_clean.len())
+    }
+    return p1_clean + sep + p2_clean
+}
+
+pub fn join3(p1: str, p2: str, p3: str) -> str {
+    return join(join(p1, p2), p3)
+}
+
+pub fn dirname(p: str) -> str {
+    mut idx = -1
+    mut i = p.len() - 1
+    while i >= 0 {
+        let b = p.byte_at(i)
+        if b == 47 || b == 92 { // '/' or '\'
+            idx = i
+            break
+        }
+        i = i - 1
+    }
+    if idx <= 0 { return "" }
+    return p.slice(0, idx)
+}
+
+pub fn basename(p: str) -> str {
+    mut idx = -1
+    mut i = p.len() - 1
+    while i >= 0 {
+        let b = p.byte_at(i)
+        if b == 47 || b == 92 {
+            idx = i
+            break
+        }
+        i = i - 1
+    }
+    if idx < 0 { return p }
+    return p.slice(idx + 1, p.len())
+}
+
+pub fn extension(p: str) -> str {
+    let base = basename(p)
+    mut idx = -1
+    mut i = base.len() - 1
+    while i >= 0 {
+        if base.byte_at(i) == 46 { // '.'
+            idx = i
+            break
+        }
+        i = i - 1
+    }
+    if idx < 0 { return "" }
+    return base.slice(idx + 1, base.len())
+}
+
+pub fn exists(p: str) -> bool {
+    return File.exists(p) || Directory.exists(p)
+}
+
+pub fn is_file(p: str) -> bool {
+    return File.exists(p)
+}
+
+pub fn is_dir(p: str) -> bool {
+    return Directory.exists(p)
+}
+
+pub fn mkdir(p: str) -> bool {
+    return Directory.create(p)
+}
+
+pub fn list_dir(p: str) -> List<str> {
+    return Directory.list_files(p)
+}
+
+pub fn absolute(p: str) -> str {
+    if p.len() >= 2 && p.byte_at(1) == 58 { // e.g. "C:"
+        return p
+    }
+    if p.starts_with("/") || p.starts_with("\\") {
+        return p
+    }
+    return join(Env.cwd(), p)
+}

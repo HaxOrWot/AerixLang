@@ -279,6 +279,15 @@ extend NativeCodegen {
                     if mname == "create" { self.emit_call_with_temps(self.rt.lbl("__rt_dir_create"), false, arg_temps); return }
                     if mname == "remove" || mname == "delete" { self.emit_call_with_temps(self.rt.lbl("__rt_dir_remove"), false, arg_temps); return }
                 }
+                if ns == "Path" {
+                    if mname == "join" { self.emit_call_with_temps(self.rt.lbl("__rt_path_join"), false, arg_temps); self.track_temp_str(); return }
+                    if mname == "basename" { self.emit_call_with_temps(self.rt.lbl("__rt_path_basename"), false, arg_temps); self.track_temp_str(); return }
+                    if mname == "dirname" { self.emit_call_with_temps(self.rt.lbl("__rt_path_dirname"), false, arg_temps); self.track_temp_str(); return }
+                    if mname == "extension" { self.emit_call_with_temps(self.rt.lbl("__rt_path_extension"), false, arg_temps); self.track_temp_str(); return }
+                    if mname == "exists" { self.emit_call_with_temps(self.rt.lbl("__rt_path_exists"), false, arg_temps); return }
+                    if mname == "is_file" { self.emit_call_with_temps(self.rt.lbl("__rt_file_exists"), false, arg_temps); return }
+                    if mname == "is_dir" { self.emit_call_with_temps(self.rt.lbl("__rt_dir_exists"), false, arg_temps); return }
+                }
 
                 if ns == "Env" {
                     if mname == "get" { self.emit_call_with_temps(self.rt.lbl("__rt_env_get"), false, arg_temps); return }

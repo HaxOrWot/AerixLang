@@ -399,6 +399,18 @@ extend Analyzer {
 
     priv fn analyze_match_pat(pat_id: i64, subj_t: str) {
         if pat_id < 0 { return }
+        mut base_subj_t = subj_t
+        if self.enum_idx_map.len() > 0 {
+            mut ei = 0
+            while ei < self.enum_count {
+                let en = self.enum_names.get(ei)
+                if subj_t == en || subj_t.starts_with(en + "_") || subj_t.starts_with(en + "<") {
+                    base_subj_t = en
+                    break
+                }
+                ei = ei + 1
+            }
+        }
         let pk = self.nk.get(pat_id)
         if pk == NK_IDENT() {
             let name = self.sa.get(pat_id)
@@ -406,8 +418,8 @@ extend Analyzer {
                 self.node_ext.set(pat_id, "wildcard")
                 return
             }
-            if self.enum_idx_map.has_key(subj_t) {
-                let vkey = subj_t + "::" + name
+            if self.enum_idx_map.has_key(base_subj_t) {
+                let vkey = base_subj_t + "::" + name
                 if self.enum_var_tag.has_key(vkey) {
                     self.node_ext.set(pat_id, "enum_unit::" + vkey)
                     self.node_types.set(pat_id, subj_t)
@@ -433,7 +445,7 @@ extend Analyzer {
         }
         if pk == NK_CALL() {
             let cal = self.la.get(pat_id)
-            mut ename = subj_t
+            mut ename = base_subj_t
             mut vname = ""
             if cal >= 0 && self.nk.get(cal) == NK_IDENT() {
                 vname = self.sa.get(cal)

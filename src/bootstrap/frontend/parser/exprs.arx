@@ -14,7 +14,7 @@ extend Parser {
         if k == TK_PLUS() || k == TK_MINUS() { return 8 }
         if k == TK_STAR() || k == TK_SLASH() || k == TK_PERCENT() || k == TK_LSHIFT() || k == TK_RSHIFT() || k == TK_AMP() || k == TK_CARET() { return 9 }
         if k == TK_POWER() { return 10 }
-        if k == TK_LPAREN() || k == TK_LBRACKET() || k == TK_DOT() || k == TK_QDOT() || k == TK_AS() { return 12 }
+        if k == TK_LPAREN() || k == TK_LBRACKET() || k == TK_DOT() || k == TK_QDOT() || k == TK_AS() || k == TK_NOT() { return 12 }
         return 0
     }
 
@@ -273,6 +273,9 @@ extend Parser {
         let op_str = self.tok_vals.get(op_idx)
         let ln = self.tok_lines.get(op_idx)
 
+        if k == TK_NOT() {
+            return self.add_node(NK_TRY_UNWRAP(), "!", "", 0, left, -1, -1, ln)
+        }
         if k == TK_LPAREN() {
             self.pos = self.pos - 1
             let args = List<i64>()

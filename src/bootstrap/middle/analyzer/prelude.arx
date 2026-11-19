@@ -6,31 +6,35 @@ extend Analyzer {
     priv fn prelude_static_ret(cls: str, mname: str) -> str {
         if cls == "File" {
             if mname == "read" || mname == "read_to_string" || mname == "read_string" { return "str" }
-            return "bool"
+            if mname == "write" || mname == "write_string" || mname == "exists" || mname == "remove" || mname == "delete" || mname == "copy" || mname == "append" { return "bool" }
+            return ""
         }
         if cls == "Directory" {
             if mname == "list_files" || mname == "list_dirs" { return "List<str>" }
-            return "bool"
+            if mname == "create" || mname == "exists" || mname == "remove" || mname == "delete" { return "bool" }
+            return ""
         }
         if cls == "Path" {
             if mname == "join" || mname == "basename" || mname == "dirname" || mname == "extension" { return "str" }
-            return "str"
+            if mname == "exists" || mname == "is_file" || mname == "is_dir" { return "bool" }
+            return ""
         }
         if cls == "Process" {
-            if mname == "run_capture" { return "str" }
-            return "i64"
+            if mname == "execute" { return "i64" }
+            return ""
         }
         if cls == "Env" {
             if mname == "get" || mname == "arg" || mname == "cwd" || mname == "os_name" { return "str" }
             if mname == "args" { return "List<str>" }
             if mname == "arg_count" { return "i64" }
             if mname == "set" { return "bool" }
-            return "void"
+            if mname == "exit" { return "void" }
+            return ""
         }
         if cls == "Math" {
             return "f64"
         }
-        return "i64"
+        return ""
     }
 
     priv fn str_method_ret(mname: str) -> str {

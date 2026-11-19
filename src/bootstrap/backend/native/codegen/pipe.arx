@@ -61,6 +61,10 @@ extend NativeCodegen {
 
         self.resolve_all_synthetic_trampolines()
 
+        // Phase 5 Peephole Optimization Pass (safe label check)
+        let opt = PeepholeOptimizer()
+        opt.run(self.asmb)
+
         return self.pe.build_and_write(self.asmb, out_exe)
     }
 

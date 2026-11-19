@@ -1,0 +1,88 @@
+// ==============================================================================
+// Aerix Native Backend: Linear Scan Register Allocator Infrastructure
+// Tracks register availability, virtual intervals, and stack spill resolution.
+// ==============================================================================
+
+import "../x64.arx"
+
+pub class RegAllocInterval {
+    pub var_name: str
+    pub reg_assigned: i64 // -1 if spilled
+    pub start_pos: i64
+    pub end_pos: i64
+    pub stack_slot: i64
+
+    init(var_name: str, start_pos: i64, end_pos: i64, stack_slot: i64) {
+        self.var_name = var_name
+        self.reg_assigned = -1
+        self.start_pos = start_pos
+        self.end_pos = end_pos
+        self.stack_slot = stack_slot
+    }
+}
+
+pub class LinearScanRegAlloc {
+    pub intervals: List<RegAllocInterval>
+    pub free_scratch_regs: List<i64>
+    pub free_callee_regs: List<i64>
+    pub allocated_count: i64
+    pub spill_count: i64
+
+    init() {
+        self.intervals = List<RegAllocInterval>()
+        self.free_scratch_regs = List<i64>()
+        self.free_callee_regs = List<i64>()
+        self.allocated_count = 0
+        self.spill_count = 0
+        self.reset_pools()
+    }
+
+    pub fn reset_pools() {
+        self.free_scratch_regs = List<i64>()
+        // Caller-saved scratch registers available for expression temps:
+        self.free_scratch_regs.push(REG_R10())
+        self.free_scratch_regs.push(REG_R11())
+
+        self.free_callee_regs = List<i64>()
+        // Callee-saved non-volatile registers for long-lived loop variables:
+        self.free_callee_regs.push(REG_RBX())
+        self.free_callee_regs.push(REG_R12())
+        self.free_callee_regs.push(REG_R13())
+        self.free_callee_regs.push(REG_R14())
+        self.free_callee_regs.push(REG_R15())
+    }
+
+    pub fn add_interval(var_name: str, start_pos: i64, end_pos: i64, slot: i64) {
+        let it = RegAllocInterval(var_name, start_pos, end_pos, slot)
+        self.intervals.push(it)
+    }
+
+    pub fn allocate_registers() {
+        mut i = 0
+        while i < self.intervals.len() {
+            let it = self.intervals.get(i)
+            // If callee registers available, assign one
+            if self.free_callee_regs.len() > 0 {
+                let r = self.free_callee_regs.pop()
+                it.reg_assigned = r
+                self.allocated_count = self.allocated_count + 1
+            } else {
+                it.reg_assigned = -1 // spill to stack slot
+                self.spill_count = self.spill_count + 1
+            }
+            i = i + 1
+        }
+    }
+
+    pub fn get_reg_for_var(var_name: str) -> i64 {
+        mut i = 0
+        while i < self.intervals.len() {
+            let it = self.intervals.get(i)
+            if it.var_name == var_name {
+                return it.reg_assigned
+            }
+            i = i + 1
+        }
+        return -1
+    }
+}

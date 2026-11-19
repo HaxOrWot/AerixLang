@@ -1,0 +1,268 @@
+// ==============================================================================
+// Aerix Standard Library: Json
+// Native Zero-Dependency JSON Parser & Serializer
+// ==============================================================================
+
+pub fn JSON_NULL() -> i64 { return 0 }
+pub fn JSON_BOOL() -> i64 { return 1 }
+pub fn JSON_NUM() -> i64  { return 2 }
+pub fn JSON_STR() -> i64  { return 3 }
+pub fn JSON_ARR() -> i64  { return 4 }
+pub fn JSON_OBJ() -> i64  { return 5 }
+
+pub class JsonValue {
+    pub kind: i64
+    pub str_val: str
+    pub num_val: f64
+    pub bool_val: bool
+    pub arr_val: List<JsonValue>
+    pub obj_keys: List<str>
+    pub obj_vals: List<JsonValue>
+
+    init(k: i64) {
+        self.kind = k
+        self.str_val = ""
+        self.num_val = 0.0
+        self.bool_val = false
+        self.arr_val = List<JsonValue>()
+        self.obj_keys = List<str>()
+        self.obj_vals = List<JsonValue>()
+    }
+
+    pub fn is_null() -> bool   { return self.kind == JSON_NULL() }
+    pub fn is_bool() -> bool   { return self.kind == JSON_BOOL() }
+    pub fn is_num() -> bool    { return self.kind == JSON_NUM() }
+    pub fn is_str() -> bool    { return self.kind == JSON_STR() }
+    pub fn is_array() -> bool  { return self.kind == JSON_ARR() }
+    pub fn is_object() -> bool { return self.kind == JSON_OBJ() }
+
+    pub fn as_str() -> str { return self.str_val }
+    pub fn as_i64() -> i64 { return self.num_val as i64 }
+    pub fn as_f64() -> f64 { return self.num_val }
+    pub fn as_bool() -> bool { return self.bool_val }
+
+    pub fn len() -> i64 {
+        if self.kind == JSON_ARR() { return self.arr_val.len() }
+        if self.kind == JSON_OBJ() { return self.obj_keys.len() }
+        return 0
+    }
+
+    pub fn at(idx: i64) -> JsonValue {
+        if self.kind == JSON_ARR() && idx >= 0 && idx < self.arr_val.len() {
+            return self.arr_val.get(idx)
+        }
+        return JsonValue(JSON_NULL())
+    }
+
+    pub fn get(key: str) -> JsonValue {
+        if self.kind == JSON_OBJ() {
+            mut i = 0
+            while i < self.obj_keys.len() {
+                if self.obj_keys.get(i) == key {
+                    return self.obj_vals.get(i)
+                }
+                i = i + 1
+            }
+        }
+        return JsonValue(JSON_NULL())
+    }
+
+    pub fn stringify() -> str {
+        if self.kind == JSON_NULL() { return "null" }
+        if self.kind == JSON_BOOL() {
+            if self.bool_val { return "true" }
+            return "false"
+        }
+        if self.kind == JSON_NUM() {
+            if self.num_val == (self.num_val as i64 as f64) {
+                return (self.num_val as i64 as str)
+            }
+            return (self.num_val as str)
+        }
+        if self.kind == JSON_STR() {
+            return "\"" + self.str_val.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t") + "\""
+        }
+        if self.kind == JSON_ARR() {
+            let bb = ByteBuffer()
+            bb.write_u8(91) // '['
+            mut i = 0
+            while i < self.arr_val.len() {
+                if i > 0 { bb.write_str(", ") }
+                bb.write_str(self.arr_val.get(i).stringify())
+                i = i + 1
+            }
+            bb.write_u8(93) // ']'
+            let res = bb.to_str()
+            bb.free()
+            return res
+        }
+        if self.kind == JSON_OBJ() {
+            let bb = ByteBuffer()
+            bb.write_u8(123) // '{'
+            mut i = 0
+            while i < self.obj_keys.len() {
+                if i > 0 { bb.write_str(", ") }
+                bb.write_str("\"" + self.obj_keys.get(i) + "\": ")
+                bb.write_str(self.obj_vals.get(i).stringify())
+                i = i + 1
+            }
+            bb.write_u8(125) // '}'
+            let res = bb.to_str()
+            bb.free()
+            return res
+        }
+        return "null"
+    }
+}
+
+pub class JsonParser {
+    pub src: str
+    pub pos: i64
+    pub len: i64
+
+    init(s: str) {
+        self.src = s
+        self.pos = 0
+        self.len = s.len()
+    }
+
+    priv fn skip_ws() {
+        while self.pos < self.len {
+            let b = self.src.byte_at(self.pos)
+            if b == 32 || b == 9 || b == 10 || b == 13 {
+                self.pos = self.pos + 1
+            } else {
+                break
+            }
+        }
+    }
+
+    priv fn parse_str() -> str {
+        if self.pos >= self.len || self.src.byte_at(self.pos) != 34 { return "" }
+        self.pos = self.pos + 1
+        let bb = ByteBuffer()
+        while self.pos < self.len {
+            let b = self.src.byte_at(self.pos)
+            self.pos = self.pos + 1
+            if b == 34 { break }
+            if b == 92 && self.pos < self.len {
+                let esc = self.src.byte_at(self.pos)
+                self.pos = self.pos + 1
+                if esc == 110 { bb.write_u8(10) }
+                else if esc == 114 { bb.write_u8(13) }
+                else if esc == 116 { bb.write_u8(9) }
+                else { bb.write_u8(esc) }
+            } else {
+                bb.write_u8(b)
+            }
+        }
+        let out = bb.to_str()
+        bb.free()
+        return out
+    }
+
+    priv fn parse_num() -> f64 {
+        let start = self.pos
+        if self.pos < self.len && self.src.byte_at(self.pos) == 45 { self.pos = self.pos + 1 }
+        while self.pos < self.len {
+            let b = self.src.byte_at(self.pos)
+            if (b >= 48 && b <= 57) || b == 46 || b == 101 || b == 69 || b == 43 || b == 45 {
+                self.pos = self.pos + 1
+            } else {
+                break
+            }
+        }
+        let num_str = self.src.slice(start, self.pos)
+        return num_str.to_f64()
+    }
+
+    pub fn parse() -> JsonValue {
+        self.skip_ws()
+        if self.pos >= self.len { return JsonValue(JSON_NULL()) }
+        let b = self.src.byte_at(self.pos)
+
+        // String
+        if b == 34 {
+            let val = JsonValue(JSON_STR())
+            val.str_val = self.parse_str()
+            return val
+        }
+
+        // Object
+        if b == 123 {
+            self.pos = self.pos + 1
+            let val = JsonValue(JSON_OBJ())
+            self.skip_ws()
+            while self.pos < self.len && self.src.byte_at(self.pos) != 125 {
+                let k = self.parse_str()
+                self.skip_ws()
+                if self.pos < self.len && self.src.byte_at(self.pos) == 58 { self.pos = self.pos + 1 }
+                let v = self.parse()
+                val.obj_keys.push(k)
+                val.obj_vals.push(v)
+                self.skip_ws()
+                if self.pos < self.len && self.src.byte_at(self.pos) == 44 { self.pos = self.pos + 1 }
+                self.skip_ws()
+            }
+            if self.pos < self.len && self.src.byte_at(self.pos) == 125 { self.pos = self.pos + 1 }
+            return val
+        }
+
+        // Array
+        if b == 91 {
+            self.pos = self.pos + 1
+            let val = JsonValue(JSON_ARR())
+            self.skip_ws()
+            while self.pos < self.len && self.src.byte_at(self.pos) != 93 {
+                let item = self.parse()
+                val.arr_val.push(item)
+                self.skip_ws()
+                if self.pos < self.len && self.src.byte_at(self.pos) == 44 { self.pos = self.pos + 1 }
+                self.skip_ws()
+            }
+            if self.pos < self.len && self.src.byte_at(self.pos) == 93 { self.pos = self.pos + 1 }
+            return val
+        }
+
+        // Bool true
+        if b == 116 && self.pos + 4 <= self.len && self.src.slice(self.pos, self.pos + 4) == "true" {
+            self.pos = self.pos + 4
+            let val = JsonValue(JSON_BOOL())
+            val.bool_val = true
+            return val
+        }
+
+        // Bool false
+        if b == 102 && self.pos + 5 <= self.len && self.src.slice(self.pos, self.pos + 5) == "false" {
+            self.pos = self.pos + 5
+            let val = JsonValue(JSON_BOOL())
+            val.bool_val = false
+            return val
+        }
+
+        // Null
+        if b == 110 && self.pos + 4 <= self.len && self.src.slice(self.pos, self.pos + 4) == "null" {
+            self.pos = self.pos + 4
+            return JsonValue(JSON_NULL())
+        }
+
+        // Number
+        if (b >= 48 && b <= 57) || b == 45 {
+            let val = JsonValue(JSON_NUM())
+            val.num_val = self.parse_num()
+            return val
+        }
+
+        self.pos = self.pos + 1
+        return JsonValue(JSON_NULL())
+    }
+}
+
+pub fn parse(json_str: str) -> JsonValue {
+    let p = JsonParser(json_str)
+    return p.parse()
+}
+
+pub fn stringify(v: JsonValue) -> str {
+    return v.stringify()
+}

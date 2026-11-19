@@ -1,0 +1,286 @@
+// ==============================================================================
+// Aerix Standard Library: Regex
+// Pure Aerix Lightweight Regular Expression Matcher & Capturing Groups
+// ==============================================================================
+
+pub class RegexMatch {
+    pub ok: bool
+    pub matched: str
+    pub groups: List<str>
+
+    init(ok: bool, matched: str, groups: List<str>) {
+        self.ok = ok
+        self.matched = matched
+        self.groups = groups
+    }
+
+    pub fn group(idx: i64) -> str {
+        if idx >= 0 && idx < self.groups.len() {
+            return self.groups.get(idx)
+        }
+        return ""
+    }
+}
+
+// Opcode constants for regex AST
+fn OP_CHAR() -> i64 { return 1 }
+fn OP_ANY() -> i64 { return 2 }       // .
+fn OP_DIGIT() -> i64 { return 3 }     // \d
+fn OP_WORD() -> i64 { return 4 }      // \w
+fn OP_SPACE() -> i64 { return 5 }     // \s
+fn OP_GRP_START() -> i64 { return 6 } // (
+fn OP_GRP_END() -> i64 { return 7 }   // )
+fn OP_CLASS() -> i64 { return 8 }     // [abc]
+
+pub class Regex {
+    pub pattern: str
+    pub anchor_start: bool
+    pub anchor_end: bool
+    pub opcodes: List<i64>
+    pub op_vals: List<str>
+    pub op_quants: List<i64> // 0: exactly 1, 1: ?, 2: *, 3: +
+
+    init(pat: str) {
+        self.pattern = pat
+        self.anchor_start = false
+        self.anchor_end = false
+        self.opcodes = List<i64>()
+        self.op_vals = List<str>()
+        self.op_quants = List<i64>()
+        self.compile_pattern(pat)
+    }
+
+    priv fn compile_pattern(pat: str) {
+        let plen = pat.len()
+        mut pos = 0
+        if plen > 0 && pat.byte_at(0) == 94 { // '^'
+            self.anchor_start = true
+            pos = 1
+        }
+        mut end_anchor = false
+        if plen > 1 && pat.byte_at(plen - 1) == 36 && pat.byte_at(plen - 2) != 92 { // '$'
+            end_anchor = true
+        }
+        self.anchor_end = end_anchor
+        mut effective_len = plen
+        if end_anchor { effective_len = plen - 1 }
+
+        while pos < effective_len {
+            let b = pat.byte_at(pos)
+            mut opcode = OP_CHAR()
+            mut val = ""
+            if b == 46 { // '.'
+                opcode = OP_ANY()
+                pos = pos + 1
+            } else if b == 40 { // '('
+                opcode = OP_GRP_START()
+                pos = pos + 1
+            } else if b == 41 { // ')'
+                opcode = OP_GRP_END()
+                pos = pos + 1
+            } else if b == 91 { // '['
+                opcode = OP_CLASS()
+                pos = pos + 1
+                let start_cl = pos
+                while pos < effective_len && pat.byte_at(pos) != 93 { // ']'
+                    pos = pos + 1
+                }
+                val = pat.slice(start_cl, pos)
+                if pos < effective_len { pos = pos + 1 }
+            } else if b == 92 { // '\'
+                pos = pos + 1
+                if pos < effective_len {
+                    let esc = pat.byte_at(pos)
+                    pos = pos + 1
+                    if esc == 100 { opcode = OP_DIGIT() }       // \d
+                    else if esc == 119 { opcode = OP_WORD() }   // \w
+                    else if esc == 115 { opcode = OP_SPACE() }  // \s
+                    else {
+                        opcode = OP_CHAR()
+                        val = pat.slice(pos - 1, pos)
+                    }
+                }
+            } else {
+                opcode = OP_CHAR()
+                val = pat.slice(pos, pos + 1)
+                pos = pos + 1
+            }
+
+            // Check quantifier
+            mut quant = 0 // exactly 1
+            if pos < effective_len {
+                let qb = pat.byte_at(pos)
+                if qb == 63 { // '?'
+                    quant = 1
+                    pos = pos + 1
+                } else if qb == 42 { // '*'
+                    quant = 2
+                    pos = pos + 1
+                } else if qb == 43 { // '+'
+                    quant = 3
+                    pos = pos + 1
+                }
+            }
+
+            self.opcodes.push(opcode)
+            self.op_vals.push(val)
+            self.op_quants.push(quant)
+        }
+    }
+
+    priv fn match_char_class(b: i64, cls: str) -> bool {
+        let clen = cls.len()
+        if clen == 0 { return false }
+        mut negated = false
+        mut i = 0
+        if cls.byte_at(0) == 94 { // '^'
+            negated = true
+            i = 1
+        }
+        mut found = false
+        while i < clen {
+            if i + 2 < clen && cls.byte_at(i + 1) == 45 { // range 'a-z'
+                let c1 = cls.byte_at(i)
+                let c2 = cls.byte_at(i + 2)
+                if b >= c1 && b <= c2 {
+                    found = true
+                    break
+                }
+                i = i + 3
+            } else {
+                if b == cls.byte_at(i) {
+                    found = true
+                    break
+                }
+                i = i + 1
+            }
+        }
+        if negated { return !found }
+        return found
+    }
+
+    priv fn matches_single(opcode: i64, val: str, b: i64) -> bool {
+        if opcode == OP_ANY() { return b != 10 && b != 13 }
+        if opcode == OP_DIGIT() { return b >= 48 && b <= 57 }
+        if opcode == OP_WORD() { return (b >= 48 && b <= 57) || (b >= 65 && b <= 90) || (b >= 97 && b <= 122) || b == 95 }
+        if opcode == OP_SPACE() { return b == 32 || b == 9 || b == 10 || b == 13 }
+        if opcode == OP_CLASS() { return self.match_char_class(b, val) }
+        if opcode == OP_CHAR() {
+            if val.len() == 0 { return false }
+            return b == val.byte_at(0)
+        }
+        return false
+    }
+
+    priv fn match_step(input: str, in_len: i64, op_idx: i64, in_pos: i64, grp_starts: List<i64>, grp_ends: List<i64>) -> i64 {
+        if op_idx >= self.opcodes.len() {
+            if self.anchor_end {
+                if in_pos == in_len { return in_pos }
+                return -1
+            }
+            return in_pos
+        }
+
+        let opcode = self.opcodes.get(op_idx)
+        let val = self.op_vals.get(op_idx)
+        let quant = self.op_quants.get(op_idx)
+
+        if opcode == OP_GRP_START() {
+            grp_starts.push(in_pos)
+            let res = self.match_step(input, in_len, op_idx + 1, in_pos, grp_starts, grp_ends)
+            if res >= 0 { return res }
+            grp_starts.pop()
+            return -1
+        }
+
+        if opcode == OP_GRP_END() {
+            grp_ends.push(in_pos)
+            let res = self.match_step(input, in_len, op_idx + 1, in_pos, grp_starts, grp_ends)
+            if res >= 0 { return res }
+            grp_ends.pop()
+            return -1
+        }
+
+        if quant == 0 { // exactly 1
+            if in_pos < in_len && self.matches_single(opcode, val, input.byte_at(in_pos)) {
+                return self.match_step(input, in_len, op_idx + 1, in_pos + 1, grp_starts, grp_ends)
+            }
+            return -1
+        }
+
+        if quant == 1 { // ? (0 or 1)
+            // Try matching 1
+            if in_pos < in_len && self.matches_single(opcode, val, input.byte_at(in_pos)) {
+                let res1 = self.match_step(input, in_len, op_idx + 1, in_pos + 1, grp_starts, grp_ends)
+                if res1 >= 0 { return res1 }
+            }
+            // Try matching 0
+            return self.match_step(input, in_len, op_idx + 1, in_pos, grp_starts, grp_ends)
+        }
+
+        if quant == 2 || quant == 3 { // * (0 or more) or + (1 or more)
+            // Greedy: count maximum matches
+            mut match_count = 0
+            while in_pos + match_count < in_len && self.matches_single(opcode, val, input.byte_at(in_pos + match_count)) {
+                match_count = match_count + 1
+            }
+            mut min_matches = 0
+            if quant == 3 { min_matches = 1 }
+            mut try_count = match_count
+            while try_count >= min_matches {
+                let res = self.match_step(input, in_len, op_idx + 1, in_pos + try_count, grp_starts, grp_ends)
+                if res >= 0 { return res }
+                try_count = try_count - 1
+            }
+            return -1
+        }
+
+        return -1
+    }
+
+    pub fn exec(input: str) -> RegexMatch {
+        let in_len = input.len()
+        mut start_pos = 0
+        mut max_start = in_len
+        if self.anchor_start { max_start = 0 }
+
+        while start_pos <= max_start {
+            let grp_starts = List<i64>()
+            let grp_ends = List<i64>()
+            let end_pos = self.match_step(input, in_len, 0, start_pos, grp_starts, grp_ends)
+            if end_pos >= 0 {
+                let matched_text = input.slice(start_pos, end_pos)
+                let groups = List<str>()
+                groups.push(matched_text) // group 0 is full match
+                mut gi = 0
+                while gi < grp_starts.len() && gi < grp_ends.len() {
+                    let gs = grp_starts.get(gi)
+                    let ge = grp_ends.get(gi)
+                    if gs <= ge && ge <= in_len {
+                        groups.push(input.slice(gs, ge))
+                    } else {
+                        groups.push("")
+                    }
+                    gi = gi + 1
+                }
+                return RegexMatch(true, matched_text, groups)
+            }
+            start_pos = start_pos + 1
+        }
+
+        return RegexMatch(false, "", List<str>())
+    }
+
+    pub fn find(input: str) -> RegexMatch {
+        return self.exec(input)
+    }
+
+    pub fn is_match(input: str) -> bool {
+        let m = self.exec(input)
+        return m.ok
+    }
+}
+
+pub fn compile(pattern: str) -> Regex {
+    return Regex(pattern)
+}

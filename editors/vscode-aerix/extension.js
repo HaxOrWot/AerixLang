@@ -76,7 +76,17 @@ const AERIX_FALLBACK_COMPLETIONS = [
     { label: 'Atomic', kind: vscode.CompletionItemKind.Class, detail: 'Lock-free atomic variable Atomic<T>', insertText: 'Atomic(${1:0})' },
     { label: 'SpinLock', kind: vscode.CompletionItemKind.Class, detail: 'Low-latency multi-core spinlock', insertText: 'SpinLock()' },
     { label: 'TLSArena', kind: vscode.CompletionItemKind.Class, detail: 'Thread-Local Scratch Arena for sub-nanosecond bump allocation' },
-    { label: 'RingBuffer', kind: vscode.CompletionItemKind.Class, detail: 'High-throughput cache-line-aligned lock-free ring buffer' }
+    { label: 'RingBuffer', kind: vscode.CompletionItemKind.Class, detail: 'High-throughput cache-line-aligned lock-free ring buffer' },
+    // Phase 4 & 5 Core Additions
+    { label: 'Option', kind: vscode.CompletionItemKind.Enum, detail: 'Optional value type Option<T> (Some(val) / None)', insertText: 'Option<${1:i64}>' },
+    { label: 'Result', kind: vscode.CompletionItemKind.Enum, detail: 'Error handling type Result<T, E> (Ok(val) / Err(e))', insertText: 'Result<${1:i64}, ${2:str}>' },
+    { label: 'Path', kind: vscode.CompletionItemKind.Class, detail: 'Filesystem path manipulation: Path.join, Path.exists, Path.dirname, Path.basename' },
+    { label: 'Json', kind: vscode.CompletionItemKind.Class, detail: 'JSON parser and serializer: Json.parse(), Json.stringify()' },
+    { label: 'Regex', kind: vscode.CompletionItemKind.Class, detail: 'Pure Aerix regex engine: Regex.compile(pattern)' },
+    { label: 'Str', kind: vscode.CompletionItemKind.Class, detail: 'String utility methods: Str.split, Str.trim, Str.replace, Str.starts_with' },
+    { label: 'Process', kind: vscode.CompletionItemKind.Class, detail: 'Subprocess execution: Process.run(cmd, args), Process.execute()' },
+    { label: 'inline', kind: vscode.CompletionItemKind.Property, detail: '#[inline] function inlining attribute', insertText: '#[inline]' },
+    { label: 'extern', kind: vscode.CompletionItemKind.Keyword, detail: 'extern "lib.dll" { fn name() }', insertText: 'extern "${1:kernel32.dll}" {\n\t${0}\n}' }
 ];
 
 const AERIX_FALLBACK_HOVER = {
@@ -97,7 +107,16 @@ const AERIX_FALLBACK_HOVER = {
     guard: '**Keyword `guard`** — Early-exit assertion: `guard cond else { return }`.',
     defer: '**Keyword `defer`** — Schedules a cleanup statement in LIFO order on scope exit.',
     match: '**Keyword `match`** — Exhaustive pattern matching on enums, literals, and destructured payloads.',
-    spawn: '**Keyword `spawn`** — Launches a function asynchronously on a native OS thread.'
+    spawn: '**Keyword `spawn`** — Launches a function asynchronously on a native OS thread.',
+    Option: '**Type `Option<T>`** — Non-allocating tagged union value type representing optional values: `Some(val)` or `None`. Supports `!` early unwrap.',
+    Result: '**Type `Result<T, E>`** — Non-allocating tagged union value type for explicit error handling: `Ok(val)` or `Err(err)`. Supports `!` early unwrap and propagation.',
+    Path: '**Standard Module `Path`** — Path and filesystem helpers: `Path.join(...)`, `Path.exists(...)`, `Path.dirname(...)`, `Path.basename(...)`, `Path.extension(...)`.',
+    Json: '**Standard Module `Json`** — Zero-dependency native JSON parser and serializer: `Json.parse(text)` and `Json.stringify(obj, indent)`.',
+    Regex: '**Standard Module `Regex`** — Pure Aerix recursive NFA pattern matching engine: `Regex.compile(pattern)`, `.exec(input)`, `.find(input)`.',
+    Str: '**Standard Module `Str`** — Fast string manipulation: `Str.split`, `Str.trim`, `Str.replace`, `Str.starts_with`, `Str.ends_with`, `Str.repeat`.',
+    Process: '**Standard Module `Process`** — Subprocess spawning and output capture: `Process.run(cmd, args, cwd)`, `Process.execute(...)`.',
+    inline: '**Attribute `#[inline]`** — Hints the compiler to inline function calls directly into call sites, eliminating CALL/RET overhead.',
+    extern: '**Keyword `extern`** — C Foreign Function Interface (FFI) block for direct native DLL import binding (`extern "lib.dll" { ... }`).'
 };
 
 function getFallbackHoverDoc(word) {

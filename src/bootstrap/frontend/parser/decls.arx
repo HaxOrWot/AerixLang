@@ -2,7 +2,36 @@ import "./mod.arx"
 
 extend Parser {
     priv fn parse_top_decl() -> i64 {
+        if self.cur_kind() == TK_IDENT() && self.cur_val() == "extern" && self.peek_kind(1) == TK_STR() {
+            self.adv()
+            let d_tok = self.adv()
+            let block_dll = self.tok_vals.get(d_tok)
+            self.skip_newlines()
+            self.expect_k(TK_LBRACE(), "Expected opening brace to start extern block")
+            self.skip_stmt_end()
+            let fns = List<i64>()
+            mut fn_count = 0
+            while self.cur_kind() != TK_RBRACE() && self.cur_kind() != TK_EOF() {
+                mut f_flags = 0
+                if self.match_k(TK_PUB()) { f_flags = FLAG_PUB() }
+                if self.match_k(TK_FN()) {
+                    let fn_id = self.parse_fn_def(f_flags)
+                    self.nk.set(fn_id, NK_CEXTERN())
+                    let fn_name = self.sa.get(fn_id)
+                    self.fn_externs.insert(fn_name, block_dll + "::" + fn_name)
+                    fns.push(fn_id)
+                    fn_count = fn_count + 1
+                } else {
+                    self.adv()
+                }
+                self.skip_stmt_end()
+            }
+            self.expect_k(TK_RBRACE(), "Expected closing brace to close extern block")
+            return self.make_group(NK_GROUP(), block_dll, "", 0, -1, -1, -1, self.cur_line(), fns, fn_count)
+        }
+
         mut is_packed = 0
+        mut is_inline = 0
         mut ext_dll = ""
         mut ext_sym = ""
         while self.match_k(TK_HASH()) {
@@ -10,6 +39,9 @@ extend Parser {
             while self.cur_kind() != TK_RBRACKET() && self.cur_kind() != TK_EOF() {
                 if self.cur_kind() == TK_IDENT() && self.cur_val() == "packed" {
                     is_packed = FLAG_PACKED()
+                    self.adv()
+                } else if self.cur_kind() == TK_IDENT() && self.cur_val() == "inline" {
+                    is_inline = FLAG_INLINE()
                     self.adv()
                 } else if self.cur_kind() == TK_IDENT() && (self.cur_val() == "extern" || self.cur_val() == "link") {
                     self.adv()
@@ -36,7 +68,7 @@ extend Parser {
             self.skip_newlines()
         }
 
-        mut flags = is_packed
+        mut flags = is_packed + is_inline
         while true {
             if self.match_k(TK_PUB()) {
                 flags = flags + FLAG_PUB()
@@ -305,6 +337,12 @@ extend Parser {
         let e_ln = self.tok_lines.get(e_tok)
         let n_tok = self.expect_k(TK_IDENT(), "Expected enum name")
         let ename = self.tok_vals.get(n_tok)
+        if self.match_k(TK_LT()) {
+            while self.cur_kind() != TK_GT() && self.cur_kind() != TK_EOF() {
+                self.adv()
+            }
+            self.expect_k(TK_GT(), "Expected '>' after generic enum parameters")
+        }
         self.skip_newlines()
         self.expect_k(TK_LBRACE(), "Expected opening brace to start enum body")
         self.skip_stmt_end()

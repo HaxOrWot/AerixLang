@@ -169,6 +169,29 @@ extend NativeCodegen {
             return
         }
 
+        if k == NK_TRY_UNWRAP() {
+            let sub = self.la.get(nid)
+            let ut = btype_norm(self.node_types.get(nid))
+            self.emit_expr(sub)
+            let l_ok = a.new_label()
+            a.test_rr(REG_RAX(), REG_RAX())
+            a.jcc_rel32(CC_E(), l_ok)
+            a.mov_rm64(REG_RDX(), REG_RAX(), 0)
+            a.cmp_ri32(REG_RDX(), 0)
+            a.jcc_rel32(CC_E(), l_ok)
+            if self.cur_ret_lbl >= 0 {
+                a.jmp_rel32(self.cur_ret_lbl)
+            }
+            a.bind_label(l_ok)
+            if ncg_is_float(ut) {
+                a.mov_rm64(REG_RAX(), REG_RAX(), 8)
+                a.movq_xmm_r(0, REG_RAX())
+            } else {
+                a.mov_rm64(REG_RAX(), REG_RAX(), 8)
+            }
+            return
+        }
+
         if k == NK_CAST() {
             let src = self.la.get(nid)
             let st = btype_norm(self.node_types.get(src))

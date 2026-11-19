@@ -1,0 +1,75 @@
+// ==============================================================================
+// Aerix Standard Library: Process
+// Process Spawning, Execution, and I/O Capture
+// ==============================================================================
+
+import Path
+
+pub class ProcessResult {
+    pub stdout: str
+    pub stderr: str
+    pub exit_code: i64
+
+    init(stdout: str, stderr: str, exit_code: i64) {
+        self.stdout = stdout
+        self.stderr = stderr
+        self.exit_code = exit_code
+    }
+}
+
+pub fn quote_arg(arg: str) -> str {
+    if !arg.contains(" ") && !arg.contains("\t") && !arg.contains("\"") {
+        return arg
+    }
+    return "\"" + arg + "\""
+}
+
+pub fn build_command_line(cmd: str, args: List<str>) -> str {
+    mut line = quote_arg(cmd)
+    mut i = 0
+    while i < args.len() {
+        line = line + " " + quote_arg(args.get(i))
+        i = i + 1
+    }
+    return line
+}
+
+pub fn execute(cmd: str) -> i64 {
+    return Process.execute(cmd)
+}
+
+pub fn run(cmd: str, args: List<str>, cwd: str) -> ProcessResult {
+    let full_cmd = build_command_line(cmd, args)
+    mut temp_dir = Env.get("TEMP")
+    if temp_dir == "" { temp_dir = "." }
+    let rand_suffix = arx_time_now() as i64
+    let out_file = Path.join(temp_dir, "arx_out_" + (rand_suffix as str) + ".tmp")
+    let err_file = Path.join(temp_dir, "arx_err_" + (rand_suffix as str) + ".tmp")
+
+    mut exec_str = ""
+    if cwd != "" {
+        exec_str = "cd /d \"" + cwd + "\" && "
+    }
+    exec_str = exec_str + full_cmd + " > \"" + out_file + "\" 2> \"" + err_file + "\""
+
+    let code = Process.execute("cmd.exe /c \"" + exec_str + "\"")
+
+    mut out_str = ""
+    mut err_str = ""
+    if File.exists(out_file) {
+        out_str = File.read(out_file)
+        File.remove(out_file)
+    }
+    if File.exists(err_file) {
+        err_str = File.read(err_file)
+        File.remove(err_file)
+    }
+
+    return ProcessResult(out_str, err_str, code)
+}
+
+pub fn spawn_detached(cmd: str, args: List<str>) -> bool {
+    let full_cmd = build_command_line(cmd, args)
+    let ret = Process.execute("cmd /c start /b \"\" " + full_cmd)
+    return ret == 0
+}

@@ -342,7 +342,7 @@
         },
         {
           "name": "keyword.other.aerix",
-          "match": "\\b(use|cinclude|cextern|new|delete|sizeof|typeof|is)\\b"
+          "match": "\\b(use|cinclude|cextern|extern|new|delete|sizeof|typeof|is)\\b"
         },
         {
           "name": "variable.language.aerix",
@@ -370,11 +370,11 @@
       "patterns": [
         {
           "name": "support.type.primitive.aerix",
-          "match": "\\b(i8|i16|i32|i64|int|u8|u16|u32|u64|uint|usize|isize|f32|f64|float|f32x4|f64x2|bool|char|str|void)\\b"
+          "match": "\\b(i8|i16|i32|i64|int|u8|u16|u32|u64|uint|usize|isize|f32|f64|float|f32x4|f64x2|f32x8|i32x8|bool|char|str|void)\\b"
         },
         {
           "name": "support.class.aerix",
-          "match": "\\b(List|Map|Set|Stack|Queue|Deque|ByteBuffer|String|Channel|LinearArena|File|Directory|Env|Process|Math|Random|Time|Socket|Window|Canvas|Clipboard|Application|Gui|Thread|ThreadHandle|Sync|Atomic|AtomicInt|AtomicBool|SpinLock|TLSArena|RingBuffer)\\b"
+          "match": "\\b(List|Map|Set|Stack|Queue|Deque|ByteBuffer|String|Channel|LinearArena|File|Directory|Env|Process|Path|Json|JsonValue|Regex|Str|Simd|Cipher|Math|Random|Time|Socket|Window|Canvas|Clipboard|Application|Gui|Thread|ThreadHandle|Sync|Atomic|AtomicInt|AtomicBool|SpinLock|TLSArena|RingBuffer|Option|Result)\\b"
         },
         {
           "name": "entity.name.type.class.aerix",

@@ -321,10 +321,8 @@ pub class Lexer {
                 } else if esc == 34 {
                     bb.write_u8(34)
                 } else if esc == 123 {
-                    bb.write_u8(92)
                     bb.write_u8(123)
                 } else if esc == 125 {
-                    bb.write_u8(92)
                     bb.write_u8(125)
                 } else {
                     bb.write_u8(esc)

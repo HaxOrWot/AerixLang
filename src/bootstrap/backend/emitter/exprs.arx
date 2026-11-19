@@ -68,6 +68,15 @@ extend Emitter {
             }
             return nm
         }
+        if k == NK_TRY_UNWRAP() {
+            let ex = self.la.get(nid)
+            let val = self.gen_expr(ex)
+            let sub_t = btype_norm(self.node_types.get(ex))
+            if sub_t.starts_with("Option") {
+                return "(\{ __auto_type _u = " + val + "; if (_u.tag != 0) return _u; _u.data.Some.val; \})"
+            }
+            return "(\{ __auto_type _u = " + val + "; if (_u.tag != 0) return _u; _u.data.Ok.val; \})"
+        }
         if k == NK_SIZEOF() {
             return "((int64_t)sizeof(" + btype_to_c(self.sa.get(nid)) + "))"
         }

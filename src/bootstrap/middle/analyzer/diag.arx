@@ -187,6 +187,8 @@ extend Analyzer {
         let act = self.norm_type_name(actual_raw)
         if exp == "" || act == "" || exp == "void" && act == "void" { return true }
         if exp == act { return true }
+        if self.enum_idx_map.has_key(act) && (exp.starts_with(act + "_") || exp.starts_with(act + "<")) { return true }
+        if self.enum_idx_map.has_key(exp) && (act.starts_with(exp + "_") || act.starts_with(exp + "<")) { return true }
         if exp.ends_with("?") {
             if act == "null" { return true }
             let inner = exp.slice(0, exp.len() - 1)

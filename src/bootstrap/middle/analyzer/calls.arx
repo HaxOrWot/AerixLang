@@ -226,11 +226,13 @@ extend Analyzer {
                 // Static prelude classes
                 if lname == "File" || lname == "Directory" || lname == "Path" || lname == "Process" || lname == "Env" {
                     let rt = self.prelude_static_ret(lname, mname)
-                    self.ensure_generic_type(rt)
-                    self.call_kinds.set(nid, CK_STATIC())
-                    self.call_targets.set(nid, "Arx_" + lname + "_" + mname)
-                    self.node_types.set(nid, rt)
-                    return rt
+                    if rt != "" {
+                        self.ensure_generic_type(rt)
+                        self.call_kinds.set(nid, CK_STATIC())
+                        self.call_targets.set(nid, "Arx_" + lname + "_" + mname)
+                        self.node_types.set(nid, rt)
+                        return rt
+                    }
                 }
 
                 // Static method on user class
