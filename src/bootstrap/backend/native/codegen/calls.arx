@@ -77,10 +77,11 @@ extend NativeCodegen {
                     a.mov_rm64(REG_RAX(), REG_RBP(), -arg_temps.get(0))
                     self.emit_val_to_str_in_rax(arg_types.get(0))
                     a.mov_rr(REG_RCX(), REG_RAX())
-                    a.call_rel32(self.rt.lbl("__rt_eprintln_str"))
+                    a.call_rel32(self.rt.lbl("__rt_throw"))
+                } else {
+                    a.lea_rip_rdata(REG_RCX(), self.rt.s_assert_failed)
+                    a.call_rel32(self.rt.lbl("__rt_throw"))
                 }
-                a.mov_ri32_sext(REG_RCX(), 1)
-                a.call_rip_iat(self.rt.imp_exit_process)
                 return
             }
             if nm == "exit" && ac >= 1 {
@@ -698,11 +699,19 @@ extend NativeCodegen {
             mut sz = 8
             if self.cls_sizes.has_key(cname) { sz = self.cls_sizes.get(cname) }
             if sz < 8 { sz = 8 }
-            a.mov_ri32_sext(REG_RCX(), 1)
-            a.mov_ri32_sext(REG_RDX(), sz)
-            a.call_rip_iat(self.rt.imp_calloc)
+            let is_stack = self.is_struct_type(cname) && (self.az.node_ext.get(nid) != "escapes")
             let obj_slot = self.alloc_slot("", cname)
-            a.mov_mr64(REG_RBP(), -obj_slot, REG_RAX())
+            if is_stack {
+                let stack_off = self.alloc_slot_bytes(sz)
+                self.zero_stack_bytes(stack_off, sz)
+                a.lea_rm(REG_RAX(), REG_RBP(), -stack_off)
+                a.mov_mr64(REG_RBP(), -obj_slot, REG_RAX())
+            } else {
+                a.mov_ri32_sext(REG_RCX(), 1)
+                a.mov_ri32_sext(REG_RDX(), sz)
+                a.call_rip_iat(self.rt.imp_calloc)
+                a.mov_mr64(REG_RBP(), -obj_slot, REG_RAX())
+            }
 
             mut ctor_fn = fn_node
             if ctor_fn < 0 {

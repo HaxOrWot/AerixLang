@@ -274,10 +274,14 @@ extend Emitter {
                     let fid = self.child_at(fgrp, fi)
                     let fname = self.sa.get(fid)
                     let ftype = btype_norm(self.sb.get(fid))
+                    mut fa = self.ra.get(fid)
+                    if fa < 0 { fa = 0 }
+                    mut a_attr = ""
+                    if fa > 0 { a_attr = " __attribute__((aligned(" + (fa as str) + ")))" }
                     if btype_is_fixed_arr(ftype) {
-                        self.wl(btype_to_c(btype_arr_elem(ftype)) + " " + fname + "[" + (btype_arr_len(ftype) as str) + "];")
+                        self.wl(btype_to_c(btype_arr_elem(ftype)) + " " + fname + "[" + (btype_arr_len(ftype) as str) + "]" + a_attr + ";")
                     } else {
-                        self.wl(btype_to_c(ftype) + " " + fname + ";")
+                        self.wl(btype_to_c(ftype) + " " + fname + a_attr + ";")
                     }
                     total_fields = total_fields + 1
                     fi = fi + 1

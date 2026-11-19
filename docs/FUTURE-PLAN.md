@@ -256,12 +256,16 @@ The exact same core innovations directly revolutionize standard application deve
 * [x] Implement **Thread-Local Scratch Arenas (`TLSArena`)** with zero-lock reset.
 * [x] Verified 100% race-free execution across concurrent worker threads with atomic counters, spinlocks, and bump allocator reset under both native x86-64 backend and C-backend.
 
-### Phase 2: Compiler ARC Elision & Escape Analysis (v3.2.0)
-* [ ] Add Escape Analysis pass in `src/bootstrap/middle/analyzer.arx`:
-  * Detect non-escaping references passed to functions.
-  * Statically suppress `arx_arc_retain` and `arx_arc_release` for borrowed parameters.
-* [ ] Add Stack-Allocated Value Structs (`struct Vec3 { x: f32, y: f32, z: f32 }`) to bypass heap allocation entirely.
-* [ ] Implement Cache-Line Alignment attributes (`#[align(64)]`) to prevent multi-core false sharing.
+### Phase 2: Compiler ARC Elision & Escape Analysis (v3.2.0) — [COMPLETED & VERIFIED]
+* [x] Add Escape Analysis pass in `src/bootstrap/middle/analyzer/escape.arx`:
+  * Detect non-escaping references and constructor instantiations.
+  * Statically suppress ARC retain/release overhead for non-escaping value structs.
+* [x] Add Stack-Allocated Value Structs (`struct Vec3 { x: f64, y: f64, z: f64 }`) to bypass heap allocation (`calloc`) entirely.
+* [x] Implement Cache-Line Alignment attributes (`#[align(64)]`) on struct fields to prevent multi-core false sharing in concurrent queues and buffers.
+* [x] Compile-Time Constant Folding pass in `src/bootstrap/middle/analyzer/exprs.arx` for arithmetic, string concatenation, and boolean logic.
+* [x] Call stack backtrace printing on runtime panic and uncaught exceptions across both native x86-64 and ANSI C99 backends.
+* [x] Expanded default PE stack commit and reserve to 16 MB for robust deep AST recursion.
+* [x] Verified 4-stage self-hosting bootstrap convergence (`stage3.exe == stage4.exe` bit-for-bit identical) and 100% native/C99 differential parity.
 
 ### Phase 3: High-Performance Networking & SIMD (v3.3.0)
 * [ ] Integrate native **Win32 I/O Completion Ports (IOCP)** for zero-overhead Windows networking.

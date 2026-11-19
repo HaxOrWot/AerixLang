@@ -91,6 +91,85 @@ extend Analyzer {
                     }
                 }
             }
+            let lid = self.la.get(nid)
+            let rid = self.ra.get(nid)
+            if lid >= 0 && rid >= 0 {
+                let lk = self.nk.get(lid)
+                let rk = self.nk.get(rid)
+                if lk == NK_INT_LIT() && rk == NK_INT_LIT() {
+                    let lv = self.sa.get(lid).to_i64()
+                    let rv = self.sa.get(rid).to_i64()
+                    mut did_fold = false
+                    mut fold_val = 0
+                    if op_s == "+" { fold_val = lv + rv; did_fold = true }
+                    else if op_s == "-" { fold_val = lv - rv; did_fold = true }
+                    else if op_s == "*" { fold_val = lv * rv; did_fold = true }
+                    else if op_s == "/" && rv != 0 { fold_val = lv / rv; did_fold = true }
+                    else if op_s == "%" && rv != 0 { fold_val = lv % rv; did_fold = true }
+                    else if op_s == "&" { fold_val = lv & rv; did_fold = true }
+                    else if op_s == "|" { fold_val = lv | rv; did_fold = true }
+                    else if op_s == "^" { fold_val = lv ^ rv; did_fold = true }
+                    else if op_s == "<<" && rv >= 0 && rv < 64 { fold_val = lv << rv; did_fold = true }
+                    else if op_s == ">>" && rv >= 0 && rv < 64 { fold_val = lv >> rv; did_fold = true }
+                    if did_fold {
+                        self.nk.set(nid, NK_INT_LIT())
+                        self.sa.set(nid, fold_val as str)
+                        self.la.set(nid, -1)
+                        self.ra.set(nid, -1)
+                        self.node_types.set(nid, "i64")
+                        return "i64"
+                    }
+                    mut did_cmp = false
+                    mut cmp_val = false
+                    if op_s == "==" { cmp_val = (lv == rv); did_cmp = true }
+                    else if op_s == "!=" { cmp_val = (lv != rv); did_cmp = true }
+                    else if op_s == "<" { cmp_val = (lv < rv); did_cmp = true }
+                    else if op_s == "<=" { cmp_val = (lv <= rv); did_cmp = true }
+                    else if op_s == ">" { cmp_val = (lv > rv); did_cmp = true }
+                    else if op_s == ">=" { cmp_val = (lv >= rv); did_cmp = true }
+                    if did_cmp {
+                        self.nk.set(nid, NK_BOOL_LIT())
+                        mut s_cmp = "false"
+                        mut i_cmp = 0
+                        if cmp_val { s_cmp = "true"; i_cmp = 1 }
+                        self.sa.set(nid, s_cmp)
+                        self.ia.set(nid, i_cmp)
+                        self.la.set(nid, -1)
+                        self.ra.set(nid, -1)
+                        self.node_types.set(nid, "bool")
+                        return "bool"
+                    }
+                } else if lk == NK_STR_LIT() && rk == NK_STR_LIT() && op_s == "+" {
+                    let s_fold = self.sa.get(lid) + self.sa.get(rid)
+                    self.nk.set(nid, NK_STR_LIT())
+                    self.sa.set(nid, s_fold)
+                    self.la.set(nid, -1)
+                    self.ra.set(nid, -1)
+                    self.node_types.set(nid, "str")
+                    return "str"
+                } else if lk == NK_BOOL_LIT() && rk == NK_BOOL_LIT() {
+                    let lb = (self.ia.get(lid) != 0) || (self.sa.get(lid) == "true")
+                    let rb = (self.ia.get(rid) != 0) || (self.sa.get(rid) == "true")
+                    mut did_b = false
+                    mut b_res = false
+                    if op_s == "&&" { b_res = lb && rb; did_b = true }
+                    else if op_s == "||" { b_res = lb || rb; did_b = true }
+                    else if op_s == "==" { b_res = (lb == rb); did_b = true }
+                    else if op_s == "!=" { b_res = (lb != rb); did_b = true }
+                    if did_b {
+                        self.nk.set(nid, NK_BOOL_LIT())
+                        mut s_b = "false"
+                        mut i_b = 0
+                        if b_res { s_b = "true"; i_b = 1 }
+                        self.sa.set(nid, s_b)
+                        self.ia.set(nid, i_b)
+                        self.la.set(nid, -1)
+                        self.ra.set(nid, -1)
+                        self.node_types.set(nid, "bool")
+                        return "bool"
+                    }
+                }
+            }
             self.node_types.set(nid, res_t)
             return res_t
         }

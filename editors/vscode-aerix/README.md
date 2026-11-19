@@ -1,10 +1,10 @@
-# Aerix Language & IntelliSense Support (`v3.1.0-beta.1`)
+# Aerix Language & IntelliSense Support (`v3.2.0-beta.1`)
 
 <div align="center">
 
 <img src="./icons/aerix-icon.png" width="128" height="128" alt="Aerix Logo" />
 
-[![Version](https://img.shields.io/badge/version-3.1.0--beta.1-00DCFF.svg?style=for-the-badge&logo=visualstudiocode)](#)
+[![Version](https://img.shields.io/badge/version-3.2.0--beta.1-00DCFF.svg?style=for-the-badge&logo=visualstudiocode)](#)
 [![Release Channel](https://img.shields.io/badge/channel-beta-blue.svg?style=for-the-badge)](#)
 [![Language](https://img.shields.io/badge/language-Aerix%20(.arx)-1E90FF.svg?style=for-the-badge)](#)
 [![LSP Engine](https://img.shields.io/badge/LSP-Compiler%20Driven%20(JSON--RPC)-7C4DFF.svg?style=for-the-badge)](#)
@@ -16,8 +16,13 @@
 
 ---
 
-## 🚀 Key Highlights & New in v3.1.0-beta.1
+## 🚀 Key Highlights & New in v3.2.0-beta.1
 
+- **Compiler Escape Analysis & Stack-Allocated Structs:** Non-escaping struct value types (`struct Vec3 { ... }`) are allocated directly in local stack frames with zero heap allocation (`calloc`) and zero ARC overhead. Returning or escaping instances cleanly transition to heap storage.
+- **Cache-Line Alignment Attributes (`#[align(64)]`):** Prevent multi-core false sharing on concurrent ring buffers, queues, and thread-shared state by aligning fields to hardware L1 cache-line boundaries.
+- **Compile-Time Constant Folding:** Fast evaluation in AST analysis pass folds constant arithmetic, string concatenations, and boolean logic directly during compilation.
+- **Call Stack Backtrace on Panic & Uncaught Exceptions:** Frame-pointer stack walking prints full call chains with frame indexes and return addresses upon runtime panics or uncaught exceptions across both native and ANSI C99 backends.
+- **Deep Recursion 16MB Stack Commitment:** Expanded PE stack commit and reserve to 16 MB, completely preventing stack guard page faults during deep compiler recursions and AST walks.
 - **Hardware-Direct Multi-Threading & Atomics (`Sync`, `Thread`):** Direct x86-64 `LOCK CMPXCHG` and `LOCK XADD` instructions, Win32 `CreateThread` worker spawning, `ThreadHandle.join()`, and low-latency spin-guards (`SpinLock`).
 - **Thread-Local Scratch Arenas (`TLSArena`):** Instant sub-nanosecond pointer-bump memory allocation with zero lock contention and $O(1)$ zero-cost reset.
 - **Bit-for-Bit Self-Hosting Convergence:** Fully validated 4-stage self-hosting compiler (`stage3` compiling `stage4` with identical SHA256 checksums).

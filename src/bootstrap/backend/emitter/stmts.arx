@@ -296,7 +296,7 @@ extend Emitter {
             let ex = self.la.get(nid)
             let msg = self.emit_cast_to_str(self.node_types.get(ex), self.gen_expr(ex))
             self.wl("__arx_exc_msg = " + msg + ";")
-            self.wcl("if (__arx_jmp_depth > 0) @ longjmp(__arx_jmp_stack[--__arx_jmp_depth], 1); ` else @ fprintf(stderr, \"Uncaught error: %s\\n\", __arx_exc_msg); exit(1); `")
+            self.wcl("if (__arx_jmp_depth > 0) @ longjmp(__arx_jmp_stack[--__arx_jmp_depth], 1); ` else @ arx_throw(__arx_exc_msg, 1); `")
             return
         }
 

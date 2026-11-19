@@ -86,11 +86,20 @@ static inline int arx_rt_use_color(void) {
 static inline void arx_panic(const char* msg, const char* file, int line) {
     if (arx_rt_use_color()) {
         fprintf(stderr, "\n\033[1;31m[Aerix Runtime Panic]\033[0m %s\n", msg ? msg : "unknown panic");
-        fprintf(stderr, "  \033[1;34m-->\033[0m %s:%d\n\n", file ? file : "<unknown>", line);
+        fprintf(stderr, "  \033[1;34m-->\033[0m %s:%d\n", file ? file : "<unknown>", line);
     } else {
         fprintf(stderr, "\n[Aerix Runtime Panic] %s\n", msg ? msg : "unknown panic");
-        fprintf(stderr, "  --> %s:%d\n\n", file ? file : "<unknown>", line);
+        fprintf(stderr, "  --> %s:%d\n", file ? file : "<unknown>", line);
     }
+#ifdef _WIN32
+    void* stack[16];
+    unsigned short frames = CaptureStackBackTrace(0, 16, stack, NULL);
+    fprintf(stderr, "Stack trace (call chain):\n");
+    for (unsigned short i = 0; i < frames; i++) {
+        fprintf(stderr, "  --> frame [%u]: %p\n", (unsigned int)i, stack[i]);
+    }
+    fprintf(stderr, "\n");
+#endif
     exit(1);
 }
 
@@ -150,6 +159,15 @@ static inline void arx_throw(const char* msg, int code) {
             fprintf(stderr, "\n[Aerix Uncaught Exception] %s (exit code %d)\n  = help: wrap throwing calls in a 'try { ... } catch (err) { ... }' block\n\n",
                     msg ? msg : "Error", code);
         }
+#ifdef _WIN32
+        void* stack[16];
+        unsigned short frames = CaptureStackBackTrace(0, 16, stack, NULL);
+        fprintf(stderr, "Stack trace (call chain):\n");
+        for (unsigned short i = 0; i < frames; i++) {
+            fprintf(stderr, "  --> frame [%u]: %p\n", (unsigned int)i, stack[i]);
+        }
+        fprintf(stderr, "\n");
+#endif
         exit(code != 0 ? code : 1);
     }
 }

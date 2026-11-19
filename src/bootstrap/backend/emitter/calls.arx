@@ -182,9 +182,10 @@ extend Emitter {
             if ac > 0 {
                 let a0 = self.child_at(nid, 0)
                 let av = self.emit_cast_to_str(self.node_types.get(a0), self.gen_expr(a0))
-                self.wl("fprintf(stderr, \"PANIC: %s\\n\", " + av + ");")
+                self.wl("arx_panic(" + av + ", __FILE__, __LINE__);")
+            } else {
+                self.wl("arx_panic(\"panic\", __FILE__, __LINE__);")
             }
-            self.wl("exit(1);")
             return "0"
         }
         if name == "exit" {

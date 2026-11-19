@@ -410,11 +410,19 @@ extend NativeCodegen {
             mut sz = 8
             if self.cls_sizes.has_key(cname) { sz = self.cls_sizes.get(cname) }
             if sz < 8 { sz = 8 }
-            a.mov_ri32_sext(REG_RCX(), 1)
-            a.mov_ri32_sext(REG_RDX(), sz)
-            a.call_rip_iat(self.rt.imp_calloc)
+            let is_stack = self.is_struct_type(cname) && (self.node_ext.get(nid) != "escapes")
             let obj_slot = self.alloc_slot("", cname)
-            a.mov_mr64(REG_RBP(), -obj_slot, REG_RAX())
+            if is_stack {
+                let stack_off = self.alloc_slot_bytes(sz)
+                self.zero_stack_bytes(stack_off, sz)
+                a.lea_rm(REG_RAX(), REG_RBP(), -stack_off)
+                a.mov_mr64(REG_RBP(), -obj_slot, REG_RAX())
+            } else {
+                a.mov_ri32_sext(REG_RCX(), 1)
+                a.mov_ri32_sext(REG_RDX(), sz)
+                a.call_rip_iat(self.rt.imp_calloc)
+                a.mov_mr64(REG_RBP(), -obj_slot, REG_RAX())
+            }
 
             let ac = self.child_count(nid)
             let arg_temps = List<i64>()

@@ -19,7 +19,7 @@ extend NativeCodegen {
     }
 
     // Collect fields including parent classes
-    priv fn collect_cls_fields_rec(cname: str, out_names: List<str>) {
+    priv fn collect_cls_fields_rec(cname: str, out_names: List<str>, out_aligns: List<i64>) {
         let cid = self.find_class_node(cname)
         if cid < 0 { return }
         mut parent = btype_norm(self.sb.get(cid))
@@ -30,7 +30,7 @@ extend NativeCodegen {
             parent = self.az.item_aliases.get(parent)
         }
         if parent != "" && parent != cname {
-            self.collect_cls_fields_rec(parent, out_names)
+            self.collect_cls_fields_rec(parent, out_names, out_aligns)
         }
         let fg = self.la.get(cid)
         let fc = self.child_count(fg)
@@ -38,6 +38,9 @@ extend NativeCodegen {
         while i < fc {
             let fid = self.child_at(fg, i)
             out_names.push(self.sa.get(fid))
+            mut fa = self.ra.get(fid)
+            if fa < 0 { fa = 0 }
+            out_aligns.push(fa)
             i = i + 1
         }
     }
@@ -48,15 +51,28 @@ extend NativeCodegen {
         while ci < self.az.cls_count {
             let cname = self.az.cls_names.get(ci)
             let fnames = List<str>()
-            self.collect_cls_fields_rec(cname, fnames)
+            let faligns = List<i64>()
+            self.collect_cls_fields_rec(cname, fnames, faligns)
+            mut cur_off = 0
+            mut max_align = 8
             mut idx = 0
             while idx < fnames.len() {
-                self.cls_field_offs.insert(cname + "::" + fnames.get(idx), idx * 8)
+                let fa = faligns.get(idx)
+                if fa > 0 {
+                    if fa > max_align { max_align = fa }
+                    let rem = cur_off % fa
+                    if rem != 0 {
+                        cur_off = cur_off + (fa - rem)
+                    }
+                }
+                self.cls_field_offs.insert(cname + "::" + fnames.get(idx), cur_off)
+                cur_off = cur_off + 8
                 idx = idx + 1
             }
-            mut sz = fnames.len() * 8
-            if sz < 8 { sz = 8 }
-            self.cls_sizes.insert(cname, sz)
+            let rem_cls = cur_off % max_align
+            if rem_cls != 0 { cur_off = cur_off + (max_align - rem_cls) }
+            if cur_off < 8 { cur_off = 8 }
+            self.cls_sizes.insert(cname, cur_off)
             ci = ci + 1
         }
 

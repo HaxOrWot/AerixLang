@@ -346,8 +346,8 @@ pub class PeBuilder {
         pe_push_u32(hdr, 0)            // CheckSum
         pe_push_u16(hdr, self.subsystem) // Subsystem: IMAGE_SUBSYSTEM_WINDOWS_CUI (3) or IMAGE_SUBSYSTEM_WINDOWS_GUI (2)
         pe_push_u16(hdr, 0x8100)       // DllCharacteristics = NX_COMPAT | TERMINAL_SERVER_AWARE
-        pe_push_u64(hdr, 0x100000)     // SizeOfStackReserve
-        pe_push_u64(hdr, 0x10000)      // SizeOfStackCommit
+        pe_push_u64(hdr, 0x1000000)    // SizeOfStackReserve (16 MB)
+        pe_push_u64(hdr, 0x1000000)    // SizeOfStackCommit (16 MB)
         pe_push_u64(hdr, 0x100000)     // SizeOfHeapReserve
         pe_push_u64(hdr, 0x1000)       // SizeOfHeapCommit
         pe_push_u32(hdr, 0)            // LoaderFlags

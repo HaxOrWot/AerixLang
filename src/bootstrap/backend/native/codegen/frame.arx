@@ -63,6 +63,33 @@ extend NativeCodegen {
         self.temp_str_slots.push(slot)
     }
 
+    priv fn alloc_slot_bytes(sz: i64) -> i64 {
+        mut aligned_sz = (sz + 7) / 8 * 8
+        if aligned_sz < 8 { aligned_sz = 8 }
+        let stack_base_off = self.next_local_off + aligned_sz - 8
+        self.next_local_off = self.next_local_off + aligned_sz
+        if self.next_local_off > self.max_local_off {
+            self.max_local_off = self.next_local_off
+        }
+        return stack_base_off
+    }
+
+    priv fn zero_stack_bytes(stack_off: i64, sz: i64) {
+        let a = self.asmb
+        a.mov_ri32_sext(REG_RAX(), 0)
+        mut i = 0
+        while i < sz {
+            a.mov_mr64(REG_RBP(), -(stack_off - i), REG_RAX())
+            i = i + 8
+        }
+    }
+
+    priv fn is_struct_type(cname: str) -> bool {
+        let cid = self.find_class_node(cname)
+        if cid < 0 { return false }
+        return has_flag(self.ia.get(cid), FLAG_STRUCT())
+    }
+
     priv fn alloc_slot(vname: str, vtype: str) -> i64 {
         let off = self.next_local_off
         self.next_local_off = self.next_local_off + 8

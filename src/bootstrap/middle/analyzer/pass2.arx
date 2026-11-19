@@ -93,6 +93,9 @@ extend Analyzer {
             }
             ei = ei + 1
         }
+
+        // Run compiler escape analysis pass
+        self.run_escape_analysis()
     }
 
     priv fn analyze_fn_body(fn_nid: i64, owner_cls: str) {

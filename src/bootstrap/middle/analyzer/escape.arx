@@ -1,0 +1,288 @@
+import "./mod.arx"
+
+extend Analyzer {
+    pub fn run_escape_analysis() {
+        // 1. Top-level functions
+        mut i = 0
+        while i < self.fn_count {
+            let fid = self.fn_nodes.get(i)
+            if fid >= 0 && fid < self.nk.len() {
+                self.analyze_fn_escapes(fid)
+            }
+            i = i + 1
+        }
+
+        // 2. Class constructors, destructors, methods
+        mut ci = 0
+        while ci < self.cls_count {
+            let cid = self.cls_nodes.get(ci)
+            if cid >= 0 && cid < self.nk.len() {
+                let ctors_grp = self.ra.get(cid)
+                if ctors_grp >= 0 && ctors_grp < self.nk.len() {
+                    let ccnt = self.child_count(ctors_grp)
+                    mut j = 0
+                    while j < ccnt {
+                        let ctor_id = self.child_at(ctors_grp, j)
+                        if ctor_id >= 0 && ctor_id < self.nk.len() {
+                            self.analyze_fn_escapes(ctor_id)
+                        }
+                        j = j + 1
+                    }
+                    let dtor_id = self.la.get(ctors_grp)
+                    if dtor_id >= 0 && dtor_id < self.nk.len() {
+                        self.analyze_fn_escapes(dtor_id)
+                    }
+                }
+
+                let methods_grp = self.ea.get(cid)
+                if methods_grp >= 0 && methods_grp < self.nk.len() {
+                    let mcnt = self.child_count(methods_grp)
+                    mut m = 0
+                    while m < mcnt {
+                        let mid = self.child_at(methods_grp, m)
+                        if mid >= 0 && mid < self.nk.len() {
+                            self.analyze_fn_escapes(mid)
+                        }
+                        m = m + 1
+                    }
+                }
+            }
+            ci = ci + 1
+        }
+
+        // 3. Extend methods
+        mut ei = 0
+        while ei < self.ext_count {
+            let eid = self.ext_nodes.get(ei)
+            if eid >= 0 && eid < self.nk.len() {
+                let mcnt = self.child_count(eid)
+                mut m = 0
+                while m < mcnt {
+                    let mid = self.child_at(eid, m)
+                    if mid >= 0 && mid < self.nk.len() {
+                        self.analyze_fn_escapes(mid)
+                    }
+                    m = m + 1
+                }
+            }
+            ei = ei + 1
+        }
+    }
+
+    priv fn analyze_fn_escapes(fn_id: i64) {
+        if fn_id < 0 || fn_id >= self.nk.len() { return }
+        let body = self.ra.get(fn_id)
+        if body < 0 || body >= self.nk.len() { return }
+
+        // 1. Collect candidate allocation nodes in this function body
+        let alloc_nodes = List<i64>()
+        self.collect_alloc_nodes(body, alloc_nodes)
+        if alloc_nodes.len() == 0 { return }
+
+        // 2. Collect variable assignments: var_name -> alloc_nid
+        let var_allocs = Map<str, i64>()
+        let var_names = List<str>()
+        self.collect_var_allocs(body, var_allocs, var_names)
+
+        // 3. For each candidate allocation, determine if it escapes
+        mut ai = 0
+        while ai < alloc_nodes.len() {
+            let anid = alloc_nodes.get(ai)
+            let bound_vars = List<str>()
+            mut vi = 0
+            while vi < var_names.len() {
+                let vname = var_names.get(vi)
+                if var_allocs.has_key(vname) && var_allocs.get(vname) == anid {
+                    bound_vars.push(vname)
+                }
+                vi = vi + 1
+            }
+
+            if self.check_node_escapes(body, anid, bound_vars) {
+                if anid >= 0 && anid < self.node_ext.len() {
+                    self.node_ext.set(anid, "escapes")
+                }
+            } else {
+                if anid >= 0 && anid < self.node_ext.len() {
+                    self.node_ext.set(anid, "stack_alloc")
+                }
+            }
+            ai = ai + 1
+        }
+    }
+
+    priv fn collect_alloc_nodes(nid: i64, out_list: List<i64>) {
+        if nid < 0 || nid >= self.nk.len() { return }
+        let k = self.nk.get(nid)
+        if k == NK_NEW() {
+            out_list.push(nid)
+        } else if k == NK_CALL() {
+            if nid < self.call_kinds.len() {
+                let ck = self.call_kinds.get(nid)
+                if ck == CK_CTOR() || ck == CK_NEW() {
+                    out_list.push(nid)
+                }
+            }
+        }
+        let cc = self.child_count(nid)
+        mut i = 0
+        while i < cc {
+            self.collect_alloc_nodes(self.child_at(nid, i), out_list)
+            i = i + 1
+        }
+        let l = self.la.get(nid)
+        if l >= 0 && l < self.nk.len() { self.collect_alloc_nodes(l, out_list) }
+        let r = self.ra.get(nid)
+        if r >= 0 && r < self.nk.len() { self.collect_alloc_nodes(r, out_list) }
+        let e = self.ea.get(nid)
+        if e >= 0 && e < self.nk.len() { self.collect_alloc_nodes(e, out_list) }
+    }
+
+    priv fn collect_var_allocs(nid: i64, var_allocs: Map<str, i64>, var_names: List<str>) {
+        if nid < 0 || nid >= self.nk.len() { return }
+        let k = self.nk.get(nid)
+        if k == NK_VAR_DECL() {
+            let vname = self.sa.get(nid)
+            let init_id = self.la.get(nid)
+            if init_id >= 0 && init_id < self.nk.len() {
+                let ik = self.nk.get(init_id)
+                mut is_alloc = (ik == NK_NEW())
+                if !is_alloc && ik == NK_CALL() && init_id < self.call_kinds.len() {
+                    let ck = self.call_kinds.get(init_id)
+                    if ck == CK_CTOR() || ck == CK_NEW() { is_alloc = true }
+                }
+                if is_alloc {
+                    if !var_allocs.has_key(vname) { var_names.push(vname) }
+                    var_allocs.insert(vname, init_id)
+                } else if ik == NK_IDENT() {
+                    let src_v = self.sa.get(init_id)
+                    if var_allocs.has_key(src_v) {
+                        if !var_allocs.has_key(vname) { var_names.push(vname) }
+                        var_allocs.insert(vname, var_allocs.get(src_v))
+                    }
+                }
+            }
+        } else if k == NK_ASSIGN() {
+            let lid = self.la.get(nid)
+            let rid = self.ra.get(nid)
+            if lid >= 0 && lid < self.nk.len() && rid >= 0 && rid < self.nk.len() && self.nk.get(lid) == NK_IDENT() {
+                let vname = self.sa.get(lid)
+                let rk = self.nk.get(rid)
+                mut is_alloc = (rk == NK_NEW())
+                if !is_alloc && rk == NK_CALL() && rid < self.call_kinds.len() {
+                    let ck = self.call_kinds.get(rid)
+                    if ck == CK_CTOR() || ck == CK_NEW() { is_alloc = true }
+                }
+                if is_alloc {
+                    if !var_allocs.has_key(vname) { var_names.push(vname) }
+                    var_allocs.insert(vname, rid)
+                } else if rk == NK_IDENT() {
+                    let src_v = self.sa.get(rid)
+                    if var_allocs.has_key(src_v) {
+                        if !var_allocs.has_key(vname) { var_names.push(vname) }
+                        var_allocs.insert(vname, var_allocs.get(src_v))
+                    }
+                }
+            }
+        }
+        let cc = self.child_count(nid)
+        mut i = 0
+        while i < cc {
+            self.collect_var_allocs(self.child_at(nid, i), var_allocs, var_names)
+            i = i + 1
+        }
+        let l = self.la.get(nid)
+        if l >= 0 && l < self.nk.len() { self.collect_var_allocs(l, var_allocs, var_names) }
+        let r = self.ra.get(nid)
+        if r >= 0 && r < self.nk.len() { self.collect_var_allocs(r, var_allocs, var_names) }
+        let e = self.ea.get(nid)
+        if e >= 0 && e < self.nk.len() { self.collect_var_allocs(e, var_allocs, var_names) }
+    }
+
+    priv fn check_node_escapes(nid: i64, anid: i64, vars: List<str>) -> bool {
+        if nid < 0 || nid >= self.nk.len() { return false }
+        let k = self.nk.get(nid)
+
+        // Escape 1: Return statement returning the allocation or a bound variable
+        if k == NK_RETURN() {
+            let rv = self.la.get(nid)
+            if rv >= 0 && rv < self.nk.len() {
+                if rv == anid { return true }
+                if self.nk.get(rv) == NK_IDENT() {
+                    let rname = self.sa.get(rv)
+                    mut vi = 0
+                    while vi < vars.len() {
+                        if vars.get(vi) == rname { return true }
+                        vi = vi + 1
+                    }
+                }
+            }
+        }
+
+        // Escape 2: Assignment to field (obj.field = var), index (arr[i] = var), or global
+        if k == NK_ASSIGN() {
+            let lid = self.la.get(nid)
+            let rid = self.ra.get(nid)
+            if rid >= 0 && rid < self.nk.len() {
+                mut matches_rid = (rid == anid)
+                if !matches_rid && self.nk.get(rid) == NK_IDENT() {
+                    let rname = self.sa.get(rid)
+                    mut vi = 0
+                    while vi < vars.len() {
+                        if vars.get(vi) == rname { matches_rid = true; break }
+                        vi = vi + 1
+                    }
+                }
+                if matches_rid && lid >= 0 && lid < self.nk.len() {
+                    let lk = self.nk.get(lid)
+                    if lk == NK_MEMBER() || lk == NK_INDEX() { return true }
+                    if lk == NK_IDENT() {
+                        let lname = self.sa.get(lid)
+                        if self.global_types.has_key(lname) { return true }
+                    }
+                }
+            }
+        }
+
+        // Escape 3: Container insertion method call: list.push(var), map.insert(k, var)
+        if k == NK_CALL() {
+            let callee = self.la.get(nid)
+            if callee >= 0 && callee < self.nk.len() && self.nk.get(callee) == NK_MEMBER() {
+                let mname = self.sa.get(callee)
+                if mname == "push" || mname == "insert" || mname == "add" || mname == "enqueue" || mname == "push_back" || mname == "push_front" {
+                    let ac = self.child_count(nid)
+                    mut ai = 0
+                    while ai < ac {
+                        let aid = self.child_at(nid, ai)
+                        if aid == anid { return true }
+                        if aid >= 0 && aid < self.nk.len() && self.nk.get(aid) == NK_IDENT() {
+                            let aname = self.sa.get(aid)
+                            mut vi = 0
+                            while vi < vars.len() {
+                                if vars.get(vi) == aname { return true }
+                                vi = vi + 1
+                            }
+                        }
+                        ai = ai + 1
+                    }
+                }
+            }
+        }
+
+        // Check children
+        let cc = self.child_count(nid)
+        mut i = 0
+        while i < cc {
+            if self.check_node_escapes(self.child_at(nid, i), anid, vars) { return true }
+            i = i + 1
+        }
+        let l = self.la.get(nid)
+        if l >= 0 && l < self.nk.len() && self.check_node_escapes(l, anid, vars) { return true }
+        let r = self.ra.get(nid)
+        if r >= 0 && r < self.nk.len() && self.check_node_escapes(r, anid, vars) { return true }
+        let e = self.ea.get(nid)
+        if e >= 0 && e < self.nk.len() && self.check_node_escapes(e, anid, vars) { return true }
+
+        return false
+    }
+}

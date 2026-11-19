@@ -16,7 +16,7 @@ namespace AerixSetup
 {
     public static partial class InstallerEngine
     {
-        public const string DefaultVersion = "3.1.0-beta.1";
+        public const string DefaultVersion = "3.2.0-beta.1";
         public const string VmMinVersion = "1.1.3b";
         private const string UninstallRegPath = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\AerixLang";
         private const string ExtensionIdPrefix = "aerix-lang.aerix-";

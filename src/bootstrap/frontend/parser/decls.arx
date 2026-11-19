@@ -22,6 +22,12 @@ extend Parser {
                         }
                         self.expect_k(TK_RPAREN(), "Expected ')' after attribute arguments")
                     }
+                } else if self.cur_kind() == TK_IDENT() && self.cur_val() == "align" {
+                    self.adv()
+                    if self.match_k(TK_LPAREN()) {
+                        let _atok = self.expect_k(TK_INT(), "Expected alignment integer")
+                        self.expect_k(TK_RPAREN(), "Expected ')' after alignment integer")
+                    }
                 } else {
                     self.adv()
                 }
@@ -214,6 +220,24 @@ extend Parser {
 
         while self.cur_kind() != TK_RBRACE() && self.cur_kind() != TK_EOF() {
             let lp = self.pos
+            mut m_align = 0
+            while self.match_k(TK_HASH()) {
+                self.expect_k(TK_LBRACKET(), "Expected '[' after '#'")
+                while self.cur_kind() != TK_RBRACKET() && self.cur_kind() != TK_EOF() {
+                    if self.cur_kind() == TK_IDENT() && self.cur_val() == "align" {
+                        self.adv()
+                        if self.match_k(TK_LPAREN()) {
+                            let atok = self.expect_k(TK_INT(), "Expected alignment integer")
+                            m_align = self.tok_vals.get(atok).to_i64()
+                            self.expect_k(TK_RPAREN(), "Expected ')' after alignment integer")
+                        }
+                    } else {
+                        self.adv()
+                    }
+                }
+                self.expect_k(TK_RBRACKET(), "Expected ']' after attribute")
+                self.skip_newlines()
+            }
             mut mflags = 0
             while true {
                 if self.match_k(TK_PUB()) {
@@ -259,7 +283,7 @@ extend Parser {
                 if self.match_k(TK_EQUALS()) {
                     fdef = self.parse_expr(0)
                 }
-                fields.push(self.add_node(NK_FIELD_DEF(), fname, ftype, mflags, fdef, -1, -1, self.tok_lines.get(ftok)))
+                fields.push(self.add_node(NK_FIELD_DEF(), fname, ftype, mflags, fdef, m_align, -1, self.tok_lines.get(ftok)))
                 f_count = f_count + 1
             } else {
                 self.fail("Unexpected token inside class body")
