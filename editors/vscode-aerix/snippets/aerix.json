@@ -534,5 +534,80 @@
       "}"
     ],
     "description": "Native GUI Window with Double-Buffered Canvas"
+  },
+  "Aerix Result": {
+    "prefix": "result",
+    "body": [
+      "fn ${1:compute}() -> Result<${2:i64}, ${3:str}> {",
+      "\tif ${4:error_cond} { return Err(\"${5:error message}\") }",
+      "\treturn Ok(${6:42})",
+      "}"
+    ],
+    "description": "Declare function returning Result<T, E> tagged union"
+  },
+  "Aerix Option": {
+    "prefix": "option",
+    "body": [
+      "fn ${1:find_item}() -> Option<${2:i64}> {",
+      "\tif ${3:not_found} { return None }",
+      "\treturn Some(${4:value})",
+      "}"
+    ],
+    "description": "Declare function returning Option<T> tagged union"
+  },
+  "Aerix Match Enum": {
+    "prefix": "match_enum",
+    "body": [
+      "match ${1:res} {",
+      "\tOk(${2:val}) => {",
+      "\t\t${3}",
+      "\t}",
+      "\tErr(${4:err}) => {",
+      "\t\t${0}",
+      "\t}",
+      "}"
+    ],
+    "description": "Exhaustive match expression on enum / tagged union variants"
+  },
+  "Aerix Extern Block": {
+    "prefix": "extern",
+    "body": [
+      "extern \"${1:kernel32.dll}\" {",
+      "\tpub fn ${2:fn_name}(${3:params}) -> ${4:i32}",
+      "}"
+    ],
+    "description": "Direct C Foreign Function Interface (FFI) block"
+  },
+  "Aerix JSON Usage": {
+    "prefix": "json",
+    "body": [
+      "import Json",
+      "",
+      "let obj = Json.parse(${1:json_str})",
+      "let out = Json.stringify(obj)${0}"
+    ],
+    "description": "Parse and stringify JSON data using standard Json module"
+  },
+  "Aerix Path Usage": {
+    "prefix": "path",
+    "body": [
+      "import Path",
+      "",
+      "let full_path = Path.join(${1:dir}, ${2:file})${0}"
+    ],
+    "description": "Path manipulation using standard Path module"
+  },
+  "Aerix Regex Usage": {
+    "prefix": "regex",
+    "body": [
+      "import Regex",
+      "",
+      "let re = Regex.compile(\"${1:pattern}\")",
+      "let m = re.exec(${2:input})",
+      "if m.ok {",
+      "\t${0}",
+      "}"
+    ],
+    "description": "Regular expression pattern matching using standard Regex module"
   }
 }

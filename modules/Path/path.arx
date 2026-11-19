@@ -92,12 +92,14 @@ pub fn list_dir(p: str) -> List<str> {
     return Directory.list_files(p)
 }
 
+pub fn is_absolute(p: str) -> bool {
+    if p.len() >= 2 && p.byte_at(1) == 58 { return true }
+    if p.starts_with("/") || p.starts_with("\\") { return true }
+    return false
+}
+
 pub fn absolute(p: str) -> str {
-    if p.len() >= 2 && p.byte_at(1) == 58 { // e.g. "C:"
-        return p
-    }
-    if p.starts_with("/") || p.starts_with("\\") {
-        return p
-    }
+    if is_absolute(p) { return p }
     return join(Env.cwd(), p)
 }
+
