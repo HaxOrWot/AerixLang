@@ -72,14 +72,14 @@ pub fn hypot(a: f64, b: f64) -> f64 {
 /// Computes `base` raised to an integer power `exp` using binary exponentiation (exponentiation by squaring).
 ///
 /// Parameters:
-///   `base`: Base value.
-///   `exp` : Signed integer power.
-pub fn pow(base: f64, exp: i64) -> f64 {
-    if exp == 0 {
+///   `base` : Base value.
+///   `p_exp`: Signed integer power.
+pub fn pow(base: f64, p_exp: i64) -> f64 {
+    if p_exp == 0 {
         return 1.0;
     }
     mut res: f64 = 1.0;
-    mut n: i64 = exp;
+    mut n: i64 = p_exp;
     mut b: f64 = base;
     if n < 0 {
         b = 1.0 / b;

@@ -168,12 +168,12 @@ pub fn atan(x: f64) -> f64 {
     mut term = x;
     mut sum = x;
     mut denom = 3.0;
-    mut sign = 0.0 - 1.0;
+    mut s_term = 0.0 - 1.0;
     for i in 0..15 {
         term = term * x2;
-        sum = sum + sign * (term / denom);
+        sum = sum + s_term * (term / denom);
         denom = denom + 2.0;
-        sign = 0.0 - sign;
+        s_term = 0.0 - s_term;
     }
     return sum;
 }

@@ -1100,6 +1100,27 @@ void Arx_X64Asm_divsd(Arx_X64Asm* self, int64_t dst, int64_t src);
 void Arx_X64Asm_ucomisd(Arx_X64Asm* self, int64_t a, int64_t b);
 void Arx_X64Asm_cvtsi2sd(Arx_X64Asm* self, int64_t xmm, int64_t r);
 void Arx_X64Asm_cvttsd2si(Arx_X64Asm* self, int64_t r, int64_t xmm);
+void Arx_X64Asm_movdqu_rm(Arx_X64Asm* self, int64_t xmm, int64_t base, int64_t disp);
+void Arx_X64Asm_movdqu_mr(Arx_X64Asm* self, int64_t base, int64_t disp, int64_t xmm);
+void Arx_X64Asm_pxor(Arx_X64Asm* self, int64_t dst, int64_t src);
+void Arx_X64Asm_aesenc(Arx_X64Asm* self, int64_t dst, int64_t src);
+void Arx_X64Asm_aesenclast(Arx_X64Asm* self, int64_t dst, int64_t src);
+void Arx_X64Asm_aesdec(Arx_X64Asm* self, int64_t dst, int64_t src);
+void Arx_X64Asm_aesdeclast(Arx_X64Asm* self, int64_t dst, int64_t src);
+void Arx_X64Asm_aeskeygenassist(Arx_X64Asm* self, int64_t dst, int64_t src, int64_t rcon);
+void Arx_X64Asm_aesimc(Arx_X64Asm* self, int64_t dst, int64_t src);
+void Arx_X64Asm_vex_2b(Arx_X64Asm* self, int64_t r_reg, int64_t v_reg, int64_t l_256, int64_t pp);
+void Arx_X64Asm_vex_3b(Arx_X64Asm* self, int64_t r_reg, int64_t x_reg, int64_t b_reg, int64_t m_map, int64_t w_bit, int64_t v_reg, int64_t l_256, int64_t pp);
+void Arx_X64Asm_vzeroupper(Arx_X64Asm* self);
+void Arx_X64Asm_vaddps_256(Arx_X64Asm* self, int64_t dst, int64_t src1, int64_t src2);
+void Arx_X64Asm_vsubps_256(Arx_X64Asm* self, int64_t dst, int64_t src1, int64_t src2);
+void Arx_X64Asm_vmulps_256(Arx_X64Asm* self, int64_t dst, int64_t src1, int64_t src2);
+void Arx_X64Asm_vdivps_256(Arx_X64Asm* self, int64_t dst, int64_t src1, int64_t src2);
+void Arx_X64Asm_vpaddd_256(Arx_X64Asm* self, int64_t dst, int64_t src1, int64_t src2);
+void Arx_X64Asm_vpsubd_256(Arx_X64Asm* self, int64_t dst, int64_t src1, int64_t src2);
+void Arx_X64Asm_vpmulld_256(Arx_X64Asm* self, int64_t dst, int64_t src1, int64_t src2);
+void Arx_X64Asm_vmovups_rm_256(Arx_X64Asm* self, int64_t dst_ymm, int64_t base, int64_t disp);
+void Arx_X64Asm_vmovups_mr_256(Arx_X64Asm* self, int64_t base, int64_t disp, int64_t src_ymm);
 Arx_PeBuilder Arx_PeBuilder_init(void);
 void Arx_PeBuilder_set_subsystem(Arx_PeBuilder* self, int64_t subsys);
 int64_t Arx_PeBuilder_add_rdata_cstr(Arx_PeBuilder* self, const char* s);
@@ -4669,6 +4690,193 @@ void Arx_X64Asm_cvttsd2si(Arx_X64Asm* self, int64_t r, int64_t xmm) {
     Arx_X64Asm_emit_u8(self, ((int64_t)15LL));
     Arx_X64Asm_emit_u8(self, ((int64_t)44LL));
     Arx_X64Asm_modrm(self, ((int64_t)3LL), r, xmm);
+}
+
+void Arx_X64Asm_movdqu_rm(Arx_X64Asm* self, int64_t xmm, int64_t base, int64_t disp) {
+    Arx_X64Asm_emit_u8(self, ((int64_t)243LL));
+    Arx_X64Asm_rex_opt(self, xmm, base);
+    Arx_X64Asm_emit_u8(self, ((int64_t)15LL));
+    Arx_X64Asm_emit_u8(self, ((int64_t)111LL));
+    Arx_X64Asm_modrm(self, ((int64_t)2LL), xmm, base);
+    if (((((base) & (((int64_t)7LL)))) == (((int64_t)4LL)))) {
+        Arx_X64Asm_emit_u8(self, ((int64_t)36LL));
+    }
+    Arx_X64Asm_emit_i32(self, disp);
+}
+
+void Arx_X64Asm_movdqu_mr(Arx_X64Asm* self, int64_t base, int64_t disp, int64_t xmm) {
+    Arx_X64Asm_emit_u8(self, ((int64_t)243LL));
+    Arx_X64Asm_rex_opt(self, xmm, base);
+    Arx_X64Asm_emit_u8(self, ((int64_t)15LL));
+    Arx_X64Asm_emit_u8(self, ((int64_t)127LL));
+    Arx_X64Asm_modrm(self, ((int64_t)2LL), xmm, base);
+    if (((((base) & (((int64_t)7LL)))) == (((int64_t)4LL)))) {
+        Arx_X64Asm_emit_u8(self, ((int64_t)36LL));
+    }
+    Arx_X64Asm_emit_i32(self, disp);
+}
+
+void Arx_X64Asm_pxor(Arx_X64Asm* self, int64_t dst, int64_t src) {
+    Arx_X64Asm_emit_u8(self, ((int64_t)102LL));
+    Arx_X64Asm_rex_opt(self, dst, src);
+    Arx_X64Asm_emit_u8(self, ((int64_t)15LL));
+    Arx_X64Asm_emit_u8(self, ((int64_t)239LL));
+    Arx_X64Asm_modrm(self, ((int64_t)3LL), dst, src);
+}
+
+void Arx_X64Asm_aesenc(Arx_X64Asm* self, int64_t dst, int64_t src) {
+    Arx_X64Asm_emit_u8(self, ((int64_t)102LL));
+    Arx_X64Asm_rex_opt(self, dst, src);
+    Arx_X64Asm_emit_u8(self, ((int64_t)15LL));
+    Arx_X64Asm_emit_u8(self, ((int64_t)56LL));
+    Arx_X64Asm_emit_u8(self, ((int64_t)220LL));
+    Arx_X64Asm_modrm(self, ((int64_t)3LL), dst, src);
+}
+
+void Arx_X64Asm_aesenclast(Arx_X64Asm* self, int64_t dst, int64_t src) {
+    Arx_X64Asm_emit_u8(self, ((int64_t)102LL));
+    Arx_X64Asm_rex_opt(self, dst, src);
+    Arx_X64Asm_emit_u8(self, ((int64_t)15LL));
+    Arx_X64Asm_emit_u8(self, ((int64_t)56LL));
+    Arx_X64Asm_emit_u8(self, ((int64_t)221LL));
+    Arx_X64Asm_modrm(self, ((int64_t)3LL), dst, src);
+}
+
+void Arx_X64Asm_aesdec(Arx_X64Asm* self, int64_t dst, int64_t src) {
+    Arx_X64Asm_emit_u8(self, ((int64_t)102LL));
+    Arx_X64Asm_rex_opt(self, dst, src);
+    Arx_X64Asm_emit_u8(self, ((int64_t)15LL));
+    Arx_X64Asm_emit_u8(self, ((int64_t)56LL));
+    Arx_X64Asm_emit_u8(self, ((int64_t)222LL));
+    Arx_X64Asm_modrm(self, ((int64_t)3LL), dst, src);
+}
+
+void Arx_X64Asm_aesdeclast(Arx_X64Asm* self, int64_t dst, int64_t src) {
+    Arx_X64Asm_emit_u8(self, ((int64_t)102LL));
+    Arx_X64Asm_rex_opt(self, dst, src);
+    Arx_X64Asm_emit_u8(self, ((int64_t)15LL));
+    Arx_X64Asm_emit_u8(self, ((int64_t)56LL));
+    Arx_X64Asm_emit_u8(self, ((int64_t)223LL));
+    Arx_X64Asm_modrm(self, ((int64_t)3LL), dst, src);
+}
+
+void Arx_X64Asm_aeskeygenassist(Arx_X64Asm* self, int64_t dst, int64_t src, int64_t rcon) {
+    Arx_X64Asm_emit_u8(self, ((int64_t)102LL));
+    Arx_X64Asm_rex_opt(self, dst, src);
+    Arx_X64Asm_emit_u8(self, ((int64_t)15LL));
+    Arx_X64Asm_emit_u8(self, ((int64_t)58LL));
+    Arx_X64Asm_emit_u8(self, ((int64_t)223LL));
+    Arx_X64Asm_modrm(self, ((int64_t)3LL), dst, src);
+    Arx_X64Asm_emit_u8(self, ((rcon) & (((int64_t)255LL))));
+}
+
+void Arx_X64Asm_aesimc(Arx_X64Asm* self, int64_t dst, int64_t src) {
+    Arx_X64Asm_emit_u8(self, ((int64_t)102LL));
+    Arx_X64Asm_rex_opt(self, dst, src);
+    Arx_X64Asm_emit_u8(self, ((int64_t)15LL));
+    Arx_X64Asm_emit_u8(self, ((int64_t)56LL));
+    Arx_X64Asm_emit_u8(self, ((int64_t)219LL));
+    Arx_X64Asm_modrm(self, ((int64_t)3LL), dst, src);
+}
+
+void Arx_X64Asm_vex_2b(Arx_X64Asm* self, int64_t r_reg, int64_t v_reg, int64_t l_256, int64_t pp) {
+    int64_t r_bit = ((int64_t)1LL);
+    if (((r_reg) >= (((int64_t)8LL)))) {
+        r_bit = ((int64_t)0LL);
+    }
+    int64_t v_bits = ((((((int64_t)15LL)) - (((v_reg) & (((int64_t)15LL)))))) & (((int64_t)15LL)));
+    int64_t b2 = ((((((((r_bit) * (((int64_t)128LL)))) | (((v_bits) * (((int64_t)8LL)))))) | (((((l_256) & (((int64_t)1LL)))) * (((int64_t)4LL)))))) | (((pp) & (((int64_t)3LL)))));
+    Arx_X64Asm_emit_u8(self, ((int64_t)197LL));
+    Arx_X64Asm_emit_u8(self, b2);
+}
+
+void Arx_X64Asm_vex_3b(Arx_X64Asm* self, int64_t r_reg, int64_t x_reg, int64_t b_reg, int64_t m_map, int64_t w_bit, int64_t v_reg, int64_t l_256, int64_t pp) {
+    int64_t r = ((int64_t)1LL);
+    if (((r_reg) >= (((int64_t)8LL)))) {
+        r = ((int64_t)0LL);
+    }
+    int64_t x = ((int64_t)1LL);
+    if (((x_reg) >= (((int64_t)8LL)))) {
+        x = ((int64_t)0LL);
+    }
+    int64_t b = ((int64_t)1LL);
+    if (((b_reg) >= (((int64_t)8LL)))) {
+        b = ((int64_t)0LL);
+    }
+    int64_t b2 = ((((((((r) * (((int64_t)128LL)))) | (((x) * (((int64_t)64LL)))))) | (((b) * (((int64_t)32LL)))))) | (((m_map) & (((int64_t)31LL)))));
+    int64_t v_bits = ((((((int64_t)15LL)) - (((v_reg) & (((int64_t)15LL)))))) & (((int64_t)15LL)));
+    int64_t b3 = ((((((((((w_bit) & (((int64_t)1LL)))) * (((int64_t)128LL)))) | (((v_bits) * (((int64_t)8LL)))))) | (((((l_256) & (((int64_t)1LL)))) * (((int64_t)4LL)))))) | (((pp) & (((int64_t)3LL)))));
+    Arx_X64Asm_emit_u8(self, ((int64_t)196LL));
+    Arx_X64Asm_emit_u8(self, b2);
+    Arx_X64Asm_emit_u8(self, b3);
+}
+
+void Arx_X64Asm_vzeroupper(Arx_X64Asm* self) {
+    Arx_X64Asm_emit_u8(self, ((int64_t)197LL));
+    Arx_X64Asm_emit_u8(self, ((int64_t)248LL));
+    Arx_X64Asm_emit_u8(self, ((int64_t)119LL));
+}
+
+void Arx_X64Asm_vaddps_256(Arx_X64Asm* self, int64_t dst, int64_t src1, int64_t src2) {
+    Arx_X64Asm_vex_2b(self, dst, src1, ((int64_t)1LL), ((int64_t)0LL));
+    Arx_X64Asm_emit_u8(self, ((int64_t)88LL));
+    Arx_X64Asm_modrm(self, ((int64_t)3LL), dst, src2);
+}
+
+void Arx_X64Asm_vsubps_256(Arx_X64Asm* self, int64_t dst, int64_t src1, int64_t src2) {
+    Arx_X64Asm_vex_2b(self, dst, src1, ((int64_t)1LL), ((int64_t)0LL));
+    Arx_X64Asm_emit_u8(self, ((int64_t)92LL));
+    Arx_X64Asm_modrm(self, ((int64_t)3LL), dst, src2);
+}
+
+void Arx_X64Asm_vmulps_256(Arx_X64Asm* self, int64_t dst, int64_t src1, int64_t src2) {
+    Arx_X64Asm_vex_2b(self, dst, src1, ((int64_t)1LL), ((int64_t)0LL));
+    Arx_X64Asm_emit_u8(self, ((int64_t)89LL));
+    Arx_X64Asm_modrm(self, ((int64_t)3LL), dst, src2);
+}
+
+void Arx_X64Asm_vdivps_256(Arx_X64Asm* self, int64_t dst, int64_t src1, int64_t src2) {
+    Arx_X64Asm_vex_2b(self, dst, src1, ((int64_t)1LL), ((int64_t)0LL));
+    Arx_X64Asm_emit_u8(self, ((int64_t)94LL));
+    Arx_X64Asm_modrm(self, ((int64_t)3LL), dst, src2);
+}
+
+void Arx_X64Asm_vpaddd_256(Arx_X64Asm* self, int64_t dst, int64_t src1, int64_t src2) {
+    Arx_X64Asm_vex_2b(self, dst, src1, ((int64_t)1LL), ((int64_t)1LL));
+    Arx_X64Asm_emit_u8(self, ((int64_t)254LL));
+    Arx_X64Asm_modrm(self, ((int64_t)3LL), dst, src2);
+}
+
+void Arx_X64Asm_vpsubd_256(Arx_X64Asm* self, int64_t dst, int64_t src1, int64_t src2) {
+    Arx_X64Asm_vex_2b(self, dst, src1, ((int64_t)1LL), ((int64_t)1LL));
+    Arx_X64Asm_emit_u8(self, ((int64_t)250LL));
+    Arx_X64Asm_modrm(self, ((int64_t)3LL), dst, src2);
+}
+
+void Arx_X64Asm_vpmulld_256(Arx_X64Asm* self, int64_t dst, int64_t src1, int64_t src2) {
+    Arx_X64Asm_vex_3b(self, dst, ((int64_t)0LL), src2, ((int64_t)2LL), ((int64_t)0LL), src1, ((int64_t)1LL), ((int64_t)1LL));
+    Arx_X64Asm_emit_u8(self, ((int64_t)64LL));
+    Arx_X64Asm_modrm(self, ((int64_t)3LL), dst, src2);
+}
+
+void Arx_X64Asm_vmovups_rm_256(Arx_X64Asm* self, int64_t dst_ymm, int64_t base, int64_t disp) {
+    Arx_X64Asm_vex_2b(self, dst_ymm, ((int64_t)0LL), ((int64_t)1LL), ((int64_t)0LL));
+    Arx_X64Asm_emit_u8(self, ((int64_t)16LL));
+    Arx_X64Asm_modrm(self, ((int64_t)2LL), dst_ymm, base);
+    if (((((base) & (((int64_t)7LL)))) == (((int64_t)4LL)))) {
+        Arx_X64Asm_emit_u8(self, ((int64_t)36LL));
+    }
+    Arx_X64Asm_emit_i32(self, disp);
+}
+
+void Arx_X64Asm_vmovups_mr_256(Arx_X64Asm* self, int64_t base, int64_t disp, int64_t src_ymm) {
+    Arx_X64Asm_vex_2b(self, src_ymm, ((int64_t)0LL), ((int64_t)1LL), ((int64_t)0LL));
+    Arx_X64Asm_emit_u8(self, ((int64_t)17LL));
+    Arx_X64Asm_modrm(self, ((int64_t)2LL), src_ymm, base);
+    if (((((base) & (((int64_t)7LL)))) == (((int64_t)4LL)))) {
+        Arx_X64Asm_emit_u8(self, ((int64_t)36LL));
+    }
+    Arx_X64Asm_emit_i32(self, disp);
 }
 
 Arx_PeBuilder Arx_PeBuilder_init(void) {

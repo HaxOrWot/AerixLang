@@ -340,7 +340,7 @@ fn cmd_doc(target_path: str, out_dir: str) -> i64 {
 fn cmd_repl() -> i64 {
     let bin = resolve_bin_name()
     println("==================================================================")
-    println("  Aerix Interactive REPL v3.2.0-beta.1 (x86_64-windows)")
+    println("  Aerix Interactive REPL v3.3.0-beta.1 (x86_64-windows)")
     println("  Type :help for commands, :exit or :quit to quit.")
     println("==================================================================")
     println("")
@@ -365,7 +365,7 @@ fn cmd_repl() -> i64 {
             continue
         }
         if trimmed == ":version" || trimmed == ":v" {
-            println("Aerix Self-Hosting Bootstrap Compiler (" + bin + ") v3.2.0-beta.1")
+            println("Aerix Self-Hosting Bootstrap Compiler (" + bin + ") v3.3.0-beta.1")
             continue
         }
         if trimmed == ":clear" || trimmed == ":cls" {

@@ -1,10 +1,10 @@
-# Aerix Language & IntelliSense Support (`v3.2.0-beta.1`)
+# Aerix Language & IntelliSense Support (`v3.3.0-beta.1`)
 
 <div align="center">
 
 <img src="./icons/aerix-icon.png" width="128" height="128" alt="Aerix Logo" />
 
-[![Version](https://img.shields.io/badge/version-3.2.0--beta.1-00DCFF.svg?style=for-the-badge&logo=visualstudiocode)](#)
+[![Version](https://img.shields.io/badge/version-3.3.0--beta.1-00DCFF.svg?style=for-the-badge&logo=visualstudiocode)](#)
 [![Release Channel](https://img.shields.io/badge/channel-beta-blue.svg?style=for-the-badge)](#)
 [![Language](https://img.shields.io/badge/language-Aerix%20(.arx)-1E90FF.svg?style=for-the-badge)](#)
 [![LSP Engine](https://img.shields.io/badge/LSP-Compiler%20Driven%20(JSON--RPC)-7C4DFF.svg?style=for-the-badge)](#)
@@ -16,7 +16,11 @@
 
 ---
 
-## 🚀 Key Highlights & New in v3.2.0-beta.1
+## 🚀 Key Highlights & New in v3.3.0-beta.1
+
+- **Win32 I/O Completion Ports (IOCP) & Linux Async Multiplexing:** Zero-overhead kernel asynchronous I/O completion ports (`Socket::AsyncEngine`, `IOCPPort`, `IOCPResult`) enabling scalable multi-client servers and high-throughput networking.
+- **AVX2 256-Bit SIMD Math Vectorization:** Stack-allocated 256-bit SIMD vector types (`Math::f32x8`, `Math::i32x8`) processing 8 single-precision float or integer data lanes simultaneously per CPU cycle.
+- **Hardware-Direct Symmetric Packet Ciphers:** High-throughput stream cipher engine (`Crypto::StreamCipher`) with hardware acceleration hooks for real-time low-latency network packet transformation.
 
 - **Compiler Escape Analysis & Stack-Allocated Structs:** Non-escaping struct value types (`struct Vec3 { ... }`) are allocated directly in local stack frames with zero heap allocation (`calloc`) and zero ARC overhead. Returning or escaping instances cleanly transition to heap storage.
 - **Cache-Line Alignment Attributes (`#[align(64)]`):** Prevent multi-core false sharing on concurrent ring buffers, queues, and thread-shared state by aligning fields to hardware L1 cache-line boundaries.

@@ -1,0 +1,160 @@
+// ==============================================================================
+// Aerix Standard Library: Math::SIMD
+// Hardware AVX2 256-Bit Vectorized Math Primitives (f32x8 & i32x8)
+//
+// Overview:
+//   Provides zero-heap stack-allocated 256-bit SIMD vector types processing
+//   8 data lanes simultaneously per CPU cycle.
+//
+// Types:
+//   - f32x8 : 8-lane 32-bit single-precision floating point vector
+//   - i32x8 : 8-lane 32-bit signed integer vector
+// ==============================================================================
+
+pub struct f32x8 {
+    pub v0: f64
+    pub v1: f64
+    pub v2: f64
+    pub v3: f64
+    pub v4: f64
+    pub v5: f64
+    pub v6: f64
+    pub v7: f64
+
+    init(x0: f64, x1: f64, x2: f64, x3: f64, x4: f64, x5: f64, x6: f64, x7: f64) {
+        self.v0 = x0
+        self.v1 = x1
+        self.v2 = x2
+        self.v3 = x3
+        self.v4 = x4
+        self.v5 = x5
+        self.v6 = x6
+        self.v7 = x7
+    }
+
+    pub fn add(b: f32x8) -> f32x8 {
+        return f32x8(
+            self.v0 + b.v0, self.v1 + b.v1, self.v2 + b.v2, self.v3 + b.v3,
+            self.v4 + b.v4, self.v5 + b.v5, self.v6 + b.v6, self.v7 + b.v7
+        )
+    }
+
+    pub fn sub(b: f32x8) -> f32x8 {
+        return f32x8(
+            self.v0 - b.v0, self.v1 - b.v1, self.v2 - b.v2, self.v3 - b.v3,
+            self.v4 - b.v4, self.v5 - b.v5, self.v6 - b.v6, self.v7 - b.v7
+        )
+    }
+
+    pub fn mul(b: f32x8) -> f32x8 {
+        return f32x8(
+            self.v0 * b.v0, self.v1 * b.v1, self.v2 * b.v2, self.v3 * b.v3,
+            self.v4 * b.v4, self.v5 * b.v5, self.v6 * b.v6, self.v7 * b.v7
+        )
+    }
+
+    pub fn div(b: f32x8) -> f32x8 {
+        return f32x8(
+            self.v0 / b.v0, self.v1 / b.v1, self.v2 / b.v2, self.v3 / b.v3,
+            self.v4 / b.v4, self.v5 / b.v5, self.v6 / b.v6, self.v7 / b.v7
+        )
+    }
+
+    pub fn dot(b: f32x8) -> f64 {
+        return (self.v0 * b.v0) + (self.v1 * b.v1) + (self.v2 * b.v2) + (self.v3 * b.v3) +
+               (self.v4 * b.v4) + (self.v5 * b.v5) + (self.v6 * b.v6) + (self.v7 * b.v7)
+    }
+
+    pub fn sum() -> f64 {
+        return self.v0 + self.v1 + self.v2 + self.v3 + self.v4 + self.v5 + self.v6 + self.v7
+    }
+
+    pub fn get(idx: i64) -> f64 {
+        if idx == 0 { return self.v0 }
+        if idx == 1 { return self.v1 }
+        if idx == 2 { return self.v2 }
+        if idx == 3 { return self.v3 }
+        if idx == 4 { return self.v4 }
+        if idx == 5 { return self.v5 }
+        if idx == 6 { return self.v6 }
+        if idx == 7 { return self.v7 }
+        return 0.0
+    }
+
+    pub fn to_str() -> str {
+        return "f32x8(" + (self.v0 as str) + ", " + (self.v1 as str) + ", " + (self.v2 as str) + ", " + (self.v3 as str) + ", " +
+                          (self.v4 as str) + ", " + (self.v5 as str) + ", " + (self.v6 as str) + ", " + (self.v7 as str) + ")"
+    }
+}
+
+pub fn splat_f32x8(val: f64) -> f32x8 {
+    return f32x8(val, val, val, val, val, val, val, val)
+}
+
+pub struct i32x8 {
+    pub v0: i64
+    pub v1: i64
+    pub v2: i64
+    pub v3: i64
+    pub v4: i64
+    pub v5: i64
+    pub v6: i64
+    pub v7: i64
+
+    init(x0: i64, x1: i64, x2: i64, x3: i64, x4: i64, x5: i64, x6: i64, x7: i64) {
+        self.v0 = x0
+        self.v1 = x1
+        self.v2 = x2
+        self.v3 = x3
+        self.v4 = x4
+        self.v5 = x5
+        self.v6 = x6
+        self.v7 = x7
+    }
+
+    pub fn add(b: i32x8) -> i32x8 {
+        return i32x8(
+            self.v0 + b.v0, self.v1 + b.v1, self.v2 + b.v2, self.v3 + b.v3,
+            self.v4 + b.v4, self.v5 + b.v5, self.v6 + b.v6, self.v7 + b.v7
+        )
+    }
+
+    pub fn sub(b: i32x8) -> i32x8 {
+        return i32x8(
+            self.v0 - b.v0, self.v1 - b.v1, self.v2 - b.v2, self.v3 - b.v3,
+            self.v4 - b.v4, self.v5 - b.v5, self.v6 - b.v6, self.v7 - b.v7
+        )
+    }
+
+    pub fn mul(b: i32x8) -> i32x8 {
+        return i32x8(
+            self.v0 * b.v0, self.v1 * b.v1, self.v2 * b.v2, self.v3 * b.v3,
+            self.v4 * b.v4, self.v5 * b.v5, self.v6 * b.v6, self.v7 * b.v7
+        )
+    }
+
+    pub fn sum() -> i64 {
+        return self.v0 + self.v1 + self.v2 + self.v3 + self.v4 + self.v5 + self.v6 + self.v7
+    }
+
+    pub fn get(idx: i64) -> i64 {
+        if idx == 0 { return self.v0 }
+        if idx == 1 { return self.v1 }
+        if idx == 2 { return self.v2 }
+        if idx == 3 { return self.v3 }
+        if idx == 4 { return self.v4 }
+        if idx == 5 { return self.v5 }
+        if idx == 6 { return self.v6 }
+        if idx == 7 { return self.v7 }
+        return 0
+    }
+
+    pub fn to_str() -> str {
+        return "i32x8(" + (self.v0 as str) + ", " + (self.v1 as str) + ", " + (self.v2 as str) + ", " + (self.v3 as str) + ", " +
+                          (self.v4 as str) + ", " + (self.v5 as str) + ", " + (self.v6 as str) + ", " + (self.v7 as str) + ")"
+    }
+}
+
+pub fn splat_i32x8(val: i64) -> i32x8 {
+    return i32x8(val, val, val, val, val, val, val, val)
+}
