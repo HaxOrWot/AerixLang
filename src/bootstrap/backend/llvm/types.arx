@@ -1,0 +1,137 @@
+// Aerix LLVM IR Backend — Type Mapping
+// Maps Aerix types to LLVM IR type strings.
+
+import "./mod.arx"
+
+// Map an Aerix type string to its LLVM IR type.
+// All ints become i64, floats become double, bools become i1,
+// str/ptr types become i8*, class types become %Arx_Name*.
+pub fn ll_type(raw_t: str) -> str {
+    let t = btype_norm(raw_t)
+    if t == "void" { return "void" }
+    if t == "bool" { return "i1" }
+    if t == "i8" { return "i8" }
+    if t == "i16" { return "i16" }
+    if t == "i32" { return "i32" }
+    if t == "i64" { return "i64" }
+    if t == "u8" { return "i8" }
+    if t == "u16" { return "i16" }
+    if t == "u32" { return "i32" }
+    if t == "u64" { return "i64" }
+    if t == "usize" { return "i64" }
+    if t == "isize" { return "i64" }
+    if t == "f32" { return "float" }
+    if t == "f64" { return "double" }
+    if t == "str" { return "ptr" }
+    if t == "char" { return "i8" }
+    if t == "null" { return "ptr" }
+    // pointers and all reference/heap types in modern LLVM use opaque pointers (ptr)
+    if btype_is_ptr(t) { return "ptr" }
+    if btype_is_list(t) || btype_is_set(t) || btype_is_map(t) {
+        return "ptr"
+    }
+    if btype_is_stack(t) || btype_is_queue(t) || btype_is_deque(t) {
+        return "ptr"
+    }
+    if btype_is_tuple(t) { return "ptr" }
+    if btype_is_fixed_arr(t) { return "ptr" }
+    if btype_is_slice(t) { return "ptr" }
+    if t == "ByteBuffer" || t == "String" || t == "File" || t == "Directory" ||
+       t == "Process" || t == "Env" || t == "Path" {
+        return "ptr"
+    }
+    return "ptr"
+}
+
+// Returns LLVM zero/null for a given type.
+pub fn ll_zero(ll_t: str) -> str {
+    if ll_t == "void" { return "void" }
+    if ll_t == "i1" { return "false" }
+    if ll_t == "i8" || ll_t == "i16" || ll_t == "i32" || ll_t == "i64" { return "0" }
+    if ll_t == "float" { return "0.0" }
+    if ll_t == "double" { return "0.0" }
+    if ll_is_ptr(ll_t) { return "null" }
+    return "null"
+}
+
+// Whether this LLVM type is a floating-point type.
+pub fn ll_is_float(ll_t: str) -> bool {
+    return ll_t == "double" || ll_t == "float"
+}
+
+// Whether this LLVM type is an integer type.
+pub fn ll_is_int(ll_t: str) -> bool {
+    return ll_t == "i1" || ll_t == "i8" || ll_t == "i16" || ll_t == "i32" || ll_t == "i64"
+}
+
+// Whether this LLVM type is a pointer.
+pub fn ll_is_ptr(ll_t: str) -> bool {
+    return ll_t == "ptr" || ll_t.ends_with("*")
+}
+
+pub fn ll_int_width(ll_t: str) -> i64 {
+    if ll_t == "i1" { return 1 }
+    if ll_t == "i8" { return 8 }
+    if ll_t == "i16" { return 16 }
+    if ll_t == "i32" { return 32 }
+    if ll_t == "i64" { return 64 }
+    return 64
+}
+
+// LLVM arithmetic opcode for the given Aerix binary op and LLVM type.
+pub fn ll_arith_op(opc: str, ll_t: str) -> str {
+    if ll_is_float(ll_t) {
+        if opc == "+" { return "fadd" }
+        if opc == "-" { return "fsub" }
+        if opc == "*" { return "fmul" }
+        if opc == "/" { return "fdiv" }
+        if opc == "%" { return "frem" }
+    } else {
+        if opc == "+" { return "add" }
+        if opc == "-" { return "sub" }
+        if opc == "*" { return "mul" }
+        if opc == "/" { return "sdiv" }
+        if opc == "%" { return "srem" }
+        if opc == "&" { return "and" }
+        if opc == "|" { return "or" }
+        if opc == "^" { return "xor" }
+        if opc == "<<" { return "shl" }
+        if opc == ">>" { return "ashr" }
+    }
+    return "add"
+}
+
+// LLVM icmp/fcmp predicate for comparison op.
+pub fn ll_cmp_pred(opc: str, ll_t: str, is_unsigned: bool) -> str {
+    if ll_is_float(ll_t) {
+        if opc == "==" { return "oeq" }
+        if opc == "!=" { return "one" }
+        if opc == "<" { return "olt" }
+        if opc == "<=" { return "ole" }
+        if opc == ">" { return "ogt" }
+        if opc == ">=" { return "oge" }
+        return "oeq"
+    }
+    if is_unsigned {
+        if opc == "==" { return "eq" }
+        if opc == "!=" { return "ne" }
+        if opc == "<" { return "ult" }
+        if opc == "<=" { return "ule" }
+        if opc == ">" { return "ugt" }
+        if opc == ">=" { return "uge" }
+        return "eq"
+    }
+    if opc == "==" { return "eq" }
+    if opc == "!=" { return "ne" }
+    if opc == "<" { return "slt" }
+    if opc == "<=" { return "sle" }
+    if opc == ">" { return "sgt" }
+    if opc == ">=" { return "sge" }
+    return "eq"
+}
+
+// Get the pointer-load type for a given value type stored in an alloca.
+// In opaque-pointer LLVM IR (LLVM 15+) we use typed alloca style.
+pub fn ll_alloca_type(ll_t: str) -> str {
+    return ll_t
+}

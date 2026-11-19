@@ -1,0 +1,665 @@
+// Aerix LLVM IR Backend — Statement Emitter
+// Emits LLVM IR for statements.
+
+import "./mod.arx"
+
+extend LLVMEmitter {
+
+    pub fn ll_gen_stmt(nid: i64) {
+        if nid < 0 { return }
+        let k = self.nk.get(nid)
+
+        // Block
+        if k == NK_BLOCK() {
+            self.ll_gen_block(nid)
+            return
+        }
+
+        // Variable declaration
+        if k == NK_VAR_DECL() {
+            self.ll_gen_var_decl(nid)
+            return
+        }
+
+        // Assignment
+        if k == NK_ASSIGN() {
+            self.ll_gen_assign(nid)
+            return
+        }
+
+        // If
+        if k == NK_IF() {
+            self.ll_gen_if(nid)
+            return
+        }
+
+        // While
+        if k == NK_WHILE() {
+            self.ll_gen_while(nid)
+            return
+        }
+
+        // Loop (infinite loop)
+        if k == NK_LOOP() {
+            self.ll_gen_loop(nid)
+            return
+        }
+
+        // For
+        if k == NK_FOR() {
+            self.ll_gen_for(nid)
+            return
+        }
+
+        // Return
+        if k == NK_RETURN() {
+            self.ll_gen_return(nid)
+            return
+        }
+
+        // Break
+        if k == NK_BREAK() {
+            if self.loop_break_stack.len() > 0 {
+                let target = self.loop_break_stack.get(self.loop_break_stack.len() - 1)
+                self.emit_br(target)
+            }
+            return
+        }
+
+        // Continue
+        if k == NK_CONTINUE() {
+            if self.loop_cont_stack.len() > 0 {
+                let target = self.loop_cont_stack.get(self.loop_cont_stack.len() - 1)
+                self.emit_br(target)
+            }
+            return
+        }
+
+        // Guard (guard cond else { ... })
+        if k == NK_GUARD() {
+            self.ll_gen_guard(nid)
+            return
+        }
+
+        // Throw
+        if k == NK_THROW() {
+            let ex = self.la.get(nid)
+            let at = btype_norm(self.node_types.get(ex))
+            let av = self.ll_gen_expr(ex)
+            let atll = ll_type(at)
+            let sv = self.ll_cast_to_str(at, av, atll)
+            self.wi("call void @arx_throw(ptr " + sv + ", i64 1)")
+            self.wi("unreachable")
+            return
+        }
+
+        // Defer: skip (not supported in LLVM backend — complex)
+        if k == NK_DEFER() { return }
+
+        // Try/catch: simplified (use arx_try/arx_catch runtime if available)
+        if k == NK_TRY_CATCH() {
+            // Fall through to just emit the try body for now
+            let try_blk = self.la.get(nid)
+            self.ll_gen_block_stmts(try_blk)
+            return
+        }
+
+        // Match
+        if k == NK_MATCH() {
+            self.ll_gen_match(nid)
+            return
+        }
+
+        // Tuple destructure
+        if k == NK_TUPLE_DESTR() {
+            self.ll_gen_tuple_destr(nid)
+            return
+        }
+
+        // Expression statement
+        if k == NK_EXPR_STMT() {
+            let ex = self.la.get(nid)
+            self.ll_gen_expr(ex)
+            return
+        }
+    }
+
+    // --- Block ---
+    pub fn ll_gen_block(blk_id: i64) {
+        self.ll_gen_block_stmts(blk_id)
+    }
+
+    pub fn ll_gen_block_stmts(blk_id: i64) {
+        if blk_id < 0 { return }
+        let cnt = self.child_count(blk_id)
+        mut i = 0
+        while i < cnt {
+            self.ll_gen_stmt(self.child_at(blk_id, i))
+            i = i + 1
+        }
+    }
+
+    // --- Variable declaration ---
+    priv fn ll_gen_var_decl(nid: i64) {
+        let nm = self.sa.get(nid)
+        let vt = btype_norm(self.node_types.get(nid))
+        let llt = ll_type(vt)
+        let init_id = self.la.get(nid)
+
+        // Create alloca at function entry (we emit it inline — LLVM mem2reg will lift it)
+        let ptr = self.emit_local_alloca(nm, llt)
+
+        // Compute and store initial value
+        if init_id >= 0 {
+            let rhs = self.ll_gen_expr(init_id)
+            let rhs_t = btype_norm(self.node_types.get(init_id))
+            let rhs_ll = ll_type(rhs_t)
+            let rhs_cast = self.emit_cast(rhs, rhs_ll, llt)
+            self.emit_store(rhs_cast, llt, ptr)
+        } else {
+            self.emit_store(ll_zero(llt), llt, ptr)
+        }
+    }
+
+    // --- Assignment ---
+    priv fn ll_gen_assign(nid: i64) {
+        let bin_op = self.sa.get(nid)
+        let lhs_id = self.la.get(nid)
+        let rhs_id = self.ra.get(nid)
+        let lhs_t = btype_norm(self.node_types.get(lhs_id))
+
+        // List/Map index assignment
+        if self.nk.get(lhs_id) == NK_INDEX() {
+            self.ll_gen_index_assign(lhs_id, rhs_id, bin_op)
+            return
+        }
+
+        // Member field assignment
+        if self.nk.get(lhs_id) == NK_MEMBER() {
+            self.ll_gen_field_assign(lhs_id, rhs_id, bin_op)
+            return
+        }
+
+        // Local variable assignment
+        let rhs_v = self.ll_gen_expr(rhs_id)
+        let rhs_t = btype_norm(self.node_types.get(rhs_id))
+        let rhs_ll = ll_type(rhs_t)
+
+        if self.nk.get(lhs_id) == NK_IDENT() {
+            let nm = self.sa.get(lhs_id)
+            if self.local_alloca.has_key(nm) {
+                let ptr = self.local_alloca.get(nm)
+                let vt = self.local_type.get(nm)
+                mut final_val = rhs_v
+
+                if bin_op == "+=" && btype_is_str(lhs_t) {
+                    // String concat
+                    let cur = self.emit_load(ptr, vt)
+                    final_val = self.ll_rt_call2("arx_str_concat", cur, "ptr", rhs_v, "ptr", "ptr")
+                } else if bin_op != "=" {
+                    // Compound: load current, apply op
+                    let cur = self.emit_load(ptr, vt)
+                    let base_op = bin_op.slice(0, bin_op.len() - 1)
+                    let rhs_cast = self.emit_cast(rhs_v, rhs_ll, vt)
+                    let r = self.fresh_reg()
+                    let instr = ll_arith_op(base_op, vt)
+                    self.wi(r + " = " + instr + " " + vt + " " + cur + ", " + rhs_cast)
+                    final_val = r
+                } else {
+                    final_val = self.emit_cast(rhs_v, rhs_ll, vt)
+                }
+                self.emit_store(final_val, vt, ptr)
+                return
+            }
+        }
+
+        // Fallback: treat as expression
+        self.ll_gen_expr(rhs_id)
+    }
+
+    // Index assignment: list[i] = val, map[k] = val
+    priv fn ll_gen_index_assign(lhs_id: i64, rhs_id: i64, opc: str) {
+        let col_id = self.la.get(lhs_id)
+        let col_t = btype_norm(self.node_types.get(col_id))
+        let idx_id = self.ra.get(lhs_id)
+        let col_v = self.ll_gen_expr(col_id)
+        let idx_v = self.ll_gen_expr(idx_id)
+        let rhs_v = self.ll_gen_expr(rhs_id)
+        let rhs_t = btype_norm(self.node_types.get(rhs_id))
+        let rhs_ll = ll_type(rhs_t)
+        let elem_t = btype_norm(self.node_types.get(lhs_id))
+        let elem_ll = ll_type(elem_t)
+
+        if btype_is_list(col_t) {
+            let mn = "Arx_" + btype_mangle(col_t) + "_set"
+            let rhs_cast = self.emit_cast(rhs_v, rhs_ll, elem_ll)
+            let idx_cast = self.emit_cast(idx_v, ll_type(btype_norm(self.node_types.get(idx_id))), "i64")
+            self.wi("call void @" + mn + "(ptr " + col_v + ", i64 " + idx_cast + ", " + elem_ll + " " + rhs_cast + ")")
+        } else if btype_is_map(col_t) {
+            let mn = "Arx_" + btype_mangle(col_t) + "_set"
+            let kt = btype_map_key(col_t)
+            let vt = btype_map_val(col_t)
+            let idx_cast = self.emit_cast(idx_v, ll_type(btype_norm(self.node_types.get(idx_id))), ll_type(kt))
+            let rhs_cast = self.emit_cast(rhs_v, rhs_ll, ll_type(vt))
+            self.wi("call void @" + mn + "(ptr " + col_v + ", " + ll_type(kt) + " " + idx_cast + ", " + ll_type(vt) + " " + rhs_cast + ")")
+        }
+    }
+
+    // Field assignment: obj.field = val
+    priv fn ll_gen_field_assign(lhs_id: i64, rhs_id: i64, opc: str) {
+        let _ext = self.node_ext.get(lhs_id)
+        let lhs_obj = self.la.get(lhs_id)
+        let field = self.sa.get(lhs_id)
+        let lhs_t = btype_norm(self.node_types.get(lhs_id))
+        let lhs_ll = ll_type(lhs_t)
+        let rhs_v = self.ll_gen_expr(rhs_id)
+        let rhs_t = btype_norm(self.node_types.get(rhs_id))
+        let rhs_ll = ll_type(rhs_t)
+
+        // self.field = val
+        let is_self_field = self.nk.get(lhs_obj) == NK_IDENT() && self.sa.get(lhs_obj) == "self" && self.cur_class != ""
+        mut obj_ptr = ""
+        mut cname = ""
+        if is_self_field {
+            obj_ptr = self.ll_load_self()
+            cname = self.cur_class
+        } else {
+            obj_ptr = self.ll_gen_expr(lhs_obj)
+            cname = btype_norm(self.node_types.get(lhs_obj))
+        }
+
+        // GEP to field
+        let field_idx = self.get_field_index(cname, field)
+        let struct_ll = "%Arx_" + btype_mangle(cname)
+        let r_gep = self.fresh_reg()
+        self.wi(r_gep + " = getelementptr inbounds " + struct_ll + ", ptr " + obj_ptr + ", i32 0, i32 " + (field_idx as str))
+
+        let rhs_cast = self.emit_cast(rhs_v, rhs_ll, lhs_ll)
+        self.emit_store(rhs_cast, lhs_ll, r_gep)
+    }
+
+    // --- If ---
+    priv fn ll_gen_if(nid: i64) {
+        let cond_id = self.la.get(nid)
+        let then_id = self.ra.get(nid)
+        let else_id = self.ea.get(nid)
+
+        let cond_v = self.ll_gen_expr(cond_id)
+        let cond_b = self.emit_cast(cond_v, ll_type(btype_norm(self.node_types.get(cond_id))), "i1")
+
+        let lbl_then = self.fresh_label("if.then")
+        let lbl_end = self.fresh_label("if.end")
+        let lbl_else = self.fresh_label("if.else")
+
+        if else_id >= 0 {
+            self.emit_condbr(cond_b, lbl_then, lbl_else)
+        } else {
+            self.emit_condbr(cond_b, lbl_then, lbl_end)
+        }
+
+        self.emit_label(lbl_then)
+        self.ll_gen_block_stmts(then_id)
+        self.emit_br(lbl_end)
+
+        if else_id >= 0 {
+            self.emit_label(lbl_else)
+            self.ll_gen_block_stmts(else_id)
+            self.emit_br(lbl_end)
+        }
+
+        self.emit_label(lbl_end)
+    }
+
+    // --- While ---
+    priv fn ll_gen_while(nid: i64) {
+        let cond_id = self.la.get(nid)
+        let body_id = self.ra.get(nid)
+
+        let lbl_cond = self.fresh_label("while.cond")
+        let lbl_body = self.fresh_label("while.body")
+        let lbl_end = self.fresh_label("while.end")
+
+        self.loop_break_stack.push(lbl_end)
+        self.loop_cont_stack.push(lbl_cond)
+
+        self.emit_br(lbl_cond)
+        self.emit_label(lbl_cond)
+        let cond_v = self.ll_gen_expr(cond_id)
+        let cond_b = self.emit_cast(cond_v, ll_type(btype_norm(self.node_types.get(cond_id))), "i1")
+        self.emit_condbr(cond_b, lbl_body, lbl_end)
+
+        self.emit_label(lbl_body)
+        self.ll_gen_block_stmts(body_id)
+        self.emit_br(lbl_cond)
+
+        self.loop_break_stack.pop()
+        self.loop_cont_stack.pop()
+
+        self.emit_label(lbl_end)
+    }
+
+    // --- Infinite loop ---
+    priv fn ll_gen_loop(nid: i64) {
+        let body_id = self.la.get(nid)
+        let lbl_body = self.fresh_label("loop.body")
+        let lbl_end = self.fresh_label("loop.end")
+
+        self.loop_break_stack.push(lbl_end)
+        self.loop_cont_stack.push(lbl_body)
+
+        self.emit_br(lbl_body)
+        self.emit_label(lbl_body)
+        self.ll_gen_block_stmts(body_id)
+        self.emit_br(lbl_body)
+
+        self.loop_break_stack.pop()
+        self.loop_cont_stack.pop()
+
+        self.emit_label(lbl_end)
+    }
+
+    // --- For loop ---
+    priv fn ll_gen_for(nid: i64) {
+        let item_v = self.sa.get(nid)
+        let _idx_v = self.sb.get(nid)
+        let iter_id = self.la.get(nid)
+        let body_id = self.ra.get(nid)
+        let ik = self.nk.get(iter_id)
+
+        // Range-based for
+        if ik == NK_RANGE() {
+            self.ll_gen_for_range(item_v, iter_id, body_id)
+            return
+        }
+
+        // List/str for
+        let it_t = btype_norm(self.node_types.get(iter_id))
+        let iter_v = self.ll_gen_expr(iter_id)
+        let _it_ll = ll_type(it_t)
+
+        // For list iteration
+        if btype_is_list(it_t) {
+            self.ll_gen_for_list(item_v, iter_v, it_t, body_id)
+            return
+        }
+
+        // For str iteration (char by char)
+        if btype_is_str(it_t) {
+            self.ll_gen_for_str(item_v, iter_v, body_id)
+            return
+        }
+
+        // Generic: treat as range 0..len
+        let len_v = self.fresh_reg()
+        self.wi(len_v + " = i64 0  ; unsupported for target")
+    }
+
+    // Range for
+    priv fn ll_gen_for_range(item_v: str, iter_id: i64, body_id: i64) {
+        let sv = self.ll_gen_expr(self.la.get(iter_id))
+        let ev = self.ll_gen_expr(self.ra.get(iter_id))
+        let sv_i = self.emit_cast(sv, ll_type(btype_norm(self.node_types.get(self.la.get(iter_id)))), "i64")
+        let ev_i = self.emit_cast(ev, ll_type(btype_norm(self.node_types.get(self.ra.get(iter_id)))), "i64")
+        let inclusive = has_flag(self.ia.get(iter_id), FLAG_INCLUSIVE())
+
+        // Store loop var alloca
+        let ptr = self.emit_local_alloca(item_v, "i64")
+        self.emit_store(sv_i, "i64", ptr)
+
+        let lbl_cond = self.fresh_label("for.cond")
+        let lbl_body = self.fresh_label("for.body")
+        let lbl_incr = self.fresh_label("for.incr")
+        let lbl_end = self.fresh_label("for.end")
+
+        self.loop_break_stack.push(lbl_end)
+        self.loop_cont_stack.push(lbl_incr)
+
+        self.emit_br(lbl_cond)
+        self.emit_label(lbl_cond)
+        let cur = self.emit_load(ptr, "i64")
+        let cmp = self.fresh_reg()
+        if inclusive {
+            self.wi(cmp + " = icmp sle i64 " + cur + ", " + ev_i)
+        } else {
+            self.wi(cmp + " = icmp slt i64 " + cur + ", " + ev_i)
+        }
+        self.emit_condbr(cmp, lbl_body, lbl_end)
+
+        self.emit_label(lbl_body)
+        self.ll_gen_block_stmts(body_id)
+        self.emit_br(lbl_incr)
+
+        self.emit_label(lbl_incr)
+        let cur2 = self.emit_load(ptr, "i64")
+        let nxt = self.fresh_reg()
+        self.wi(nxt + " = add i64 " + cur2 + ", 1")
+        self.emit_store(nxt, "i64", ptr)
+        self.emit_br(lbl_cond)
+
+        self.loop_break_stack.pop()
+        self.loop_cont_stack.pop()
+
+        self.emit_label(lbl_end)
+    }
+
+    // List for
+    priv fn ll_gen_for_list(item_v: str, iter_v: str, it_t: str, body_id: i64) {
+        let et = btype_list_elem(it_t)
+        let etll = ll_type(et)
+        let mn_len = "Arx_" + btype_mangle(it_t) + "_len"
+        let mn_get = "Arx_" + btype_mangle(it_t) + "_get"
+
+        let len_r = self.ll_rt_call1(mn_len, iter_v, "ptr", "i64")
+        // Index alloca
+        let idx_ptr = self.emit_local_alloca("__for_idx", "i64")
+        self.emit_store("0", "i64", idx_ptr)
+        // Item alloca
+        let item_ptr = self.emit_local_alloca(item_v, etll)
+        self.emit_store(ll_zero(etll), etll, item_ptr)
+
+        let lbl_cond = self.fresh_label("forl.cond")
+        let lbl_body = self.fresh_label("forl.body")
+        let lbl_end = self.fresh_label("forl.end")
+        let lbl_incr = self.fresh_label("forl.incr")
+
+        self.emit_br(lbl_cond)
+        self.emit_label(lbl_cond)
+        let idx_v = self.emit_load(idx_ptr, "i64")
+        let cmp = self.fresh_reg()
+        self.wi(cmp + " = icmp slt i64 " + idx_v + ", " + len_r)
+        self.emit_condbr(cmp, lbl_body, lbl_end)
+
+        self.emit_label(lbl_body)
+        // Get element
+        let elem = self.ll_rt_call2(mn_get, iter_v, "ptr", idx_v, "i64", etll)
+        self.emit_store(elem, etll, item_ptr)
+        self.ll_gen_block_stmts(body_id)
+        self.emit_br(lbl_incr)
+
+        self.emit_label(lbl_incr)
+        let idx2 = self.emit_load(idx_ptr, "i64")
+        let nxt = self.fresh_reg()
+        self.wi(nxt + " = add i64 " + idx2 + ", 1")
+        self.emit_store(nxt, "i64", idx_ptr)
+        self.emit_br(lbl_cond)
+
+        self.emit_label(lbl_end)
+    }
+
+    // String for
+    priv fn ll_gen_for_str(item_v: str, iter_v: str, body_id: i64) {
+        let len_r = self.ll_rt_call1("arx_str_len", iter_v, "ptr", "i64")
+        let idx_ptr = self.emit_local_alloca("__for_str_idx", "i64")
+        self.emit_store("0", "i64", idx_ptr)
+        let item_ptr = self.emit_local_alloca(item_v, "i8")
+        self.emit_store("0", "i8", item_ptr)
+
+        let lbl_cond = self.fresh_label("fors.cond")
+        let lbl_body = self.fresh_label("fors.body")
+        let lbl_end = self.fresh_label("fors.end")
+        let lbl_incr = self.fresh_label("fors.incr")
+
+        self.emit_br(lbl_cond)
+        self.emit_label(lbl_cond)
+        let idx_v = self.emit_load(idx_ptr, "i64")
+        let cmp = self.fresh_reg()
+        self.wi(cmp + " = icmp slt i64 " + idx_v + ", " + len_r)
+        self.emit_condbr(cmp, lbl_body, lbl_end)
+
+        self.emit_label(lbl_body)
+        let ch = self.ll_rt_call2("arx_str_byte_at", iter_v, "ptr", idx_v, "i64", "i8")
+        self.emit_store(ch, "i8", item_ptr)
+        self.ll_gen_block_stmts(body_id)
+        self.emit_br(lbl_incr)
+
+        self.emit_label(lbl_incr)
+        let idx2 = self.emit_load(idx_ptr, "i64")
+        let nxt = self.fresh_reg()
+        self.wi(nxt + " = add i64 " + idx2 + ", 1")
+        self.emit_store(nxt, "i64", idx_ptr)
+        self.emit_br(lbl_cond)
+
+        self.emit_label(lbl_end)
+    }
+
+    // --- Return ---
+    priv fn ll_gen_return(nid: i64) {
+        if self.bb_terminated { return }
+        let val_id = self.la.get(nid)
+        if self.is_in_ctor {
+            // Return self pointer
+            if self.local_alloca.has_key("self") {
+                let ptr = self.local_alloca.get("self")
+                let vt = self.local_type.get("self")
+                let sv = self.emit_load(ptr, vt)
+                self.wi("ret " + vt + " " + sv)
+            } else {
+                self.wi("ret void")
+            }
+            self.bb_terminated = true
+            return
+        }
+        if val_id >= 0 && self.cur_ret_ll != "void" {
+            let rv = self.ll_gen_expr(val_id)
+            let rhs_t = btype_norm(self.node_types.get(val_id))
+            let rhs_ll = ll_type(rhs_t)
+            let rv_cast = self.emit_cast(rv, rhs_ll, self.cur_ret_ll)
+            self.wi("ret " + self.cur_ret_ll + " " + rv_cast)
+        } else {
+            self.wi("ret void")
+        }
+        self.bb_terminated = true
+    }
+
+    // --- Guard ---
+    priv fn ll_gen_guard(nid: i64) {
+        let cond_id = self.la.get(nid)
+        let else_id = self.ra.get(nid)
+        let cond_v = self.ll_gen_expr(cond_id)
+        let cond_b = self.emit_cast(cond_v, ll_type(btype_norm(self.node_types.get(cond_id))), "i1")
+        let lbl_pass = self.fresh_label("guard.pass")
+        let lbl_fail = self.fresh_label("guard.fail")
+        self.emit_condbr(cond_b, lbl_pass, lbl_fail)
+        self.emit_label(lbl_fail)
+        self.ll_gen_block_stmts(else_id)
+        self.emit_br(lbl_pass)
+        self.emit_label(lbl_pass)
+    }
+
+    // --- Match ---
+    priv fn ll_gen_match(nid: i64) {
+        let subj_id = self.la.get(nid)
+        let subj_t = btype_norm(self.node_types.get(nid))
+        let sval = self.ll_gen_expr(subj_id)
+        let sll = ll_type(btype_norm(self.node_types.get(subj_id)))
+
+        // Store subject in temp alloca for reuse
+        let stmp_ptr = self.emit_local_alloca("__match_subj", sll)
+        self.emit_store(sval, sll, stmp_ptr)
+
+        let ccnt = self.child_count(nid)
+        let lbl_end = self.fresh_label("match.end")
+        mut ci = 0
+        while ci < ccnt {
+            let case_id = self.child_at(nid, ci)
+            let pat_id = self.la.get(case_id)
+            let body_id = self.ra.get(case_id)
+            let ext = self.node_ext.get(pat_id)
+
+            let lbl_body = self.fresh_label("match.arm")
+            let lbl_next = self.fresh_label("match.next")
+
+            let sv = self.emit_load(stmp_ptr, sll)
+
+            if ext == "wildcard" {
+                // Always matches
+                self.emit_br(lbl_body)
+                self.emit_label(lbl_body)
+                self.ll_gen_block_stmts(body_id)
+                self.emit_br(lbl_end)
+            } else if ext.starts_with("enum_unit::") {
+                // Enum variant tag check
+                let rest = ext.slice(11, ext.len())
+                let ep = rest.split("::")
+                let ename = ep.get(0)
+                let vname = ep.get(1)
+                // Load tag field (index 0)
+                let struct_ll = "%Arx_" + btype_mangle(ename)
+                let typed_ptr = self.emit_cast(sv, sll, struct_ll + "*")
+                let tag_ptr = self.fresh_reg()
+                self.wi(tag_ptr + " = getelementptr inbounds " + struct_ll + ", " + struct_ll + "* " + typed_ptr + ", i32 0, i32 0")
+                let tag_v = self.emit_load(tag_ptr, "i32")
+                let exp_tag = self.enum_var_tag.get(ename + "::" + vname)
+                let cmp = self.fresh_reg()
+                self.wi(cmp + " = icmp eq i32 " + tag_v + ", " + (exp_tag as str))
+                self.emit_condbr(cmp, lbl_body, lbl_next)
+                self.emit_label(lbl_body)
+                self.ll_gen_block_stmts(body_id)
+                self.emit_br(lbl_end)
+                self.emit_label(lbl_next)
+            } else {
+                // Value match
+                let pv = self.ll_gen_expr(pat_id)
+                let pll = ll_type(btype_norm(self.node_types.get(pat_id)))
+                let cmp = self.fresh_reg()
+                if btype_is_str(subj_t) {
+                    let cmp_r = self.ll_rt_call2("arx_str_compare", sv, "ptr", pv, "ptr", "i32")
+                    self.wi(cmp + " = icmp eq i32 " + cmp_r + ", 0")
+                } else {
+                    let sv_cast = self.emit_cast(sv, sll, pll)
+                    self.wi(cmp + " = icmp eq " + pll + " " + sv_cast + ", " + pv)
+                }
+                self.emit_condbr(cmp, lbl_body, lbl_next)
+                self.emit_label(lbl_body)
+                self.ll_gen_block_stmts(body_id)
+                self.emit_br(lbl_end)
+                self.emit_label(lbl_next)
+            }
+
+            ci = ci + 1
+        }
+
+        self.emit_label(lbl_end)
+    }
+
+    // --- Tuple destructure ---
+    priv fn ll_gen_tuple_destr(nid: i64) {
+        let init_id = self.la.get(nid)
+        let _rhs = self.ll_gen_expr(init_id)
+        // For now, just emit bindings as null/zero
+        let ncnt = self.child_count(nid)
+        mut ni = 0
+        while ni < ncnt {
+            let cid = self.child_at(nid, ni)
+            let vname = self.sa.get(cid)
+            let vt = btype_norm(self.node_types.get(cid))
+            let vtll = ll_type(vt)
+            if vname != "_" {
+                let ptr = self.emit_local_alloca(vname, vtll)
+                // Simplified: store zero (proper tuple field extraction would need GEP)
+                self.emit_store(ll_zero(vtll), vtll, ptr)
+            }
+            ni = ni + 1
+        }
+    }
+}

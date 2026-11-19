@@ -1,0 +1,562 @@
+// Aerix LLVM IR Backend — Expression Emitter
+// Emits LLVM IR for expressions, returning the SSA register name holding the result.
+
+import "./mod.arx"
+
+extend LLVMEmitter {
+
+    // Emit an expression and return the SSA register (or immediate) holding the result.
+    // For void expressions, returns "".
+    pub fn ll_gen_expr(nid: i64) -> str {
+        if nid < 0 { return "0" }
+        let k = self.nk.get(nid)
+        let nt = btype_norm(self.node_types.get(nid))
+        let ll_t = ll_type(nt)
+
+        // --- Literals ---
+        if k == NK_INT_LIT() {
+            let v = self.sa.get(nid)
+            return v
+        }
+        if k == NK_FLOAT_LIT() {
+            let v = self.sa.get(nid)
+            // LLVM needs hex float or standard decimal
+            return v
+        }
+        if k == NK_BOOL_LIT() {
+            if self.ia.get(nid) != 0 { return "true" }
+            return "false"
+        }
+        if k == NK_NULL_LIT() { return "null" }
+        if k == NK_CHAR_LIT() {
+            let s = self.sa.get(nid)
+            mut chv = 0
+            if s.len() > 0 { chv = s.byte_at(0) }
+            return (chv as str)
+        }
+        if k == NK_STR_LIT() {
+            let gep = self.intern_str_const(self.sa.get(nid))
+            // We need to store it in a register
+            let r = self.fresh_reg()
+            self.wi(r + " = " + gep)
+            return r
+        }
+
+        // --- String interpolation ---
+        if k == NK_STR_INTERP() {
+            return self.ll_gen_str_interp(nid)
+        }
+
+        // --- Identifier (variable load) ---
+        if k == NK_IDENT() {
+            let nm = self.sa.get(nid)
+            // Check if it's a known local variable
+            if self.local_alloca.has_key(nm) {
+                let ptr = self.local_alloca.get(nm)
+                let vt = self.local_type.get(nm)
+                return self.emit_load(ptr, vt)
+            }
+            // Check if it's a function name (function pointer reference)
+            mut fi = 0
+            while fi < self.fn_count {
+                let fid = self.fn_nodes.get(fi)
+                if self.sa.get(fid) == nm {
+                    let ct = self.call_targets.get(fid)
+                    return "@" + ct
+                }
+                fi = fi + 1
+            }
+            // Global or parameter — emit as direct name
+            return "%" + nm
+        }
+
+        // --- Sizeof ---
+        if k == NK_SIZEOF() {
+            // Approximate with 8 bytes for most types
+            return "8"
+        }
+
+        // --- Cast ---
+        if k == NK_CAST() {
+            return self.ll_gen_cast(nid)
+        }
+
+        // --- Unary op ---
+        if k == NK_UNARY_OP() {
+            return self.ll_gen_unary(nid)
+        }
+
+        // --- Binary op ---
+        if k == NK_BIN_OP() {
+            return self.ll_gen_bin_op(nid)
+        }
+
+        // --- Member access ---
+        if k == NK_MEMBER() {
+            return self.ll_gen_member(nid)
+        }
+
+        // --- Index ---
+        if k == NK_INDEX() {
+            return self.ll_gen_index(nid)
+        }
+
+        // --- Call / New ---
+        if k == NK_CALL() || k == NK_NEW() || k == NK_GENERIC_CALL() {
+            return self.ll_gen_call(nid)
+        }
+
+        // --- Named arg unwrap ---
+        if k == NK_NAMED_ARG() {
+            return self.ll_gen_expr(self.la.get(nid))
+        }
+
+        // --- Pipeline / Cascade ---
+        if k == NK_PIPELINE() || k == NK_CASCADE() {
+            self.ll_gen_expr(self.la.get(nid))
+            return self.ll_gen_expr(self.ra.get(nid))
+        }
+
+        // --- Try unwrap ---
+        if k == NK_TRY_UNWRAP() {
+            // Simplified: just emit the sub-expression
+            return self.ll_gen_expr(self.la.get(nid))
+        }
+
+        // Fallback
+        return ll_zero(ll_t)
+    }
+
+    // --- Cast ---
+    priv fn ll_gen_cast(nid: i64) -> str {
+        let target_t = btype_norm(self.sa.get(nid))
+        let ex = self.la.get(nid)
+        let src_t = btype_norm(self.node_types.get(ex))
+        let val = self.ll_gen_expr(ex)
+        let src_ll = ll_type(src_t)
+        let dst_ll = ll_type(target_t)
+
+        // str conversions use runtime calls
+        if btype_is_str(target_t) {
+            return self.ll_cast_to_str(src_t, val, src_ll)
+        }
+        if btype_is_str(src_t) {
+            if btype_is_float(target_t) {
+                return self.ll_rt_call1("arx_cast_to_f64", val, "ptr", dst_ll)
+            }
+            if target_t == "bool" {
+                return self.ll_rt_call1("arx_cast_to_bool", val, "ptr", "i1")
+            }
+            let r = self.fresh_reg()
+            self.wi(r + " = call i64 @arx_cast_to_i64(ptr " + val + ")")
+            return self.emit_cast(r, "i64", dst_ll)
+        }
+        return self.emit_cast(val, src_ll, dst_ll)
+    }
+
+    // --- Unary op ---
+    priv fn ll_gen_unary(nid: i64) -> str {
+        let bin_op = self.sa.get(nid)
+        let ex = self.la.get(nid)
+        let et = btype_norm(self.node_types.get(ex))
+        let ell = ll_type(et)
+        let val = self.ll_gen_expr(ex)
+        let r = self.fresh_reg()
+        if bin_op == "-" {
+            if ll_is_float(ell) {
+                self.wi(r + " = fneg " + ell + " " + val)
+            } else {
+                self.wi(r + " = sub " + ell + " 0, " + val)
+            }
+            return r
+        }
+        if bin_op == "!" || bin_op == "not" {
+            self.wi(r + " = xor i1 " + val + ", true")
+            return r
+        }
+        if bin_op == "~" {
+            self.wi(r + " = xor " + ell + " " + val + ", -1")
+            return r
+        }
+        // address-of: not directly supported in this backend — return null
+        return "null"
+    }
+
+    // --- Binary op ---
+    priv fn ll_gen_bin_op(nid: i64) -> str {
+        let bin_op = self.sa.get(nid)
+        let lid = self.la.get(nid)
+        let rid = self.ra.get(nid)
+        let lt = btype_norm(self.node_types.get(lid))
+        let rt = btype_norm(self.node_types.get(rid))
+        let lll = ll_type(lt)
+        let rll = ll_type(rt)
+
+        // Short-circuit && / ||
+        if bin_op == "&&" {
+            return self.ll_short_circuit_and(lid, rid)
+        }
+        if bin_op == "||" {
+            return self.ll_short_circuit_or(lid, rid)
+        }
+
+        // Null coalesce ??
+        if bin_op == "??" {
+            return self.ll_null_coalesce(lid, rid, lt, lll)
+        }
+
+        let lv = self.ll_gen_expr(lid)
+        let rv = self.ll_gen_expr(rid)
+
+        // String concatenation / comparison
+        if bin_op == "+" && (btype_is_str(lt) || btype_is_str(rt)) {
+            let ls = self.ll_cast_to_str(lt, lv, lll)
+            let rs = self.ll_cast_to_str(rt, rv, rll)
+            return self.ll_rt_call2("arx_str_concat", ls, "ptr", rs, "ptr", "ptr")
+        }
+        if btype_is_str(lt) && btype_is_str(rt) {
+            if bin_op == "==" || bin_op == "!=" || bin_op == "<" || bin_op == "<=" || bin_op == ">" || bin_op == ">=" {
+                let cmp = self.ll_rt_call2("arx_str_compare", lv, "ptr", rv, "ptr", "i32")
+                let r = self.fresh_reg()
+                let zero = self.fresh_reg()
+                self.wi(zero + " = sext i32 " + cmp + " to i64")
+                // Compare result against 0
+                let pred = ll_cmp_pred(bin_op, "i64", false)
+                self.wi(r + " = icmp " + pred + " i64 " + zero + ", 0")
+                return r
+            }
+        }
+
+        // Power operator **
+        if bin_op == "**" {
+            let fdl = self.emit_cast(lv, lll, "double")
+            let fdr = self.emit_cast(rv, rll, "double")
+            let res = self.ll_rt_call2("pow", fdl, "double", fdr, "double", "double")
+            return self.emit_cast(res, "double", lll)
+        }
+
+        // Arithmetic and comparison
+        let r = self.fresh_reg()
+        // Both sides must have same type — widen to wider of the two
+        mut common_ll = lll
+        if lll != rll {
+            common_ll = "i64"  // promote to i64
+        }
+        let lv2 = self.emit_cast(lv, lll, common_ll)
+        let rv2 = self.emit_cast(rv, rll, common_ll)
+
+        let is_cmp = bin_op == "==" || bin_op == "!=" || bin_op == "<" || bin_op == "<=" || bin_op == ">" || bin_op == ">="
+        if is_cmp {
+            let is_unsigned = btype_is_unsigned(lt)
+            if ll_is_float(common_ll) {
+                let pred = ll_cmp_pred(bin_op, common_ll, false)
+                self.wi(r + " = fcmp " + pred + " " + common_ll + " " + lv2 + ", " + rv2)
+            } else {
+                let pred = ll_cmp_pred(bin_op, common_ll, is_unsigned)
+                self.wi(r + " = icmp " + pred + " " + common_ll + " " + lv2 + ", " + rv2)
+            }
+            return r
+        }
+
+        // Arithmetic
+        let instr = ll_arith_op(bin_op, common_ll)
+        self.wi(r + " = " + instr + " " + common_ll + " " + lv2 + ", " + rv2)
+        return r
+    }
+
+    // Short-circuit AND
+    priv fn ll_short_circuit_and(lid: i64, rid: i64) -> str {
+        let lval = self.ll_gen_expr(lid)
+        let lv_b = self.emit_cast(lval, ll_type(btype_norm(self.node_types.get(lid))), "i1")
+        let lbl_rhs = self.fresh_label("and.rhs")
+        let lbl_end = self.fresh_label("and.end")
+        let lbl_cur = self.fresh_label("and.lhs")
+        // current block name for phi (we don't track it precisely — use a placeholder)
+        self.emit_condbr(lv_b, lbl_rhs, lbl_end)
+        // RHS block
+        self.emit_label(lbl_rhs)
+        let rval = self.ll_gen_expr(rid)
+        let rv_b = self.emit_cast(rval, ll_type(btype_norm(self.node_types.get(rid))), "i1")
+        self.emit_br(lbl_end)
+        let lbl_rhs_end = lbl_rhs
+        // End block with phi
+        self.emit_label(lbl_end)
+        let r = self.fresh_reg()
+        self.wi(r + " = phi i1 [ false, %" + lbl_cur + " ], [ " + rv_b + ", %" + lbl_rhs_end + " ]")
+        return r
+    }
+
+    // Short-circuit OR
+    priv fn ll_short_circuit_or(lid: i64, rid: i64) -> str {
+        let lval = self.ll_gen_expr(lid)
+        let lv_b = self.emit_cast(lval, ll_type(btype_norm(self.node_types.get(lid))), "i1")
+        let lbl_rhs = self.fresh_label("or.rhs")
+        let lbl_end = self.fresh_label("or.end")
+        let lbl_cur = self.fresh_label("or.lhs")
+        self.emit_condbr(lv_b, lbl_end, lbl_rhs)
+        self.emit_label(lbl_rhs)
+        let rval = self.ll_gen_expr(rid)
+        let rv_b = self.emit_cast(rval, ll_type(btype_norm(self.node_types.get(rid))), "i1")
+        self.emit_br(lbl_end)
+        let lbl_rhs_end = lbl_rhs
+        self.emit_label(lbl_end)
+        let r = self.fresh_reg()
+        self.wi(r + " = phi i1 [ true, %" + lbl_cur + " ], [ " + rv_b + ", %" + lbl_rhs_end + " ]")
+        return r
+    }
+
+    // Null coalesce ??
+    priv fn ll_null_coalesce(lid: i64, rid: i64, lt: str, lll: str) -> str {
+        let lval = self.ll_gen_expr(lid)
+        let lbl_null = self.fresh_label("ncoal.null")
+        let lbl_end = self.fresh_label("ncoal.end")
+        let lbl_nn = self.fresh_label("ncoal.nn")
+        let cond = self.fresh_reg()
+        // Check if null/zero
+        if btype_is_str(lt) || ll_is_ptr(lll) {
+            self.wi(cond + " = icmp eq " + lll + " " + lval + ", null")
+        } else if lt == "bool" {
+            self.wi(cond + " = icmp eq i1 " + lval + ", false")
+        } else {
+            self.wi(cond + " = icmp eq " + lll + " " + lval + ", 0")
+        }
+        self.emit_condbr(cond, lbl_null, lbl_nn)
+        // non-null path
+        self.emit_label(lbl_nn)
+        self.emit_br(lbl_end)
+        // null path
+        self.emit_label(lbl_null)
+        let rval = self.ll_gen_expr(rid)
+        self.emit_br(lbl_end)
+        // end
+        self.emit_label(lbl_end)
+        let r = self.fresh_reg()
+        self.wi(r + " = phi " + lll + " [ " + lval + ", %" + lbl_nn + " ], [ " + rval + ", %" + lbl_null + " ]")
+        return r
+    }
+
+    // --- Member access ---
+    priv fn ll_gen_member(nid: i64) -> str {
+        let ext = self.node_ext.get(nid)
+        // Enum unit variant
+        if ext.starts_with("enum_unit::") {
+            let rest = ext.slice(11, ext.len())
+            let ep = rest.split("::")
+            let ename = ep.get(0)
+            let vname = ep.get(1)
+            let r = self.fresh_reg()
+            self.wi(r + " = call ptr @Arx_" + ename + "_" + vname + "()")
+            return r
+        }
+        if ext.starts_with("mod_call::") {
+            let fname = ext.slice(10, ext.len())
+            let r = self.fresh_reg()
+            self.wi(r + " = call ptr @" + fname + "()")
+            return r
+        }
+        if ext.starts_with("mod_global::") {
+            let gname = ext.slice(12, ext.len())
+            // Load global
+            let nt = btype_norm(self.node_types.get(nid))
+            let llt = ll_type(nt)
+            let r = self.fresh_reg()
+            self.wi(r + " = load " + llt + ", " + llt + "* @" + gname)
+            return r
+        }
+        let lhs = self.la.get(nid)
+        let mem = self.sa.get(nid)
+        let lhs_t = btype_norm(self.node_types.get(lhs))
+
+        // .len / .length on str
+        if btype_is_str(lhs_t) && (mem == "len" || mem == "length") {
+            let sv = self.ll_gen_expr(lhs)
+            return self.ll_rt_call1("arx_str_len", sv, "ptr", "i64")
+        }
+        // .len on List/Map/Set
+        if (btype_is_list(lhs_t) || btype_is_map(lhs_t) || btype_is_set(lhs_t)) &&
+            (mem == "len" || mem == "length") {
+            let lv = self.ll_gen_expr(lhs)
+            let mn = "Arx_" + btype_mangle(lhs_t) + "_len"
+            return self.ll_rt_call1(mn, lv, "ptr", "i64")
+        }
+
+        // self.field access
+        if self.nk.get(lhs) == NK_IDENT() && self.sa.get(lhs) == "self" && self.cur_class != "" {
+            let selfptr = self.ll_load_self()
+            let self_ll = "%Arx_" + btype_mangle(self.cur_class) + "*"
+            return self.ll_gep_field(selfptr, self_ll, self.cur_class, mem, nid)
+        }
+
+        // object.field
+        let objv = self.ll_gen_expr(lhs)
+        // If objv is a class pointer, do GEP + load
+        if self.cls_idx_map.has_key(lhs_t) {
+            let obj_ll = ll_type(lhs_t)
+            return self.ll_gep_field(objv, obj_ll, lhs_t, mem, nid)
+        }
+        // For other types, just return the value (simplified)
+        return objv
+    }
+
+    // Load self pointer from local
+    priv fn ll_load_self() -> str {
+        if self.local_alloca.has_key("self") {
+            let ptr = self.local_alloca.get("self")
+            let vt = self.local_type.get("self")
+            return self.emit_load(ptr, vt)
+        }
+        return "%self"
+    }
+
+    // GEP + load a named field from a class pointer.
+    priv fn ll_gep_field(objptr: str, src_ll: str, cname: str, field: str, nid: i64) -> str {
+        let nt = btype_norm(self.node_types.get(nid))
+        let llt = ll_type(nt)
+        // Get field index
+        let field_idx = self.get_field_index(cname, field)
+        let r_gep = self.fresh_reg()
+        let struct_ll = "%Arx_" + btype_mangle(cname)
+        self.wi(r_gep + " = getelementptr inbounds " + struct_ll + ", ptr " + objptr + ", i32 0, i32 " + (field_idx as str))
+        // Load the field
+        return self.emit_load(r_gep, llt)
+    }
+
+    // Find field index in class (including inheritance).
+    priv fn get_field_index(cname: str, field: str) -> i64 {
+        let lineage = self.collect_class_lineage(cname)
+        mut idx = 0
+        mut li = 0
+        while li < lineage.len() {
+            let lc_nid = self.cls_nodes.get(self.cls_idx_map.get(lineage.get(li)))
+            let fgrp = self.la.get(lc_nid)
+            let fcnt = self.child_count(fgrp)
+            mut fi = 0
+            while fi < fcnt {
+                let fid = self.child_at(fgrp, fi)
+                if self.sa.get(fid) == field {
+                    return idx
+                }
+                idx = idx + 1
+                fi = fi + 1
+            }
+            li = li + 1
+        }
+        return 0
+    }
+
+    // --- Index ---
+    priv fn ll_gen_index(nid: i64) -> str {
+        let lhs = self.la.get(nid)
+        let lt = btype_norm(self.node_types.get(lhs))
+        let idx_id = self.ra.get(nid)
+        let lv = self.ll_gen_expr(lhs)
+        let iv = self.ll_gen_expr(idx_id)
+        let nt = btype_norm(self.node_types.get(nid))
+        let llt = ll_type(nt)
+        // List.get
+        if btype_is_list(lt) {
+            let mn = "Arx_" + btype_mangle(lt) + "_get"
+            return self.ll_rt_call2(mn, lv, "ptr", iv, "i64", llt)
+        }
+        // Map.get
+        if btype_is_map(lt) {
+            let mn = "Arx_" + btype_mangle(lt) + "_get"
+            let kt = btype_map_key(lt)
+            return self.ll_rt_call2(mn, lv, "ptr", iv, ll_type(kt), llt)
+        }
+        // str[idx] -> byte
+        if btype_is_str(lt) {
+            let idx_ext = self.emit_cast(iv, ll_type(btype_norm(self.node_types.get(idx_id))), "i64")
+            return self.ll_rt_call2("arx_str_byte_at", lv, "ptr", idx_ext, "i64", "i8")
+        }
+        // Fixed array: GEP + load
+        if btype_is_fixed_arr(lt) {
+            let et = btype_arr_elem(lt)
+            let ell = ll_type(et)
+            let r_gep = self.fresh_reg()
+            let idx_i64 = self.emit_cast(iv, ll_type(btype_norm(self.node_types.get(idx_id))), "i64")
+            self.wi(r_gep + " = getelementptr inbounds " + ell + ", " + ell + "* " + lv + ", i64 " + idx_i64)
+            return self.emit_load(r_gep, ell)
+        }
+        return ll_zero(llt)
+    }
+
+    // --- String interpolation ---
+    priv fn ll_gen_str_interp(nid: i64) -> str {
+        let pc = self.child_count(nid)
+        if pc == 0 {
+            let r = self.fresh_reg()
+            let gep = self.intern_str_const("")
+            self.wi(r + " = " + gep)
+            return r
+        }
+        mut acc_reg = ""
+        mut i = 0
+        while i < pc {
+            let pid = self.child_at(nid, i)
+            let pv = self.ll_gen_expr(pid)
+            let pt = btype_norm(self.node_types.get(pid))
+            let pt_ll = ll_type(pt)
+            let pstr = self.ll_cast_to_str(pt, pv, pt_ll)
+            if i == 0 {
+                acc_reg = pstr
+            } else {
+                acc_reg = self.ll_rt_call2("arx_str_concat", acc_reg, "ptr", pstr, "ptr", "ptr")
+            }
+            i = i + 1
+        }
+        return acc_reg
+    }
+
+    // --- Cast to str helper ---
+    priv fn ll_cast_to_str(src_t: str, val: str, src_ll: str) -> str {
+        if btype_is_str(src_t) { return val }
+        if src_t == "bool" {
+            return self.ll_rt_call1("arx_cast_bool_to_str", val, "i1", "ptr")
+        }
+        if src_t == "char" {
+            let r = self.fresh_reg()
+            self.wi(r + " = call ptr @__arx_byte_chr(i64 " + val + ")")
+            return r
+        }
+        if btype_is_float(src_t) {
+            let dval = self.emit_cast(val, src_ll, "double")
+            return self.ll_rt_call1("arx_cast_f64_to_str", dval, "double", "ptr")
+        }
+        if btype_is_unsigned(src_t) {
+            let u64val = self.emit_cast(val, src_ll, "i64")
+            return self.ll_rt_call1("arx_cast_u64_to_str", u64val, "i64", "ptr")
+        }
+        if btype_is_int(src_t) || src_t == "bool" {
+            let i64val = self.emit_cast(val, src_ll, "i64")
+            return self.ll_rt_call1("arx_cast_i64_to_str", i64val, "i64", "ptr")
+        }
+        // pointers / objects: cast pointer to i64, then to str
+        let pval = self.emit_cast(val, src_ll, "i64")
+        return self.ll_rt_call1("arx_cast_i64_to_str", pval, "i64", "ptr")
+    }
+
+    // --- Runtime call helpers ---
+
+    // Call a runtime function with 1 argument, return result register.
+    priv fn ll_rt_call1(fn_name: str, arg: str, arg_ll: str, ret_ll: str) -> str {
+        if ret_ll == "void" {
+            self.wi("call void @" + fn_name + "(" + arg_ll + " " + arg + ")")
+            return ""
+        }
+        let r = self.fresh_reg()
+        self.wi(r + " = call " + ret_ll + " @" + fn_name + "(" + arg_ll + " " + arg + ")")
+        return r
+    }
+
+    // Call a runtime function with 2 arguments.
+    priv fn ll_rt_call2(fn_name: str, a1: str, a1_ll: str, a2: str, a2_ll: str, ret_ll: str) -> str {
+        if ret_ll == "void" {
+            self.wi("call void @" + fn_name + "(" + a1_ll + " " + a1 + ", " + a2_ll + " " + a2 + ")")
+            return ""
+        }
+        let r = self.fresh_reg()
+        self.wi(r + " = call " + ret_ll + " @" + fn_name + "(" + a1_ll + " " + a1 + ", " + a2_ll + " " + a2 + ")")
+        return r
+    }
+}

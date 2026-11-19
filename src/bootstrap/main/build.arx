@@ -177,6 +177,97 @@ fn cmd_emit_c(input_file: str, out_file: str) -> i64 {
     return 0
 }
 
+fn cmd_emit_llvm(input_file: str, out_file: str) -> i64 {
+    mut target = out_file
+    if target == "" {
+        target = strip_arx_ext(bpath_normalize(input_file)) + ".ll"
+    }
+    let dir = bpath_dirname(target)
+    if dir != "" && dir != "." {
+        Directory.create(dir)
+    }
+    let ll_src = emit_llvm_for_file(input_file)
+    if ll_src == "" {
+        eprintln("error: LLVM IR emission failed for: " + input_file)
+        return 1
+    }
+    if !File.write_string(target, ll_src) {
+        eprintln("ERROR: Failed to write LLVM IR file: " + target)
+        return 1
+    }
+    return 0
+}
+
+fn cmd_build_llvm(input_file: str, exe_path: str, opt_flag: str, verbose: bool) -> i64 {
+    let ll_path = strip_exe_ext(exe_path) + ".ll"
+    let rc_emit = cmd_emit_llvm(input_file, ll_path)
+    if rc_emit != 0 { return rc_emit }
+
+    // Find clang — prefer AERIX_CLANG env, then standard install path, then plain clang
+    mut clang = "clang"
+    let env_clang = Env.get("AERIX_CLANG")
+    if env_clang != "" {
+        clang = env_clang
+    } else if File.exists("C:/Program Files/LLVM/bin/clang.exe") {
+        clang = "C:/Program Files/LLVM/bin/clang.exe"
+    } else if File.exists("C:\\Program Files\\LLVM\\bin\\clang.exe") {
+        clang = "C:\\Program Files\\LLVM\\bin\\clang.exe"
+    }
+
+    // Find stdlib directory for runtime sources
+    let stdlib_dir = find_stdlib_from(input_file)
+    let rt_o_file = bpath_join(stdlib_dir, "aerix_rt.o")
+    let rt_c_file = bpath_join(stdlib_dir, "aerix_rt.c")
+
+    // Build clang command
+    let bb = ByteBuffer()
+    bb.write_str(quote_shell_arg(clang))
+    bb.write_str(" ")
+    bb.write_str(opt_flag)
+    if Env.os_name() == "windows" {
+        if Directory.exists("Z:/MinGW-64/ucrt64") || Directory.exists("Z:\\MinGW-64\\ucrt64") {
+            bb.write_str(" --target=x86_64-w64-windows-gnu --sysroot=Z:/MinGW-64/ucrt64")
+        }
+    }
+    bb.write_str(" ")
+    bb.write_str(quote_shell_arg(ll_path))
+    if File.exists(rt_o_file) {
+        bb.write_str(" ")
+        bb.write_str(quote_shell_arg(rt_o_file))
+    } else if File.exists(rt_c_file) {
+        bb.write_str(" ")
+        bb.write_str(quote_shell_arg(rt_c_file))
+    }
+    bb.write_str(" -o ")
+    bb.write_str(quote_shell_arg(exe_path))
+    bb.write_str(" -I")
+    bb.write_str(quote_shell_arg(stdlib_dir))
+    bb.write_str(" -lm")
+    if Env.os_name() == "windows" {
+        bb.write_str(" -lgdi32 -luser32 -lkernel32")
+    }
+    let cmd = bb.to_str()
+    bb.free()
+
+    if verbose { println("[LLVM backend] " + cmd) }
+    let rc = Process.execute(cmd)
+    if rc != 0 {
+        eprintln("error: clang compilation failed (exit " + (rc as str) + ")")
+        let check = Process.execute(clang + " --version")
+        if check != 0 {
+            eprintln("  = help: clang not found. Install via:")
+            eprintln("    winget install LLVM.LLVM")
+            eprintln("    or: pacman -S mingw-w64-ucrt-x86_64-clang  (MSYS2)")
+            eprintln("  = fallback: use --backend=native (no external toolchain needed)")
+        }
+        File.remove(ll_path)
+        return 1
+    }
+    File.remove(ll_path)
+    println("Built " + exe_path + " (LLVM backend)")
+    return 0
+}
+
 fn emit_native_exe(input_file: str, exe_path: str, verbose: bool) -> i64 {
     let target_exe = ensure_exe_ext(bpath_normalize(exe_path))
     let dir = bpath_dirname(target_exe)
@@ -267,6 +358,10 @@ fn cmd_build(input_file: str, out_file: str, opt_flag: str, keep_c: bool, backen
         use_native = true
     }
 
+    if backend == "llvm" {
+        return cmd_build_llvm(norm_in, exe_path, opt_flag, verbose)
+    }
+
     if use_native {
         let rc = emit_native_exe(norm_in, exe_path, verbose)
         if rc == 0 {
@@ -296,7 +391,9 @@ fn cmd_run(input_file: str, opt_flag: str, backend: str, prog_args: List<str>, p
     }
 
     mut rc_link = 0
-    if use_native {
+    if backend == "llvm" {
+        rc_link = cmd_build_llvm(norm_in, exe_path, opt_flag, verbose)
+    } else if use_native {
         rc_link = emit_native_exe(norm_in, exe_path, verbose)
     } else {
         let c_path = bpath_join(tmp_dir, base + ".c")

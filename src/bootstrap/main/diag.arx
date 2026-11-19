@@ -175,3 +175,12 @@ fn emit_c_for_file(input_file: str) -> str {
     return em.emit()
 }
 
+fn emit_llvm_for_file(input_file: str) -> str {
+    let az = compile_frontend(input_file)
+    if az.has_errors > 0 {
+        Env.exit(1)
+    }
+    mut em = LLVMEmitter(az)
+    return em.emit_llvm()
+}
+

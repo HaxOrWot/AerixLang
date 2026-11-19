@@ -276,3 +276,22 @@ fn print_update_usage() {
     println("  -h, --help      Show this help message")
 }
 
+
+fn print_emit_llvm_usage() {
+    let bin = resolve_bin_name()
+    println("Usage: " + bin + " emit-llvm <file.arx> [-o <out.ll>]")
+    println("")
+    println("Emit LLVM IR text from an Aerix source file.")
+    println("")
+    println("Options:")
+    println("  -o, --output <file>   Output .ll file path (default: <input>.ll)")
+    println("  -h, --help            Show this help message")
+    println("")
+    println("Examples:")
+    println("  " + bin + " emit-llvm main.arx")
+    println("  " + bin + " emit-llvm main.arx -o output.ll")
+    println("")
+    println("Note: To compile the .ll file to an executable, use:")
+    println("  " + bin + " build --backend=llvm main.arx -o main.exe")
+    println("  (Requires Clang: winget install LLVM.LLVM)")
+}

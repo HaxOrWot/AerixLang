@@ -10,6 +10,7 @@ import "../middle/docgen.arx"
 import "../backend/emitter/mod.arx"
 import "../backend/linker.arx"
 import "../backend/native/codegen/mod.arx"
+import "../backend/llvm/mod.arx"
 import "../lsp/features/mod.arx"
 import "../lsp/server.arx"
 import "../pkg/manager/mod.arx"
@@ -47,6 +48,7 @@ fn main() -> i64 {
             if sub == "build" { print_build_usage(); return 0 }
             if sub == "run" { print_run_usage(); return 0 }
             if sub == "emit-c" { print_emit_c_usage(); return 0 }
+            if sub == "emit-llvm" { print_emit_llvm_usage(); return 0 }
             if sub == "check" { print_check_usage(); return 0 }
             if sub == "fmt" { print_fmt_usage(); return 0 }
             if sub == "test" { print_test_usage(); return 0 }
@@ -227,7 +229,7 @@ fn main() -> i64 {
 
     mut mode = ""
     mut start_i = 2
-    if first == "build" || first == "run" || first == "emit-c" || first == "check" {
+    if first == "build" || first == "run" || first == "emit-c" || first == "emit-llvm" || first == "check" {
         mode = first
     } else {
         mode = "auto"
@@ -266,6 +268,8 @@ fn main() -> i64 {
             backend = "c"
         } else if a == "--backend=native" || a == "--native" {
             backend = "native"
+        } else if a == "--backend=llvm" || a == "--llvm" {
+            backend = "llvm"
         } else if a == "--backend" {
             if i + 1 < cli_argc {
                 i = i + 1
@@ -274,6 +278,8 @@ fn main() -> i64 {
                     backend = "native"
                 } else if next_a == "c" {
                     backend = "c"
+                } else if next_a == "llvm" {
+                    backend = "llvm"
                 }
             }
         } else if a == "-O0" || a == "-O1" || a == "-O2" || a == "-O3" {
@@ -290,6 +296,7 @@ fn main() -> i64 {
             if mode == "build" { print_build_usage(); return 0 }
             if mode == "run" { print_run_usage(); return 0 }
             if mode == "emit-c" { print_emit_c_usage(); return 0 }
+            if mode == "emit-llvm" { print_emit_llvm_usage(); return 0 }
             if mode == "check" { print_check_usage(); return 0 }
             print_usage()
             return 0
@@ -315,6 +322,9 @@ fn main() -> i64 {
     }
     if mode == "emit-c" {
         return cmd_emit_c(input_file, out_file)
+    }
+    if mode == "emit-llvm" {
+        return cmd_emit_llvm(input_file, out_file)
     }
     if mode == "build" {
         return cmd_build(input_file, out_file, opt_flag, keep_c, backend, verbose)

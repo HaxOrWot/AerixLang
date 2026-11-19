@@ -1,0 +1,561 @@
+// Aerix LLVM IR Backend — Call Emitter
+// Handles function calls, method calls, builtin calls, and class constructors.
+
+import "./mod.arx"
+
+extend LLVMEmitter {
+
+    // Emit a call expression and return the result register (or "" for void).
+    pub fn ll_gen_call(nid: i64) -> str {
+        let ckind = self.call_kinds.get(nid)
+        let target = self.call_targets.get(nid)
+        let ret_t = btype_norm(self.node_types.get(nid))
+        let ret_ll = ll_type(ret_t)
+        let fn_nid = self.call_fn_nodes.get(nid)
+
+        // Builtin functions
+        if ckind == CK_BUILTIN() {
+            return self.ll_gen_builtin(nid, target)
+        }
+
+        // String method calls
+        if ckind == CK_STR_METHOD() {
+            let callee = self.la.get(nid)
+            let recv_id = self.la.get(callee)
+            let recv_v = self.ll_gen_expr(recv_id)
+            return self.ll_gen_str_method(nid, target, recv_v, ret_ll)
+        }
+
+        // Array method: len/length
+        if ckind == CK_ARR_METHOD() {
+            let callee = self.la.get(nid)
+            let arr_t = btype_norm(self.node_types.get(self.la.get(callee)))
+            if target == "len" || target == "length" {
+                return (btype_arr_len(arr_t) as str)
+            }
+            return "0"
+        }
+
+        // Build argument list
+        let arg_vals = self.ll_resolve_args(nid, fn_nid)
+        let arg_types = self.ll_resolve_arg_types(nid, fn_nid)
+
+        // Method call (receiver as first arg)
+        if ckind == CK_METHOD() {
+            let callee = self.la.get(nid)
+            let recv_id = self.la.get(callee)
+            let recv_t = btype_norm(self.node_types.get(recv_id))
+            let recv_ll = ll_type(recv_t)
+            let recv_v = self.ll_gen_expr(recv_id)
+            // Build call with receiver first
+            return self.ll_emit_method_call(target, recv_v, recv_ll, arg_vals, arg_types, ret_ll, ret_t)
+        }
+
+        // Constructor call (NK_NEW)
+        if self.nk.get(nid) == NK_NEW() {
+            return self.ll_gen_new(nid, target, arg_vals, arg_types)
+        }
+
+        // Regular function call
+        return self.ll_emit_fn_call(target, arg_vals, arg_types, ret_ll, ret_t)
+    }
+
+    // --- Constructor (new) ---
+    priv fn ll_gen_new(nid: i64, target: str, arg_vals: List<str>, arg_types: List<str>) -> str {
+        // target is e.g. "Arx_TreeNode_init"
+        // For class constructors: allocate from TLS arena, then call init method
+        // Determine class name from target
+        let cname = self.ll_extract_class_from_ctor(target)
+        let sz = self.class_approx_size(cname)
+        let struct_ll = "%Arx_" + btype_mangle(cname)
+
+        // %arena = call ptr @arx_tls_arena_get()
+        let arena = self.fresh_reg()
+        self.wi(arena + " = call ptr @arx_tls_arena_get()")
+        // %raw = call ptr @arx_tls_arena_alloc(ptr %arena, i64 sz)
+        let raw = self.fresh_reg()
+        self.wi(raw + " = call ptr @arx_tls_arena_alloc(ptr " + arena + ", i64 " + (sz as str) + ")")
+        // Cast to struct pointer
+        let obj = self.fresh_reg()
+        self.wi(obj + " = bitcast ptr " + raw + " to " + struct_ll + "*")
+
+        // Call init function: @target(struct* %obj, args...)
+        let bb = ByteBuffer()
+        bb.write_str("call void @")
+        bb.write_str(target)
+        bb.write_str("(")
+        bb.write_str(struct_ll)
+        bb.write_str("* ")
+        bb.write_str(obj)
+        let argc = arg_vals.len()
+        mut i = 0
+        while i < argc {
+            bb.write_str(", ")
+            bb.write_str(arg_types.get(i))
+            bb.write_str(" ")
+            bb.write_str(arg_vals.get(i))
+            i = i + 1
+        }
+        bb.write_str(")")
+        self.wi(bb.to_str())
+        bb.free()
+
+        // Return the struct pointer cast to ptr (opaque return type)
+        let ret = self.fresh_reg()
+        self.wi(ret + " = bitcast " + struct_ll + "* " + obj + " to ptr")
+        return ret
+    }
+
+    // Extract class name from ctor target like "Arx_TreeNode_init" -> "TreeNode"
+    priv fn ll_extract_class_from_ctor(target: str) -> str {
+        // Format: Arx_<ClassName>_init or Arx_<ClassName>_init_N
+        if target.starts_with("Arx_") {
+            let rest = target.slice(4, target.len())
+            // Find last underscore before "init"
+            let idx = rest.index_of("_init")
+            if idx >= 0 {
+                return rest.slice(0, idx)
+            }
+            return rest
+        }
+        return target
+    }
+
+    // --- Regular function call ---
+    priv fn ll_emit_fn_call(fn_name: str, arg_vals: List<str>, arg_types: List<str>, ret_ll: str, ret_t: str) -> str {
+        let argc = arg_vals.len()
+        let bb = ByteBuffer()
+        if ret_ll == "void" {
+            bb.write_str("call void @")
+        } else {
+            bb.write_str("call ")
+            bb.write_str(ret_ll)
+            bb.write_str(" @")
+        }
+        bb.write_str(fn_name)
+        bb.write_str("(")
+        mut i = 0
+        while i < argc {
+            if i > 0 { bb.write_str(", ") }
+            bb.write_str(arg_types.get(i))
+            bb.write_str(" ")
+            bb.write_str(arg_vals.get(i))
+            i = i + 1
+        }
+        bb.write_str(")")
+        let call_str = bb.to_str()
+        bb.free()
+        if ret_ll == "void" {
+            self.wi(call_str)
+            return ""
+        }
+        let r = self.fresh_reg()
+        self.wi(r + " = " + call_str)
+        return r
+    }
+
+    // --- Method call ---
+    priv fn ll_emit_method_call(fn_name: str, recv: str, recv_ll: str, arg_vals: List<str>, arg_types: List<str>, ret_ll: str, ret_t: str) -> str {
+        let argc = arg_vals.len()
+        let bb = ByteBuffer()
+        if ret_ll == "void" {
+            bb.write_str("call void @")
+        } else {
+            bb.write_str("call ")
+            bb.write_str(ret_ll)
+            bb.write_str(" @")
+        }
+        bb.write_str(fn_name)
+        bb.write_str("(")
+        bb.write_str(recv_ll)
+        bb.write_str(" ")
+        bb.write_str(recv)
+        mut i = 0
+        while i < argc {
+            bb.write_str(", ")
+            bb.write_str(arg_types.get(i))
+            bb.write_str(" ")
+            bb.write_str(arg_vals.get(i))
+            i = i + 1
+        }
+        bb.write_str(")")
+        let call_str = bb.to_str()
+        bb.free()
+        if ret_ll == "void" {
+            self.wi(call_str)
+            return ""
+        }
+        let r = self.fresh_reg()
+        self.wi(r + " = " + call_str)
+        return r
+    }
+
+    // --- Resolve call arguments ---
+    priv fn ll_resolve_args(nid: i64, fn_nid: i64) -> List<str> {
+        let out_args = List<str>()
+        let ac = self.child_count(nid)
+        if fn_nid < 0 || self.nk.get(fn_nid) == NK_ENUM_VAR() {
+            mut i = 0
+            while i < ac {
+                out_args.push(self.ll_gen_expr(self.child_at(nid, i)))
+                i = i + 1
+            }
+            return out_args
+        }
+        let pg = self.la.get(fn_nid)
+        if pg < 0 {
+            mut i = 0
+            while i < ac {
+                out_args.push(self.ll_gen_expr(self.child_at(nid, i)))
+                i = i + 1
+            }
+            return out_args
+        }
+        let pcnt = self.child_count(pg)
+        if pcnt == 0 { return out_args }
+        let slots = List<str>()
+        let filled = List<i64>()
+        mut pi = 0
+        while pi < pcnt {
+            slots.push("")
+            filled.push(0)
+            pi = pi + 1
+        }
+        mut ai = 0
+        mut pos_idx = 0
+        while ai < ac {
+            let aid = self.child_at(nid, ai)
+            if self.nk.get(aid) == NK_NAMED_ARG() {
+                let pname = self.sa.get(aid)
+                let pval = self.ll_gen_expr(self.la.get(aid))
+                mut j = 0
+                while j < pcnt {
+                    if self.sa.get(self.child_at(pg, j)) == pname {
+                        slots.set(j, pval)
+                        filled.set(j, 1)
+                        break
+                    }
+                    j = j + 1
+                }
+            } else if pos_idx < pcnt {
+                slots.set(pos_idx, self.ll_gen_expr(aid))
+                filled.set(pos_idx, 1)
+                pos_idx = pos_idx + 1
+            }
+            ai = ai + 1
+        }
+        pi = 0
+        while pi < pcnt {
+            if filled.get(pi) == 0 {
+                let def_id = self.la.get(self.child_at(pg, pi))
+                if def_id >= 0 {
+                    slots.set(pi, self.ll_gen_expr(def_id))
+                } else {
+                    slots.set(pi, ll_zero(ll_type(btype_norm(self.sb.get(self.child_at(pg, pi))))))
+                }
+            }
+            out_args.push(slots.get(pi))
+            pi = pi + 1
+        }
+        return out_args
+    }
+
+    priv fn ll_resolve_arg_types(nid: i64, fn_nid: i64) -> List<str> {
+        let out_types = List<str>()
+        let ac = self.child_count(nid)
+        if fn_nid < 0 || self.nk.get(fn_nid) == NK_ENUM_VAR() {
+            mut i = 0
+            while i < ac {
+                let aid = self.child_at(nid, i)
+                out_types.push(ll_type(btype_norm(self.node_types.get(aid))))
+                i = i + 1
+            }
+            return out_types
+        }
+        let pg = self.la.get(fn_nid)
+        if pg < 0 {
+            mut i = 0
+            while i < ac {
+                let aid = self.child_at(nid, i)
+                out_types.push(ll_type(btype_norm(self.node_types.get(aid))))
+                i = i + 1
+            }
+            return out_types
+        }
+        let pcnt = self.child_count(pg)
+        mut pi = 0
+        while pi < pcnt {
+            let pt = btype_norm(self.sb.get(self.child_at(pg, pi)))
+            out_types.push(ll_type(pt))
+            pi = pi + 1
+        }
+        return out_types
+    }
+
+    // --- Builtin call ---
+    priv fn ll_gen_builtin(nid: i64, name: str) -> str {
+        let ac = self.child_count(nid)
+
+        if name == "println" || name == "print" || name == "eprintln" {
+            if ac == 0 {
+                if name == "println" {
+                    // print "\n"
+                    let nl = self.intern_str_const("\n")
+                    let r = self.fresh_reg()
+                    self.wi(r + " = " + nl)
+                    self.wi("call void @arx_print_str(ptr " + r + ")")
+                }
+                return ""
+            }
+            let a0 = self.child_at(nid, 0)
+            let at = btype_norm(self.node_types.get(a0))
+            let av = self.ll_gen_expr(a0)
+            let atll = ll_type(at)
+            if name == "eprintln" {
+                let sv = self.ll_cast_to_str(at, av, atll)
+                self.wi("call void @arx_eprintln_str(ptr " + sv + ")")
+                return ""
+            }
+            mut pfx = "arx_print_"
+            if name == "println" { pfx = "arx_println_" }
+            if btype_is_str(at) {
+                self.wi("call void @" + pfx + "str(ptr " + av + ")")
+            } else if at == "bool" {
+                self.wi("call void @" + pfx + "bool(i1 " + av + ")")
+            } else if btype_is_float(at) {
+                let dv = self.emit_cast(av, atll, "double")
+                self.wi("call void @" + pfx + "f64(double " + dv + ")")
+            } else {
+                let iv = self.emit_cast(av, atll, "i64")
+                self.wi("call void @" + pfx + "i64(i64 " + iv + ")")
+            }
+            return ""
+        }
+
+        if name == "panic" || name == "abort" {
+            if ac > 0 {
+                let a0 = self.child_at(nid, 0)
+                let at = btype_norm(self.node_types.get(a0))
+                let av = self.ll_gen_expr(a0)
+                    let atll = ll_type(at)
+                    let sv = self.ll_cast_to_str(at, av, atll)
+                self.wi("call void @arx_panic(ptr " + sv + ", ptr null, i64 0)")
+            } else {
+                let msg = self.fresh_reg()
+                let gep = self.intern_str_const("panic")
+                self.wi(msg + " = " + gep)
+                self.wi("call void @arx_panic(ptr " + msg + ", ptr null, i64 0)")
+            }
+            self.wi("unreachable")
+            return ""
+        }
+
+        if name == "exit" {
+            mut code = "0"
+            if ac > 0 { code = self.ll_gen_expr(self.child_at(nid, 0)) }
+            let iv = self.emit_cast(code, ll_type(btype_norm(self.node_types.get(self.child_at(nid, 0)))), "i32")
+            self.wi("call void @arx_env_exit(i32 " + iv + ")")
+            self.wi("unreachable")
+            return ""
+        }
+
+        if name == "assert" && ac >= 1 {
+            let cond = self.ll_gen_expr(self.child_at(nid, 0))
+            let lbl_ok = self.fresh_label("assert.ok")
+            let lbl_fail = self.fresh_label("assert.fail")
+            self.emit_condbr(cond, lbl_ok, lbl_fail)
+            self.emit_label(lbl_fail)
+            let msg = self.fresh_reg()
+            let gep = self.intern_str_const("assertion failed")
+            self.wi(msg + " = " + gep)
+            self.wi("call void @arx_panic(ptr " + msg + ", ptr null, i64 0)")
+            self.wi("unreachable")
+            self.emit_label(lbl_ok)
+            return ""
+        }
+
+        if name == "read_line" || name == "input" {
+            if ac > 0 {
+                let pv = self.ll_gen_expr(self.child_at(nid, 0))
+                return self.ll_rt_call1("arx_input", pv, "ptr", "ptr")
+            }
+            return self.ll_rt_call1_void("arx_readln", "ptr")
+        }
+
+        if name == "to_string" && ac >= 1 {
+            let a0 = self.child_at(nid, 0)
+            let at = btype_norm(self.node_types.get(a0))
+            let av = self.ll_gen_expr(a0)
+            return self.ll_cast_to_str(at, av, ll_type(at))
+        }
+
+        if name == "parse_int" && ac >= 1 {
+            let av = self.ll_gen_expr(self.child_at(nid, 0))
+            return self.ll_rt_call1("arx_str_to_i64", av, "ptr", "i64")
+        }
+
+        if name == "parse_float" && ac >= 1 {
+            let av = self.ll_gen_expr(self.child_at(nid, 0))
+            return self.ll_rt_call1("arx_str_to_f64", av, "ptr", "double")
+        }
+
+        if name == "chr" && ac >= 1 {
+            let av = self.ll_gen_expr(self.child_at(nid, 0))
+            let iv = self.emit_cast(av, ll_type(btype_norm(self.node_types.get(self.child_at(nid, 0)))), "i64")
+            return self.ll_rt_call1("__arx_byte_chr", iv, "i64", "ptr")
+        }
+
+        if name == "ord" && ac >= 1 {
+            let av = self.ll_gen_expr(self.child_at(nid, 0))
+            // Load first byte
+            let r = self.fresh_reg()
+            let r2 = self.fresh_reg()
+            self.wi(r + " = getelementptr inbounds i8, ptr " + av + ", i64 0")
+            self.wi(r2 + " = load i8, ptr " + r)
+            return self.emit_cast(r2, "i8", "i64")
+        }
+
+        if name == "len" && ac >= 1 {
+            let a0 = self.child_at(nid, 0)
+            let at = btype_norm(self.node_types.get(a0))
+            let av = self.ll_gen_expr(a0)
+            if btype_is_str(at) {
+                return self.ll_rt_call1("arx_str_len", av, "ptr", "i64")
+            }
+            if btype_is_fixed_arr(at) { return (btype_arr_len(at) as str) }
+            if btype_is_list(at) {
+                let mn = "Arx_" + btype_mangle(at) + "_len"
+                return self.ll_rt_call1(mn, av, "ptr", "i64")
+            }
+        }
+
+        if name == "abs" && ac >= 1 {
+            let a0 = self.child_at(nid, 0)
+            let av = self.ll_gen_expr(a0)
+            let at = btype_norm(self.node_types.get(a0))
+            let atll = ll_type(at)
+            if btype_is_float(at) {
+                let dv = self.emit_cast(av, atll, "double")
+                return self.ll_rt_call1("fabs", dv, "double", "double")
+            }
+            let iv = self.emit_cast(av, atll, "i64")
+            return self.ll_rt_call1("llabs", iv, "i64", "i64")
+        }
+
+        if (name == "min" || name == "max") && ac >= 2 {
+            let a0 = self.child_at(nid, 0)
+            let a1 = self.child_at(nid, 1)
+            let v0 = self.ll_gen_expr(a0)
+            let v1 = self.ll_gen_expr(a1)
+            let vt = btype_norm(self.node_types.get(a0))
+            let vtll = ll_type(vt)
+            let cmp = self.fresh_reg()
+            let r = self.fresh_reg()
+            if ll_is_float(vtll) {
+                if name == "min" {
+                    self.wi(cmp + " = fcmp olt " + vtll + " " + v0 + ", " + v1)
+                } else {
+                    self.wi(cmp + " = fcmp ogt " + vtll + " " + v0 + ", " + v1)
+                }
+            } else {
+                if name == "min" {
+                    self.wi(cmp + " = icmp slt " + vtll + " " + v0 + ", " + v1)
+                } else {
+                    self.wi(cmp + " = icmp sgt " + vtll + " " + v0 + ", " + v1)
+                }
+            }
+            self.wi(r + " = select i1 " + cmp + ", " + vtll + " " + v0 + ", " + vtll + " " + v1)
+            return r
+        }
+
+        // Math functions: sqrt, sin, cos, tan, floor, ceil, round, log, exp
+        if ac >= 1 {
+            let a0 = self.child_at(nid, 0)
+            let v0 = self.ll_gen_expr(a0)
+            let at = btype_norm(self.node_types.get(a0))
+            let atll = ll_type(at)
+            let dv = self.emit_cast(v0, atll, "double")
+            if name == "pow" && ac >= 2 {
+                let a1 = self.child_at(nid, 1)
+                let v1 = self.ll_gen_expr(a1)
+                let at1 = btype_norm(self.node_types.get(a1))
+                let dv1 = self.emit_cast(v1, ll_type(at1), "double")
+                return self.ll_rt_call2("pow", dv, "double", dv1, "double", "double")
+            }
+            return self.ll_rt_call1(name, dv, "double", "double")
+        }
+
+        return ll_zero("i64")
+    }
+
+    // Helper: call with no args, return value
+    priv fn ll_rt_call1_void(fn_name: str, ret_ll: str) -> str {
+        let r = self.fresh_reg()
+        self.wi(r + " = call " + ret_ll + " @" + fn_name + "()")
+        return r
+    }
+
+    // --- String method calls ---
+    priv fn ll_gen_str_method(nid: i64, mname: str, recv: str, ret_ll: str) -> str {
+        let ac = self.child_count(nid)
+        if mname == "len" || mname == "length" {
+            return self.ll_rt_call1("arx_str_len", recv, "ptr", "i64")
+        }
+        if mname == "is_empty" {
+            let r = self.fresh_reg()
+            let len = self.ll_rt_call1("arx_str_len", recv, "ptr", "i64")
+            self.wi(r + " = icmp eq i64 " + len + ", 0")
+            return r
+        }
+        if mname == "to_i64" { return self.ll_rt_call1("arx_str_to_i64", recv, "ptr", "i64") }
+        if mname == "to_f64" { return self.ll_rt_call1("arx_str_to_f64", recv, "ptr", "double") }
+        if mname == "trim" { return self.ll_rt_call1("arx_str_trim", recv, "ptr", "ptr") }
+        if mname == "trim_start" { return self.ll_rt_call1("arx_str_trim_start", recv, "ptr", "ptr") }
+        if mname == "trim_end" { return self.ll_rt_call1("arx_str_trim_end", recv, "ptr", "ptr") }
+        if mname == "to_upper" { return self.ll_rt_call1("arx_str_to_upper", recv, "ptr", "ptr") }
+        if mname == "to_lower" { return self.ll_rt_call1("arx_str_to_lower", recv, "ptr", "ptr") }
+        if (mname == "contains" || mname == "starts_with" || mname == "ends_with") && ac >= 1 {
+            let a0 = self.ll_gen_expr(self.child_at(nid, 0))
+            let fname = "arx_str_" + mname
+            return self.ll_rt_call2(fname, recv, "ptr", a0, "ptr", "i1")
+        }
+        if (mname == "index_of" || mname == "find") && ac >= 1 {
+            let a0 = self.ll_gen_expr(self.child_at(nid, 0))
+            return self.ll_rt_call2("arx_str_find", recv, "ptr", a0, "ptr", "i64")
+        }
+        if (mname == "slice" || mname == "substr") && ac >= 2 {
+            let a = self.ll_gen_expr(self.child_at(nid, 0))
+            let b = self.ll_gen_expr(self.child_at(nid, 1))
+            let r = self.fresh_reg()
+            self.wi(r + " = call ptr @__arx_bstr_slice(ptr " + recv + ", i64 " + a + ", i64 " + b + ")")
+            return r
+        }
+        if mname == "replace" && ac >= 2 {
+            let o = self.ll_gen_expr(self.child_at(nid, 0))
+            let n = self.ll_gen_expr(self.child_at(nid, 1))
+            let r = self.fresh_reg()
+            self.wi(r + " = call ptr @arx_str_replace(ptr " + recv + ", ptr " + o + ", ptr " + n + ")")
+            return r
+        }
+        if mname == "repeat" && ac >= 1 {
+            let n = self.ll_gen_expr(self.child_at(nid, 0))
+            let ni = self.emit_cast(n, ll_type(btype_norm(self.node_types.get(self.child_at(nid, 0)))), "i64")
+            return self.ll_rt_call2("arx_str_repeat", recv, "ptr", ni, "i64", "ptr")
+        }
+        if mname == "split" && ac >= 1 {
+            let d = self.ll_gen_expr(self.child_at(nid, 0))
+            return self.ll_rt_call2("arx_str_split", recv, "ptr", d, "ptr", "ptr")
+        }
+        if mname == "byte_at" && ac >= 1 {
+            let i = self.ll_gen_expr(self.child_at(nid, 0))
+            let ii = self.emit_cast(i, ll_type(btype_norm(self.node_types.get(self.child_at(nid, 0)))), "i64")
+            return self.ll_rt_call2("arx_str_byte_at", recv, "ptr", ii, "i64", "i8")
+        }
+        if (mname == "char_at" || mname == "get") && ac >= 1 {
+            let i = self.ll_gen_expr(self.child_at(nid, 0))
+            let ii = self.emit_cast(i, ll_type(btype_norm(self.node_types.get(self.child_at(nid, 0)))), "i64")
+            return self.ll_rt_call2("arx_str_byte_at", recv, "ptr", ii, "i64", "i8")
+        }
+        return ll_zero(ret_ll)
+    }
+}

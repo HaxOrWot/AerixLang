@@ -1,0 +1,193 @@
+// Aerix LLVM IR Backend — Base Class
+// LLVMEmitter wraps the Analyzer AST and provides SSA register/label allocation
+// and an output buffer for emitting LLVM IR text.
+
+import "../../frontend/ast.arx"
+import "../../middle/types.arx"
+import "../../middle/analyzer/mod.arx"
+
+pub class LLVMEmitter {
+    // Frozen AST & semantic info from Analyzer
+    pub nk: List<i64>
+    pub sa: List<str>
+    pub sb: List<str>
+    pub ia: List<i64>
+    pub la: List<i64>
+    pub ra: List<i64>
+    pub ea: List<i64>
+    pub ls: List<i64>
+    pub ll: List<i64>
+    pub ln: List<i64>
+    pub nc: List<i64>
+    pub nf: List<str>
+    pub ch: List<i64>
+    pub ncount: i64
+
+    pub node_types: List<str>
+    pub call_targets: List<str>
+    pub call_kinds: List<i64>
+    pub call_fn_nodes: List<i64>
+    pub node_ext: List<str>
+    pub fn_externs: Map<str, str>
+
+    pub cls_names: List<str>
+    pub cls_nodes: List<i64>
+    pub cls_count: i64
+    pub cls_idx_map: Map<str, i64>
+    pub cls_order: List<i64>
+    pub cls_order_count: i64
+    pub cls_base_map: Map<str, str>
+    pub cls_field_types: Map<str, str>
+
+    pub enum_names: List<str>
+    pub enum_nodes: List<i64>
+    pub enum_count: i64
+    pub enum_idx_map: Map<str, i64>
+    pub enum_var_tag: Map<str, i64>
+    pub enum_var_node: Map<str, i64>
+
+    pub global_nodes: List<i64>
+    pub global_count: i64
+    pub fn_nodes: List<i64>
+    pub fn_count: i64
+    pub ext_nodes: List<i64>
+    pub ext_count: i64
+
+    pub gen_list_types: List<str>
+    pub gen_list_count: i64
+    pub gen_map_keys: List<str>
+    pub gen_map_vals: List<str>
+    pub gen_map_count: i64
+    pub gen_set_types: List<str>
+    pub gen_set_count: i64
+    pub gen_stack_types: List<str>
+    pub gen_stack_count: i64
+    pub gen_queue_types: List<str>
+    pub gen_queue_count: i64
+    pub gen_deque_types: List<str>
+    pub gen_deque_count: i64
+    pub gen_tuple_types: List<str>
+    pub gen_tuple_count: i64
+    pub seen_generics: Map<str, i64>
+
+    // Output buffer
+    pub out: ByteBuffer
+
+    // SSA state
+    pub reg_id: i64       // next SSA register (%1, %2, ...)
+    pub lbl_id: i64       // next label counter
+    pub str_id: i64       // next global string constant index
+
+    // Per-function state
+    pub cur_class: str
+    pub cur_ret_type: str
+    pub cur_ret_ll: str    // LLVM return type string
+    pub is_in_ctor: bool
+    pub has_main_fn: bool
+    pub main_returns_i64: bool
+
+    // Local variable alloca map: var_name -> alloca register name (e.g. "%x")
+    pub local_alloca: Map<str, str>
+    // Local variable LLVM type map: var_name -> llvm type string
+    pub local_type: Map<str, str>
+
+    // Global string constants emitted before functions
+    pub str_consts: List<str>   // pre-emitted global string lines
+    pub str_const_regs: List<str>  // the @.str.N register name
+
+    // Control flow and loop target stacks
+    pub bb_terminated: bool
+    pub loop_break_stack: List<str>
+    pub loop_cont_stack: List<str>
+
+    // Struct size table for arena allocation
+    pub cls_sizes: Map<str, i64>
+
+    init(az: Analyzer) {
+        self.nk = az.nk
+        self.sa = az.sa
+        self.sb = az.sb
+        self.ia = az.ia
+        self.la = az.la
+        self.ra = az.ra
+        self.ea = az.ea
+        self.ls = az.ls
+        self.ll = az.ll
+        self.ln = az.ln
+        self.nc = az.nc
+        self.nf = az.nf
+        self.ch = az.ch
+        self.ncount = az.ncount
+
+        self.node_types = az.node_types
+        self.call_targets = az.call_targets
+        self.call_kinds = az.call_kinds
+        self.call_fn_nodes = az.call_fn_nodes
+        self.node_ext = az.node_ext
+        self.fn_externs = az.fn_externs
+
+        self.cls_names = az.cls_names
+        self.cls_nodes = az.cls_nodes
+        self.cls_count = az.cls_count
+        self.cls_idx_map = az.cls_idx_map
+        self.cls_order = az.cls_order
+        self.cls_order_count = az.cls_order_count
+        self.cls_base_map = az.cls_base_map
+        self.cls_field_types = az.cls_field_types
+
+        self.enum_names = az.enum_names
+        self.enum_nodes = az.enum_nodes
+        self.enum_count = az.enum_count
+        self.enum_idx_map = az.enum_idx_map
+        self.enum_var_tag = az.enum_var_tag
+        self.enum_var_node = az.enum_var_node
+
+        self.global_nodes = az.global_nodes
+        self.global_count = az.global_count
+        self.fn_nodes = az.fn_nodes
+        self.fn_count = az.fn_count
+        self.ext_nodes = az.ext_nodes
+        self.ext_count = az.ext_count
+
+        self.gen_list_types = az.gen_list_types
+        self.gen_list_count = az.gen_list_count
+        self.gen_map_keys = az.gen_map_keys
+        self.gen_map_vals = az.gen_map_vals
+        self.gen_map_count = az.gen_map_count
+        self.gen_set_types = az.gen_set_types
+        self.gen_set_count = az.gen_set_count
+        self.gen_stack_types = az.gen_stack_types
+        self.gen_stack_count = az.gen_stack_count
+        self.gen_queue_types = az.gen_queue_types
+        self.gen_queue_count = az.gen_queue_count
+        self.gen_deque_types = az.gen_deque_types
+        self.gen_deque_count = az.gen_deque_count
+        self.gen_tuple_types = az.gen_tuple_types
+        self.gen_tuple_count = az.gen_tuple_count
+        self.seen_generics = az.seen_generics
+
+        self.out = ByteBuffer()
+        self.reg_id = 0
+        self.lbl_id = 0
+        self.str_id = 0
+
+        self.cur_class = ""
+        self.cur_ret_type = "void"
+        self.cur_ret_ll = "void"
+        self.is_in_ctor = false
+        self.has_main_fn = false
+        self.main_returns_i64 = false
+
+        self.local_alloca = Map<str, str>()
+        self.local_type = Map<str, str>()
+
+        self.str_consts = List<str>()
+        self.str_const_regs = List<str>()
+
+        self.bb_terminated = false
+        self.loop_break_stack = List<str>()
+        self.loop_cont_stack = List<str>()
+
+        self.cls_sizes = Map<str, i64>()
+    }
+}

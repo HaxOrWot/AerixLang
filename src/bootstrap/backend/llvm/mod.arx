@@ -1,0 +1,12 @@
+// Aerix Bootstrap Compiler — LLVM IR Text Emitter Backend
+// Emits LLVM IR text (.ll files) from the Aerix AST for use with Clang.
+
+import "./base.arx"
+import "./types.arx"
+import "./helpers.arx"
+import "./exprs.arx"
+import "./stmts.arx"
+import "./flow.arx"
+import "./calls.arx"
+import "./bodies.arx"
+import "./pipe.arx"

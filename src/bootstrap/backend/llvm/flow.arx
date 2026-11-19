@@ -1,0 +1,9 @@
+// Aerix LLVM IR Backend — Flow / Control-flow helpers
+// (Stubs — most flow is in stmts.arx; this file holds shared flow helpers.)
+
+import "./mod.arx"
+
+extend LLVMEmitter {
+    // Currently all flow logic is in stmts.arx.
+    // This file is reserved for future match/switch lowering helpers.
+}

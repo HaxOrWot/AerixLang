@@ -1,0 +1,309 @@
+// Aerix LLVM IR Backend — Low-level Output Helpers
+// Provides register/label allocation and output stream helpers for LLVMEmitter.
+
+import "./mod.arx"
+
+extend LLVMEmitter {
+
+    // --- Output primitives ---
+
+    priv fn w(s: str) {
+        self.out.write_str(s)
+    }
+
+    priv fn wl(s: str) {
+        self.out.write_str(s)
+        self.out.write_u8(10)
+    }
+
+    priv fn wln() {
+        self.out.write_u8(10)
+    }
+
+    priv fn w_lbrace() {
+        self.out.write_u8(123)
+    }
+
+    priv fn w_rbrace() {
+        self.out.write_u8(125)
+    }
+
+    // Emit indented instruction (2 spaces, like clang output)
+    priv fn wi(s: str) {
+        self.out.write_str("  ")
+        self.out.write_str(s)
+        self.out.write_u8(10)
+    }
+
+    // --- SSA register allocation ---
+
+    priv fn fresh_reg() -> str {
+        self.reg_id = self.reg_id + 1
+        return "%" + (self.reg_id as str)
+    }
+
+    priv fn fresh_reg_named(name: str) -> str {
+        self.reg_id = self.reg_id + 1
+        return "%" + name + "." + (self.reg_id as str)
+    }
+
+    // --- Basic block label allocation ---
+
+    priv fn fresh_label(prefix: str) -> str {
+        self.lbl_id = self.lbl_id + 1
+        return prefix + "." + (self.lbl_id as str)
+    }
+
+    // --- Per-function state reset ---
+
+    priv fn reset_fn_state() {
+        self.reg_id = 0
+        self.lbl_id = 0
+        self.bb_terminated = false
+        self.local_alloca = Map<str, str>()
+        self.local_type = Map<str, str>()
+    }
+
+    // --- Basic block label emission ---
+
+    priv fn emit_label(lbl: str) {
+        // Labels are at column 0 without indent
+        self.wl(lbl + ":")
+        self.bb_terminated = false
+    }
+
+    priv fn emit_br(dest: str) {
+        if !self.bb_terminated {
+            self.wi("br label %" + dest)
+            self.bb_terminated = true
+        }
+    }
+
+    priv fn emit_condbr(cond: str, t_lbl: str, f_lbl: str) {
+        if !self.bb_terminated {
+            self.wi("br i1 " + cond + ", label %" + t_lbl + ", label %" + f_lbl)
+            self.bb_terminated = true
+        }
+    }
+
+    // --- Helper: child AST access ---
+
+    priv fn child_at(nid: i64, idx: i64) -> i64 {
+        return self.ch.get(self.ls.get(nid) + idx)
+    }
+
+    priv fn child_count(nid: i64) -> i64 {
+        return self.ll.get(nid)
+    }
+
+    // --- Helper: get next global string constant ---
+
+    // Returns the LLVM getelementptr expression for a string literal.
+    // Emits the global constant string array before function bodies.
+    priv fn intern_str_const(raw: str) -> str {
+        // Encode as LLVM string with escape sequences
+        let encoded = self.ll_encode_str(raw)
+        let n = raw.len() + 1  // +1 for null terminator
+        let gname = "@.str." + (self.str_id as str)
+        self.str_id = self.str_id + 1
+        let decl = gname + " = private unnamed_addr constant [" + (n as str) + " x i8] c\"" + encoded + "\\00\""
+        self.str_consts.push(decl)
+        // Return gep expression
+        return "getelementptr inbounds [" + (n as str) + " x i8], ptr " + gname + ", i64 0, i64 0"
+    }
+
+    // Encode a string literal for LLVM IR (escape non-printable bytes as \XX).
+    priv fn ll_encode_str(raw: str) -> str {
+        let bb = ByteBuffer()
+        let n = raw.len()
+        mut i = 0
+        while i < n {
+            let b = raw.byte_at(i)
+            if b == 10 {
+                // \n -> \0A
+                bb.write_u8(92)  // backslash
+                bb.write_u8(48)  // 0
+                bb.write_u8(65)  // A
+            } else if b == 13 {
+                // \r -> \0D
+                bb.write_u8(92)
+                bb.write_u8(48)
+                bb.write_u8(68)
+            } else if b == 9 {
+                // \t -> \09
+                bb.write_u8(92)
+                bb.write_u8(48)
+                bb.write_u8(57)
+            } else if b == 92 {
+                // backslash -> \5C
+                bb.write_u8(92)
+                bb.write_u8(53)
+                bb.write_u8(67)
+            } else if b == 34 {
+                // quote -> \22
+                bb.write_u8(92)
+                bb.write_u8(50)
+                bb.write_u8(50)
+            } else if b < 32 || b > 126 {
+                // Non-printable: emit \XX hex
+                bb.write_u8(92)
+                let hi = b / 16
+                let lo = b - hi * 16
+                mut hc = 48 + hi
+                if hi >= 10 { hc = 55 + hi }  // 'A' = 65, 65-10 = 55
+                mut lc = 48 + lo
+                if lo >= 10 { lc = 55 + lo }
+                bb.write_u8(hc)
+                bb.write_u8(lc)
+            } else {
+                bb.write_u8(b)
+            }
+            i = i + 1
+        }
+        let result = bb.to_str()
+        bb.free()
+        return result
+    }
+
+    // --- LLVM alloca + store helper (declare a local variable) ---
+
+    // Emit alloca for a local variable and store initial value.
+    priv fn emit_local_alloca(name: str, ll_t: str) -> str {
+        let ptr_reg = "%" + name + ".ptr"
+        self.wi(ptr_reg + " = alloca " + ll_t)
+        self.local_alloca.insert(name, ptr_reg)
+        self.local_type.insert(name, ll_t)
+        return ptr_reg
+    }
+
+    // Store a value into a local alloca.
+    priv fn emit_store(val: str, ll_t: str, ptr: str) {
+        self.wi("store " + ll_t + " " + val + ", ptr " + ptr)
+    }
+
+    // Load a value from a local alloca.
+    priv fn emit_load(ptr: str, ll_t: str) -> str {
+        let r = self.fresh_reg()
+        self.wi(r + " = load " + ll_t + ", ptr " + ptr)
+        return r
+    }
+
+
+    // --- Cast helpers ---
+
+    // Emit a cast from src_ll to dst_ll type for the given register.
+    priv fn emit_cast(val: str, src_ll: str, dst_ll: str) -> str {
+        if src_ll == dst_ll { return val }
+        // Pointer to pointer: in opaque pointers (LLVM 15+), all pointers are ptr
+        if ll_is_ptr(src_ll) && ll_is_ptr(dst_ll) { return val }
+        let r = self.fresh_reg()
+        // int -> float
+        if ll_is_int(src_ll) && ll_is_float(dst_ll) {
+            if src_ll == "i1" {
+                // extend to i64 first
+                let r2 = self.fresh_reg()
+                self.wi(r2 + " = zext i1 " + val + " to i64")
+                self.wi(r + " = sitofp i64 " + r2 + " to " + dst_ll)
+            } else {
+                self.wi(r + " = sitofp " + src_ll + " " + val + " to " + dst_ll)
+            }
+            return r
+        }
+        // float -> int
+        if ll_is_float(src_ll) && ll_is_int(dst_ll) {
+            if dst_ll == "i1" {
+                let r2 = self.fresh_reg()
+                self.wi(r2 + " = fptosi " + src_ll + " " + val + " to i64")
+                self.wi(r + " = icmp ne i64 " + r2 + ", 0")
+            } else {
+                self.wi(r + " = fptosi " + src_ll + " " + val + " to " + dst_ll)
+            }
+            return r
+        }
+        // float widening/narrowing
+        if ll_is_float(src_ll) && ll_is_float(dst_ll) {
+            if src_ll == "float" && dst_ll == "double" {
+                self.wi(r + " = fpext float " + val + " to double")
+            } else if src_ll == "double" && dst_ll == "float" {
+                self.wi(r + " = fptrunc double " + val + " to float")
+            } else {
+                return val
+            }
+            return r
+        }
+        // int widening/narrowing
+        if ll_is_int(src_ll) && ll_is_int(dst_ll) {
+            let sw = ll_int_width(src_ll)
+            let dw = ll_int_width(dst_ll)
+            if sw < dw {
+                self.wi(r + " = sext " + src_ll + " " + val + " to " + dst_ll)
+            } else if sw > dw {
+                self.wi(r + " = trunc " + src_ll + " " + val + " to " + dst_ll)
+            } else {
+                return val
+            }
+            return r
+        }
+        // int -> ptr
+        if ll_is_int(src_ll) && ll_is_ptr(dst_ll) {
+            self.wi(r + " = inttoptr " + src_ll + " " + val + " to ptr")
+            return r
+        }
+        // ptr -> int
+        if ll_is_ptr(src_ll) && ll_is_int(dst_ll) {
+            self.wi(r + " = ptrtoint ptr " + val + " to " + dst_ll)
+            return r
+        }
+        return val
+    }
+
+
+    // Collect class lineage (same as C emitter)
+    priv fn collect_class_lineage(cname: str) -> List<str> {
+        let rev = List<str>()
+        mut cur = cname
+        mut depth_guard = 0
+        while cur != "" && self.cls_idx_map.has_key(cur) && depth_guard < 32 {
+            rev.push(cur)
+            if self.cls_base_map.has_key(cur) {
+                cur = self.cls_base_map.get(cur)
+            } else {
+                cur = ""
+            }
+            depth_guard = depth_guard + 1
+        }
+        let ordered = List<str>()
+        mut i = rev.len() - 1
+        while i >= 0 {
+            ordered.push(rev.get(i))
+            i = i - 1
+        }
+        return ordered
+    }
+
+    // Count total fields for a class (including inherited).
+    priv fn class_field_count(cname: str) -> i64 {
+        let lineage = self.collect_class_lineage(cname)
+        mut total = 0
+        mut li = 0
+        while li < lineage.len() {
+            let lc_nid = self.cls_nodes.get(self.cls_idx_map.get(lineage.get(li)))
+            let fgrp = self.la.get(lc_nid)
+            total = total + self.child_count(fgrp)
+            li = li + 1
+        }
+        return total
+    }
+
+    // Approximate struct size for arena allocation (8 bytes per field, min 8).
+    priv fn class_approx_size(cname: str) -> i64 {
+        if self.cls_sizes.has_key(cname) {
+            return self.cls_sizes.get(cname)
+        }
+        let nfields = self.class_field_count(cname)
+        mut sz = nfields * 8
+        if sz < 8 { sz = 8 }
+        self.cls_sizes.insert(cname, sz)
+        return sz
+    }
+}

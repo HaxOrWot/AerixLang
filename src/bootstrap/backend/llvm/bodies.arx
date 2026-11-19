@@ -1,0 +1,374 @@
+// Aerix LLVM IR Backend — Function & Class Body Emitter
+// Emits LLVM IR for function definitions, class constructors, and methods.
+
+import "./mod.arx"
+
+extend LLVMEmitter {
+
+    // --- Emit all function bodies ---
+    pub fn ll_emit_all() {
+        // Emit class struct type declarations
+        self.ll_emit_struct_types()
+
+        // Emit string constants (collected during emit, flush later)
+        // Functions
+        mut ci = 0
+        while ci < self.cls_order_count {
+            let cid = self.cls_nodes.get(self.cls_order.get(ci))
+            let cname = self.sa.get(cid)
+            self.ll_emit_class_bodies(cname, cid)
+            ci = ci + 1
+        }
+
+        // Top-level functions
+        mut fi = 0
+        while fi < self.fn_count {
+            let fid = self.fn_nodes.get(fi)
+            if self.nk.get(fid) == NK_FN_DEF() {
+                if self.ra.get(fid) >= 0 && !self.fn_externs.has_key(self.sa.get(fid)) {
+                    self.ll_emit_fn_def(fid, "", false)
+                }
+            }
+            fi = fi + 1
+        }
+
+        // Main entry point
+        self.ll_emit_main_entry()
+    }
+
+    // --- Struct type declarations ---
+    priv fn ll_emit_struct_types() {
+        mut oi = 0
+        while oi < self.cls_order_count {
+            let cid = self.cls_nodes.get(self.cls_order.get(oi))
+            let cname = self.sa.get(cid)
+            self.ll_emit_struct_type(cname, cid)
+            oi = oi + 1
+        }
+        self.wln()
+    }
+
+    priv fn ll_emit_struct_type(cname: str, cid: i64) {
+        let struct_ll = "%Arx_" + btype_mangle(cname)
+        let lineage = self.collect_class_lineage(cname)
+        let lcnt = lineage.len()
+        let bb = ByteBuffer()
+        bb.write_str(struct_ll)
+        bb.write_str(" = type "); bb.write_u8(123); bb.write_str(" ")
+        mut total_fields = 0
+        mut li = 0
+        while li < lcnt {
+            let lc_nid = self.cls_nodes.get(self.cls_idx_map.get(lineage.get(li)))
+            let fgrp = self.la.get(lc_nid)
+            let fcnt = self.child_count(fgrp)
+            mut fi = 0
+            while fi < fcnt {
+                let fid = self.child_at(fgrp, fi)
+                let ftype = btype_norm(self.sb.get(fid))
+                let fll = ll_type(ftype)
+                if total_fields > 0 { bb.write_str(", ") }
+                bb.write_str(fll)
+                total_fields = total_fields + 1
+                fi = fi + 1
+            }
+            li = li + 1
+        }
+        if total_fields == 0 {
+            bb.write_str("i64")  // placeholder for empty struct
+        }
+        bb.write_str(" "); bb.write_u8(125)
+        self.wl(bb.to_str())
+        bb.free()
+    }
+
+    // --- Class bodies ---
+    priv fn ll_emit_class_bodies(cname: str, cid: i64) {
+        let _ct = "Arx_" + cname
+        let ctors_grp = self.ra.get(cid)
+        let ccnt = self.child_count(ctors_grp)
+
+        // Constructor
+        if ccnt == 0 {
+            // Default constructor: allocate from arena, zero-init, return pointer
+            self.ll_emit_default_ctor(cname)
+        } else {
+            mut j = 0
+            while j < ccnt {
+                self.ll_emit_ctor(cname, self.child_at(ctors_grp, j))
+                j = j + 1
+            }
+        }
+
+        // Destructor
+        let dtor_id = self.la.get(ctors_grp)
+        if dtor_id >= 0 {
+            self.ll_emit_fn_def(dtor_id, cname, false)
+        }
+
+        // Methods
+        let methods_grp = self.ea.get(cid)
+        let mcnt = self.child_count(methods_grp)
+        mut m = 0
+        while m < mcnt {
+            self.ll_emit_fn_def(self.child_at(methods_grp, m), cname, false)
+            m = m + 1
+        }
+    }
+
+    // Default (no-arg) constructor: return an arena-allocated zeroed instance.
+    priv fn ll_emit_default_ctor(cname: str) {
+        let ctor_name = "Arx_" + cname + "_init"
+        self.wln()
+        self.w("define ptr @" + ctor_name + "() "); self.w_lbrace(); self.wln()
+        self.wl("entry:")
+        // Allocate from arena
+        let sz = self.class_approx_size(cname)
+        let arena = self.fresh_reg()
+        self.wi(arena + " = call ptr @arx_tls_arena_get()")
+        let raw = self.fresh_reg()
+        self.wi(raw + " = call ptr @arx_tls_arena_alloc(ptr " + arena + ", i64 " + (sz as str) + ")")
+        // Zero out all fields
+        self.wi("call void @llvm.memset.p0.i64(ptr align 8 " + raw + ", i8 0, i64 " + (sz as str) + ", i1 false)")
+        self.wi("ret ptr " + raw)
+        self.w_rbrace(); self.wln()
+        self.wln()
+        self.reset_fn_state()
+    }
+
+    // User-defined constructor.
+    priv fn ll_emit_ctor(cname: str, ctor_id: i64) {
+        let ctor_name = self.call_targets.get(ctor_id)
+        let params_grp = self.la.get(ctor_id)
+
+        self.reset_fn_state()
+        self.cur_class = cname
+        self.cur_ret_type = cname
+        self.cur_ret_ll = "ptr"
+        self.is_in_ctor = true
+
+        // Build signature
+        let bb = ByteBuffer()
+        bb.write_str("define ptr @")
+        bb.write_str(ctor_name)
+        bb.write_str("(")
+        self.ll_write_params(bb, params_grp, "")
+        bb.write_str(") "); bb.write_u8(123)
+        self.wl(bb.to_str())
+        bb.free()
+        self.wl("entry:")
+
+        // Register params as locals
+        if params_grp >= 0 {
+            let pcnt = self.child_count(params_grp)
+            mut pi = 0
+            while pi < pcnt {
+                let pid = self.child_at(params_grp, pi)
+                let pname = self.sa.get(pid)
+                let pt = btype_norm(self.sb.get(pid))
+                let ptll = ll_type(pt)
+                let ptr = self.emit_local_alloca(pname, ptll)
+                self.emit_store("%" + pname + ".param", ptll, ptr)
+                pi = pi + 1
+            }
+        }
+
+        // Allocate self
+        let sz = self.class_approx_size(cname)
+        let arena = self.fresh_reg()
+        self.wi(arena + " = call ptr @arx_tls_arena_get()")
+        let raw = self.fresh_reg()
+        self.wi(raw + " = call ptr @arx_tls_arena_alloc(ptr " + arena + ", i64 " + (sz as str) + ")")
+        self.wi("call void @llvm.memset.p0.i64(ptr align 8 " + raw + ", i8 0, i64 " + (sz as str) + ", i1 false)")
+        // Store self pointer
+        let self_ptr = self.emit_local_alloca("self", "ptr")
+        self.emit_store(raw, "ptr", self_ptr)
+
+        // Emit field default initializers
+        self.ll_emit_field_defaults(cname)
+
+        // Emit constructor body
+        self.ll_gen_block_stmts(self.ra.get(ctor_id))
+
+        // Return self
+        let sv = self.emit_load(self_ptr, "ptr")
+        self.wi("ret ptr " + sv)
+        self.w_rbrace(); self.wln()
+        self.wln()
+
+        self.cur_class = ""
+        self.is_in_ctor = false
+        self.reset_fn_state()
+    }
+
+    // Emit default field initializations for constructor.
+    priv fn ll_emit_field_defaults(cname: str) {
+        let lineage = self.collect_class_lineage(cname)
+        mut li = 0
+        while li < lineage.len() {
+            let lc_nid = self.cls_nodes.get(self.cls_idx_map.get(lineage.get(li)))
+            let fgrp = self.la.get(lc_nid)
+            let fcnt = self.child_count(fgrp)
+            mut fi = 0
+            while fi < fcnt {
+                let fid = self.child_at(fgrp, fi)
+                let def_id = self.la.get(fid)
+                if def_id >= 0 {
+                    let fname = self.sa.get(fid)
+                    let ftype = btype_norm(self.sb.get(fid))
+                    let ftll = ll_type(ftype)
+                    let fval = self.ll_gen_expr(def_id)
+                    // GEP + store onto self
+                    let sv = self.ll_load_self()
+                    let struct_ll = "%Arx_" + btype_mangle(cname)
+                    let field_idx = self.get_field_index(cname, fname)
+                    let r_gep = self.fresh_reg()
+                    self.wi(r_gep + " = getelementptr inbounds " + struct_ll + ", ptr " + sv + ", i32 0, i32 " + (field_idx as str))
+                    self.emit_store(fval, ftll, r_gep)
+                }
+                fi = fi + 1
+            }
+            li = li + 1
+        }
+    }
+
+    // --- Emit a function definition ---
+    pub fn ll_emit_fn_def(fid: i64, class_name: str, is_dtor: bool) {
+        let body = self.ra.get(fid)
+        if body < 0 { return }
+
+        let is_static = has_flag(self.ia.get(fid), FLAG_STATIC())
+        let fn_name = self.call_targets.get(fid)
+        let raw_name = self.sa.get(fid)
+        mut ret_t = "void"
+        if !is_dtor { ret_t = btype_norm(self.sb.get(fid)) }
+        let ret_ll = ll_type(ret_t)
+
+        // Check if main
+        if raw_name == "main" {
+            self.has_main_fn = true
+            if btype_is_int(ret_t) { self.main_returns_i64 = true }
+        }
+
+        self.reset_fn_state()
+        self.cur_class = class_name
+        self.cur_ret_type = ret_t
+        self.cur_ret_ll = ret_ll
+
+        let params_grp = self.la.get(fid)
+
+        // Write function header
+        let bb = ByteBuffer()
+        bb.write_str("define ")
+        bb.write_str(ret_ll)
+        bb.write_str(" @")
+        bb.write_str(fn_name)
+        bb.write_str("(")
+        if is_dtor {
+            bb.write_str("ptr %self.param")
+        } else {
+            self.ll_write_params(bb, params_grp, class_name)
+            if !is_static && class_name != "" {
+                // non-static methods have a leading self param
+                // (already included in ll_write_params for class_name != "")
+            }
+        }
+        bb.write_str(") "); bb.write_u8(123)
+        self.wl(bb.to_str())
+        bb.free()
+        self.wl("entry:")
+
+        // Register parameters as local variables
+        if is_dtor || (!is_static && class_name != "") {
+            let self_ptr = self.emit_local_alloca("self", "ptr")
+            self.emit_store("%self.param", "ptr", self_ptr)
+        }
+        if params_grp >= 0 {
+            let pcnt = self.child_count(params_grp)
+            mut pi = 0
+            while pi < pcnt {
+                let pid = self.child_at(params_grp, pi)
+                let pname = self.sa.get(pid)
+                let pt = btype_norm(self.sb.get(pid))
+                let ptll = ll_type(pt)
+                let ptr = self.emit_local_alloca(pname, ptll)
+                self.emit_store("%" + pname + ".param", ptll, ptr)
+                pi = pi + 1
+            }
+        }
+
+        // Emit body
+        if raw_name == "main" {
+            // Init arena
+            self.wi("call void @arx_tls_arena_init()")
+        }
+        self.ll_gen_block_stmts(body)
+
+        // Ensure function has terminator
+        if ret_ll == "void" {
+            self.wi("ret void")
+        } else {
+            self.wi("ret " + ret_ll + " " + ll_zero(ret_ll))
+        }
+
+        self.w_rbrace(); self.wln()
+        self.wln()
+
+        self.cur_class = ""
+        self.reset_fn_state()
+    }
+
+    // Write LLVM IR parameter list to ByteBuffer.
+    priv fn ll_write_params(bb: ByteBuffer, params_grp: i64, class_name: str) {
+        mut printed = 0
+        // Self pointer for non-static methods
+        if class_name != "" {
+            bb.write_str("ptr %self.param")
+            printed = 1
+        }
+        if params_grp >= 0 {
+            let pcnt = self.child_count(params_grp)
+            mut pi = 0
+            while pi < pcnt {
+                let pid = self.child_at(params_grp, pi)
+                let pname = self.sa.get(pid)
+                let pt = btype_norm(self.sb.get(pid))
+                let ptll = ll_type(pt)
+                if printed > 0 { bb.write_str(", ") }
+                bb.write_str(ptll)
+                bb.write_str(" %")
+                bb.write_str(pname)
+                bb.write_str(".param")
+                printed = printed + 1
+                pi = pi + 1
+            }
+        }
+    }
+
+    // --- Main entry point ---
+    priv fn ll_emit_main_entry() {
+        // The real C main is in aerix_rt.h; arx_main() is our compiled main()
+        // For the LLVM backend, we emit our main() directly.
+        // We already emit @arx_main above; here we emit the C main wrapper.
+        self.w("define i32 @main(i32 %argc, ptr %argv) "); self.w_lbrace(); self.wln()
+        self.wl("entry:")
+        self.wi("call void @arx_init_args(i32 %argc, ptr %argv)")
+        self.wi("call void @arx_tls_arena_init()")
+        if self.has_main_fn {
+            if self.main_returns_i64 {
+                let r = self.fresh_reg()
+                self.wi(r + " = call i64 @arx_main()")
+                let r2 = self.fresh_reg()
+                self.wi(r2 + " = trunc i64 " + r + " to i32")
+                self.wi("ret i32 " + r2)
+            } else {
+                self.wi("call void @arx_main()")
+                self.wi("ret i32 0")
+            }
+        } else {
+            self.wi("ret i32 0")
+        }
+        self.w_rbrace(); self.wln()
+        self.wln()
+        self.reset_fn_state()
+    }
+}
